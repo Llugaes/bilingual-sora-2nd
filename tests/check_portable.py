@@ -116,6 +116,9 @@ def check(package):
         # The EXE must choose the previous runtime to safely roll back before importing Qt.
         token = "c" * 32
         update_dir = root / "generated/updates"
+        update_dir.mkdir(parents=True, exist_ok=True)
+        # Keep this offline integration test independent of GitHub/network timing.
+        (update_dir / "preferences.json").write_text('{"policy":"off"}')
         backup = update_dir / ("backup-" + token) / "runtime/current.txt"
         backup.parent.mkdir(parents=True)
         previous = (runtime_id + "\n").encode()
@@ -145,6 +148,7 @@ def check(package):
         )
         try:
             before = wait_for(lambda state: state["expanded"])
+            print("started", before, flush=True)
             seconds = time.monotonic() - started
             assert not before["auto_connect"]
             assert (root / "runtime/current.txt").read_text().strip() == runtime_id
@@ -174,6 +178,7 @@ def check(package):
                 timeout=60,
             )
             assert install.returncode == 0, install.stderr
+            print("installed", install.stdout.strip(), flush=True)
             upgraded = wait_for(lambda state: state["pid"] != before["pid"])
             assert upgraded["expanded"]
             assert json.loads(control.read_text())["ui_language"] == "en"

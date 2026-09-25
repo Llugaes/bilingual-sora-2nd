@@ -88,8 +88,8 @@ def portable(version, repository, output, cache=ROOT / "build/downloads"):
         subprocess.run(
             [
                 str(compiler),
-            "/nologo",
-            "/codepage:65001",
+                "/nologo",
+                "/codepage:65001",
                 "/target:winexe",
                 "/platform:x64",
                 "/optimize+",
