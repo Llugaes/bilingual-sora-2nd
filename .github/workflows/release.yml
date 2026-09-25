@@ -46,8 +46,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $metadata = Get-Content dist/sora-bilingual-update.json | ConvertFrom-Json
-          gh release create $env:GITHUB_REF_NAME "dist/$($metadata.asset)" dist/sora-bilingual-update.json --draft --verify-tag --title "Sora Bilingual $env:GITHUB_REF_NAME" --notes-file RELEASE_NOTES.md
+          $metadata = Get-Content dist/bilingual-sora-2nd-update.json | ConvertFrom-Json
+          $legacy = Get-Content dist/sora-bilingual-update.json | ConvertFrom-Json
+          gh release create $env:GITHUB_REF_NAME "dist/$($metadata.asset)#bilingual-sora-2nd — Windows x64 安装包" dist/bilingual-sora-2nd-update.json "dist/$($legacy.asset)#空轨 2nd — 仅供 v0.2.0 自动升级兼容" "dist/sora-bilingual-update.json#旧版自动升级兼容清单" --draft --verify-tag --title "Bilingual Sora 2nd $env:GITHUB_REF_NAME" --notes-file RELEASE_NOTES.md
           if ($LASTEXITCODE -ne 0) { throw 'Draft/upload failed; no partial release is published' }
           gh release edit $env:GITHUB_REF_NAME --draft=false --latest
           if ($LASTEXITCODE -ne 0) { throw 'Publish failed' }

@@ -7,7 +7,7 @@
 ## 安装和启动
 
 1. 安装 Windows x64 的 Python **3.14**（包含 Python Launcher）。
-2. 从 [Releases](https://github.com/Llugaes/bilingual-sora-2nd/releases/latest) 下载 `sora-bilingual-版本-windows-x64.zip`，解压到有写权限的独立目录。不要下载 GitHub 自动生成的 Source code 包来代替发行包。
+2. 从 [Releases](https://github.com/Llugaes/bilingual-sora-2nd/releases/latest) 下载 `bilingual-sora-2nd-版本-windows-x64.zip`，解压到有写权限的独立目录。不要下载 GitHub 自动生成的 Source code 包来代替发行包。
 3. 双击 `Setup.cmd` 安装依赖并创建桌面快捷方式。这是首次安装步骤，后续同运行环境的软件更新会自动安装。
 4. 双击桌面 **Sora Bilingual**。工具自动关联已运行的游戏，也会等待稍后启动的游戏；工具本身不启动游戏。
 5. 如果游戏使用其他语言，在“语言与模式 → 高级：原文识别”选择与游戏一致的识别源语言。主语言是 Mod 显示的正文，识别源语言用于匹配游戏传入的原文，两者职责不同。
@@ -65,7 +65,7 @@ py -3.14 -m venv .venv
 维护者同步修改 distribution.json 和 pyproject.toml 版本后推送 `vX.Y.Z` 标签。GitHub Actions 在 Windows 上验证测试，从明确的文件白名单构建 ZIP 和更新清单，上传到草稿 Release 后一起公开；后续客户端自动发现。手动构建：
 
 ```powershell
-.venv\Scripts\python.exe -m tools.build_release --version 0.2.0 --repository Llugaes/bilingual-sora-2nd
+.venv\Scripts\python.exe -m tools.build_release --version 0.2.1 --repository Llugaes/bilingual-sora-2nd
 ```
 
 发布包和仓库不包含游戏资源、生成字库、完整文本索引、日志、截图或用户配置。报告问题时请附工具版本、游戏版本、语言组合与精简错误信息，避免上传完整游戏数据。

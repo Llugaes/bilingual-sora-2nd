@@ -8,7 +8,14 @@ import zipfile
 import re
 import tomllib
 from sora_bilingual.updates.tool_updates import GROUPS
-from sora_bilingual.updates.github_updates import version_tuple, repository_name
+from sora_bilingual.updates.github_updates import (
+    version_tuple,
+    repository_name,
+    ASSET_PREFIX,
+    ASSET_MANIFEST,
+    LEGACY_PREFIX,
+    LEGACY_MANIFEST,
+)
 from sora_bilingual.updates.update_installer import validate_manifest
 
 from sora_bilingual.paths import ROOT
@@ -50,7 +57,7 @@ def build(version, repository, output, root=ROOT):
     validate_manifest(manifest)
     output = Path(output)
     output.mkdir(parents=True, exist_ok=True)
-    name = f"sora-bilingual-{version}-windows-x64.zip"
+    name = f"{ASSET_PREFIX}-{version}-windows-x64.zip"
     package = output / name
     with zipfile.ZipFile(package, "w", zipfile.ZIP_DEFLATED) as archive:
         for key, data in sorted(contents.items()):
@@ -68,7 +75,13 @@ def build(version, repository, output, root=ROOT):
         "sha256": sha(package.read_bytes()),
         "size": package.stat().st_size,
     }
-    (output / "sora-bilingual-update.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    (output / ASSET_MANIFEST).write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    # v0.2.0 validates the old filename. Keep its protocol entry until it upgrades.
+    legacy_name = f"{LEGACY_PREFIX}-{version}-windows-x64.zip"
+    (output / legacy_name).write_bytes(package.read_bytes())
+    (output / LEGACY_MANIFEST).write_text(
+        json.dumps({**meta, "asset": legacy_name}, indent=2), encoding="utf-8"
+    )
     return package, meta
 
 

@@ -31,7 +31,7 @@ py -3.14 -m venv .venv
 4. 推送 vX.Y.Z 标签，由 GitHub Actions 验证并发布。需要手动检查构建时运行：
 
 ~~~powershell
-python -m tools.build_release --version 0.2.0 --repository Llugaes/bilingual-sora-2nd
+python -m tools.build_release --version 0.2.1 --repository Llugaes/bilingual-sora-2nd
 ~~~
 
 游戏内的布局、实际手柄和过场字幕仍需单独实机验收。调试时不要热卸载驻留脚本；更改底层接入后正常退出游戏再验证新连接。

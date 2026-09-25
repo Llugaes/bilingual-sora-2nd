@@ -8,7 +8,10 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-ASSET_MANIFEST = "sora-bilingual-update.json"
+ASSET_PREFIX = "bilingual-sora-2nd"
+ASSET_MANIFEST = ASSET_PREFIX + "-update.json"
+LEGACY_PREFIX = "sora-bilingual"
+LEGACY_MANIFEST = LEGACY_PREFIX + "-update.json"
 API_VERSION = "2026-03-10"
 MAX_PACKAGE = 128 * 1024 * 1024  # Code-only update format; no runtime/game payloads.
 
@@ -131,7 +134,8 @@ class GitHubClient:
         return asset
 
     def metadata(self, release):
-        asset = self._asset(release, ASSET_MANIFEST)
+        modern = any(a.get("name") == ASSET_MANIFEST for a in release.get("assets", []))
+        asset = self._asset(release, ASSET_MANIFEST if modern else LEGACY_MANIFEST)
         with self._open(
             asset["browser_download_url"], {"Accept": "application/octet-stream"}
         ) as response:
@@ -156,7 +160,8 @@ class GitHubClient:
             raise ValueError("更新包大小不合法")
         if not re.fullmatch("[0-9a-f]{64}", str(meta.get("sha256"))):
             raise ValueError("更新包没有有效摘要")
-        expected = f"sora-bilingual-{meta['version']}-windows-x64.zip"
+        prefix = ASSET_PREFIX if modern else LEGACY_PREFIX
+        expected = f"{prefix}-{meta['version']}-windows-x64.zip"
         if meta.get("asset") != expected:
             raise ValueError("更新文件名不匹配")
         package = self._asset(release, expected)
