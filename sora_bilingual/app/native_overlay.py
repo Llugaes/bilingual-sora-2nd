@@ -459,11 +459,9 @@ class OverlayController(QObject):
         hint = " + ".join(self.config["overlay_binding"].get("keyboard", [])) or "点击设置展开"
         self.bar.present(state, hint)
         self.panel.present(state)
-        # Keep it out of unrelated applications while the game is connected.
-        # The panel is an explicit user interaction and stays open until folded.
-        wanted = not self._interface_hidden and (
-            not self._last_pid or bool(foreground_rect(self._last_pid)) or self.panel.isVisible()
-        )
+        # Only the explicit hide action owns bar visibility. Closing settings
+        # can leave focus on another window; that must not hide the bar too.
+        wanted = not self._interface_hidden
         if wanted != self.bar.isVisible():
             self.bar.setVisible(wanted)
 

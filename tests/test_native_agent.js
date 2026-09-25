@@ -141,7 +141,9 @@ function makeRuntime(rubyCase = null) {
                 const ctx = {...field(0),add:field};
                 const hook = hooks.get(String(base.add(REPORT.native.ruby_context_init.rva)));
                 const call = {returnAddress:base.add(rubyCase.wrongCallsite ? 0x777 : rubyCase.measurement ? 0x800 : 0x700),
-                    context:{r15:rubyCase.wrongLabel ? new Pointer(123) : label}};
+                    context:{r15:rubyCase.wrongLabel ? new Pointer(123) : label,
+                        rbx:{readFloat:()=> (rubyCase.baseLeft??0)+40},
+                        rbp:{add:off=>({readS32:()=>off===0x3c8?0:40})}}};
                 hook.onEnter.call(call, [ctx]);
                 hook.onLeave.call(call);
                 rubyCase.after = values.get(0);
@@ -424,7 +426,7 @@ test('ruby measurement and drawing share the smaller size; drawing alone moves u
 });
 
 test('horizontal offset moves only new drawing, retaining list clamp and original annotation coordinates',()=>{
-    for(const [x,measurement,expected] of [[10,false,16],[-20,false,0],[10,true,10]]) {
+    for(const [x,measurement,expected] of [[10,false,6],[-20,false,6],[10,true,10]]) {
         const sample={x,measurement},runtime=makeRuntime(sample),label=runtime.label(0x4380,'测试');
         runtime.api.load({pairs:{'测试':['测试','テスト']},plain_pairs:{'测试':['测试','テスト']}},'annotation',true,.9,{ruby_offset_x:6});
         runtime.update(label);assert.equal(sample.after,expected);
@@ -542,10 +544,11 @@ test('null RPC scale uses the native default and does not add a size tag', () =>
 
 test('ruby placement clamps only an owned negative left edge at the verified callsite', () => {
     for (const sample of [
-        {x:-42,expected:0}, {x:-24,deferred:true,expected:0}, {x:7,expected:7},
+        {x:-42,expected:0}, {x:-24,deferred:true,expected:0}, {x:7,expected:0},
+        {x:7,baseLeft:19,expected:19},
         {x:-42,wrongCallsite:true,expected:-42},
         {x:-42,wrongLabel:true,expected:-42},
-        {x:-42,flags:2,expected:-42},
+        {x:-42,flags:2,baseLeft:19,expected:19},
     ]) {
         const runtime=makeRuntime(sample);
         const label=runtime.label(0x4100,'raw ruby');
@@ -590,12 +593,13 @@ test('original native ruby in single-language mode never gets mod geometry',()=>
     assert.equal(sample.scale,.375);assert.equal(sample.y,0);
 });
 
-test('only the subtitle layout body stacks complete language blocks',()=>{
+test('subtitles and ordinary dialogue both annotate above without appended paragraphs',()=>{
     const runtime=makeRuntime(),a='甲\n乙',b='一\n二';
     runtime.api.load({pairs:{[a]:[a,b]},plain_pairs:{[a]:[a,b]}},'annotation',true,.9);
     const root=runtime.label(0x9910,'');runtime.markSubtitle(root);
     const subtitle=runtime.label(0x9920,a);subtitle.name='text';subtitle.parent=root;
-    runtime.update(subtitle);assert.equal(subtitle.text(),'甲\n乙\n一\n二');
+    runtime.update(subtitle);assert.ok(subtitle.text().includes('<R>甲</R一>\n<R>乙</R二>'));
+    assert.equal(subtitle.text().split('\n').length,2);
     assert.equal(runtime.api.snapshot().find(v=>v.displayed===subtitle.text()).surface,'subtitle');
     const name=runtime.label(0x9930,a);name.name='name_text';name.parent=root;
     runtime.update(name);assert.ok(name.text().includes('<R>'));
@@ -620,6 +624,7 @@ test('ordinary formatted lanes retain configured main size and gap, with correct
     assert.ok(label.text().startsWith('<s29><R></R_>'));
     assert.equal(runtime.newline(label,100),112);
     const result=runtime.auxiliary(label,1);assert.equal(result.results[1].text,'二');
+    assert.ok(Math.abs(result.results[1].y-71.4)<1e-8,'formatted lane leaves space above primary');
     assert.equal(runtime.api.status().failed,false);
     runtime.api.disable();runtime.update(label);assert.equal(label.text(),a);
 });

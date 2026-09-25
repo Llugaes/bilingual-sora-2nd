@@ -343,7 +343,7 @@ class NativeSettingsWindow(QWidget):
         self.apply_mode.clicked.connect(self.select_mode)
         language_layout.addWidget(self.apply_mode)
         note = QLabel(
-            "按住：副语言单语，松开：主语言单语。单击切换：主／副单语来回切换。\n双语注解是轨迹专用模式；普通文本小字注解，过场字幕上下分段。"
+            "按住：副语言单语，松开：主语言单语。单击切换：主／副单语来回切换。\n双语注解是轨迹专用模式；所有对话、菜单与过场字幕均在主文上方显示副语言。"
         )
         note.setWordWrap(True)
         language_layout.addWidget(note)
@@ -364,7 +364,7 @@ class NativeSettingsWindow(QWidget):
         language_layout.addWidget(source_box)
         style_layout.addLayout(style_form)
         note = QLabel(
-            "修改自动保存并热应用。偏移和行距采用游戏布局单位。\n原文自带注音、强调点的位置保持不变；只调整新增的副语言层。\n这些参数用于注解文本；过场字幕继续使用原生上下段落排版。"
+            "修改自动保存并热应用。偏移和行距采用游戏布局单位。\n原文自带注音、强调点的位置保持不变；只调整新增的副语言层。\n副语言默认与主文字左缘对齐，所有对话与过场字幕共用上方注解布局。"
         )
         note.setWordWrap(True)
         style_layout.addWidget(note)

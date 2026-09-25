@@ -1,6 +1,7 @@
 """Optional local-resource integration check, separate from portable unit tests."""
 
 import hashlib
+import argparse
 import json
 from pathlib import Path
 import subprocess
@@ -13,7 +14,10 @@ from sora_bilingual.localization.resources import LANGUAGES
 
 
 def main():
-    entries = json.loads((ROOT / "generated/catalog.json").read_text(encoding="utf-8"))["entries"]
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--catalog", type=Path, default=ROOT / "generated/catalog.json")
+    args = parser.parse_args()
+    entries = json.loads(args.catalog.read_text(encoding="utf-8"))["entries"]
     marked = [
         e
         for e in entries
@@ -35,9 +39,19 @@ def main():
         "table/t_item.tbl/",
         "table/t_skill.tbl/",
         "table/t_quest.tbl/NaviText/",
+        "table/t_active_voice.tbl/",
     ):
         rows = [e for e in complete if e["key"].startswith(prefix)]
         selected += rows[:: max(1, len(rows) // 8)][:8]
+    # Real reported dialogue-history, speaker-name and NPC bubble call sites.
+    for prefix in (
+        "script/scena/mp2000_ev.dat/EV_02_00_00/called/401/assembled_display",
+        "script/scena/mp2000_ev.dat/EV_02_00_00/called/410/assembled_display",
+        "script/scena/mp2000_ev.dat/EV_02_00_00/called/183/arg/1",
+        "script/scena/mp2000_ev.dat/EV_02_00_00/called/444/arg/1",
+        "script/scena/mp2010_04.dat/EV_01_36_00/called/366/assembled_display",
+    ):
+        selected.append(next(e for e in complete if e["key"].startswith(prefix)))
     level = next(e for e in complete if e["key"] == "table/t_text.tbl/TXT_SAVE_DETAIL_LEVEL")
     selected.append(level)
     name = next(
@@ -78,7 +92,7 @@ def main():
                 batches.append({"model": tr.runtime_model(), "cases": cases})
     fixture = ROOT / "generated/markup-language-matrix.tmp.json"
     fixture.write_text(json.dumps(batches, ensure_ascii=False), encoding="utf-8")
-    code = """const fs=require('fs'),assert=require('assert/strict'),{RuntimeText}=require('./runtime_text');
+    code = """const fs=require('fs'),assert=require('assert/strict'),{RuntimeText}=require('./sora_bilingual/game/scripts/runtime_text');
 let n=0;for(const b of JSON.parse(fs.readFileSync(process.argv[1],'utf8'))){const r=new RuntimeText(b.model);
 for(const c of b.cases){assert.deepEqual(r.render(c.source,c.mode),c.plan);n++;}}console.log(n);"""
     try:

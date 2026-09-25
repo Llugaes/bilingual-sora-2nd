@@ -290,6 +290,37 @@ class OverlayUiTests(unittest.TestCase):
             controller.deleteLater()
             self.app.processEvents()
 
+    def test_close_settings_keeps_status_bar_when_game_loses_foreground(self):
+        controller = OverlayController(self.control, self.status, start_timers=False)
+        live = dict(running=True, pid=123, updated_at=time.time(), enabled=True)
+        try:
+            with (
+                patch.object(controller.live, "read", return_value=live),
+                patch("sora_bilingual.app.native_overlay.foreground_rect", return_value=None),
+            ):
+                for close in (
+                    controller.panel.hide_button.click,
+                    controller.panel.close,
+                    lambda: QTest.keyClick(controller.panel, Qt.Key.Key_Escape),
+                ):
+                    controller.expand()
+                    close()
+                    controller.tick()
+                    controller.tick()
+                    self.assertFalse(controller.panel.isVisible())
+                    self.assertTrue(controller.bar.isVisible())
+                controller.bar.hide_button.click()
+                controller.tick()
+                self.assertFalse(controller.bar.isVisible())
+        finally:
+            controller.bar.hide()
+            controller.panel.hide()
+            controller.tray.hide()
+            controller.panel.deleteLater()
+            controller.bar.deleteLater()
+            controller.deleteLater()
+            self.app.processEvents()
+
     def test_second_offline_launch_activates_resident_process_then_exits(self):
         command = [
             sys.executable,

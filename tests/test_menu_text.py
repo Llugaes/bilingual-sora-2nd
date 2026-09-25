@@ -7,6 +7,24 @@ def entry(sc, ja, en=None):
 
 
 class MenuTextTests(unittest.TestCase):
+    def test_complete_display_records_survive_unpaired_script_fragments(self):
+        for role in ("dialogue", "speaker"):
+            authoritative = {
+                "display_role": role,
+                "texts": {"fr": "Source", "en": "Primary", "de": "Secondary"},
+            }
+            fragment = {"texts": {"fr": "Source", "en": "Primary"}}
+            tr = MenuTranslator([authoritative, fragment], "en", "de", "fr")
+            self.assertEqual(tr.translate("Source", "secondary"), "Secondary")
+            conflict = {
+                "display_role": role,
+                "texts": {"fr": "Source", "en": "Other", "de": "Different"},
+            }
+            tr = MenuTranslator([authoritative, fragment, conflict], "en", "de", "fr")
+            self.assertEqual(tr.translate("Source", "secondary"), "Source")
+        # Missing fragments alone do not become an invented translation.
+        self.assertEqual(MenuTranslator([fragment], "en", "de", "fr").translate("Source"), "Source")
+
     def test_incomplete_or_blank_locale_never_erases_source_or_invents_translation(self):
         for missing in (None, "", "   "):
             texts = {"fr": "Texte", "de": "Text"}

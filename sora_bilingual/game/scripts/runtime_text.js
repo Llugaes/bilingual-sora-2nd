@@ -81,6 +81,9 @@ class RuntimeText {
         return {text,layers,kind:'layered'};
     }
     render(source,mode='annotation',key='',scope='') {
+        // Older resident adapters request bilingual for cutscene labels.
+        // Keep that wire value compatible, but use annotations everywhere.
+        if(mode==='bilingual')mode='annotation';
         if(this.model.same_language&&mode==='annotation')mode='primary';
         const ck=mode+'\x00'+key+'\x00'+scope+'\x00'+source;
         if(this.planCache.has(ck))return this.planCache.get(ck);
@@ -114,7 +117,6 @@ class RuntimeText {
             const [a,b]=pair;
             if(mode==='primary')return a;
             if(mode==='secondary')return b;
-            if(mode==='bilingual')return a===b?a:a+'\n'+b;
             const value=RuntimeText.ruby(a,b);if(value!==null)return value;
         }
         const trimmed=source.trim();
@@ -135,6 +137,7 @@ class RuntimeText {
         this.cache.set(ck,result);return result;
     }
     resolve(source,mode,key,scope) {
+        if(mode==='bilingual')mode='annotation';
         if(source.length>16384)return source;
         const keyed=Object.hasOwn(this.keyed,key)?this.keyed[key]:null;
         if(keyed && keyed.source===source) return keyed.tr.translate(source,mode);
@@ -147,10 +150,6 @@ class RuntimeText {
         }
         const pair=this.rawPair(source);
         if(pair&&(mode==='primary'||mode==='secondary'))return pair[mode==='primary'?0:1];
-        if(mode==='bilingual') {
-            const a=this.translate(source,'primary',key,scope),b=this.translate(source,'secondary',key,scope);
-            return a===b?a:a+RuntimeText.closeColours(a)+'\n'+RuntimeText.visualSecondary(b);
-        }
         if(source.includes('<R>')) {
             const parts=source.split(/(<#[^<>]*>|\r\n|\n|\\n)/);
             return parts.length>1?parts.map((t,i)=>i%2?t:this.translate(t,mode)).join(''):source;

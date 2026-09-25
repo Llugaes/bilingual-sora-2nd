@@ -3,6 +3,7 @@ import json
 import struct
 import tempfile
 import unittest
+from collections import Counter
 from pathlib import Path
 
 from sora_bilingual.localization import resources
@@ -113,6 +114,63 @@ def write_game(
 
 
 class ResourcesTests(unittest.TestCase):
+    def test_dialogue_wrapping_does_not_discard_an_entire_scene(self):
+        def talk(parts, voice=10):
+            return resources.Called(
+                None, 3, (("int", 5), ("int", 6), ("int", 9), ("int", 11), ("int", voice)) + parts
+            )
+
+        functions = {
+            lang: resources.Function(
+                "Scene",
+                0,
+                (),
+                (
+                    talk(parts),
+                    resources.Called("chr_set_display_name", 0, (("int", 9), ("string", name))),
+                    talk((("string", text),), voice=11),
+                ),
+                (),
+                (),
+            )
+            for lang, parts, name, text in (
+                ("en", (("string", "One"), ("int", 10), ("string", "two")), "Speaker", "Next"),
+                ("fr", (("string", "Un deux"),), "Personnage", "Suite"),
+                ("de", (("string", "<S3>"), ("string", "Eins zwei")), "Figur", "Weiter"),
+            )
+        }
+        entries = resources.align_functions(
+            "script/a.dat", "Scene", functions, {"counters": Counter()}
+        )
+        assembled = next(e for e in entries if "/called/0/assembled_dialogue" in e["key"])
+        self.assertEqual(
+            assembled["texts"], {"en": "One\ntwo", "fr": "Un deux", "de": "<S3>Eins zwei"}
+        )
+        name = next(e for e in entries if "/called/1/arg/1" in e["key"])
+        self.assertEqual(set(name["texts"]), set(functions))
+        self.assertFalse(any("/called/0/arg/" in e["key"] for e in entries))
+
+        # Wrapping is the only relaxation: changing the speaker/voice, using
+        # a dynamic value, or inserting a non-newline command breaks alignment.
+        from dataclasses import replace
+
+        original = functions["fr"]
+        args = original.called[0].args
+        for altered in (
+            (("int", 99),) + args[1:],
+            args[:2] + (("int", 99),) + args[3:],
+            args[:4] + (("int", 99),) + args[5:],
+            args + (("var", None),),
+            args + (("int", 11),),
+        ):
+            bad = replace(original.called[0], args=altered)
+            functions["fr"] = replace(original, called=(bad,) + original.called[1:])
+            rows = resources.align_functions(
+                "script/a.dat", "Scene", functions, {"counters": Counter()}
+            )
+            self.assertTrue(rows)
+            self.assertTrue(all("fr" not in e["texts"] for e in rows))
+
     def test_null_then_integer_is_not_a_prepare_local_call(self):
         code = (
             b"\x00\x04"

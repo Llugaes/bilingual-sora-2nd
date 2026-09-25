@@ -135,7 +135,7 @@ function wantedText(row) {
     row.plan={text:wanted,layers:[],kind:'plain'};
     if(enabled&&!failed) {
         if(resolver) {
-            const mode=renderMode==='annotation'&&row.surface==='subtitle'?'bilingual':renderMode;
+            const mode=renderMode==='bilingual'?'annotation':renderMode;
             const context=(row.scriptIdentity&&scriptIdentities?scriptIdentities.lookup(row.scriptIdentity):null)||
                 (row.scriptPointer&&scriptIdentities?scriptIdentities.pointerLookup(row.scriptPointer,row.original):null)||
                 (row.tableIdentity&&tableIdentities?tableIdentities.lookup(row.tableIdentity,row.original):null);
@@ -191,8 +191,8 @@ function auxiliaryLayer(p,parser) {
     const item=row.layerBuffers.find(v=>owned.add(v.layer.offset).equals(current));
     return item ? {...item,row,parser} : null;
 }
-// The native ruby placement centers a long annotation over its short base,
-// which can yield negative x. Only adjust the parser's temporary context
+// Align owned annotations with the measured primary run's left edge.
+// Only adjust the parser's temporary context
 // for a tracked translated label, never a label/global setting. Layout can
 // be deferred until the native Update body after our SetText has returned.
 Interceptor.attach(base.add(REPORT.native.ruby_context_init.rva), {
@@ -216,6 +216,14 @@ Interceptor.attach(base.add(REPORT.native.ruby_context_init.rva), {
             this.target = args[0];
             this.source = row.original;
             this.clampLeft=p.add(0x2e8).readU32()===1;
+            if(this.placement) {
+                // Verified at 0x5870cd: native centering uses the primary run's
+                // measured width and the parser cursor after that run.
+                const width=Math.abs(this.context.rbp.add(0x3d0).readS32()-this.context.rbp.add(0x3c8).readS32());
+                const end=this.context.rbx.readFloat();
+                if(!Number.isFinite(end)||width>65536)throw Error('Invalid primary run bounds');
+                this.baseLeft=end-width;
+            }
         } catch (e) { fail(e); }
     },
     onLeave() {
@@ -239,7 +247,7 @@ Interceptor.attach(base.add(REPORT.native.ruby_context_init.rva), {
                     this.target.writeFloat(px+rubyOffsetX);
                     // Move only the new lane. The primary and its original
                     // ruby keep their original font, cursor and line spacing.
-                    this.target.add(4).writeFloat(py-size*(this.layer.layer.protected?.95:.55)-rubyGap);
+                    this.target.add(4).writeFloat(py-size*(this.layer.layer.protected?.95:.8)-rubyGap);
                 }
                 return;
             }
@@ -256,7 +264,7 @@ Interceptor.attach(base.add(REPORT.native.ruby_context_init.rva), {
                 this.target.add(4).writeFloat(y-rubyGap);
             }
             if (this.placement) {
-                const shifted=x+rubyOffsetX;
+                const shifted=this.baseLeft+rubyOffsetX;
                 this.target.writeFloat(this.clampLeft?Math.max(0,shifted):shifted);
                 if(this.clampLeft && shifted<0)
                     if(REPORT.diagnostics)send({type:'ruby_clamped', original:this.source, before:shifted, after:0});

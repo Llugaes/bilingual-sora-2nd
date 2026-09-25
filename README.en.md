@@ -74,7 +74,7 @@ Record one keyboard or SDL controller combination under **Bindings**. The same b
 
 Text scale, offsets, and spacing remain adjustable live. Initial resource parsing still takes time; valid caches load directly. UI translations and initial language preferences no longer invalidate the game-resource index. Connection logs report model preparation and total connection time separately.
 
-Menus, items, skills, NPC conversations, and story dialogue use small annotations. Only native cutscene subtitles use a complete primary block above a complete secondary block. Original ruby and emphasis marks retain their positions; the secondary language uses a separate annotation layer. Text baked into images or videos is outside the supported scope. Uncertain matches keep the original text rather than guessing a translation.
+Menus, items, skills, NPC conversations, dialogue history, active voices and cutscene subtitles all use small annotations above the primary text, aligned with its left edge. No second-language paragraph is appended to the body. Original ruby and emphasis marks retain their positions; the secondary language uses a separate annotation layer. Text baked into images or videos is outside the supported scope. Uncertain matches keep the original text rather than guessing a translation.
 
 ## Automatic updates
 
@@ -101,7 +101,7 @@ See the [architecture](https://github.com/Llugaes/bilingual-sora-2nd/blob/main/d
 For a release, maintainers update both **distribution.json** and **pyproject.toml**, then push a matching **vX.Y.Z** tag. GitHub Actions validates on Windows, builds from an explicit file allowlist, uploads all assets to a draft, then publishes them together. Manual build:
 
 ```powershell
-.venv\Scripts\python.exe -m tools.build_portable --version 0.3.5 --repository Llugaes/bilingual-sora-2nd
+.venv\Scripts\python.exe -m tools.build_portable --version 0.3.6 --repository Llugaes/bilingual-sora-2nd
 ```
 
 Neither the repository nor releases contain game resources, generated fonts, complete text indexes, logs, screenshots, or user settings.

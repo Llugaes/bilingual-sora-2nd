@@ -206,9 +206,11 @@ class MenuTranslator:
                 )
         self.keyed = []
         candidates = {}
+        display_candidates = {}
         for entry in entries:
             texts = entry["texts"]
             pair = complete_pair(texts, primary, secondary)
+            display_record = entry.get("display_role") in ("dialogue", "speaker")
             prefix = "table/t_text.tbl/"
             if pair and source_language in texts and entry.get("key", "").startswith(prefix):
                 self.keyed.append((entry["key"][len(prefix) :], texts[source_language], pair))
@@ -216,6 +218,8 @@ class MenuTranslator:
                 for source in {value, plain(value)}:
                     if source.strip():
                         candidates.setdefault(source, set()).add(pair)
+                        if display_record and pair:
+                            display_candidates.setdefault(source, set()).add(pair)
                 # Native dialogue controls may be consumed before SetText.
                 # Keep a separate complete display variant, not a substring match.
                 visible = display_text(value)
@@ -223,6 +227,16 @@ class MenuTranslator:
                     candidates.setdefault(visible, set()).add(
                         tuple(display_text(t) for t in pair) if pair else None
                     )
+                    if display_record and pair:
+                        display_candidates.setdefault(visible, set()).add(
+                            tuple(display_text(t) for t in pair)
+                        )
+        # Complete, structurally aligned display records are stronger evidence
+        # than an unpaired bytecode fragment. Missing fragments are not a second
+        # translation. Actual conflicting translations remain quarantined.
+        for source, pairs in display_candidates.items():
+            if len(pairs) == 1 and candidates[source] - {None} == pairs:
+                candidates[source] = pairs
         # Name/status records are the display-name authority. Script voice
         # identifiers can reuse the same source while omitting a locale (or
         # retaining its Japanese identifier in the English slot). Only exact
@@ -330,8 +344,6 @@ class MenuTranslator:
                 return a
             if mode == "secondary":
                 return b
-            if mode == "bilingual":
-                return a + "\n" + b if a != b else a
             value = ruby(a, b)
             if value is not None:
                 return value
@@ -350,6 +362,8 @@ class MenuTranslator:
         return source
 
     def translate(self, source, mode="annotation"):
+        if mode == "bilingual":
+            mode = "annotation"
         if self.same_language and mode == "annotation":
             mode = "primary"
         # The game's item/skill description constructor appends the complete
@@ -363,10 +377,6 @@ class MenuTranslator:
         pair = self.raw_pair(source)
         if pair and mode in ("primary", "secondary"):
             return pair[0 if mode == "primary" else 1]
-        if mode == "bilingual":
-            a = self.translate(source, "primary")
-            b = self.translate(source, "secondary")
-            return a if a == b else a + close_colours(a) + "\n" + visual_secondary(b)
         if "<R>" in source:
             # Dialogue constructors prepend speaker/emotion controls and join
             # catalogued lines. Keep ruby atomic while resolving those lines.
@@ -386,6 +396,8 @@ class MenuTranslator:
 
     def render(self, source, mode="annotation"):
         """Return text plus owned annotation metadata, including original ruby."""
+        if mode == "bilingual":
+            mode = "annotation"
         if self.same_language and mode == "annotation":
             mode = "primary"
         a = self.translate(source, "primary")

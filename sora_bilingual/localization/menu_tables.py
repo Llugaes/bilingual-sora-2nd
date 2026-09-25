@@ -28,7 +28,7 @@ def spec(size, fields, pointers=()):
 SCHEMAS = {
     # Audited across all eight local tables. Non-display resource pointers
     # are masked for identity, but are not emitted as translatable fields.
-    "ActiveVoiceTableData": spec(128, [("body", 112)], [40]),
+    "ActiveVoiceTableData": spec(128, [("body", 112)], [8, 24, 40, 48, 64, 80, 96]),
     "ChapterParam": spec(88, [("title", 24), ("heading", 32), ("ending", 40)], [16, 48, 64, 80]),
     "DLCTableData": spec(64, [("name", 40), ("description", 48)], [56]),
     "EventGroupData": spec(16, [("title", 8)]),
@@ -176,6 +176,23 @@ def schema_for(path, kind):
 def record_identity(data, at, kind, schema, text_floor):
     row = bytearray(data[at : at + schema.size])
     extra = b""
+    if kind == "ActiveVoiceTableData":
+        # Pointers move with translated string lengths. Keep the pointed-to
+        # speaker/condition/voice arrays and resource strings, not addresses.
+        # +32 is a scalar, not the length of the string at +24.
+        for offset, width in ((8, 2), (48, 2), (64, 2), (80, 2), (96, 4)):
+            pointer, count = struct.unpack_from("<QQ", row, offset)
+            if count > 4096 or (count and not text_floor <= pointer <= len(data) - count * width):
+                raise FormatError("active voice array outside pool")
+            extra += struct.pack("<QQ", offset, count) + data[pointer : pointer + count * width]
+        for offset in (24, 40):
+            pointer = struct.unpack_from("<Q", row, offset)[0]
+            if not text_floor <= pointer < len(data):
+                raise FormatError("active voice resource outside pool")
+            end = data.find(b"\0", pointer)
+            if end < 0:
+                raise FormatError("unterminated active voice resource")
+            extra += struct.pack("<QQ", offset, end - pointer) + data[pointer:end]
     if kind == "NaviText":
         # These pointers refer to uint16 quest-flag arrays, not text. Removing
         # them alone collapses every objective in a chapter into one identity.

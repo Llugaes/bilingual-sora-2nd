@@ -97,15 +97,17 @@ class MarkupPreservationTests(unittest.TestCase):
         self.assertEqual(plan["text"], "<R></R_>" + a)
         self.assertEqual(plan["layers"][0]["text"], b)
 
-    def test_cutscene_groups_all_primary_lines_before_secondary(self):
+    def test_legacy_cutscene_mode_uses_annotations_without_extra_lines(self):
         a = "第一行\n第二行"
         b = "一行目\n二行目"
-        self.assertEqual(translator(a, b).render(a, "bilingual")["text"], a + "\n" + b)
+        tr = translator(a, b)
+        self.assertEqual(tr.render(a, "bilingual"), tr.render(a, "annotation"))
+        self.assertEqual(tr.render(a, "bilingual")["text"].count("\n"), a.count("\n"))
 
     def test_subtitle_colour_stack_does_not_leak_across_languages(self):
-        self.assertEqual(
-            translator("<C2>甲", "<C3>一").translate("<C2>甲", "bilingual"), "<C2>甲</C>\n<C3>一"
-        )
+        plan = translator("<C2>甲", "<C3>一").render("<C2>甲", "bilingual")
+        self.assertEqual(plan["text"], "<R></R_><C2>甲")
+        self.assertEqual(plan["layers"][0]["text"], "<C3>一")
 
     def test_composite_cutscene_is_not_interleaved(self):
         tr = MenuTranslator(
@@ -113,7 +115,7 @@ class MarkupPreservationTests(unittest.TestCase):
             "zh-Hans",
             "ja",
         )
-        self.assertEqual(tr.translate("甲\n乙", "bilingual"), "甲\n乙\n一\n二")
+        self.assertEqual(tr.translate("甲\n乙", "bilingual"), "<R>甲</R一>\n<R>乙</R二>")
 
     def test_nonvisual_secondary_commands_are_not_replayed(self):
         a = "<#E_0#M_0>甲"

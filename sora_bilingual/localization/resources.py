@@ -2,8 +2,9 @@
 
 The game files are never opened for writing.  The parser deliberately accepts
 only the SCP subset described by Ingert's ``src/scp/io`` implementation.  A
-file contributes text only when every requested locale has the same validated
-function, called-argument, and bytecode shape.
+function contributes text within validated structural groups. Static dialogue
+wrapping may vary; command identities, dynamic arguments and control flow remain
+part of the validation contract.
 """
 
 from __future__ import annotations
@@ -112,6 +113,17 @@ class Called:
             if kind == "string" and not (self.kind in (1, 2) and index == 0) and value:
                 yield index, str(value)
 
+    def dialogue_shape(self) -> tuple[object, ...]:
+        """Treat verified static dialogue as one payload, regardless of wrapping.
+
+        The full ordered call sequence, command, speaker and voice identifiers
+        still have to match. No dynamic argument or non-newline opcode is erased.
+        """
+        if assembled_dialogue(self) is None:
+            return self.shape()
+        first = next(i for i, (kind, _) in enumerate(self.args) if kind == "string")
+        return self.target, self.kind, self.args[:first], "static-dialogue"
+
 
 def assembled_dialogue(call: Called) -> str | None:
     """Join only the verified static talk/cinematic argument grammar.
@@ -160,7 +172,7 @@ class Function:
 
     def called_sequence_shape(self) -> tuple[object, ...]:
         """The complete static-call sequence, independent of locale bytecode layout."""
-        return (self.flags, self.arg_types, tuple(call.shape() for call in self.called))
+        return (self.flags, self.arg_types, tuple(call.dialogue_shape() for call in self.called))
 
 
 @dataclass(frozen=True)
@@ -550,8 +562,11 @@ def align_functions(path, function_name, functions, audit):
             )
             reference = functions[languages[0]]
 
-            def emit(key, texts):
-                entries.append({"key": f"{path}/{function_name}/{key}" + suffix, "texts": texts})
+            def emit(key, texts, display_role=None):
+                entry = {"key": f"{path}/{function_name}/{key}" + suffix, "texts": texts}
+                if display_role:
+                    entry["display_role"] = display_role
+                entries.append(entry)
                 for lang in texts:
                     _add_counter(audit, "entries_with_" + lang)
 
@@ -565,15 +580,20 @@ def align_functions(path, function_name, functions, audit):
             for index, call in enumerate(reference.called):
                 complete = {l: assembled_dialogue(functions[l].called[index]) for l in languages}
                 if all(t is not None for t in complete.values()):
-                    emit(f"called/{index}/assembled_dialogue", complete)
+                    emit(f"called/{index}/assembled_dialogue", complete, "dialogue")
                     display = {l: re.sub(r"^(?:<#[^<>]*>)+", "", t) for l, t in complete.items()}
                     if display != complete:
-                        emit(f"called/{index}/assembled_display", display)
+                        emit(f"called/{index}/assembled_display", display, "dialogue")
                     _add_counter(audit, "assembled_dialogue_calls")
                 for slot, _ in call.display_text_slots():
+                    # A different wrapping/chunk boundary has no per-slot
+                    # correspondence. The assembled paragraph above is exact.
+                    if any(functions[l].called[index].shape() != call.shape() for l in languages):
+                        continue
                     emit(
                         f"called/{index}/arg/{slot}",
                         {l: str(functions[l].called[index].args[slot][1]) for l in languages},
+                        "speaker" if call.target == "chr_set_display_name" and slot == 1 else None,
                     )
     return entries
 

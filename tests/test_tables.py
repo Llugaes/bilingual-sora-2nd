@@ -5,6 +5,7 @@ from pathlib import Path
 
 from sora_bilingual.localization.resources import LANGUAGES
 from sora_bilingual.localization.tables import build_table_entries
+from sora_bilingual.localization.menu_tables import SCHEMAS, record_identity
 
 
 ARCHIVES = {
@@ -17,6 +18,33 @@ ARCHIVES = {
     "de": "table_de.pac",
     "es": "table_es.pac",
 }
+
+
+class ActiveVoiceIdentityTests(unittest.TestCase):
+    def record(self, padding=0, voice=100, speaker=3, condition=9):
+        data = bytearray(128 + padding)
+        struct.pack_into("<Q", data, 0, 39)
+        for offset, values, width in (
+            (8, [speaker], 2),
+            (48, [condition], 2),
+            (64, [], 2),
+            (80, [], 2),
+            (96, [voice], 4),
+        ):
+            struct.pack_into("<QQ", data, offset, len(data), len(values))
+            data.extend(b"".join(v.to_bytes(width, "little") for v in values))
+        for offset, value in ((24, b"\0"), (40, b"N\0"), (112, b"Localized body\0")):
+            struct.pack_into("<Q", data, offset, len(data))
+            data.extend(value)
+        return data
+
+    def test_addresses_do_not_change_identity_but_conditions_and_voice_do(self):
+        schema = SCHEMAS["ActiveVoiceTableData"]
+        identity = lambda d: record_identity(d, 0, "ActiveVoiceTableData", schema, 128)
+        base = identity(self.record())
+        self.assertEqual(base, identity(self.record(padding=31)))
+        for change in ({"voice": 101}, {"speaker": 4}, {"condition": 10}):
+            self.assertNotEqual(base, identity(self.record(**change)))
 
 
 def fpac(entries):

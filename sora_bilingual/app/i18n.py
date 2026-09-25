@@ -167,9 +167,9 @@ MESSAGES = {
 }
 MESSAGES.update(
     {
-        "按住：副语言单语，松开：主语言单语。单击切换：主／副单语来回切换。\n双语注解是轨迹专用模式；普通文本小字注解，过场字幕上下分段。": {
-            "en": "Hold: secondary only; release: primary only. Toggle: alternate between the two.\nTrails annotations are a separate mode; cutscene subtitles use stacked blocks.",
-            "ja": "押している間は副言語のみ、離すと主言語のみ。トグルは押すたびに切り替えます。\n二言語注釈は軌跡専用モードです。カットシーン字幕は上下の段落に分けます。",
+        "按住：副语言单语，松开：主语言单语。单击切换：主／副单语来回切换。\n双语注解是轨迹专用模式；所有对话、菜单与过场字幕均在主文上方显示副语言。": {
+            "en": "Hold: secondary only; release: primary only. Toggle: alternate between the two.\nTrails annotations show the secondary language above primary text in menus, dialogue and cutscenes.",
+            "ja": "押している間は副言語のみ、離すと主言語のみ。トグルは押すたびに切り替えます。\n二言語注釈では、メニュー・会話・カットシーンのすべてで主言語の上に副言語を表示します。",
         },
         "同一组快捷键按所选模式工作：按住、单击切换，或轨迹双语注解。\n录制键盘：按下组合键；Esc 取消。\n录制手柄：先松开所有按键和摇杆，再按住组合，全部松开后保存。": {
             "en": "One binding follows the selected mode: hold, toggle, or Trails annotations.\nKeyboard: press your shortcut; Esc cancels.\nController: start neutral, hold the combination, then release all to save.",
@@ -179,9 +179,9 @@ MESSAGES.update(
             "en": "Match the game's own text language. Change this only after changing the game's settings.\nPrimary language controls the mod's output independently.",
             "ja": "ゲーム自体の表示言語に合わせます。ゲーム側の言語を変えた場合だけ変更してください。\nMod の主言語とは独立した設定です。",
         },
-        "修改自动保存并热应用。偏移和行距采用游戏布局单位。\n原文自带注音、强调点的位置保持不变；只调整新增的副语言层。\n这些参数用于注解文本；过场字幕继续使用原生上下段落排版。": {
-            "en": "Changes save and apply live. Offsets use game layout units.\nOriginal ruby and emphasis stay in place; only the added annotation layer moves.\nThese settings affect annotations; cutscene subtitles keep their native block layout.",
-            "ja": "変更は自動保存・即時適用されます。位置と間隔はゲームのレイアウト単位です。\n元のルビと傍点を保ち、追加した副言語だけを調整します。\nカットシーン字幕は元の段落レイアウトを使用します。",
+        "修改自动保存并热应用。偏移和行距采用游戏布局单位。\n原文自带注音、强调点的位置保持不变；只调整新增的副语言层。\n副语言默认与主文字左缘对齐，所有对话与过场字幕共用上方注解布局。": {
+            "en": "Changes save and apply live. Offsets use game layout units.\nOriginal ruby and emphasis stay in place; only the added annotation layer moves.\nAnnotations align with the primary text's left edge, including dialogue and cutscenes.",
+            "ja": "変更は自動保存・即時適用されます。位置と間隔はゲームのレイアウト単位です。\n元のルビと傍点を保ち、追加した副言語だけを調整します。\n副言語は主言語の左端に揃え、会話・カットシーンでも上方に表示します。",
         },
         "每 6 小时检查一次。游戏连接期间先下载，连接结束后安装。\n设置、语言资源和缓存保留；安装完成后界面自动恢复。": {
             "en": "Checks every 6 hours. Downloads while connected; installs after disconnection.\nSettings and caches are preserved; the interface restores automatically.",

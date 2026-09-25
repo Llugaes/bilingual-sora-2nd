@@ -74,7 +74,7 @@ $runtime = Get-Content runtime/current.txt
 
 字号、偏移、上下间距可动态调整。首次解析资源仍需要时间；已有有效缓存可直接加载。界面翻译和初始语言偏好的变更不会再使游戏资源索引失效。连接日志会分别记录模型准备耗时和总连接耗时。
 
-普通菜单、道具、技能、NPC 和剧情对话使用小字注解；仅原生过场字幕使用整段主文在上、副文在下。原文自带注音／强调标记保留在原位置，副语言另走小字层。图像或影片中已经烧录的文字不在覆盖范围内；无法确定对应关系时保留原文，不猜测翻译。
+菜单、道具、技能、NPC、对话回顾、主动语音和过场字幕统一使用主文上方的小字注解，默认与主文字左缘对齐，不向正文追加第二语言段落。原文自带注音／强调标记保留在原位置，副语言另走小字层。图像或影片中已经烧录的文字不在覆盖范围内；无法确定对应关系时保留原文，不猜测翻译。
 
 ## 自动更新
 
@@ -101,7 +101,7 @@ py -3.14 -m venv .venv
 维护者同步修改 distribution.json 和 pyproject.toml 版本后推送 `vX.Y.Z` 标签。GitHub Actions 在 Windows 上验证测试，从明确的文件白名单构建 ZIP 和更新清单，上传到草稿 Release 后一起公开；后续客户端自动发现。手动构建：
 
 ```powershell
-.venv\Scripts\python.exe -m tools.build_portable --version 0.3.5 --repository Llugaes/bilingual-sora-2nd
+.venv\Scripts\python.exe -m tools.build_portable --version 0.3.6 --repository Llugaes/bilingual-sora-2nd
 ```
 
 发布包和仓库不包含游戏资源、生成字库、完整文本索引、日志、截图或用户配置。报告问题时请附工具版本、游戏版本、语言组合与精简错误信息，避免上传完整游戏数据。
