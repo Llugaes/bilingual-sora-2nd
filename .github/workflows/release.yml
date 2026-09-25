@@ -1,0 +1,53 @@
+name: Validate and release
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.14'
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+      - run: python -m pip install -r requirements.txt
+      - run: python -X utf8 -m unittest discover -s tests -q
+        env:
+          QT_QPA_PLATFORM: offscreen
+      - run: node --test tests/test_native_agent.js tests/test_runtime_identity.js tests/test_native_transport.js
+  release:
+    needs: validate
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.14'
+      - name: Validate version and build allowlisted package
+        shell: pwsh
+        run: |
+          $config = Get-Content distribution.json | ConvertFrom-Json
+          if ("v$($config.version)" -ne $env:GITHUB_REF_NAME) { throw 'Tag and distribution version differ' }
+          if ($config.repository -ne $env:GITHUB_REPOSITORY) { throw 'Release source differs from distribution repository' }
+          python build_release.py --version $config.version --repository $env:GITHUB_REPOSITORY
+          if ($LASTEXITCODE -ne 0) { throw 'Build failed' }
+      - name: Publish complete release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $metadata = Get-Content dist/sora-bilingual-update.json | ConvertFrom-Json
+          gh release create $env:GITHUB_REF_NAME "dist/$($metadata.asset)" dist/sora-bilingual-update.json --draft --verify-tag --title "Sora Bilingual $env:GITHUB_REF_NAME" --notes-file RELEASE_NOTES.md
+          if ($LASTEXITCODE -ne 0) { throw 'Draft/upload failed; no partial release is published' }
+          gh release edit $env:GITHUB_REF_NAME --draft=false --latest
+          if ($LASTEXITCODE -ne 0) { throw 'Publish failed' }

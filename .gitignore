@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+generated/
+config.json
+logs/
+dist/
+build/
+*.spec
+*.png
+*.lnk
+installed-manifest.json
+debug/
+REVIEW.md
+ROBUSTNESS.md
+SCOPE.md
+VALIDATION.md
