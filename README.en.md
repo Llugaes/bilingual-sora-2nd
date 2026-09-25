@@ -89,7 +89,7 @@ See the [architecture](https://github.com/Llugaes/bilingual-sora-2nd/blob/main/d
 For a release, maintainers update both **distribution.json** and **pyproject.toml**, then push a matching **vX.Y.Z** tag. GitHub Actions validates on Windows, builds from an explicit file allowlist, uploads all assets to a draft, then publishes them together. Manual build:
 
 ```powershell
-.venv\Scripts\python.exe -m tools.build_portable --version 0.3.1 --repository Llugaes/bilingual-sora-2nd
+.venv\Scripts\python.exe -m tools.build_portable --version 0.3.2 --repository Llugaes/bilingual-sora-2nd
 ```
 
 Neither the repository nor releases contain game resources, generated fonts, complete text indexes, logs, screenshots, or user settings.

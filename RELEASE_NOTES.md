@@ -1,5 +1,7 @@
 ## 中文
 
+- 游戏连接期间只下载更新，不反复解压或校验整套运行库；验证、安装等待连接结束，避免后台更新引入卡顿。
+
 - 规范化内置依赖的 RECORD 清单，避免相同依赖因构建机器不同而被当成新的运行环境。
 
 - **下载 ZIP，解压后双击 BilingualSora2nd.exe 即可使用。** 内置 Python 3.14.7 和全部运行依赖，无需自行安装环境或运行 CMD。
@@ -15,6 +17,8 @@
 - 同机离线对比：模型编译 12.3 秒 → 7.1 秒，输出一致；有效缓存读取约 0.8 秒。首次资源解析仍需时间，这些数据不是实机总连接时间保证。
 
 ## English
+
+- Defer runtime decompression and validation until the game disconnects, avoiding repeated heavy work during play.
 
 - Normalize bundled wheel records so identical dependencies keep a stable runtime identity across build machines.
 
@@ -32,6 +36,8 @@
 
 ## 日本語
 
+- 接続中はランタイム全体の展開・検証を繰り返さず、ゲーム切断後に実行します。
+
 - 同梱依存ライブラリの RECORD を正規化し、ビルド環境が変わっても同じランタイムとして識別します。
 
 - **ZIP を展開し BilingualSora2nd.exe を実行するだけ。** Python 3.14.7 と依存ライブラリを同梱し、環境構築や CMD は不要です。
@@ -48,6 +54,6 @@
 
 ---
 
-Download **bilingual-sora-2nd-0.3.1-windows-x64.zip**. The JSON asset is for automatic updates; you do not need to download it manually.
+Download **bilingual-sora-2nd-0.3.2-windows-x64.zip**. The JSON asset is for automatic updates; you do not need to download it manually.
 
 Supported game: Steam build **25386012**, EXE **1.03.2**. Unit tests and actual Frida transport/hold/toggle checks use a disposable test process, never the game. In-game layout, controller hardware, and full connection timing still require acceptance testing. No game resources or loader DLL are bundled.

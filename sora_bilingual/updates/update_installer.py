@@ -273,6 +273,7 @@ def _recover_locked(root):
     root = Path(root)
     journal = _journal(root)
     if not journal.exists():
+        (root / "generated/update-installing.json").unlink(missing_ok=True)
         return None
     state = json.loads(journal.read_text("utf-8"))
     token = state.get("id", "")
@@ -310,7 +311,10 @@ def _recover_locked(root):
 
 
 def recover(root):
-    if not _journal(root).exists():
+    if (
+        not _journal(root).exists()
+        and not (Path(root) / "generated/update-installing.json").exists()
+    ):
         return None
     with UpdateLease(root):
         return _recover_locked(root)
@@ -318,8 +322,22 @@ def recover(root):
 
 def install(root, package, expected):
     root = Path(root).resolve()
+    # Reserve the backend BEFORE decompressing/hashing the bundled runtime.
+    # While a game is connected this returns immediately without reading the ZIP.
+    with UpdateLease(root):
+        _recover_locked(root)
+        marker = root / "generated/update-installing.json"
+        write_json(marker, {"version": expected.get("version"), "phase": "validating"})
+        try:
+            return _install_locked(root, package, expected)
+        finally:
+            if not _journal(root).exists():
+                marker.unlink(missing_ok=True)
+
+
+def _install_locked(root, package, expected):
+    root = Path(root).resolve()
     manifest, contents = package_contents(package, expected)
-    recover(root)
     receipt = root / "installed-manifest.json"
     if not receipt.is_file():
         raise ValueError("当前为开发目录，更新不会覆盖本地源码；发行包安装后可自动更新")
@@ -340,69 +358,67 @@ def install(root, package, expected):
         (root / "requirements.txt").read_bytes()
     ) != manifest.get("requirements_sha256"):
         raise ValueError("此更新改变了运行依赖，请按发行说明升级运行环境")
-    with UpdateLease(root):
-        _recover_locked(root)
-        current = validate_manifest(json.loads(receipt.read_text("utf-8")))
-        if current != old:
-            raise ValueError("安装状态已改变，请重新检查更新")
-        for name, value in old["files"].items():
-            path = target(root, name)
-            if not path.is_file() or digest(path.read_bytes()) != value:
-                raise ValueError("检测到本地文件修改，已停止覆盖：" + name)
-        for name in set(contents) - set(old["files"]):
-            if target(root, name).exists():
-                # A previously used immutable runtime may be selected again.
-                if (
-                    not name.startswith("runtime/")
-                    or digest(target(root, name).read_bytes()) != manifest["files"][name]
-                ):
-                    raise ValueError("新文件与本地文件冲突：" + name)
-        if old.get("runtime_id") == manifest.get("runtime_id") and old.get("runtime_id"):
-            prefix = f"runtime/{old['runtime_id']}/"
-            if {k: v for k, v in old["files"].items() if k.startswith(prefix)} != {
-                k: v for k, v in manifest["files"].items() if k.startswith(prefix)
-            }:
-                raise ValueError("不能原地修改正在使用的运行环境")
-        updates = {
-            **{
-                k: v
-                for k, v in contents.items()
-                if not target(root, k).exists() or digest(target(root, k).read_bytes()) != digest(v)
-            },
-            "installed-manifest.json": json.dumps(manifest, ensure_ascii=False, indent=2).encode(),
-        }
-        # Old runtimes may still be loaded by the UI/reloader. Retain them intact.
-        removed = {n for n in set(old["files"]) - set(contents) if not n.startswith("runtime/")}
-        names = removed | set(updates) | {"generated/tool-release.json"}
-        token = uuid.uuid4().hex
-        backup = root / "generated/updates" / ("backup-" + token)
-        previous = {}
-        for name in names:
-            path = target(root, name, True)
-            if path.exists():
-                data = path.read_bytes()
-                atomic_bytes(backup / name, data)
-                previous[name] = digest(data)
-            else:
-                previous[name] = None
-        state = {
-            "id": token,
-            "recovery_runtime": old.get("runtime_id"),
-            "phase": "prepared",
-            "previous": previous,
-            "next": {k: digest(v) for k, v in updates.items()},
-        }
+    current = validate_manifest(json.loads(receipt.read_text("utf-8")))
+    if current != old:
+        raise ValueError("安装状态已改变，请重新检查更新")
+    for name, value in old["files"].items():
+        path = target(root, name)
+        if not path.is_file() or digest(path.read_bytes()) != value:
+            raise ValueError("检测到本地文件修改，已停止覆盖：" + name)
+    for name in set(contents) - set(old["files"]):
+        if target(root, name).exists():
+            # A previously used immutable runtime may be selected again.
+            if (
+                not name.startswith("runtime/")
+                or digest(target(root, name).read_bytes()) != manifest["files"][name]
+            ):
+                raise ValueError("新文件与本地文件冲突：" + name)
+    if old.get("runtime_id") == manifest.get("runtime_id") and old.get("runtime_id"):
+        prefix = f"runtime/{old['runtime_id']}/"
+        if {k: v for k, v in old["files"].items() if k.startswith(prefix)} != {
+            k: v for k, v in manifest["files"].items() if k.startswith(prefix)
+        }:
+            raise ValueError("不能原地修改正在使用的运行环境")
+    updates = {
+        **{
+            k: v
+            for k, v in contents.items()
+            if not target(root, k).exists() or digest(target(root, k).read_bytes()) != digest(v)
+        },
+        "installed-manifest.json": json.dumps(manifest, ensure_ascii=False, indent=2).encode(),
+    }
+    # Old runtimes may still be loaded by the UI/reloader. Retain them intact.
+    removed = {n for n in set(old["files"]) - set(contents) if not n.startswith("runtime/")}
+    names = removed | set(updates) | {"generated/tool-release.json"}
+    token = uuid.uuid4().hex
+    backup = root / "generated/updates" / ("backup-" + token)
+    previous = {}
+    for name in names:
+        path = target(root, name, True)
+        if path.exists():
+            data = path.read_bytes()
+            atomic_bytes(backup / name, data)
+            previous[name] = digest(data)
+        else:
+            previous[name] = None
+    state = {
+        "id": token,
+        "recovery_runtime": old.get("runtime_id"),
+        "phase": "prepared",
+        "previous": previous,
+        "next": {k: digest(v) for k, v in updates.items()},
+    }
+    write_json(_journal(root), state)
+    write_json(root / "generated/update-installing.json", {"version": manifest["version"]})
+    try:
+        for name, data in updates.items():
+            atomic_bytes(target(root, name, True), data)
+        for name in removed:
+            target(root, name).unlink()
+        state["phase"] = "committed"
         write_json(_journal(root), state)
-        write_json(root / "generated/update-installing.json", {"version": manifest["version"]})
-        try:
-            for name, data in updates.items():
-                atomic_bytes(target(root, name, True), data)
-            for name in removed:
-                target(root, name).unlink()
-            state["phase"] = "committed"
-            write_json(_journal(root), state)
-            _recover_locked(root)
-        except Exception:
-            _recover_locked(root)
-            raise
+        _recover_locked(root)
+    except Exception:
+        _recover_locked(root)
+        raise
     return manifest["version"]

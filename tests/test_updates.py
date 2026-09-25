@@ -178,11 +178,27 @@ class InstallationTests(unittest.TestCase):
 
     def test_lock_defers_without_modification(self):
         with installer.UpdateLease(self.root):
-            with self.assertRaises(installer.UpdateBusy):
-                installer.install(self.root, self.new, self.meta)
+            with patch.object(
+                installer,
+                "package_contents",
+                side_effect=AssertionError("must not read runtime while playing"),
+            ):
+                with self.assertRaises(installer.UpdateBusy):
+                    installer.install(self.root, self.new, self.meta)
         self.assertEqual(
             json.loads((self.root / "distribution.json").read_text())["version"], "0.1.0"
         )
+
+    def test_prevalidation_marker_recovers_after_process_death(self):
+        marker = self.root / "generated/update-installing.json"
+        marker.write_text('{"phase":"validating"}')
+        installer.recover(self.root)
+        self.assertFalse(marker.exists())
+
+    def test_invalid_package_releases_prevalidation_marker(self):
+        with self.assertRaises(ValueError):
+            installer.install(self.root, self.new, {**self.meta, "sha256": "0" * 64})
+        self.assertFalse((self.root / "generated/update-installing.json").exists())
 
     def test_crash_during_install_is_recovered(self):
         write = installer.atomic_bytes
