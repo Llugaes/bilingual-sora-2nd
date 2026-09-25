@@ -73,8 +73,28 @@ def check(package):
                 "-X",
                 "utf8",
                 "-c",
-                "import sys,frida,lz4.frame,pygame,pefile; from PySide6 import QtWidgets,QtNetwork; "
-                "from sora_bilingual.paths import ROOT; print(ROOT); print(sys.version)",
+                """
+import sys, frida, lz4.frame, pygame, pefile
+from PySide6 import QtWidgets, QtNetwork
+from PySide6.QtCore import QByteArray
+from PySide6.QtGui import QImage, QImageReader, QIcon
+from sora_bilingual.paths import ROOT
+app = QtWidgets.QApplication([])
+formats = {bytes(f) for f in QImageReader.supportedImageFormats()}
+assert {b'ico', b'png', b'svg'} <= formats, formats
+assert not QIcon(str(ROOT / 'assets/sora-bilingual.ico')).isNull()
+assert not QImage.fromData(QByteArray(b'<svg xmlns="http://www.w3.org/2000/svg" width="8" height="8"><rect width="8" height="8" fill="red"/></svg>'), 'svg').isNull()
+for style in QtWidgets.QStyleFactory.keys():
+    assert QtWidgets.QStyleFactory.create(style) is not None, style
+assert QtNetwork.QSslSocket.supportsSsl()
+pygame.display.init()
+pygame.joystick.init()
+pygame.event.pump()
+pygame.joystick.get_count()
+pygame.quit()
+print(ROOT)
+print(sys.version)
+""",
             ],
             cwd=temp,
             env=environment,

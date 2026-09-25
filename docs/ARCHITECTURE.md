@@ -49,6 +49,8 @@ launch.py 是稳定桌面入口，bootstrap.py 是组装入口：先恢复未完
 
 `tools/build_portable.py` 在构建端校验官方 CPython 压缩包，安装固定版本的 wheel，保留许可证，再调用文件白名单打包器。用户端不运行 pip。`BilingualSora2nd.exe` 是短生命周期 GUI 启动器，读取 `runtime/current.txt` 并启动对应内置 Python；不依赖 PATH。
 
+发行环境仅保留应用使用的 Qt Core、Gui、Widgets、Network 绑定及窗口、样式、图片、网络插件，并通过 PE 普通和延迟导入递归保留其 DLL 依赖。软件 OpenGL 回退、VC 运行库与许可证保留；QML、Qt 开发工具和 pygame 示例、测试、文档正文不进入发行包。新增 Qt 模块时同步构建根集合；测试检查应用导入以及成品图标、SVG、样式、TLS 和 SDL 输入初始化。ZIP 使用标准 Deflate 压缩，Windows 资源管理器即可解压。GitHub 附件直接展示 `bilingual-sora-2nd-<version>-windows-x64.zip` 文件名，使用说明放在发布正文。
+
 运行环境目录使用内容摘要作为标识，不可原地修改。同一环境的文件更新时跳过，新依赖写入新目录；旧环境保留，界面重载通过 EXE 选择新环境。更新日志仅备份有变化的文件，配置与缓存仍在 generated。首次运行打开设置；后续双击复用常驻实例。
 
 CI 在无游戏环境运行提取后 EXE：清除 PATH 中的 Python，测试含空格/中文路径、全部依赖导入、隐藏恢复、真实 UI 热重载和单实例。开发检查仍使用 source-only 小包，发行流水线只发布便携 ZIP 与统一更新清单。

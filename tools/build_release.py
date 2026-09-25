@@ -62,7 +62,7 @@ def build(version, repository, output, root=ROOT, *, extra=None, runtime_id=None
     output.mkdir(parents=True, exist_ok=True)
     name = f"{ASSET_PREFIX}-{version}-windows-x64.zip"
     package = output / name
-    with zipfile.ZipFile(package, "w", zipfile.ZIP_DEFLATED) as archive:
+    with zipfile.ZipFile(package, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         for key, data in sorted(contents.items()):
             archive.writestr(key, data)
         archive.writestr(
