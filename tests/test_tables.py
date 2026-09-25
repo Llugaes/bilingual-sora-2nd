@@ -3,14 +3,19 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from resources import LANGUAGES
-from tables import build_table_entries
+from sora_bilingual.localization.resources import LANGUAGES
+from sora_bilingual.localization.tables import build_table_entries
 
 
 ARCHIVES = {
-    "ja": "table.pac", "en": "table_en.pac", "zh-Hans": "table_sc.pac",
-    "zh-Hant": "table_tc.pac", "ko": "table_ko.pac", "fr": "table_fr.pac",
-    "de": "table_de.pac", "es": "table_es.pac",
+    "ja": "table.pac",
+    "en": "table_en.pac",
+    "zh-Hans": "table_sc.pac",
+    "zh-Hant": "table_tc.pac",
+    "ko": "table_ko.pac",
+    "fr": "table_fr.pac",
+    "de": "table_de.pac",
+    "es": "table_es.pac",
 }
 
 
@@ -27,8 +32,8 @@ def fpac(entries):
     struct.pack_into("<4sIII", result, 0, b"FPAC", len(entries), data_at, 1)
     for number, ((_, data), name, name_at) in enumerate(zip(entries, names, name_offsets)):
         struct.pack_into("<IIQQQ", result, 16 + 32 * number, 0, 0, name_at, len(data), cursor)
-        result[name_at:name_at + len(name)] = name
-        result[cursor:cursor + len(data)] = data
+        result[name_at : name_at + len(name)] = name
+        result[cursor : cursor + len(data)] = data
         cursor += len(data)
     return bytes(result)
 
@@ -39,9 +44,12 @@ def text_table(pairs):
     struct.pack_into("<4sI64sIIII", payload, 0, b"#TBL", 1, b"TextTableData", 0, 88, 16, len(pairs))
     cursor = rows
     for number, (key, text) in enumerate(pairs):
-        key = key.encode() + b"\0"; text = text.encode() + b"\0"
+        key = key.encode() + b"\0"
+        text = text.encode() + b"\0"
         struct.pack_into("<QQ", payload, 88 + number * 16, cursor, cursor + len(key))
-        payload.extend(key); payload.extend(text); cursor += len(key) + len(text)
+        payload.extend(key)
+        payload.extend(text)
+        cursor += len(key) + len(text)
     return bytes(payload)
 
 
@@ -50,13 +58,13 @@ def item_table(item_id, name, description):
     bundle = start + row_size + 16
     payload = bytearray(bundle)
     struct.pack_into("<4sI64sIIII", payload, 0, b"#TBL", 2, b"ItemTableData", 0, start, row_size, 1)
-    struct.pack_into("<64sIIII", payload, 88, b"ItemKindParam2",0,start+row_size,16,1)
+    struct.pack_into("<64sIIII", payload, 88, b"ItemKindParam2", 0, start + row_size, 16, 1)
     struct.pack_into("<Q", payload, start + 224, bundle)
     struct.pack_into("<Q", payload, start + 232, bundle + len(name.encode()) + 1)
     struct.pack_into("<I", payload, start, item_id)
     payload.extend(name.encode() + b"\0" + description.encode() + b"\0")
-    struct.pack_into('<IQ',payload,start+row_size+4,7,len(payload))
-    payload.extend(('category '+name).encode()+b'\0')
+    struct.pack_into("<IQ", payload, start + row_size + 4, 7, len(payload))
+    payload.extend(("category " + name).encode() + b"\0")
     return bytes(payload)
 
 
@@ -73,7 +81,9 @@ def help_table(title):
 def tips_table(language):
     row_size, count, start = 56, 3, 88
     payload = bytearray(start + row_size * count)
-    struct.pack_into("<4sI64sIIII", payload, 0, b"#TBL", 1, b"TipsTableData", 0, 88, row_size, count)
+    struct.pack_into(
+        "<4sI64sIIII", payload, 0, b"#TBL", 1, b"TipsTableData", 0, 88, row_size, count
+    )
     cursor = len(payload)
     for row, marker in enumerate((0, 0, 1)):
         title = f"{language} duplicate {row}" if row < 2 else f"{language} unique"
@@ -87,11 +97,17 @@ def tips_table(language):
 
 
 def write_game(root, missing_en=False):
-    folder = root / "pac" / "steam"; folder.mkdir(parents=True)
+    folder = root / "pac" / "steam"
+    folder.mkdir(parents=True)
     for language, archive in ARCHIVES.items():
         entries = [(f"table_{language}/t_text.tbl", text_table([("MENU_OK", f"{language} OK")]))]
         if not (missing_en and language == "en"):
-            entries.append((f"table_{language}/t_item.tbl", item_table(0x1B7000, f"{language} item", f"{language} desc")))
+            entries.append(
+                (
+                    f"table_{language}/t_item.tbl",
+                    item_table(0x1B7000, f"{language} item", f"{language} desc"),
+                )
+            )
         unknown = bytearray(88)
         struct.pack_into("<4sI64sIIII", unknown, 0, b"#TBL", 1, b"SkillParam", 0, 88, 4, 0)
         entries.append((f"table_{language}/t_skill.tbl", bytes(unknown)))
@@ -103,11 +119,14 @@ def write_game(root, missing_en=False):
 class TableTests(unittest.TestCase):
     def test_table_keys_do_not_require_a_japanese_record(self):
         with tempfile.TemporaryDirectory() as temp:
-            root=Path(temp);write_game(root)
-            (root/'pac/steam'/ARCHIVES['ja']).unlink()
-            entries,_=build_table_entries(root)
-            row=next(e for e in entries if e['key']=='table/t_text.tbl/MENU_OK')
-            self.assertIn('fr',row['texts']);self.assertIn('de',row['texts']);self.assertNotIn('ja',row['texts'])
+            root = Path(temp)
+            write_game(root)
+            (root / "pac/steam" / ARCHIVES["ja"]).unlink()
+            entries, _ = build_table_entries(root)
+            row = next(e for e in entries if e["key"] == "table/t_text.tbl/MENU_OK")
+            self.assertIn("fr", row["texts"])
+            self.assertIn("de", row["texts"])
+            self.assertNotIn("ja", row["texts"])
 
     def test_text_keys_and_item_ids_are_stable_not_ordinals(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -115,16 +134,27 @@ class TableTests(unittest.TestCase):
             entries, audit = build_table_entries(temp)
         keyed = {entry["key"]: entry["texts"] for entry in entries}
         self.assertEqual(keyed["table/t_text.tbl/MENU_OK"]["zh-Hans"], "zh-Hans OK")
-        item_name = next(key for key in keyed if key.endswith("/name") and key.startswith("table/t_item.tbl/sha256:"))
+        item_name = next(
+            key
+            for key in keyed
+            if key.endswith("/name") and key.startswith("table/t_item.tbl/sha256:")
+        )
         item_description = item_name.removesuffix("/name") + "/description"
         self.assertEqual(keyed[item_name]["en"], "en item")
         self.assertEqual(keyed[item_description]["ja"], "ja desc")
-        self.assertTrue(any(row["path"] == "table/t_skill.tbl" for row in audit["unsupported_tables"]))
-        help_entry = next(entry for entry in entries if entry["key"].startswith("table/t_help.tbl/sha256:") and entry["key"].endswith("/title"))
+        self.assertTrue(
+            any(row["path"] == "table/t_skill.tbl" for row in audit["unsupported_tables"])
+        )
+        help_entry = next(
+            entry
+            for entry in entries
+            if entry["key"].startswith("table/t_help.tbl/sha256:")
+            and entry["key"].endswith("/title")
+        )
         self.assertEqual(help_entry["texts"]["en"], "en help")
-        category=next(e for e in entries if '/ItemKindParam2/' in e['key'])
-        self.assertEqual(category['texts']['ja'],'category ja item')
-        self.assertEqual(category['texts']['zh-Hans'],'category zh-Hans item')
+        category = next(e for e in entries if "/ItemKindParam2/" in e["key"])
+        self.assertEqual(category["texts"]["ja"], "category ja item")
+        self.assertEqual(category["texts"]["zh-Hans"], "category zh-Hans item")
 
     def test_missing_item_locale_does_not_drop_other_valid_locales(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -145,7 +175,9 @@ class TableTests(unittest.TestCase):
             entries, audit = build_table_entries(temp)
         tips = [entry for entry in entries if entry["key"].startswith("table/t_tips.tbl/")]
         self.assertEqual(len(tips), 2)  # the unique title/body record survives
-        self.assertTrue(any(row["path"] == "table/t_tips.tbl" for row in audit["ambiguous_duplicate_groups"]))
+        self.assertTrue(
+            any(row["path"] == "table/t_tips.tbl" for row in audit["ambiguous_duplicate_groups"])
+        )
 
 
 if __name__ == "__main__":

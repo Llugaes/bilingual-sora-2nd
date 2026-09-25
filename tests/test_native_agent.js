@@ -6,9 +6,9 @@ const path = require('node:path');
 const test = require('node:test');
 const vm = require('node:vm');
 
-const AGENT = fs.readFileSync(path.join(__dirname, '..', 'native_agent.js'), 'utf8');
-const RESOLVER = fs.readFileSync(path.join(__dirname, '..', 'runtime_text.js'), 'utf8');
-const IDENTITIES = fs.readFileSync(path.join(__dirname, '..', 'runtime_identity.js'), 'utf8');
+const AGENT = fs.readFileSync(path.join(__dirname, '..', 'sora_bilingual/game/scripts/native_agent.js'), 'utf8');
+const RESOLVER = fs.readFileSync(path.join(__dirname, '..', 'sora_bilingual/game/scripts/runtime_text.js'), 'utf8');
+const IDENTITIES = fs.readFileSync(path.join(__dirname, '..', 'sora_bilingual/game/scripts/runtime_identity.js'), 'utf8');
 
 function makeRuntime(rubyCase = null) {
     const hooks = new Map();
@@ -625,7 +625,7 @@ test('ordinary formatted lanes retain configured main size and gap, with correct
 });
 
 test('native dialogue carries exact VM identity through its builder without retaining a stale stack buffer',()=>{
-    const {scriptSha256}=require('../runtime_identity.js');
+    const {scriptSha256}=require('../sora_bilingual/game/scripts/runtime_identity.js');
     const runtime=makeRuntime(),data=Buffer.alloc(128);data.write('#scp');data.writeUInt32LE(24,4);data.writeUInt32LE(1,8);
     const signature=Buffer.concat([data.subarray(0,24),data.subarray(24,56),data.subarray(24,56)]).toString('hex');
     const make=target=>({pairs:{'好。':['好。',target]},plain_pairs:{'好。':['好。',target]},numeric:[]});

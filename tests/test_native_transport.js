@@ -2,7 +2,7 @@
 const test=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs'),path=require('node:path');
 function transport(){
     let active={old:true};const rpc={exports:{load(m){if(m.invalid)throw Error('Invalid model');active=m;return true;}}};
-    vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../native_transport.js'),'utf8'),{rpc});
+    vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../sora_bilingual/game/scripts/native_transport.js'),'utf8'),{rpc});
     return {rpc:rpc.exports,active:()=>active};
 }
 test('partial, reordered and malformed transfers never replace the active model',()=>{

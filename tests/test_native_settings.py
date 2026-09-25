@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from native_settings import read_control, update_control, valid_keyboard_keys
+from sora_bilingual.app.native_settings import read_control, update_control, valid_keyboard_keys
 
 
 class NativeSettingsTests(unittest.TestCase):
@@ -11,11 +11,20 @@ class NativeSettingsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "native-control.json"
             original = {
-                "sources": ["backend source"], "stop": False, "backend_token": "keep",
+                "sources": ["backend source"],
+                "stop": False,
+                "backend_token": "keep",
                 "hotkey": {"keyboard": ["F8"], "gamepad": {"guid": "pad", "buttons": [1, 2]}},
             }
             path.write_text(json.dumps(original), encoding="utf-8")
-            updated = update_control({"primary": "zh-Hans", "interaction": "annotation", "hotkey": {"keyboard": ["CTRL", "F10"]}}, path)
+            updated = update_control(
+                {
+                    "primary": "zh-Hans",
+                    "interaction": "annotation",
+                    "hotkey": {"keyboard": ["CTRL", "F10"]},
+                },
+                path,
+            )
             disk = json.loads(path.read_text(encoding="utf-8"))
             self.assertEqual(disk["sources"], original["sources"])
             self.assertFalse(disk["stop"])

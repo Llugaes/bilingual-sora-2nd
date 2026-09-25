@@ -2,7 +2,7 @@
 const assert=require('node:assert/strict');
 const test=require('node:test');
 const crypto=require('node:crypto');
-const {scriptSha256,ScriptIdentities,TableIdentities}=require('../runtime_identity.js');
+const {scriptSha256,ScriptIdentities,TableIdentities}=require('../sora_bilingual/game/scripts/runtime_identity.js');
 const model=(a,b)=>({pairs:{[a]:[a,b]},plain_pairs:{[a]:[a,b]},numeric:[]});
 
 test('script SHA-256 agrees with independent crypto across padding and block boundaries',()=>{

@@ -2,7 +2,7 @@
 $ErrorActionPreference = 'Stop'
 $projectRoot = $PSScriptRoot
 $pythonPath = Join-Path $projectRoot '.venv\Scripts\pythonw.exe'
-$entryPath = Join-Path $projectRoot 'update_bootstrap.py'
+$entryPath = Join-Path $projectRoot 'launch.py'
 if (-not (Test-Path -LiteralPath $pythonPath)) { throw 'Missing project Python environment.' }
 $shortcutShell = New-Object -ComObject WScript.Shell
 $shortcutDirectories = @($projectRoot, [Environment]::GetFolderPath('Desktop')) | Select-Object -Unique

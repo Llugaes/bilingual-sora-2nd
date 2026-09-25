@@ -2,7 +2,7 @@ import unittest
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
-from ui import OverlayWindow, SettingsWindow, create_ui
+from sora_bilingual.legacy.ui import OverlayWindow, SettingsWindow, create_ui
 
 
 class UiTests(unittest.TestCase):
@@ -11,7 +11,9 @@ class UiTests(unittest.TestCase):
         cls.app = QApplication.instance() or QApplication([])
 
     def test_settings_defaults_and_change_signal(self):
-        settings = SettingsWindow(languages=[("zh-Hans", "简体中文"), ("ja", "日本語"), ("en", "English")])
+        settings = SettingsWindow(
+            languages=[("zh-Hans", "简体中文"), ("ja", "日本語"), ("en", "English")]
+        )
         self.assertEqual(settings.primary.currentData(), "zh-Hans")
         self.assertEqual(settings.secondary.currentData(), "ja")
         updates = []

@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import resources
+from sora_bilingual.localization import resources
 
 
 def make_scp(
@@ -23,17 +23,28 @@ def make_scp(
     name = "Talk".encode()
     crc = ~binascii.crc32(name) & 0xFFFFFFFF
     struct.pack_into(
-        "<IBHBIIIIII", data, func_at,
-        code_at, 0, 0, 0, 0, 0, 1, called_at, crc, 0xC0000000 | name_at,
+        "<IBHBIIIIII",
+        data,
+        func_at,
+        code_at,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1,
+        called_at,
+        crc,
+        0xC0000000 | name_at,
     )
     struct.pack_into("<IHHI", data, called_at, 0, 0, 1, args_at)
     if alternate_argument:
         struct.pack_into("<II", data, args_at, 0, 1)  # a nested-call argument
     else:
         struct.pack_into("<II", data, args_at, 0xC0000000 | text_at, 0)
-    data[name_at:name_at + len(name) + 1] = name + b"\0"
+    data[name_at : name_at + len(name) + 1] = name + b"\0"
     encoded = text.encode()
-    data[text_at:text_at + len(encoded) + 1] = encoded + b"\0"
+    data[text_at : text_at + len(encoded) + 1] = encoded + b"\0"
     data[code_at:] = code
     return bytes(data)
 
@@ -46,11 +57,21 @@ def make_scp_calls(texts: tuple[str, ...], *, first_argument_is_call: bool = Fal
     struct.pack_into("<4sIIIII", data, 0, b"#scp", func_at, 1, called_at, 0, 0)
     name = b"Talk"
     struct.pack_into(
-        "<IBHBIIIIII", data, func_at,
-        code_at, 0, 0, 0, 0, 0, len(texts), called_at,
-        ~binascii.crc32(name) & 0xFFFFFFFF, 0xC0000000 | name_at,
+        "<IBHBIIIIII",
+        data,
+        func_at,
+        code_at,
+        0,
+        0,
+        0,
+        0,
+        0,
+        len(texts),
+        called_at,
+        ~binascii.crc32(name) & 0xFFFFFFFF,
+        0xC0000000 | name_at,
     )
-    data[name_at:name_at + len(name) + 1] = name + b"\0"
+    data[name_at : name_at + len(name) + 1] = name + b"\0"
     cursor = text_at
     for index, text in enumerate(texts):
         arg_at = args_at + index * 8
@@ -60,7 +81,7 @@ def make_scp_calls(texts: tuple[str, ...], *, first_argument_is_call: bool = Fal
             struct.pack_into("<II", data, arg_at, 0, 1)
         else:
             struct.pack_into("<II", data, arg_at, 0xC0000000 | cursor, 0)
-        data[cursor:cursor + len(encoded) + 1] = encoded + b"\0"
+        data[cursor : cursor + len(encoded) + 1] = encoded + b"\0"
         cursor += len(encoded) + 1
     data[code_at] = 13
     return bytes(data)
@@ -93,9 +114,17 @@ def write_game(
 
 class ResourcesTests(unittest.TestCase):
     def test_null_then_integer_is_not_a_prepare_local_call(self):
-        code=b'\x00\x04'+struct.pack('<I',0)+b'\x00\x04'+struct.pack('<I',0x40000001)+b'\x0d'
-        result=resources.parse_scp(make_scp(code=code))
-        self.assertEqual(result.functions['Talk'].code_shape[:2],(('push','special',0),('push','int',1)))
+        code = (
+            b"\x00\x04"
+            + struct.pack("<I", 0)
+            + b"\x00\x04"
+            + struct.pack("<I", 0x40000001)
+            + b"\x0d"
+        )
+        result = resources.parse_scp(make_scp(code=code))
+        self.assertEqual(
+            result.functions["Talk"].code_shape[:2], (("push", "special", 0), ("push", "int", 1))
+        )
 
     def test_build_catalog_preserves_markup_and_all_eight_languages(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -116,7 +145,9 @@ class ResourcesTests(unittest.TestCase):
             write_game(root, path="script/battle/b0000.dat")
             catalog = resources.build_catalog(root, root / "out")
             self.assertEqual(len(catalog["entries"]), 1)
-            self.assertEqual(catalog["entries"][0]["key"], "script/battle/b0000.dat/Talk/called/0/arg/0")
+            self.assertEqual(
+                catalog["entries"][0]["key"], "script/battle/b0000.dat/Talk/called/0/arg/0"
+            )
             audit = json.loads((root / "out" / "audit.json").read_text(encoding="utf-8"))
             self.assertEqual(audit["counters"]["script_files_common"], 1)
 
@@ -136,32 +167,35 @@ class ResourcesTests(unittest.TestCase):
             root = Path(temp)
             write_game(root, {"ja": make_scp(opcode=255)})
             catalog = resources.build_catalog(root, root / "out")
-            self.assertTrue(catalog['entries'])
-            self.assertNotIn('ja',catalog['entries'][0]['texts'])
-            self.assertIn('en',catalog['entries'][0]['texts'])
-            self.assertIn('fr',catalog['entries'][0]['texts'])
+            self.assertTrue(catalog["entries"])
+            self.assertNotIn("ja", catalog["entries"][0]["texts"])
+            self.assertIn("en", catalog["entries"][0]["texts"])
+            self.assertIn("fr", catalog["entries"][0]["texts"])
             audit = json.loads((root / "out" / "audit.json").read_text(encoding="utf-8"))
             self.assertEqual(audit["counters"]["scp_invalid_ja"], 1)
             self.assertIn("unknown SCP opcode", audit["diagnostics"][0]["reason"])
 
     def test_non_reference_locales_form_their_own_valid_structural_group(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root=Path(tmp)
-            overrides={l:make_scp_calls(('id',l+' target'),first_argument_is_call=l in ('en','fr'))
-                       for l in resources.LANGUAGES}
-            write_game(root,overrides)
-            catalog=resources.build_catalog(root,root/'out')
-            pair=next(e for e in catalog['entries'] if e['texts'].get('en')=='en target')
-            self.assertEqual(pair['texts'],{'en':'en target','fr':'fr target'})
-            self.assertEqual(len({e['key'] for e in catalog['entries']}),len(catalog['entries']))
+            root = Path(tmp)
+            overrides = {
+                l: make_scp_calls(("id", l + " target"), first_argument_is_call=l in ("en", "fr"))
+                for l in resources.LANGUAGES
+            }
+            write_game(root, overrides)
+            catalog = resources.build_catalog(root, root / "out")
+            pair = next(e for e in catalog["entries"] if e["texts"].get("en") == "en target")
+            self.assertEqual(pair["texts"], {"en": "en target", "fr": "fr target"})
+            self.assertEqual(len({e["key"] for e in catalog["entries"]}), len(catalog["entries"]))
 
     def test_missing_unrelated_archive_does_not_block_installed_pairs(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root=Path(tmp);write_game(root)
-            (root/'pac/steam'/resources._ARCHIVES['ja']).unlink()
-            catalog=resources.build_catalog(root,root/'out')
-            self.assertIn('en',catalog['entries'][0]['texts'])
-            self.assertNotIn('ja',catalog['entries'][0]['texts'])
+            root = Path(tmp)
+            write_game(root)
+            (root / "pac/steam" / resources._ARCHIVES["ja"]).unlink()
+            catalog = resources.build_catalog(root, root / "out")
+            self.assertIn("en", catalog["entries"][0]["texts"])
+            self.assertNotIn("ja", catalog["entries"][0]["texts"])
 
     def test_different_debug_line_numbers_still_align(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -178,7 +212,9 @@ class ResourcesTests(unittest.TestCase):
             catalog = resources.build_catalog(root, root / "out")
             self.assertIn("en", catalog["entries"][0]["texts"])
 
-    def test_different_executable_numeric_parameter_rejects_code_text_but_not_validated_calls(self) -> None:
+    def test_different_executable_numeric_parameter_rejects_code_text_but_not_validated_calls(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             string_push = b"\x00\x04" + struct.pack("<I", 0xC0000000 | 112)
@@ -218,7 +254,9 @@ class ResourcesTests(unittest.TestCase):
     def test_called_text_requires_the_complete_ordered_called_sequence(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            write_game(root, {"en": make_scp_calls(("first", "target"), first_argument_is_call=True)})
+            write_game(
+                root, {"en": make_scp_calls(("first", "target"), first_argument_is_call=True)}
+            )
             for language, archive in resources._ARCHIVES.items():
                 if language != "en":
                     (root / "pac" / "steam" / archive).write_bytes(
@@ -238,8 +276,8 @@ class ResourcesTests(unittest.TestCase):
             struct.pack_into("<I", data, 5, 0xC0000000 | 160)
             data[9] = 0
             data[10] = 13
-            data[128:128 + len(namespace) + 1] = namespace.encode() + b"\0"
-            data[160:160 + len(function) + 1] = function.encode() + b"\0"
+            data[128 : 128 + len(namespace) + 1] = namespace.encode() + b"\0"
+            data[160 : 160 + len(function) + 1] = function.encode() + b"\0"
             return bytes(data)
 
         first, _ = resources._parse_code(code("ui", "show"), 0, 11, 0, (), ())

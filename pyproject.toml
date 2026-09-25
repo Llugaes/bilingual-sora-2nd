@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bilingual-sora-2nd"
+version = "0.2.0"
+description = "Native bilingual text and learning annotations for Trails in the Sky 2nd"
+readme = "README.md"
+requires-python = ">=3.14,<3.15"
+license = "MIT"
+authors = [{name = "Llugaes"}]
+dynamic = ["dependencies"]
+
+[project.urls]
+Repository = "https://github.com/Llugaes/bilingual-sora-2nd"
+Issues = "https://github.com/Llugaes/bilingual-sora-2nd/issues"
+
+[project.optional-dependencies]
+dev = ["ruff>=0.12,<1", "build>=1.2,<2"]
+
+[tool.setuptools.dynamic]
+dependencies = {file = ["requirements.txt"]}
+
+[tool.setuptools.packages.find]
+include = ["sora_bilingual*"]
+
+[tool.setuptools.package-data]
+"sora_bilingual.game" = ["scripts/*.js"]
+
+[tool.ruff]
+target-version = "py314"
+line-length = 100
+include = ["sora_bilingual/**/*.py", "tools/**/*.py", "tests/**/*.py", "launch.py"]
+
+[tool.ruff.lint]
+select = ["E9", "F63", "F7", "F82"]

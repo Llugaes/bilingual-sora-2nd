@@ -1,8 +1,8 @@
 'use strict';
 const fs=require('node:fs'),assert=require('node:assert/strict');
 const {performance}=require('node:perf_hooks');
-const {ScriptIdentities,TableIdentities}=require('../runtime_identity.js');
-const {RuntimeText}=require('../runtime_text.js');
+const {ScriptIdentities,TableIdentities}=require('../sora_bilingual/game/scripts/runtime_identity.js');
+const {RuntimeText}=require('../sora_bilingual/game/scripts/runtime_text.js');
 const fixture=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
 const model=JSON.parse(fs.readFileSync(fixture.model,'utf8'));
 const ids=new ScriptIdentities(model.script_identities),times=[];

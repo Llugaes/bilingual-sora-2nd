@@ -14,3 +14,7 @@ REVIEW.md
 ROBUSTNESS.md
 SCOPE.md
 VALIDATION.md
+
+*.egg-info/
+.ruff_cache/
+.local/

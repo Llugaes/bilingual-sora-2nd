@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from font_merge import (
+from sora_bilingual.fonts.font_merge import (
     DDS_HEADER_SIZE,
     FontFormatError,
     crop_dds_to_glyphs,
@@ -15,7 +15,7 @@ from font_merge import (
     parse_dds,
     parse_fnt,
 )
-from resources import FpacArchive
+from sora_bilingual.localization.resources import FpacArchive
 
 
 GAME_DIR = Path(os.environ.get("SORA_GAME_DIR", "generated/missing-game-fixture"))
@@ -24,7 +24,12 @@ RESEARCH_DIR = Path(os.environ.get("SORA_RESEARCH_DIR", "generated/missing-font-
 
 def _has_actual_sources() -> bool:
     archive_dir = GAME_DIR / "pac" / "steam"
-    return (archive_dir / "asset_common_font_sc.pac").is_file() and (archive_dir / "asset_common_font.pac").is_file() and (RESEARCH_DIR / "samples/font_sc.dds").is_file() and (RESEARCH_DIR / "samples/font.dds").is_file()
+    return (
+        (archive_dir / "asset_common_font_sc.pac").is_file()
+        and (archive_dir / "asset_common_font.pac").is_file()
+        and (RESEARCH_DIR / "samples/font_sc.dds").is_file()
+        and (RESEARCH_DIR / "samples/font.dds").is_file()
+    )
 
 
 def _read_fnt(archive_name: str, entry: str) -> bytes:
@@ -65,7 +70,9 @@ class ActualFontMergeTests(unittest.TestCase):
         self.assertEqual(len(secondary.glyphs), 11809)
         self.assertEqual(len(merged.glyphs), 11900)
         self.assertEqual(set(original_primary), set(result) & set(original_primary))
-        self.assertTrue(all(result[codepoint].raw == raw for codepoint, raw in original_primary.items()))
+        self.assertTrue(
+            all(result[codepoint].raw == raw for codepoint, raw in original_primary.items())
+        )
         for character in ("雫", "霊"):
             glyph = result[ord(character)]
             self.assertGreaterEqual(glyph.y, 4096)
@@ -78,11 +85,13 @@ class ActualFontMergeTests(unittest.TestCase):
         raw = merge_dds(self.sc_dds, self.jp_dds)
         self.assertEqual((merged.width, merged.height), (4096, 8192))
         self.assertEqual(merged.linear_size, primary.linear_size + secondary.linear_size)
-        self.assertEqual(raw[DDS_HEADER_SIZE:DDS_HEADER_SIZE + len(primary.payload)], primary.payload)
-        self.assertEqual(raw[DDS_HEADER_SIZE + len(primary.payload):], secondary.payload)
+        self.assertEqual(
+            raw[DDS_HEADER_SIZE : DDS_HEADER_SIZE + len(primary.payload)], primary.payload
+        )
+        self.assertEqual(raw[DDS_HEADER_SIZE + len(primary.payload) :], secondary.payload)
 
     def test_write_merge_crops_unused_rows_without_changing_glyphs_or_blocks(self) -> None:
-        from font_merge import write_merge
+        from sora_bilingual.fonts.font_merge import write_merge
 
         full_fnt = merge_fnt(self.sc_fnt, self.jp_fnt)
         full_dds = merge_dds(self.sc_dds, self.jp_dds)
@@ -95,9 +104,14 @@ class ActualFontMergeTests(unittest.TestCase):
         self.assertEqual(final_fnt, full_fnt)
         self.assertEqual(parsed_dds.height, 7264)
         self.assertLessEqual(len(final_dds), 33_554_432)
-        self.assertEqual(final_dds[DDS_HEADER_SIZE:], full_dds[DDS_HEADER_SIZE:DDS_HEADER_SIZE + len(parsed_dds.payload)])
+        self.assertEqual(
+            final_dds[DDS_HEADER_SIZE:],
+            full_dds[DDS_HEADER_SIZE : DDS_HEADER_SIZE + len(parsed_dds.payload)],
+        )
         self.assertLess(len(final_dds), len(full_dds))
-        self.assertTrue(all(glyph.y + glyph.height <= parsed_dds.height for glyph in parsed_font.glyphs))
+        self.assertTrue(
+            all(glyph.y + glyph.height <= parsed_dds.height for glyph in parsed_font.glyphs)
+        )
 
     def test_crop_height_beyond_dds_fails_closed(self) -> None:
         oversized_fnt = _fnt([(65, 0, 8190, 8, 8)])
@@ -122,7 +136,11 @@ class FormatFailureTests(unittest.TestCase):
             parse_fnt(bytes(malformed))
 
     def test_mismatched_dds_header_fails_closed(self) -> None:
-        valid = bytearray((RESEARCH_DIR / "samples/font_sc.dds").read_bytes()) if (RESEARCH_DIR / "samples/font_sc.dds").is_file() else bytearray(148)
+        valid = (
+            bytearray((RESEARCH_DIR / "samples/font_sc.dds").read_bytes())
+            if (RESEARCH_DIR / "samples/font_sc.dds").is_file()
+            else bytearray(148)
+        )
         if len(valid) == 148:
             self.skipTest("DDS fixture unavailable")
         struct.pack_into("<I", valid, 16, 2048)

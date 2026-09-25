@@ -1,7 +1,7 @@
 // Uses this user's local catalog/captures; never attaches to a process.
 'use strict';
 const fs=require('fs'),assert=require('assert/strict'),{performance}=require('perf_hooks');
-const {RuntimeText}=require('../runtime_text.js');
+const {RuntimeText}=require('../sora_bilingual/game/scripts/runtime_text.js');
 const data=JSON.parse(fs.readFileSync(process.argv[2],'utf8'));
 const start=performance.now();
 const resolver=new RuntimeText(JSON.parse(fs.readFileSync(data.model,'utf8')));

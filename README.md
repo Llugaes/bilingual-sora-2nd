@@ -19,8 +19,8 @@
 某些跨语言组合需要补充游戏字库，否则游戏原字体没有的字符可能显示为问号。字库必须从自己的游戏资源生成，不随本项目分发。退出游戏后执行：
 
 ```powershell
-.venv\Scripts\python.exe universal_fonts.py --game "你的游戏安装目录"
-.venv\Scripts\python.exe install_font_patch.py --game "你的游戏安装目录" --loader "xinput1_4.dll 的路径" --install
+.venv\Scripts\python.exe -m sora_bilingual.fonts.universal_fonts --game "你的游戏安装目录"
+.venv\Scripts\python.exe -m sora_bilingual.fonts.install_font_patch --game "你的游戏安装目录" --loader "xinput1_4.dll 的路径" --install
 ```
 
 加载器取自 [sora2looseload](https://github.com/lmaple0/sora2looseload)。当前安装器只接受已校验的 DLL，SHA-256 为 `e08a18068a482bb5d187a62023759c0e14ab69d76395b773ef0405d35e2ac8c7`，不接受任意新版本替换。遇到摘要不匹配时保留现有文件并反馈，不要跳过校验。安装器拒绝覆盖其他 Mod 的文件；已有本工具安装记录时可添加 `--update` 更新。软件自动更新不修改游戏目录、加载器或生成字库。
@@ -52,19 +52,20 @@
 
 ```powershell
 py -3.14 -m venv .venv
-.venv\Scripts\python.exe -m pip install -r requirements.txt
-.venv\Scripts\python.exe -X utf8 -m unittest discover -s tests -q
-node --test tests/test_native_agent.js tests/test_runtime_identity.js tests/test_native_transport.js
+.venv\Scripts\python.exe -m pip install -e ".[dev]"
+.venv\Scripts\python.exe -m tools.dev check
 ```
 
 `tests/check_overlay_update.py` 使用独立配置验证真实 Qt 界面重载；不会连接游戏。`tests/check_native_transport.py` 需要本地资源，只附加自己创建的测试进程。它们不属于 CI 的无游戏单元测试。
 
-开发修改通过 `python tool_updates.py` 语法检查并原子发布本地热加载清单；界面和文本逻辑自动切换，底层驻留钩子更新等待游戏下一次启动。不要在游戏运行时强杀或卸载注入脚本。
+开发修改通过 `python -m tools.dev publish-local` 语法检查并原子发布本地热加载清单；界面和文本逻辑自动切换，底层驻留钩子更新等待游戏下一次启动。不要在游戏运行时强杀或卸载注入脚本。
 
-维护者修改 `distribution.json` 版本后推送 `vX.Y.Z` 标签。GitHub Actions 在 Windows 上验证测试，从明确的文件白名单构建 ZIP 和更新清单，上传到草稿 Release 后一起公开；后续客户端自动发现。手动构建：
+工程布局与依赖规则见 [架构说明](docs/ARCHITECTURE.md)，日常修改流程见 [贡献指南](CONTRIBUTING.md)。
+
+维护者同步修改 distribution.json 和 pyproject.toml 版本后推送 `vX.Y.Z` 标签。GitHub Actions 在 Windows 上验证测试，从明确的文件白名单构建 ZIP 和更新清单，上传到草稿 Release 后一起公开；后续客户端自动发现。手动构建：
 
 ```powershell
-.venv\Scripts\python.exe build_release.py --version 0.1.0 --repository Llugaes/bilingual-sora-2nd
+.venv\Scripts\python.exe -m tools.build_release --version 0.2.0 --repository Llugaes/bilingual-sora-2nd
 ```
 
 发布包和仓库不包含游戏资源、生成字库、完整文本索引、日志、截图或用户配置。报告问题时请附工具版本、游戏版本、语言组合与精简错误信息，避免上传完整游戏数据。
