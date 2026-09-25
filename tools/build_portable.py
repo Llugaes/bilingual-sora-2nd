@@ -1,8 +1,11 @@
 """Vendor verified CPython and pinned wheels at build time, never on the user's PC."""
 
 import argparse
+import csv
 import hashlib
+import io
 import os
+import posixpath
 from pathlib import Path
 import subprocess
 import sys
@@ -16,6 +19,19 @@ from tools.build_release import build
 PYTHON_VERSION = "3.14.7"
 # https://www.python.org/downloads/release/python-3147/
 PYTHON_SHA256 = "d297e5ff019966817ad8502465176139f2d3d840fa4ed84b13bed399a6ab1f15"
+
+
+def canonical_records(files):
+    """Exclude removed pip launchers from RECORD; their hashes embed builder paths."""
+    for name in files:
+        if not name.endswith(".dist-info/RECORD"):
+            continue
+        site = posixpath.dirname(posixpath.dirname(name))
+        rows = csv.reader(io.StringIO(files[name].decode("utf-8")))
+        included = [row for row in rows if row and posixpath.normpath(site + "/" + row[0]) in files]
+        output = io.StringIO(newline="")
+        csv.writer(output, lineterminator="\n").writerows(sorted(included))
+        files[name] = output.getvalue().encode("utf-8")
 
 
 def runtime_files(cache):
@@ -67,6 +83,7 @@ def runtime_files(cache):
             and not any(part.startswith(".") for part in p.relative_to(stage).parts)
             and p.relative_to(stage).parts[:3] != ("Lib", "site-packages", "bin")
         }
+    canonical_records(files)
     signature = hashlib.sha256()
     for name, data in files.items():
         signature.update(name.encode() + b"\0" + hashlib.sha256(data).digest())
