@@ -25,7 +25,7 @@ def payload(runtime_id, marker=b"old"):
 class PortableUpdateTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
-        self.base = Path(self.temp.name)
+        self.base = Path(self.temp.name).resolve()
         self.root = self.base / "install"
         self.old_id, self.new_id = "a" * 16, "b" * 16
         package, _ = build(

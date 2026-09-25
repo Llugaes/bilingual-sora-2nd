@@ -55,7 +55,7 @@ def staged_update(package, output):
 def check(package):
     app = QCoreApplication.instance() or QCoreApplication([])
     with tempfile.TemporaryDirectory(prefix="bilingual-portable-") as temp:
-        root = Path(temp) / "游戏工具 with spaces"
+        root = (Path(temp) / "游戏工具 with spaces").resolve()
         with zipfile.ZipFile(package) as archive:
             archive.extractall(root)
         runtime_id = (root / "runtime/current.txt").read_text().strip()
