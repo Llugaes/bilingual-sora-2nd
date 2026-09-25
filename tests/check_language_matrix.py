@@ -50,6 +50,10 @@ def main():
         "script/scena/mp2000_ev.dat/EV_02_00_00/called/183/arg/1",
         "script/scena/mp2000_ev.dat/EV_02_00_00/called/444/arg/1",
         "script/scena/mp2010_04.dat/EV_01_36_00/called/366/assembled_display",
+        "script/scena/mp2010_07.dat/QS201_07_00/called/933/assembled_display",
+        "script/scena/mp2010_07.dat/QS201_07_00/called/935/assembled_display",
+        "script/scena/mp2010_07.dat/QS201_07_00/called/941/assembled_display",
+        "script/scena/mp2010_07.dat/QS201_07_00/called/944/assembled_display",
     ):
         selected.append(next(e for e in complete if e["key"].startswith(prefix)))
     level = next(e for e in complete if e["key"] == "table/t_text.tbl/TXT_SAVE_DETAIL_LEVEL")

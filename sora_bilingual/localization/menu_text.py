@@ -54,7 +54,10 @@ def annotation_plan(primary, secondary):
     ):
         # There is no semantic line alignment in the localisation keys.
         # Keep the complete secondary paragraph in one annotation lane.
-        right = [" ".join(right)] + [""] * (left_count - 1)
+        payload = " ".join(right)
+        right = [""] * left_count
+        anchor = next((i for i, line in enumerate(lines[::2]) if line.strip()), 0)
+        right[anchor] = payload
     out = ""
     layers = []
     for i, part in enumerate(lines):
@@ -62,7 +65,7 @@ def annotation_plan(primary, secondary):
             out += part
             continue
         payload = right[i // 2]
-        if payload.strip():
+        if needs_annotation(part, payload):
             layers.append(
                 {
                     "offset": len(out.encode("utf-8")) + 6,
@@ -87,6 +90,8 @@ def display_text(text):
 def ruby(primary, secondary):
     if not primary or not secondary:
         return primary
+    if not needs_annotation(primary, secondary):
+        return primary
     identical_cjk = primary == secondary and bool(
         re.search(r"[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]", primary)
     )
@@ -107,8 +112,21 @@ def ruby(primary, secondary):
         b = s[i // 2]
         if bool(a.strip()) != bool(b.strip()):
             return None
-        out.append("<R>" + a + "</R" + b + ">" if a and b and (a != b or identical_cjk) else a)
+        out.append("<R>" + a + "</R" + b + ">" if needs_annotation(a, b) else a)
     return "".join(out)
+
+
+def needs_annotation(a, b):
+    def visible(value):
+        value = re.sub(r"<[^<>]*>", "", value)
+        return re.sub(r"[\uff01-\uff5e]", lambda m: chr(ord(m[0]) - 0xFEE0), value).strip()
+
+    left, right = visible(a), visible(b)
+    if not left or not right:
+        return False
+    if left != right:
+        return True
+    return bool(re.search(r"[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]", left))
 
 
 def overdrive_descriptions(entries):
@@ -402,6 +420,8 @@ class MenuTranslator:
             mode = "primary"
         a = self.translate(source, "primary")
         b = self.translate(source, "secondary")
+        if mode == "annotation" and not needs_annotation(a, b):
+            return {"text": a, "layers": [], "kind": "plain"}
         known = self.raw_pair(source) is not None
         if mode == "annotation" and known:
             prefix = re.match(r"^(?:<#[^<>]*>)*", a)[0]

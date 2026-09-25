@@ -47,12 +47,18 @@ class RuntimeText {
     }
     static ruby(a,b) {
         if(!a||!b)return a;
+        if(!RuntimeText.needsAnnotation(a,b))return a;
         const sameCjk=a===b && /[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/.test(a);
         if(a===b&&!sameCjk)return a;
         if(/[<>]/.test(a+b))return null;
         const left=a.replace(/\\n/g,'\n').split(/(\r\n|\n)/),right=b.replace(/\\n/g,'\n').split(/\r\n|\n/);
         if((left.length+1)/2!==right.length || left.some((v,i)=>!(i%2)&&Boolean(v.trim())!==Boolean(right[i/2].trim())))return null;
-        return left.map((v,i)=>i%2?v:v&&right[i/2]&&(v!==right[i/2]||sameCjk)?'<R>'+v+'</R'+right[i/2]+'>':v).join('');
+        return left.map((v,i)=>i%2?v:RuntimeText.needsAnnotation(v,right[i/2])?'<R>'+v+'</R'+right[i/2]+'>':v).join('');
+    }
+    static needsAnnotation(a,b) {
+        const visible=s=>s.replace(/<[^<>]*>/g,'').replace(/[\uff01-\uff5e]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xfee0)).trim();
+        const left=visible(a),right=visible(b);
+        return !!left&&!!right&&(left!==right||/[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/.test(left));
     }
     static visualSecondary(text) {
         return text.replace(/<[^<>]*>/g,t=>/^(?:<R>|<\/R[^<>]*>|<\/?[Cc][0-9a-fA-F]*>|<\/?B>|<[sS]\d+>|<I\d+>)$/.test(t)?t:'');
@@ -67,12 +73,15 @@ class RuntimeText {
     static annotationPlan(a,b) {
         const left=a.split(/(\r\n|\n|\\n)/);let right=RuntimeText.visualSecondary(b).split(/\r\n|\n|\\n/);
         const count=(left.length+1)/2;
-        if(count!==right.length||left.some((v,i)=>!(i%2)&&Boolean(v.trim())!==Boolean(right[i/2]?.trim())))right=[right.join(' '),...Array(count-1).fill('')];
+        if(count!==right.length||left.some((v,i)=>!(i%2)&&Boolean(v.trim())!==Boolean(right[i/2]?.trim()))) {
+            const payload=right.join(' '),anchor=left.findIndex((v,i)=>!(i%2)&&v.trim());
+            right=Array(count).fill('');right[Math.max(0,anchor/2)]=payload;
+        }
         let text='';const layers=[];
         left.forEach((part,i)=>{
             if(i%2){text+=part;return;}
             const payload=right[i/2];
-            if(payload.trim()) {
+            if(RuntimeText.needsAnnotation(part,payload)) {
                 layers.push({offset:RuntimeText.byteLength(text)+6,text:payload,protected:a.includes('<R>')||b.includes('<R>')});
                 text+='<R></R_>';
             }
@@ -88,6 +97,10 @@ class RuntimeText {
         const ck=mode+'\x00'+key+'\x00'+scope+'\x00'+source;
         if(this.planCache.has(ck))return this.planCache.get(ck);
         const a=this.translate(source,'primary',key,scope),b=this.translate(source,'secondary',key,scope);
+        if(mode==='annotation'&&!RuntimeText.needsAnnotation(a,b)) {
+            const result={text:a,layers:[],kind:'plain'};
+            if(this.planCache.size>=20000)this.planCache.clear();this.planCache.set(ck,result);return result;
+        }
         let result;
         const known=this.rawPair(source)!==null||
             (Object.hasOwn(this.keyed,key)&&this.keyed[key].source===source);

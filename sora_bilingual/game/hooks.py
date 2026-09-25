@@ -25,8 +25,15 @@ HOOKS = [
 
 def signature_matches(data: bytes, pattern: str):
     regex = b"".join(b"." if v == "??" else re.escape(bytes.fromhex(v)) for v in pattern.split())
-    # Lookahead counts overlapping matches; ambiguous signatures must fail.
-    return [m.start() for m in re.finditer(b"(?=(" + regex + b"))", data, re.DOTALL)]
+    # Search can use the literal-prefix accelerator. Advancing by one still
+    # counts overlapping matches, so ambiguous signatures continue to fail.
+    compiled = re.compile(regex, re.DOTALL)
+    matches = []
+    start = 0
+    while start <= len(data) and (match := compiled.search(data, start)):
+        matches.append(match.start())
+        start = match.start() + 1
+    return matches
 
 
 def verify_target(exe: Path):
@@ -34,7 +41,9 @@ def verify_target(exe: Path):
     digest = hashlib.sha256(raw).hexdigest()
     if digest != TARGET_SHA256:
         raise ValueError("游戏 EXE 版本未验证，停止连接。需要为新版本重新适配。")
-    pe = pefile.PE(data=raw)
+    # Header/sections are sufficient. Import and unwind directories are not
+    # used by version/signature verification and are expensive to decode.
+    pe = pefile.PE(data=raw, fast_load=True)
     if pe.FILE_HEADER.Machine != 0x8664:
         raise ValueError("需要 64 位 sora_2nd.exe")
     hooks = []

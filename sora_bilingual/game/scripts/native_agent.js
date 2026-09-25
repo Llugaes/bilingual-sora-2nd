@@ -156,11 +156,26 @@ function wantedText(row) {
     row.matched=wanted!==row.original;
     let prefixLength=0;
     const shrink=row.plan.kind==='ruby'||(row.plan.kind==='layered'&&!row.plan.layers.some(v=>v.protected));
-    if(shrink&&annotationScale<1) {
+    const hasText=text=>/[A-Za-z0-9\u00c0-\uffff]/.test(text.replace(/<[^<>]*>/g,''));
+    const uncovered=row.plan.kind==='ruby'?hasText(wanted.replace(/<R>[^<>]*<\/R[^<>]*>/g,'')):
+        row.plan.kind==='layered'&&wanted.split(/\r\n|\n|\\n/).some(line=>!line.includes('<R></R_>')&&hasText(line));
+    // Mixed labels (e.g. chapter + difficulty) keep their native advances, so
+    // shrinking the chapter cannot move the untranslated suffix horizontally.
+    if(shrink&&!uncovered&&annotationScale<1) {
         const size=p.add(0x304).readU32();
         if(size<12||size>256)throw Error('Unvalidated label font size');
-        const prefix='<s'+Math.max(12,Math.round(size*annotationScale))+'>';
-        prefixLength=prefix.length;wanted=prefix+wanted;
+        if(row.plan.kind==='ruby') {
+            // Size only owned ruby runs. Same-label dates/difficulty badges
+            // and other untranslated runs retain their current native size.
+            let current=size;
+            wanted=wanted.replace(/<s\d+>|<R>[^<>]*<\/R[^<>]*>/g,token=>{
+                if(token.startsWith('<s')){current=Number(token.slice(2,-1));return token;}
+                return '<s'+Math.max(12,Math.round(current*annotationScale))+'>'+token+'<s'+current+'>';
+            });
+        } else {
+            const prefix='<s'+Math.max(12,Math.round(size*annotationScale))+'>';
+            prefixLength=prefix.length;wanted=prefix+wanted;
+        }
     }
     row.layerBuffers=(row.plan.layers||[]).map(layer=>({layer:{...layer,offset:layer.offset+prefixLength},buffer:Memory.allocUtf8String(layer.text)}));
     if(wanted.length>32768)throw Error('Rendered text exceeds limit');
@@ -190,6 +205,20 @@ function auxiliaryLayer(p,parser) {
     const current=parser.add(8).readPointer(),owned=p.add(0x318).readPointer();
     const item=row.layerBuffers.find(v=>owned.add(v.layer.offset).equals(current));
     return item ? {...item,row,parser} : null;
+}
+function annotationY(frame,parser,nativeY,protectedLane=false) {
+    // The native measuring pass starts at (0,0) and has already applied the
+    // selected ruby scale. Its bottom is a font extent, not a guessed fraction
+    // of label size. Anchor every surface to the same primary line origin.
+    const top=frame.add(0x17c).readS32(),bottom=frame.add(0x184).readS32();
+    const origin=parser.add(4).readFloat();
+    if(!Number.isFinite(origin)||!Number.isFinite(nativeY))throw Error('Invalid annotation origin');
+    if(top===0x7fffffff&&bottom===-2147483648)return nativeY; // no visible glyphs
+    if(top>bottom||Math.abs(top)>65536||Math.abs(bottom)>65536)throw Error('Invalid annotation bounds');
+    // Original ruby/emphasis keeps its native lane. Place the added lane above
+    // its native origin, without moving either original text layer.
+    const edge=protectedLane?Math.min(origin,nativeY):origin;
+    return edge-bottom-rubyGap;
 }
 // Align owned annotations with the measured primary run's left edge.
 // Only adjust the parser's temporary context
@@ -237,8 +266,6 @@ Interceptor.attach(base.add(REPORT.native.ruby_context_init.rva), {
                 field.writeFloat(scale*(this.inherited ? this.inherited.factor : rubyScale));
             }
             if(this.layer) {
-                const size=this.layer.row.pointer.add(0x304).readU32();
-                if(size<12||size>256)throw Error('Unvalidated annotation lane size');
                 const factor=this.target.add(0x15c).readFloat();
                 auxiliaryContexts.set(String(this.target),{factor,placement:this.placement});
                 if(this.placement) {
@@ -247,7 +274,8 @@ Interceptor.attach(base.add(REPORT.native.ruby_context_init.rva), {
                     this.target.writeFloat(px+rubyOffsetX);
                     // Move only the new lane. The primary and its original
                     // ruby keep their original font, cursor and line spacing.
-                    this.target.add(4).writeFloat(py-size*(this.layer.layer.protected?.95:.8)-rubyGap);
+                    this.target.add(4).writeFloat(annotationY(this.context.rbp,this.layer.parser,
+                        this.target.add(4).readFloat(),this.layer.layer.protected));
                 }
                 return;
             }
@@ -261,7 +289,7 @@ Interceptor.attach(base.add(REPORT.native.ruby_context_init.rva), {
             if(this.placement) {
                 const y=this.target.add(4).readFloat();
                 if(!Number.isFinite(y))throw Error('Unvalidated ruby position');
-                this.target.add(4).writeFloat(y-rubyGap);
+                this.target.add(4).writeFloat(annotationY(this.context.rbp,this.context.rbx,y));
             }
             if (this.placement) {
                 const shifted=this.baseLeft+rubyOffsetX;
@@ -289,7 +317,8 @@ if(REPORT.native.ruby_base_measure_end) Interceptor.attach(base.add(REPORT.nativ
 }});
 if(REPORT.native.ruby_compensate) Interceptor.attach(base.add(REPORT.native.ruby_compensate.rva),{onEnter(){
     try {
-        const p=this.context.rbx;if(!auxiliaryLayer(this.context.r15,p))return;
+        const p=this.context.rbx;
+        if(!auxiliaryLayer(this.context.r15,p)&&!annotatedOwner(this.context.r15))return;
         compensation.set(String(p),p.add(0x1a7).readU8());p.add(0x1a7).writeU8(1);
     }catch(e){fail(e);}
 }});

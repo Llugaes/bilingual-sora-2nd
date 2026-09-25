@@ -174,6 +174,21 @@ class Function:
         """The complete static-call sequence, independent of locale bytecode layout."""
         return (self.flags, self.arg_types, tuple(call.dialogue_shape() for call in self.called))
 
+    def dialogue_sequence_shape(self) -> tuple[object, ...]:
+        # A reward/UI call can have locale-specific arguments without changing
+        # any dialogue. Keep the complete dialogue order, original call indices,
+        # speaker/voice identities and total call count as a separate contract.
+        return (
+            self.flags,
+            self.arg_types,
+            len(self.called),
+            tuple(
+                (i, call.dialogue_shape())
+                for i, call in enumerate(self.called)
+                if assembled_dialogue(call) is not None
+            ),
+        )
+
 
 @dataclass(frozen=True)
 class Script:
@@ -537,20 +552,36 @@ def align_functions(path, function_name, functions, audit):
     cannot deny a valid pair in another class, nor supply its translations.
     """
     entries = []
-    for family, method in (("called", "called_sequence_shape"), ("code", "shape")):
+    called_shapes = {lang: fn.called_sequence_shape() for lang, fn in functions.items()}
+    for family, method in (
+        ("called", "called_sequence_shape"),
+        ("code", "shape"),
+        ("dialogue", "dialogue_sequence_shape"),
+    ):
+        if family == "dialogue" and len(set(called_shapes.values())) < 2:
+            continue
         groups = {}
         for lang, fn in functions.items():
-            groups.setdefault(getattr(fn, method)(), []).append(lang)
+            shape = called_shapes[lang] if family == "called" else getattr(fn, method)()
+            groups.setdefault(shape, []).append(lang)
         for group_index, (shape, languages) in enumerate(groups.items()):
+            if family == "dialogue" and (
+                not shape[-1] or len({called_shapes[l] for l in languages}) < 2
+            ):
+                continue
             for lang in languages:
-                metric = "functions_called_aligned_" if family == "called" else "functions_aligned_"
+                metric = {
+                    "called": "functions_called_aligned_",
+                    "code": "functions_aligned_",
+                    "dialogue": "functions_dialogue_aligned_",
+                }[family]
                 _add_counter(audit, metric + lang)
                 if group_index:
-                    metric = (
-                        "functions_called_mismatch_"
-                        if family == "called"
-                        else "functions_mismatch_"
-                    )
+                    metric = {
+                        "called": "functions_called_mismatch_",
+                        "code": "functions_mismatch_",
+                        "dialogue": "functions_dialogue_mismatch_",
+                    }[family]
                     _add_counter(audit, metric + lang)
             if len(languages) < 2:
                 _add_counter(audit, "alignment_classes_without_secondary")
@@ -585,10 +616,17 @@ def align_functions(path, function_name, functions, audit):
                     if display != complete:
                         emit(f"called/{index}/assembled_display", display, "dialogue")
                     _add_counter(audit, "assembled_dialogue_calls")
-                for slot, _ in call.display_text_slots():
+                if family == "dialogue":
+                    continue
+                slots = tuple(call.display_text_slots())
+                if not slots:
+                    continue
+                shape = call.shape()
+                slots_aligned = all(functions[l].called[index].shape() == shape for l in languages)
+                for slot, _ in slots:
                     # A different wrapping/chunk boundary has no per-slot
                     # correspondence. The assembled paragraph above is exact.
-                    if any(functions[l].called[index].shape() != call.shape() for l in languages):
+                    if not slots_aligned:
                         continue
                     emit(
                         f"called/{index}/arg/{slot}",
@@ -598,7 +636,56 @@ def align_functions(path, function_name, functions, audit):
     return entries
 
 
-def build_catalog(game_dir: str | Path, output_dir: str | Path) -> dict[str, object]:
+def _build_script_paths(paths, archives, logical_entries):
+    audit = {"counters": Counter(), "diagnostics": []}
+    entries = []
+    for path in paths:
+        parsed = {}
+        # Exact bytes, not a locale assumption or a truncated hash. Keep this
+        # bounded to one file so large archives do not accumulate in memory.
+        unique = {}
+        for language, archive in archives.items():
+            if path not in logical_entries[language]:
+                continue
+            data = archive.read(logical_entries[language][path])
+            if data not in unique:
+                try:
+                    unique[data] = parse_scp(data)
+                except FormatError as exc:
+                    unique[data] = str(exc)
+            result = unique[data]
+            if isinstance(result, str):
+                _add_counter(audit, f"scp_invalid_{language}")
+                audit["diagnostics"].append({"path": path, "language": language, "reason": result})
+            else:
+                parsed[language] = result
+        for name in sorted({name for script in parsed.values() for name in script.functions}):
+            functions = {
+                l: script.functions[name]
+                for l, script in parsed.items()
+                if name in script.functions
+            }
+            entries.extend(align_functions(path, name, functions, audit))
+    return entries, audit
+
+
+def _build_script_batch(request):
+    """Process entry point: no Qt, game attachment or shared output writes."""
+    game, languages, paths = request
+    archives = {}
+    try:
+        for language in languages:
+            archives[language] = FpacArchive(Path(game) / "pac/steam" / _ARCHIVES[language])
+        logical = {l: _logical_script_entries(a) for l, a in archives.items()}
+        return _build_script_paths(paths, archives, logical)
+    finally:
+        for archive in archives.values():
+            archive.close()
+
+
+def build_catalog(
+    game_dir: str | Path, output_dir: str | Path, *, workers=None
+) -> dict[str, object]:
     """Build ``catalog.json`` and ``audit.json`` from a game directory read-only."""
     game = Path(game_dir)
     output = Path(output_dir)
@@ -628,26 +715,31 @@ def build_catalog(game_dir: str | Path, output_dir: str | Path) -> dict[str, obj
         paths = _script_paths(logical_entries.values())
         _add_counter(audit, "script_files_common", len(paths))
         entries: list[dict[str, object]] = []
-        for path in paths:
-            parsed: dict[str, Script] = {}
-            for language in archives:
-                if path not in logical_entries[language]:
-                    continue
-                try:
-                    parsed[language] = parse_scp(
-                        archives[language].read(logical_entries[language][path])
-                    )
-                except FormatError as exc:
-                    _add_counter(audit, f"scp_invalid_{language}")
-                    diagnostics.append({"path": path, "language": language, "reason": str(exc)})
-            names = sorted({name for script in parsed.values() for name in script.functions})
-            for name in names:
-                functions = {
-                    l: script.functions[name]
-                    for l, script in parsed.items()
-                    if name in script.functions
-                }
-                entries.extend(align_functions(path, name, functions, audit))
+        import os
+        from concurrent.futures import ProcessPoolExecutor
+        import multiprocessing
+
+        if workers is None:
+            workers = min(4, max(1, (os.process_cpu_count() or 1) // 2)) if len(paths) >= 16 else 1
+
+        def collect(results):
+            for batch, stats in results:
+                entries.extend(batch)
+                audit["counters"].update(stats["counters"])
+                diagnostics.extend(stats["diagnostics"])
+
+        if workers <= 1:
+            collect([_build_script_paths(paths, archives, logical_entries)])
+        else:
+            # Ordered bounded results preserve output and audit order. Workers
+            # own only archive reads; the parent is the sole cache writer.
+            batches = [
+                (str(game), tuple(archives), paths[n : n + 16]) for n in range(0, len(paths), 16)
+            ]
+            with ProcessPoolExecutor(
+                max_workers=min(workers, 4), mp_context=multiprocessing.get_context("spawn")
+            ) as pool:
+                collect(pool.map(_build_script_batch, batches, buffersize=workers * 2))
         _add_counter(audit, "entries_emitted", len(entries))
         catalog = {"version": 1, "languages": list(LANGUAGES), "entries": entries}
         output.mkdir(parents=True, exist_ok=True)

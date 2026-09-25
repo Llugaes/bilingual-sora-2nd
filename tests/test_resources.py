@@ -114,6 +114,70 @@ def write_game(
 
 
 class ResourcesTests(unittest.TestCase):
+    def test_unrelated_reward_format_does_not_block_verified_dialogue_sequence(self):
+        from dataclasses import replace
+
+        talk = resources.Called(
+            None,
+            3,
+            (("int", 5), ("int", 6), ("int", 9), ("int", 11), ("int", 10), ("string", "Continue")),
+        )
+        reward = resources.Called(
+            None, 3, (("int", 5), ("int", 8), ("int", 65535), ("string", "<C1>Reward"))
+        )
+        a = resources.Function("Scene", 0, (), (reward, talk), (), ())
+        b = replace(
+            a,
+            called=(
+                replace(reward, args=reward.args[:-1] + (("string", "<C1>"), ("string", "Gift"))),
+                replace(talk, args=talk.args[:-1] + (("string", "Proceed"),)),
+            ),
+        )
+
+        def align(other):
+            return resources.align_functions(
+                "script/a.dat", "Scene", {"en": a, "fr": other}, {"counters": Counter()}
+            )
+
+        rows = align(b)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["texts"], {"en": "Continue", "fr": "Proceed"})
+        self.assertEqual(rows[0]["display_role"], "dialogue")
+        # A different speaker/voice, reordered calls or added calls cannot
+        # borrow the neighbouring dialogue's translation.
+        for slot in (2, 4):
+            args = list(b.called[1].args)
+            args[slot] = ("int", 99)
+            self.assertFalse(
+                align(replace(b, called=(b.called[0], replace(talk, args=tuple(args)))))
+            )
+        self.assertFalse(align(replace(b, called=tuple(reversed(b.called)))))
+        self.assertFalse(align(replace(b, called=b.called + (reward,))))
+
+    def test_parallel_catalog_matches_serial_including_invalid_and_missing_locales(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_game(root, {"en": make_scp("Same"), "fr": make_scp("Same"), "ja": b"bad"})
+            (root / "pac/steam" / resources._ARCHIVES["ko"]).unlink()
+            serial = resources.build_catalog(root, root / "serial", workers=1)
+            parallel = resources.build_catalog(root, root / "parallel", workers=2)
+            self.assertEqual(serial, parallel)
+            self.assertEqual(
+                (root / "serial/audit.json").read_bytes(),
+                (root / "parallel/audit.json").read_bytes(),
+            )
+
+    def test_identical_locale_scripts_are_parsed_once_without_losing_locales(self):
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_game(root, {l: make_scp("Same") for l in resources.LANGUAGES})
+            with patch.object(resources, "parse_scp", wraps=resources.parse_scp) as parse:
+                catalog = resources.build_catalog(root, root / "out", workers=1)
+                self.assertEqual(parse.call_count, 1)
+            self.assertEqual(set(catalog["entries"][0]["texts"]), set(resources.LANGUAGES))
+
     def test_dialogue_wrapping_does_not_discard_an_entire_scene(self):
         def talk(parts, voice=10):
             return resources.Called(

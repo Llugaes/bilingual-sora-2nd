@@ -36,7 +36,7 @@ POINTS = {
 
 def native_report(exe):
     report = verify_target(Path(exe))
-    pe = pefile.PE(str(exe))
+    pe = pefile.PE(str(exe), fast_load=True)
     try:
         report["native"] = {
             name: {"rva": rva, "bytes": pe.get_data(rva, 16).hex()} for name, rva in POINTS.items()

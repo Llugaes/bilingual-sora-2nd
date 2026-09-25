@@ -136,14 +136,14 @@ function makeRuntime(rubyCase = null) {
 
     function renderRuby(label) {
         if (rubyCase && label.text().includes('<R>')) {
-                const values=new Map([[0,rubyCase.x],[4,0],[0x158,.375],[0x15c,.375]]);
+                const values=new Map([[0,rubyCase.x],[4,rubyCase.nativeY??0],[0x158,.375],[0x15c,.375]]);
                 const field=o=>({readFloat(){return values.get(o);},writeFloat(v){values.set(o,v);}});
                 const ctx = {...field(0),add:field};
                 const hook = hooks.get(String(base.add(REPORT.native.ruby_context_init.rva)));
                 const call = {returnAddress:base.add(rubyCase.wrongCallsite ? 0x777 : rubyCase.measurement ? 0x800 : 0x700),
                     context:{r15:rubyCase.wrongLabel ? new Pointer(123) : label,
-                        rbx:{readFloat:()=> (rubyCase.baseLeft??0)+40},
-                        rbp:{add:off=>({readS32:()=>off===0x3c8?0:40})}}};
+                        rbx:{readFloat:()=> (rubyCase.baseLeft??0)+40,add:()=>({readFloat:()=>rubyCase.origin??0})},
+                        rbp:{add:off=>({readS32:()=>({0x3c8:0,0x3d0:40,0x17c:0,0x184:rubyCase.bottom??18})[off]??0})}}};
                 hook.onEnter.call(call, [ctx]);
                 hook.onLeave.call(call);
                 rubyCase.after = values.get(0);
@@ -210,13 +210,23 @@ function makeRuntime(rubyCase = null) {
             const args=[label,buffer],leave=invoke(base.add(0x100),args);copyIntoLabel(label,args[1]);leave();
         },
         markSubtitle(root){vm.runInContext('subtitleRoots.add('+JSON.stringify(String(root))+');',context);},
-        auxiliary(label,index=0) {
+        compensate(label) {
+            const parser=new ScratchPointer(0x700000);
+            parser.add(4).writeFloat(100);
+            const context={r15:label,rbx:parser};
+            hooks.get(String(base.add(0xb00))).onEnter.call({context});
+            if(!parser.add(0x1a7).readU8())parser.add(4).writeFloat(112);
+            hooks.get(String(base.add(0xc00))).onEnter.call({context});
+            return {y:parser.add(4).readFloat(),flag:parser.add(0x1a7).readU8()};
+        },
+        auxiliary(label,index=0,geometry={}) {
             const row=sandbox.rpc.exports.snapshot().find(v=>v.original===label.originalForTest||v.displayed===label.text());
             const layer=row.layers[index];
             const parser=new ScratchPointer(0x700000);
-            parser.writeFloat(20);parser.add(4).writeFloat(100);
+            parser.writeFloat(20);parser.add(4).writeFloat(geometry.origin??100);
             parser.values.set(8,label.add(0x318).readPointer().add(layer.offset));
             const frame=new ScratchPointer(0x800000);
+            frame.add(0x17c).writeS32(0);frame.add(0x184).writeS32(geometry.bottom??18);
             for(const off of [0x3c8,0x3cc,0x3d0,0x3d4])frame.add(off).writeS32(0x7fffffff);
             const machine={r15:label,rbx:parser,rbp:frame};
             hooks.get(String(base.add(0xa00))).onEnter.call({context:machine});
@@ -224,7 +234,7 @@ function makeRuntime(rubyCase = null) {
             const results=[];
             for(const placement of [false,true]) {
                 const child=new ScratchPointer(0x900000);
-                child.writeFloat(-100);child.add(4).writeFloat(80);
+                child.writeFloat(-100);child.add(4).writeFloat(geometry.nativeY??80);
                 child.add(0x158).writeFloat(.375);child.add(0x15c).writeFloat(.375);
                 const call={returnAddress:base.add(placement?0x700:0x800),context:machine};
                 const args=[child,allocate('_'),new Pointer(1)];
@@ -307,14 +317,14 @@ test('runtime rules translate a new composite immediately and mode changes reuse
         numeric:[['HP上限\\+([+-]?\\d+)',['HP上限+%d','最大HP+%d']]]},'annotation',true,.9);
     const label=runtime.label(0x9100,'',0,32);
     runtime.externalSet(label,'<I299>HP上限+20\n说明。');
-    assert.equal(label.text(),'<s29><I299><R>HP上限+20</R最大HP+20>\n<R>说明。</R説明。>');
+    assert.equal(label.text(),'<I299><s29><R>HP上限+20</R最大HP+20><s32>\n<s29><R>说明。</R説明。><s32>');
     runtime.api.select('secondary',true);runtime.update(label);
     assert.equal(label.text(),'<I299>最大HP+20\n説明。');
     runtime.api.select('primary',true);runtime.update(label);
     assert.equal(label.text(),'<I299>HP上限+20\n说明。');
     runtime.api.style(.8,{ruby_scale:.7,ruby_gap:4,line_gap:10});
     runtime.api.select('annotation',true);runtime.update(label);
-    assert.ok(label.text().startsWith('<s26><I299><R>HP上限+20'));
+    assert.ok(label.text().startsWith('<I299><s26><R>HP上限+20'));
 });
 
 test('invalid locale reload leaves the old resolver and enabled state intact',()=>{
@@ -421,7 +431,49 @@ test('ruby measurement and drawing share the smaller size; drawing alone moves u
         const label=runtime.label(0x4350,'测试');
         runtime.api.configure({'测试':'<R>测试</Rテスト>'},true);runtime.update(label);
         assert.ok(Math.abs(sample.scale-.3)<1e-8);
-        assert.equal(sample.y,measurement?0:-3);
+        assert.equal(sample.y,measurement?0:-21);
+    }
+});
+
+test('digits, width variants and icon-only pairs never acquire mod geometry',()=>{
+    for(const [a,b] of [['4','４'],['HP','ＨＰ'],['<I1544>','<I1544>'],['<s27>4','<s30>４'],['Nightmare','Nightmare']]) {
+        const runtime=makeRuntime(),label=runtime.label(0x4610,a);
+        runtime.api.load({pairs:{[a]:[a,b]},plain_pairs:{[a]:[a,b]}},'annotation',true,.9);
+        runtime.update(label);assert.equal(label.text(),a);
+        assert.equal(runtime.newline(label,40),40);
+        assert.equal(runtime.api.snapshot()[0].presentation,'plain');
+        runtime.api.select('secondary',true);runtime.update(label);assert.equal(label.text(),b);
+    }
+});
+
+test('mixed chapter and difficulty keep native size, advance and following baseline',()=>{
+    const runtime=makeRuntime(),source='第２章“大地翻腾”　　　　 ＜Nightmare＞';
+    const pair=['第２章“大地翻腾”','２章「荒ぶる大地」'];
+    runtime.api.load({pairs:{[pair[0]]:pair},plain_pairs:{[pair[0]]:pair}},'annotation',true,.9);
+    const label=runtime.label(0x4620,source);runtime.update(label);
+    assert.equal(label.text(),'<R>第２章“大地翻腾”</R２章「荒ぶる大地」>　　　　 ＜Nightmare＞');
+    assert.deepEqual(runtime.compensate(label),{y:100,flag:0});
+    runtime.api.disable();runtime.update(label);assert.equal(label.text(),source);
+});
+
+test('unannotated numeric lines inside a formatted paragraph retain their native size',()=>{
+    const runtime=makeRuntime(),a='<C2>Text</C>\n4',b='<C2>Texte</C>\n４';
+    runtime.api.load({pairs:{[a]:[a,b]},plain_pairs:{[a]:[a,b]}},'annotation',true,.9);
+    const label=runtime.label(0x4650,a);runtime.update(label);
+    assert.equal(label.text(),'<R></R_><C2>Text</C>\n4');
+});
+
+test('plain and formatted annotation lanes have the same measured gap across sizes and native offsets',()=>{
+    for(const fontSize of [18,32,64])for(const bottom of [10,18,24])for(const nativeY of [30,80,110]) {
+        const sample={x:10,origin:100,bottom,nativeY};const runtime=makeRuntime(sample);
+        runtime.api.configure({'Text':'<R>Text</RTexte>'},true);
+        const label=runtime.label(0x4630,'Text',0,fontSize);runtime.update(label);
+        const formatted=makeRuntime(),a='<C2>Text</C>',b='<C2>Texte</C>';
+        formatted.api.load({pairs:{[a]:[a,b]},plain_pairs:{[a]:[a,b]}},'annotation',true,.9);
+        const other=formatted.label(0x4640,a,0,fontSize);formatted.update(other);
+        const y=formatted.auxiliary(other,0,{origin:100,bottom,nativeY}).results[1].y;
+        assert.equal(y,sample.y);assert.equal(100-(y+bottom),3);
+        assert.equal(runtime.api.status().failed,false);assert.equal(formatted.api.status().failed,false);
     }
 });
 
@@ -523,7 +575,7 @@ test('ruby annotation scale prefixes an absolute native size and disable restore
     runtime.externalSet(label, 'raw ruby');
     runtime.api.configure({'raw ruby': '<R>base</Rannotation>'}, true, 0.9);
     runtime.update(label);
-    assert.equal(label.text(), '<s26><R>base</Rannotation>');
+    assert.equal(label.text(), '<s26><R>base</Rannotation><s29>');
     const event = runtime.messages.find(message => message.type === 'native_text');
     assert.equal(event.fontSize, 29);
 
@@ -578,7 +630,7 @@ test('original ruby and emphasis remain unchanged while a separately owned lane 
             assert.equal(v.nestedRubyDisabled,i===0?1:0);assert.ok(Math.abs(v.scale-.3)<1e-8);
         }
         assert.equal(result.results[1].x,20);
-        assert.ok(Math.abs(result.results[1].y-66.6)<1e-8);
+        assert.equal(result.results[1].y,59);
         runtime.api.select('secondary',true);runtime.update(label);assert.equal(label.text(),b);
         runtime.api.disable();runtime.update(label);assert.equal(label.text(),a);
         assert.equal(runtime.api.status().failed,false);
@@ -598,7 +650,7 @@ test('subtitles and ordinary dialogue both annotate above without appended parag
     runtime.api.load({pairs:{[a]:[a,b]},plain_pairs:{[a]:[a,b]}},'annotation',true,.9);
     const root=runtime.label(0x9910,'');runtime.markSubtitle(root);
     const subtitle=runtime.label(0x9920,a);subtitle.name='text';subtitle.parent=root;
-    runtime.update(subtitle);assert.ok(subtitle.text().includes('<R>甲</R一>\n<R>乙</R二>'));
+    runtime.update(subtitle);assert.equal(subtitle.text().replace(/<s\d+>/g,''),'<R>甲</R一>\n<R>乙</R二>');
     assert.equal(subtitle.text().split('\n').length,2);
     assert.equal(runtime.api.snapshot().find(v=>v.displayed===subtitle.text()).surface,'subtitle');
     const name=runtime.label(0x9930,a);name.name='name_text';name.parent=root;
@@ -624,7 +676,7 @@ test('ordinary formatted lanes retain configured main size and gap, with correct
     assert.ok(label.text().startsWith('<s29><R></R_>'));
     assert.equal(runtime.newline(label,100),112);
     const result=runtime.auxiliary(label,1);assert.equal(result.results[1].text,'二');
-    assert.ok(Math.abs(result.results[1].y-71.4)<1e-8,'formatted lane leaves space above primary');
+    assert.equal(result.results[1].y,79,'measured annotation bottom is three units above primary origin');
     assert.equal(runtime.api.status().failed,false);
     runtime.api.disable();runtime.update(label);assert.equal(label.text(),a);
 });
