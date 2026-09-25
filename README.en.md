@@ -34,12 +34,7 @@ Choose any primary/secondary pair under Languages and mode. If you change the la
 
 ### First-run defaults
 
-| Game text language | Primary | Secondary |
-|---|---|---|
-| English | English | Japanese |
-| Japanese | Japanese | English |
-| Simplified / Traditional Chinese | Same as the game | Japanese |
-| Korean / French / German / Spanish | Same as the game | Japanese |
+The primary language defaults to the game's text language. The secondary defaults to Japanese, or English when the game is in Japanese.
 
 These are initial preferences, not restrictions on language pairs. Existing settings survive restarts and updates unchanged. The interface supports English, Simplified Chinese, and Japanese, defaults to the system language, and switches live via **Interface language**. UI language, source matching, and display languages are independent.
 
