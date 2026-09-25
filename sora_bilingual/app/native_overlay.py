@@ -480,6 +480,11 @@ def main():
     server = QLocalServer()
     if not server.listen(name):
         return 1
+    from sora_bilingual.app.native_settings import configure_first_run
+
+    if not args.no_auto_connect and not configure_first_run(args.control):
+        server.close()
+        return 0
     controller = OverlayController(args.control, args.status, auto_connect=not args.no_auto_connect)
     clients = []
 

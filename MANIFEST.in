@@ -1,5 +1,6 @@
 include launch.py distribution.json release-files.json requirements.txt
 include LICENSE README.md CONTRIBUTING.md THIRD_PARTY.md RELEASE_NOTES.md
+include README.en.md README.ja.md
 include *.cmd *.ps1
 recursive-include assets *.ico
 recursive-include docs *.md

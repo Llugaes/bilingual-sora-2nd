@@ -24,6 +24,25 @@ def states(press=None, hold=False):
 
 
 class NativeConfigTests(unittest.TestCase):
+    def test_language_defaults_follow_source_and_explicit_pairs_are_preserved(self):
+        from sora_bilingual.config.locales import LOCALES
+
+        for source in LOCALES:
+            with self.subTest(source=source):
+                config = normalize_config({"game_language": source})
+                self.assertEqual(config["primary"], source)
+                self.assertEqual(config["secondary"], "en" if source == "ja" else "ja")
+                for primary in LOCALES:
+                    for secondary in LOCALES:
+                        chosen = dict(game_language=source, primary=primary, secondary=secondary)
+                        result = normalize_config(chosen)
+                        self.assertEqual({k: result[k] for k in chosen}, chosen)
+
+    def test_invalid_source_is_rejected_before_deriving_defaults(self):
+        for source in (None, [], "unknown"):
+            with self.subTest(source=source), self.assertRaises(ValueError):
+                normalize_config({"game_language": source})
+
     def test_malformed_config_is_rejected_as_recoverable_validation_error(self):
         cases = [
             {"primary": []},

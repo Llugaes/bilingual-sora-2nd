@@ -1,6 +1,6 @@
 # Third-party references
 
-Runtime call-site signatures in `hooks.py` are adapted from Tom (tomrock645)'s
+Runtime call-site signatures in `sora_bilingual/game/hooks.py` are adapted from Tom (tomrock645)'s
 `PC_Steam_Sora_no_Kiseki_the_2nd.js` in https://github.com/0xDC00/scripts,
 commit `8ae79b998e34aa75758725331d56d4e2226f1ae0`.
 
@@ -39,4 +39,15 @@ File-format references (no bundled game data):
 Merged FNT and DDS files contain locally extracted game font data. They are
 generated on the user's machine and excluded from Git and redistribution.
 
-Python dependencies retain their own licenses, installed in `.venv`.
+Runtime dependencies (installed in `.venv`, not vendored into the release ZIP):
+
+| Project | Use |
+|---|---|
+| [Frida](https://github.com/frida/frida) | Native process instrumentation |
+| [Qt for Python / PySide6](https://doc.qt.io/qtforpython-6/) | Settings and resident status UI |
+| [pygame-ce / SDL](https://github.com/pygame-community/pygame-ce) | Controller input |
+| [pefile](https://github.com/erocarrera/pefile) | Executable inspection |
+| [python-lz4 / LZ4](https://github.com/python-lz4/python-lz4) | Font-texture compression |
+
+Python dependencies and their transitive dependencies retain their own licenses.
+See each installed distribution's license files and upstream documentation.

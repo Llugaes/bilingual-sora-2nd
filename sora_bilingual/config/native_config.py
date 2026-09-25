@@ -7,7 +7,12 @@ from pathlib import Path
 import tempfile
 import math
 import time
-from sora_bilingual.config.locales import LOCALES, DEFAULT_PRIMARY, DEFAULT_SECONDARY
+from sora_bilingual.config.locales import (
+    LOCALES,
+    DEFAULT_PRIMARY,
+    DEFAULT_SECONDARY,
+    language_defaults,
+)
 
 from sora_bilingual.paths import ROOT
 
@@ -44,6 +49,7 @@ def normalize_config(value):
     if not isinstance(value, dict):
         raise ValueError("配置必须是 JSON 对象")
     result = deepcopy(DEFAULTS)
+    result.update(language_defaults(value.get("game_language", DEFAULT_PRIMARY)))
     result.update(value)
     if result["interaction"] not in (*ACTIONS, None):
         raise ValueError("未知显示模式")

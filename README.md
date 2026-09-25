@@ -1,6 +1,8 @@
-# Sora Bilingual
+# Bilingual Sora 2nd
 
-《空之轨迹 the 2nd》PC 原生双语文本 Mod。主、副语言独立选择：简体中文、繁体中文、日文、英文、韩文、法文、德文、西班牙文。默认简中正文、日文小字注解。
+**简体中文** · [English](README.en.md) · [日本語](README.ja.md)
+
+《空之轨迹 the 2nd》PC 原生双语文本 Mod。主、副语言独立选择：简体中文、繁体中文、日文、英文、韩文、法文、德文、西班牙文。使用中文游玩时，首次设置默认保留中文正文，配上日文小字注解，方便对照学习。
 
 目前支持 Steam build `25386012` / EXE `1.03.2`。工具会核验游戏版本；其他版本不强行安装钩子。原始 PAC 和 EXE 不改写。项目处于早期阶段：已有离线回归和部分实机验证，完整游戏覆盖、所有语言的排版与手柄兼容性仍需实机反馈。
 
@@ -9,8 +11,19 @@
 1. 安装 Windows x64 的 Python **3.14**（包含 Python Launcher）。
 2. 从 [Releases](https://github.com/Llugaes/bilingual-sora-2nd/releases/latest) 下载 `bilingual-sora-2nd-版本-windows-x64.zip`，解压到有写权限的独立目录。不要下载 GitHub 自动生成的 Source code 包来代替发行包。
 3. 双击 `Setup.cmd` 安装依赖并创建桌面快捷方式。这是首次安装步骤，后续同运行环境的软件更新会自动安装。
-4. 双击桌面 **Sora Bilingual**。工具自动关联已运行的游戏，也会等待稍后启动的游戏；工具本身不启动游戏。
-5. 如果游戏使用其他语言，在“语言与模式 → 高级：原文识别”选择与游戏一致的识别源语言。主语言是 Mod 显示的正文，识别源语言用于匹配游戏传入的原文，两者职责不同。
+4. 双击桌面 **Sora Bilingual**。首次启动先选择游戏当前的文本语言；工具据此设置主、副语言，然后自动关联已运行的游戏，也会等待稍后启动的游戏。工具本身不启动游戏，取消首次设置会退出工具，稍后可重新打开。
+5. 在“语言与模式”自由选择主、副语言。若以后在游戏中更改语言，请同步修改“高级：原文识别”。主语言是 Mod 显示的正文，识别源语言用于匹配游戏传入的原文，两者职责不同。目前不自动识别游戏语言。
+
+### 首次运行的默认语言
+
+| 游戏当前文本语言 | 主语言 | 副语言 |
+|---|---|---|
+| 简体中文／繁体中文 | 与游戏一致 | 日文 |
+| 英文 | 英文 | 日文 |
+| 日文 | 日文 | 英文 |
+| 韩文／法文／德文／西班牙文 | 与游戏一致 | 日文 |
+
+这些只是首次设置的默认值，所有语言均可自由搭配。已有配置在重启或升级时保留，不按新规则重置。首次语言选择提供中英日提示；完整设置面板目前主要使用中文，README 的语言不决定游戏或 Mod 的显示语言。
 
 首次加载会在本地解析游戏语言资源并建立缓存，可能耗时。后续对白由游戏原生文本控件显示；Qt 界面负责配置和状态。窗口化／无边框下可用，独占全屏不保证能看到设置界面。
 
@@ -60,12 +73,12 @@ py -3.14 -m venv .venv
 
 开发修改通过 `python -m tools.dev publish-local` 语法检查并原子发布本地热加载清单；界面和文本逻辑自动切换，底层驻留钩子更新等待游戏下一次启动。不要在游戏运行时强杀或卸载注入脚本。
 
-工程布局与依赖规则见 [架构说明](docs/ARCHITECTURE.md)，日常修改流程见 [贡献指南](CONTRIBUTING.md)。
+工程布局与依赖规则见 [架构说明](https://github.com/Llugaes/bilingual-sora-2nd/blob/main/docs/ARCHITECTURE.md)，日常修改流程见 [贡献指南](https://github.com/Llugaes/bilingual-sora-2nd/blob/main/CONTRIBUTING.md)。
 
 维护者同步修改 distribution.json 和 pyproject.toml 版本后推送 `vX.Y.Z` 标签。GitHub Actions 在 Windows 上验证测试，从明确的文件白名单构建 ZIP 和更新清单，上传到草稿 Release 后一起公开；后续客户端自动发现。手动构建：
 
 ```powershell
-.venv\Scripts\python.exe -m tools.build_release --version 0.2.1 --repository Llugaes/bilingual-sora-2nd
+.venv\Scripts\python.exe -m tools.build_release --version 0.2.2 --repository Llugaes/bilingual-sora-2nd
 ```
 
 发布包和仓库不包含游戏资源、生成字库、完整文本索引、日志、截图或用户配置。报告问题时请附工具版本、游戏版本、语言组合与精简错误信息，避免上传完整游戏数据。
@@ -73,3 +86,15 @@ py -3.14 -m venv .venv
 ## 许可
 
 项目代码使用 [MIT](LICENSE)。第三方代码与格式参考见 [THIRD_PARTY.md](THIRD_PARTY.md)。游戏、商标和游戏资源属于其权利人；本项目为非官方工具。
+
+## 致谢
+
+感谢以下开源项目及其维护者，让这个工具得以实现：
+
+- [0xDC00/scripts](https://github.com/0xDC00/scripts)，以及 Tom（tomrock645）：游戏文本钩子的调用点签名参考与衍生代码。
+- [FPACker](https://github.com/coinkillerl/FPACker)、[Ingert](https://github.com/Aureole-Suite/Ingert)：资源容器与脚本格式参考。
+- [sora2looseload](https://github.com/lmaple0/sora2looseload)：可选的游戏字库加载器；DLL 不随本工具分发。
+- [Frida](https://github.com/frida/frida)：运行时原生文本处理；[Qt for Python / PySide6](https://doc.qt.io/qtforpython-6/)：设置与状态界面。
+- [pygame-ce / SDL](https://github.com/pygame-community/pygame-ce)：手柄输入；[pefile](https://github.com/erocarrera/pefile)：PE 文件读取；[python-lz4 / LZ4](https://github.com/python-lz4/python-lz4)：字库纹理压缩。
+
+依赖按各自许可证提供；引用代码的声明保留在 [THIRD_PARTY.md](THIRD_PARTY.md)。

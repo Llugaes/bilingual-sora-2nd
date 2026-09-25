@@ -32,6 +32,8 @@ from PySide6.QtWidgets import (
     QWidget,
     QTabWidget,
     QSlider,
+    QInputDialog,
+    QDialog,
 )
 
 from sora_bilingual.platform.inputs import vk_for_key, InputManager
@@ -42,7 +44,12 @@ from sora_bilingual.config.native_config import (
     ACTIONS,
     replace_file,
 )
-from sora_bilingual.config.locales import LOCALES, DEFAULT_PRIMARY, DEFAULT_SECONDARY
+from sora_bilingual.config.locales import (
+    LOCALES,
+    DEFAULT_PRIMARY,
+    DEFAULT_SECONDARY,
+    language_defaults,
+)
 
 
 from sora_bilingual.paths import ROOT
@@ -79,6 +86,33 @@ def read_control(path: Path = CONTROL_PATH) -> dict[str, Any]:
         hotkey.update(disk["hotkey"])
     control["hotkey"] = hotkey
     return control
+
+
+def configure_first_run(path: Path = CONTROL_PATH) -> bool:
+    """Confirm the source before connecting; cancelling leaves the install untouched."""
+    existing = _read_json_object(path)
+    if any(key in existing for key in ("game_language", "primary", "secondary")):
+        read_config(path)  # Validate without rewriting an existing user's choices.
+        return True
+    choices = [
+        f"{locale.name} → {LOCALES[locale.default_secondary].name}" for locale in LOCALES.values()
+    ]
+    dialog = QInputDialog()
+    dialog.setWindowTitle("初始语言 / Language setup / 初期言語設定")
+    dialog.setLabelText(
+        "请选择游戏当前的文本语言 → 默认副语言。之后可自由修改。\n"
+        "Choose the game's text language → default secondary. Both remain editable.\n"
+        "ゲームの現在の表示言語 → 副言語の初期値。後から自由に変更できます。"
+    )
+    dialog.setComboBoxItems(choices)
+    dialog.setComboBoxEditable(False)
+    dialog.setOkButtonText("继续 / Continue / 続ける")
+    dialog.setCancelButtonText("退出 / Exit / 終了")
+    if dialog.exec() != QDialog.DialogCode.Accepted:
+        return False
+    code = tuple(LOCALES)[choices.index(dialog.textValue())]
+    update_control(language_defaults(code), path)
+    return True
 
 
 def valid_keyboard_keys(keys: list[str] | tuple[str, ...]) -> list[str] | None:
@@ -677,6 +711,8 @@ def main() -> int:
     args = parser.parse_args()
     app = QApplication.instance() or QApplication([])
     load_cjk_font(app)
+    if not configure_first_run(args.control):
+        return 0
     window = NativeSettingsWindow(args.control, args.status)
     window.show()
     if args.connect:
