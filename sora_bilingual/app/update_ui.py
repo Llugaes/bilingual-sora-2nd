@@ -113,5 +113,6 @@ class UpdatePage(QWidget):
         s = self.service
         self.check.setEnabled(not s.busy)
         self.download.setText("下载安装程序" if s.download_is_installer else "下载完整包（含 EXE）")
+        self.download.setVisible(s.failed)
         self.recovery.setVisible(s.failed)
         self.state.setText(s.message + (f" {s.progress:.0%}" if s.progress is not None else ""))

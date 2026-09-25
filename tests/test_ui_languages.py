@@ -37,8 +37,13 @@ class UiLanguageTests(unittest.TestCase):
         app = QApplication.instance() or QApplication([])
         page = UpdatePage()
         try:
+            page.service.message = "当前已是最新稳定版"
+            page.refresh(False)
+            self.assertTrue(page.download.isHidden())
+            self.assertTrue(page.recovery.isHidden())
             page.service.failed = True
             page.refresh(False)
+            self.assertFalse(page.download.isHidden())
             self.assertFalse(page.recovery.isHidden())
             self.assertTrue(page.download.isEnabled())
             with patch("sora_bilingual.app.update_ui.QDesktopServices.openUrl") as open_url:
@@ -47,6 +52,10 @@ class UiLanguageTests(unittest.TestCase):
             for language in ("en", "ja"):
                 set_language(language)
                 self.assertNotEqual(tr("下载完整包（含 EXE）"), "下载完整包（含 EXE）")
+            page.service.failed = False
+            page.refresh(False)
+            self.assertTrue(page.download.isHidden())
+            self.assertTrue(page.recovery.isHidden())
         finally:
             page.close()
             page.deleteLater()
