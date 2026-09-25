@@ -71,7 +71,7 @@ class InstallationTests(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):cls.temp.cleanup()
     def setUp(self):
-        self.case=tempfile.TemporaryDirectory();self.root=Path(self.case.name)
+        self.case=tempfile.TemporaryDirectory();self.root=Path(self.case.name).resolve()
         with zipfile.ZipFile(self.old) as archive:archive.extractall(self.root)
         (self.root/'generated').mkdir();(self.root/'generated/native-control.json').write_text('{"primary":"en"}')
     def tearDown(self):self.case.cleanup()
