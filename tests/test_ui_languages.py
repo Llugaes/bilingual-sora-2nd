@@ -10,6 +10,7 @@ from PySide6.QtWidgets import QApplication
 from sora_bilingual.app.native_overlay import OverlayController
 from sora_bilingual.app.i18n import MESSAGES, set_language, tr
 from sora_bilingual.config.native_config import read_config, write_config
+from sora_bilingual.app.update_ui import UpdatePage
 
 
 class UiLanguageTests(unittest.TestCase):
@@ -31,6 +32,25 @@ class UiLanguageTests(unittest.TestCase):
         for source, translations in MESSAGES.items():
             self.assertEqual(set(translations), {"en", "ja"}, source)
             self.assertTrue(all(translations.values()), source)
+
+    def test_update_failure_exposes_localized_download_action(self):
+        app = QApplication.instance() or QApplication([])
+        page = UpdatePage()
+        try:
+            page.service.failed = True
+            page.refresh(False)
+            self.assertFalse(page.recovery.isHidden())
+            self.assertTrue(page.download.isEnabled())
+            with patch("sora_bilingual.app.update_ui.QDesktopServices.openUrl") as open_url:
+                page.download.click()
+                self.assertEqual(open_url.call_args.args[0].toString(), page.service.download_url)
+            for language in ("en", "ja"):
+                set_language(language)
+                self.assertNotEqual(tr("下载完整包（含 EXE）"), "下载完整包（含 EXE）")
+        finally:
+            page.close()
+            page.deleteLater()
+            app.processEvents()
 
     def test_live_language_switch_preserves_game_pair_bindings_and_modes(self):
         app = QApplication.instance() or QApplication([])

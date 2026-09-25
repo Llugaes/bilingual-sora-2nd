@@ -105,6 +105,63 @@ class GitHubTests(unittest.TestCase):
                 "x",
             )
 
+    def test_retry_reuses_verified_download_but_rejects_corrupt_cache(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "update.zip"
+            path.write_bytes(b"valid")
+            client = GitHubClient(
+                "a/b", Opener(error=AssertionError("must reuse verified download"))
+            )
+            descriptor = {"size": 5, "sha256": sha256(b"valid")}
+            asset = {"browser_download_url": "https://github.com/a/b/releases/download/v1/x"}
+            client.download(asset, descriptor, path)
+            path.write_bytes(b"wrong")
+            client.opener = Opener(b"valid")
+            client.download(asset, descriptor, path)
+            self.assertEqual(path.read_bytes(), b"valid")
+            self.assertEqual(len(client.opener.requests), 1)
+
+    def test_component_metadata_is_validated_against_release_assets(self):
+        from tests.test_portable_updates import payload
+        from sora_bilingual.updates.github_updates import ASSET_MANIFEST
+
+        with tempfile.TemporaryDirectory() as directory:
+            package, meta = build(
+                "1.0.0", "a/b", directory, extra=payload("a" * 16), runtime_id="a" * 16
+            )
+            release = {
+                "tag_name": "v1.0.0",
+                "assets": [
+                    {
+                        "name": p.name,
+                        "state": "uploaded",
+                        "size": p.stat().st_size,
+                        "browser_download_url": f"https://github.com/a/b/releases/download/v1.0.0/{p.name}",
+                    }
+                    for p in package.parent.iterdir()
+                ],
+            }
+            client = GitHubClient("a/b", Opener(json.dumps(meta).encode()))
+            self.assertEqual(client.metadata(release)[0], meta)
+            variants = []
+            for field, value in [("asset", "../escape.zip"), ("size", -1), ("sha256", "bad")]:
+                changed = json.loads(json.dumps(meta))
+                changed["components"]["application"][field] = value
+                variants.append(changed)
+            changed = json.loads(json.dumps(meta))
+            changed["components"]["schema"] = 999
+            variants.append(changed)
+            for changed in variants:
+                client.opener = Opener(json.dumps(changed).encode())
+                with self.assertRaises(ValueError):
+                    client.metadata(release)
+            client.opener = Opener(json.dumps(meta).encode())
+            release["assets"] = [
+                a for a in release["assets"] if a["name"] != meta["components"]["runtime"]["asset"]
+            ]
+            with self.assertRaises(ValueError):
+                client.metadata(release)
+
 
 class InstallationTests(unittest.TestCase):
     def test_release_assets_have_one_unambiguous_package(self):
@@ -306,6 +363,18 @@ class InstallationTests(unittest.TestCase):
         service.set_policy("notify")
         service._check()
         self.assertIn("发现", service.message)
+
+    def test_failure_offers_manual_download_instead_of_raw_exception(self):
+        service = UpdateService(self.root)
+        service.pending = ({}, self.new)
+        with patch.object(service, "_check", side_effect=ValueError("更新包文件过多")):
+            service._run(True)
+        self.assertNotIn("文件过多", service.message)
+        self.assertIn("重新安装", service.message)
+        self.assertTrue(service.failed)
+        self.assertIn("https://github.com/test/mod/releases", service.download_url)
+        self.assertIsNone(service.pending)
+        self.assertIn("文件过多", (service.directory / "last-error.json").read_text("utf-8"))
 
 
 if __name__ == "__main__":

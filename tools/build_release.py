@@ -78,6 +78,26 @@ def build(version, repository, output, root=ROOT, *, extra=None, runtime_id=None
         "sha256": sha(package.read_bytes()),
         "size": package.stat().st_size,
     }
+    if runtime_id:
+        prefix = f"runtime/{runtime_id}/"
+        components = {"schema": 1, "runtime_id": runtime_id}
+        for kind, filename in [
+            ("application", f"{ASSET_PREFIX}-{version}-app-windows-x64.zip"),
+            ("runtime", f"{ASSET_PREFIX}-runtime-{runtime_id}-windows-x64.zip"),
+        ]:
+            part = output / filename
+            with zipfile.ZipFile(part, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
+                for key, data in sorted(contents.items()):
+                    if key.startswith(prefix) == (kind == "runtime"):
+                        archive.writestr(key, data)
+                if kind == "application":
+                    archive.writestr("installed-manifest.json", json.dumps(manifest, indent=2))
+            components[kind] = {
+                "asset": filename,
+                "size": part.stat().st_size,
+                "sha256": sha(part.read_bytes()),
+            }
+        meta["components"] = components
     (output / ASSET_MANIFEST).write_text(json.dumps(meta, indent=2), encoding="utf-8")
     return package, meta
 

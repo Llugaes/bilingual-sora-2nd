@@ -39,6 +39,18 @@ class UpdatePage(QWidget):
         self.state = QLabel()
         self.state.setWordWrap(True)
         layout.addWidget(self.state)
+        self.download = QPushButton("下载完整包（含 EXE）")
+        self.download.clicked.connect(
+            lambda: QDesktopServices.openUrl(QUrl(self.service.download_url))
+        )
+        layout.addWidget(self.download)
+        self.recovery = QLabel(
+            "安装版请运行下载的 Setup；便携版请完整解压后运行 EXE。"
+            "迁移到新目录前先退出旧工具，复制 generated/native-control.json 和 generated/overlay-window.ini；"
+            "保留原目录，不复制旧程序或更新缓存。"
+        )
+        self.recovery.setWordWrap(True)
+        layout.addWidget(self.recovery)
         note = QLabel(
             "每 6 小时检查一次。游戏连接期间先下载，连接结束后安装。\n设置、语言资源和缓存保留；安装完成后界面自动恢复。"
         )
@@ -100,4 +112,6 @@ class UpdatePage(QWidget):
             self.service.tick()
         s = self.service
         self.check.setEnabled(not s.busy)
+        self.download.setText("下载安装程序" if s.download_is_installer else "下载完整包（含 EXE）")
+        self.recovery.setVisible(s.failed)
         self.state.setText(s.message + (f" {s.progress:.0%}" if s.progress is not None else ""))

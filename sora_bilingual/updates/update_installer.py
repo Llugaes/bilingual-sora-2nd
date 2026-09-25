@@ -34,6 +34,12 @@ class UpdateBusy(RuntimeError):
     pass
 
 
+class RuntimeRequired(RuntimeError):
+    """A component update cannot reuse the installed runtime."""
+
+    pass
+
+
 def digest(data):
     return hashlib.sha256(data).hexdigest()
 
@@ -218,7 +224,7 @@ def validate_manifest(manifest):
     return manifest
 
 
-def package_contents(package, expected):
+def archive_contents(package, expected):
     from sora_bilingual.updates.github_updates import MAX_PACKAGE
 
     if Path(package).stat().st_size > MAX_PACKAGE:
@@ -241,28 +247,64 @@ def package_contents(package, expected):
                 raise ValueError("更新包不允许链接或特殊目录")
             if e.filename != "installed-manifest.json" and not relative_file(e.filename):
                 raise ValueError("更新包含受保护路径")
-        manifest = validate_manifest(json.loads(archive.read("installed-manifest.json")))
-        if (
-            manifest["version"] != expected["version"]
-            or manifest.get("repository") != expected["repository"]
-        ):
-            raise ValueError("更新包版本或仓库不匹配")
-        if set(names) != set(manifest["files"]) | {"installed-manifest.json"}:
-            raise ValueError("更新包文件与清单不一致")
-        contents = {name: archive.read(name) for name in manifest["files"]}
-        if any(digest(data) != manifest["files"][name] for name, data in contents.items()):
-            raise ValueError("更新文件摘要不匹配")
-        if (
-            manifest.get("runtime_id")
-            and contents["runtime/current.txt"].decode().strip() != manifest["runtime_id"]
-        ):
-            raise ValueError("运行环境选择器不匹配")
-        distribution = json.loads(contents["distribution.json"])
-        if distribution.get("version") != manifest["version"] or distribution.get(
-            "repository"
-        ) != manifest.get("repository"):
-            raise ValueError("安装版本信息不一致")
-        return manifest, contents
+        return {name: archive.read(name) for name in names}
+
+
+def package_contents(package, expected, *, root=None, runtime_package=None, component_update=False):
+    components = expected.get("components") if component_update else None
+    if component_update and not components:
+        raise ValueError("缺少组件更新清单")
+    component = components["application"] if components else expected
+    contents = archive_contents(package, component)
+    manifest_bytes = contents.pop("installed-manifest.json")
+    manifest = validate_manifest(json.loads(manifest_bytes))
+    if components:
+        runtime_id = components["runtime_id"]
+        if manifest.get("runtime_id") != runtime_id:
+            raise ValueError("组件运行环境不匹配")
+        prefix = f"runtime/{runtime_id}/"
+        runtime_files = {n for n in manifest["files"] if n.startswith(prefix)}
+        if set(contents) != set(manifest["files"]) - runtime_files:
+            raise ValueError("程序组件文件与清单不一致")
+        if runtime_package:
+            runtime = archive_contents(runtime_package, components["runtime"])
+            if set(runtime) != runtime_files:
+                raise ValueError("依赖组件文件与清单不一致")
+        else:
+            runtime = {}
+            for name in runtime_files:
+                if root is None:
+                    raise RuntimeRequired("需要下载运行依赖")
+                path = target(root, name)
+                if not path.is_file():
+                    raise RuntimeRequired("需要下载运行依赖")
+                data = path.read_bytes()
+                if digest(data) != manifest["files"][name]:
+                    raise RuntimeRequired("需要下载运行依赖")
+                runtime[name] = data
+        contents.update(runtime)
+    if (
+        manifest["version"] != expected["version"]
+        or manifest.get("repository") != expected["repository"]
+    ):
+        raise ValueError("更新包版本或仓库不匹配")
+    if set(contents) != set(manifest["files"]):
+        raise ValueError("更新包文件与清单不一致")
+    if sum(map(len, contents.values())) > MAX_EXPANDED:
+        raise ValueError("更新包展开过大")
+    if any(digest(data) != manifest["files"][name] for name, data in contents.items()):
+        raise ValueError("更新文件摘要不匹配")
+    if (
+        manifest.get("runtime_id")
+        and contents["runtime/current.txt"].decode().strip() != manifest["runtime_id"]
+    ):
+        raise ValueError("运行环境选择器不匹配")
+    distribution = json.loads(contents["distribution.json"])
+    if distribution.get("version") != manifest["version"] or distribution.get(
+        "repository"
+    ) != manifest.get("repository"):
+        raise ValueError("安装版本信息不一致")
+    return manifest, contents
 
 
 def _journal(root):
@@ -320,7 +362,7 @@ def recover(root):
         return _recover_locked(root)
 
 
-def install(root, package, expected):
+def install(root, package, expected, *, runtime_package=None, component_update=False):
     root = Path(root).resolve()
     # Reserve the backend BEFORE decompressing/hashing the bundled runtime.
     # While a game is connected this returns immediately without reading the ZIP.
@@ -329,15 +371,27 @@ def install(root, package, expected):
         marker = root / "generated/update-installing.json"
         write_json(marker, {"version": expected.get("version"), "phase": "validating"})
         try:
-            return _install_locked(root, package, expected)
+            return _install_locked(
+                root,
+                package,
+                expected,
+                runtime_package=runtime_package,
+                component_update=component_update,
+            )
         finally:
             if not _journal(root).exists():
                 marker.unlink(missing_ok=True)
 
 
-def _install_locked(root, package, expected):
+def _install_locked(root, package, expected, *, runtime_package=None, component_update=False):
     root = Path(root).resolve()
-    manifest, contents = package_contents(package, expected)
+    manifest, contents = package_contents(
+        package,
+        expected,
+        root=root,
+        runtime_package=runtime_package,
+        component_update=component_update,
+    )
     receipt = root / "installed-manifest.json"
     if not receipt.is_file():
         raise ValueError("当前为开发目录，更新不会覆盖本地源码；发行包安装后可自动更新")

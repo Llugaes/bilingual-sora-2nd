@@ -1,12 +1,24 @@
-# Bilingual Sora 2nd
+# Bilingual Sora 2nd — 空の軌跡 the 2nd 二言語字幕 Mod
 
 [简体中文](README.md) · [English](README.en.md) · **日本語**
+
+**Trails in the Sky the 2nd bilingual subtitles mod · 空之轨迹 the 2nd 双语字幕 Mod**
+
+会話字幕やメニューで日英・日中などの対訳を表示。押している間だけの言語切り替え、トグル切り替え、ルビ形式の二言語注釈で語学学習をサポートします。
 
 PC 版『空の軌跡 the 2nd』のゲーム内テキストを二言語で表示する Mod です。主言語と副言語は、日本語・英語・簡体字中国語・繁体字中国語・韓国語・フランス語・ドイツ語・スペイン語から自由に組み合わせられます。日本語でプレイする場合、初回設定では日本語の本文を保ち、英語を小さな注釈として添えます。原文との比較や語学学習に利用できます。
 
 現在の対応バージョンは Steam build **25386012**、EXE **1.03.2** です。フックの適用前にゲームのバージョンを検証し、未対応版へ強制適用しません。元の PAC / EXE ファイルは書き換えません。開発初期のプロジェクトであり、オフライン回帰テストと一部の実機確認を行っていますが、ゲーム全体の網羅性、各言語のレイアウト、コントローラーの互換性には引き続き実機での確認が必要です。
 
 ## インストール
+
+**推奨：インストーラー版。** [Releases](https://github.com/Llugaes/bilingual-sora-2nd/releases/latest) の `bilingual-sora-2nd-VERSION-windows-x64-setup.exe` を実行してください。日本語・英語・中国語のウィザードで管理者権限なしに現在のユーザー用フォルダーへインストールし、スタートメニューと任意のデスクトップショートカットを作成します。依存関係は同梱されており、オフラインでインストールできます。Windows の「インストールされているアプリ」から削除しても設定を保持します。再インストール・削除の前にトレイから終了してゲームとの接続を終了してください。ゲームは強制終了しません。
+
+**ポータブル版：** 自分でフォルダーを管理する場合は以下の ZIP 手順を利用してください。
+
+**0.3.4** 以降は依存関係が同じなら小さなプログラム部分だけを取得します。実行環境は必要な場合だけ取得し、途中のバージョンは飛ばせます。0.3.0–0.3.3 からは一度だけ完全版による自動更新が必要です。`app`・`runtime` ZIP は更新用です。手動インストールではインストーラーか完全版 ZIP を選択してください。
+
+**0.2.2 の「更新包文件过多」（ファイル数が多すぎます）は旧更新器の制限です。** 再試行せず、インストーラーと以下の設定移行手順を利用してください。新更新器は失敗時にダウンロード入口を表示し、詳細はログに記録します。
 
 1. [Releases](https://github.com/Llugaes/bilingual-sora-2nd/releases/latest) から **bilingual-sora-2nd-VERSION-windows-x64.zip** をダウンロードし、書き込み可能なフォルダーに全体を展開します。
 2. **BilingualSora2nd.exe** をダブルクリックします。Python と必要なライブラリは同梱済みです。Python のインストール、CMD の実行、初回の依存ライブラリ取得は不要です。Windows 10/11 x64 対応。
@@ -89,7 +101,7 @@ py -3.14 -m venv .venv
 公開時は **distribution.json** と **pyproject.toml** のバージョンを揃え、対応する **vX.Y.Z** タグを push します。GitHub Actions が Windows 上で検証し、明示したファイル一覧から ZIP を生成します。すべての配布ファイルをドラフトへアップロードした後、まとめて公開します。手動ビルド：
 
 ```powershell
-.venv\Scripts\python.exe -m tools.build_portable --version 0.3.3 --repository Llugaes/bilingual-sora-2nd
+.venv\Scripts\python.exe -m tools.build_portable --version 0.3.4 --repository Llugaes/bilingual-sora-2nd
 ```
 
 リポジトリと配布パッケージには、ゲームリソース、生成フォント、完全なテキスト索引、ログ、スクリーンショット、ユーザー設定を含めません。
@@ -107,5 +119,6 @@ py -3.14 -m venv .venv
 - [sora2looseload](https://github.com/lmaple0/sora2looseload)：任意導入のゲームフォントローダー。DLL は同梱していません。
 - [Frida](https://github.com/frida/frida)：実行時のネイティブテキスト処理。[Qt for Python / PySide6](https://doc.qt.io/qtforpython-6/)：設定と状態表示の UI。
 - [pygame-ce / SDL](https://github.com/pygame-community/pygame-ce)：コントローラー入力。[pefile](https://github.com/erocarrera/pefile)：PE ファイルの読み取り。[python-lz4 / LZ4](https://github.com/python-lz4/python-lz4)：フォントテクスチャの圧縮。
+- [Inno Setup](https://jrsoftware.org/) と[中国語訳](https://github.com/kira-96/Inno-Setup-Chinese-Simplified-Translation)：Windows インストーラー。
 
 各依存ライブラリにはそれぞれのライセンスが適用されます。派生コードの表記は [THIRD_PARTY.md](THIRD_PARTY.md) に保持しています。

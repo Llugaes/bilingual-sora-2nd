@@ -16,7 +16,7 @@ from PySide6.QtNetwork import QLocalSocket
 
 
 def staged_update(package, output):
-    """Create a local next-version fixture, keeping the real DLLs byte-identical."""
+    """Create a program-only update; the installed real DLLs must be reused."""
     with zipfile.ZipFile(package) as original:
         manifest = json.loads(original.read("installed-manifest.json"))
         parts = list(map(int, manifest["version"].split(".")))
@@ -39,8 +39,11 @@ def staged_update(package, output):
         hot["groups"]["ui"] = hashlib.sha256(version.encode()).hexdigest()
         hot["version"] = hashlib.sha256(json.dumps(hot["groups"]).encode()).hexdigest()[:16]
         replacements["installed-manifest.json"] = json.dumps(manifest).encode()
+        runtime_id = manifest["runtime_id"]
         with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED, compresslevel=1) as target:
             for entry in original.infolist():
+                if entry.filename.startswith(f"runtime/{runtime_id}/"):
+                    continue
                 target.writestr(
                     entry.filename, replacements.get(entry.filename, original.read(entry))
                 )
@@ -49,6 +52,14 @@ def staged_update(package, output):
         "repository": manifest["repository"],
         "size": output.stat().st_size,
         "sha256": hashlib.sha256(output.read_bytes()).hexdigest(),
+        "components": {
+            "schema": 1,
+            "runtime_id": runtime_id,
+            "application": {
+                "size": output.stat().st_size,
+                "sha256": hashlib.sha256(output.read_bytes()).hexdigest(),
+            },
+        },
     }
 
 
@@ -185,7 +196,7 @@ print(sys.version)
                     "utf8",
                     "-c",
                     "import json,sys; from sora_bilingual.updates.update_installer import install; "
-                    "print(install(sys.argv[1], sys.argv[2], json.load(open(sys.argv[3]))))",
+                    "print(install(sys.argv[1], sys.argv[2], json.load(open(sys.argv[3])), component_update=True))",
                     str(root),
                     str(fixture),
                     str(metadata_path),
@@ -229,6 +240,7 @@ print(sys.version)
                         "single_instance": True,
                         "interrupted_update_recovered": True,
                         "live_install_with_loaded_dlls": True,
+                        "program_only_update_bytes": fixture.stat().st_size,
                         "game_attached": False,
                     }
                 ),

@@ -1,12 +1,20 @@
-# Bilingual Sora 2nd
+# Bilingual Sora 2nd — 空之轨迹 the 2nd 双语字幕 Mod
 
 **简体中文** · [English](README.en.md) · [日本語](README.ja.md)
+
+**Trails in the Sky the 2nd bilingual subtitles & text mod · 空の軌跡 the 2nd 二言語字幕・テキスト表示 Mod**
+
+提供中日对照、英日对照及其他语言组合，覆盖对白字幕与菜单文本；支持按住切换语言、单击切换和双语小字注解，帮助在游玩时学习语言。
 
 《空之轨迹 the 2nd》PC 原生双语文本 Mod。主、副语言独立选择：简体中文、繁体中文、日文、英文、韩文、法文、德文、西班牙文。使用中文游玩时，首次设置默认保留中文正文，配上日文小字注解，方便对照学习。
 
 目前支持 Steam build `25386012` / EXE `1.03.2`。工具会核验游戏版本；其他版本不强行安装钩子。原始 PAC 和 EXE 不改写。项目处于早期阶段：已有离线回归和部分实机验证，完整游戏覆盖、所有语言的排版与手柄兼容性仍需实机反馈。
 
 ## 安装和启动
+
+**推荐安装版：** 下载 [最新版本](https://github.com/Llugaes/bilingual-sora-2nd/releases/latest) 的 `bilingual-sora-2nd-版本-windows-x64-setup.exe`，运行中／英／日文安装向导。默认安装到当前用户目录，无需管理员权限，创建开始菜单入口，可选桌面快捷方式。所有依赖内置，支持离线安装；Windows“已安装的应用”中可卸载，配置保留。覆盖安装或卸载前，请从托盘退出工具并结束游戏连接；安装器不会强行关闭游戏。
+
+**便携版：** 希望自行管理目录时，使用下面的 ZIP 方式。
 
 1. 从 [Releases](https://github.com/Llugaes/bilingual-sora-2nd/releases/latest) 下载 **bilingual-sora-2nd-版本-windows-x64.zip**，完整解压到有写权限的独立文件夹。
 2. 双击 **BilingualSora2nd.exe**。包内已带 Python 和全部运行依赖，无需安装 Python、运行 CMD 或首次联网安装依赖。适用于 Windows 10/11 x64。
@@ -15,6 +23,10 @@
 “版本更新”页可以创建桌面快捷方式、打开日志与配置文件夹、查看使用说明。再次双击 EXE 会打开已有界面，不会重复启动后台。界面支持中文、英文、日文。
 
 Release 中只需下载 ZIP；`bilingual-sora-2nd-update.json` 给自动更新使用，GitHub 的 Source code 附件给开发者使用。请保留解压后的完整目录，不要单独移动 EXE。
+
+请选不带 `app` 或 `runtime` 的完整 ZIP。这两个组件包供更新器使用：从 **0.3.4** 起，依赖未变时只下载较小的程序包，依赖变化时才下载运行环境。程序包包含界面、Python 逻辑与原生接入脚本，无需按历史版本逐级升级。0.3.0–0.3.3 首次升级仍下载完整包，升级后启用组件更新。
+
+**0.2.2 提示“更新未完成：更新包文件过多”怎么办？** 这是旧更新器的文件数量限制，无法直接安装内置依赖的新版本。请按下方 0.2.x 迁移步骤下载完整包；不需要反复重试。新更新器失败时提供“下载完整包（含 EXE）”与迁移说明，详细原因写入日志，设置不会被主动清空。
 
 从 **0.2.x** 升级：旧版更新器无法安装内置运行环境，需要一次手动迁移。退出旧工具，将新包解压到新目录，复制旧目录的 `generated/native-control.json` 和 `generated/overlay-window.ini`（不要复制 `.venv/`、`generated/updates/` 或旧热加载清单），再运行新 EXE。之后便携版的程序和依赖都支持自动更新。开发目录继续保留，不覆盖其源码。
 
@@ -89,7 +101,7 @@ py -3.14 -m venv .venv
 维护者同步修改 distribution.json 和 pyproject.toml 版本后推送 `vX.Y.Z` 标签。GitHub Actions 在 Windows 上验证测试，从明确的文件白名单构建 ZIP 和更新清单，上传到草稿 Release 后一起公开；后续客户端自动发现。手动构建：
 
 ```powershell
-.venv\Scripts\python.exe -m tools.build_portable --version 0.3.3 --repository Llugaes/bilingual-sora-2nd
+.venv\Scripts\python.exe -m tools.build_portable --version 0.3.4 --repository Llugaes/bilingual-sora-2nd
 ```
 
 发布包和仓库不包含游戏资源、生成字库、完整文本索引、日志、截图或用户配置。报告问题时请附工具版本、游戏版本、语言组合与精简错误信息，避免上传完整游戏数据。
@@ -107,5 +119,6 @@ py -3.14 -m venv .venv
 - [sora2looseload](https://github.com/lmaple0/sora2looseload)：可选的游戏字库加载器；DLL 不随本工具分发。
 - [Frida](https://github.com/frida/frida)：运行时原生文本处理；[Qt for Python / PySide6](https://doc.qt.io/qtforpython-6/)：设置与状态界面。
 - [pygame-ce / SDL](https://github.com/pygame-community/pygame-ce)：手柄输入；[pefile](https://github.com/erocarrera/pefile)：PE 文件读取；[python-lz4 / LZ4](https://github.com/python-lz4/python-lz4)：字库纹理压缩。
+- [Inno Setup](https://jrsoftware.org/) 及 [简体中文翻译](https://github.com/kira-96/Inno-Setup-Chinese-Simplified-Translation)：Windows 安装向导。
 
 依赖按各自许可证提供；引用代码的声明保留在 [THIRD_PARTY.md](THIRD_PARTY.md)。

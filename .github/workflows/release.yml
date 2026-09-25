@@ -49,13 +49,20 @@ jobs:
           $metadata = Get-Content dist/bilingual-sora-2nd-update.json | ConvertFrom-Json
           python -X utf8 tests/check_portable.py "dist/$($metadata.asset)"
           if ($LASTEXITCODE -ne 0) { throw 'Portable smoke test failed' }
+      - name: Build and verify offline installer
+        shell: pwsh
+        run: |
+          python -m tools.build_installer dist/bilingual-sora-2nd-update.json
+          if ($LASTEXITCODE -ne 0) { throw 'Installer build failed' }
+          python -X utf8 tests/check_installer.py dist/bilingual-sora-2nd-update.json
+          if ($LASTEXITCODE -ne 0) { throw 'Installer verification failed' }
       - name: Publish complete release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $metadata = Get-Content dist/bilingual-sora-2nd-update.json | ConvertFrom-Json
-          gh release create $env:GITHUB_REF_NAME "dist/$($metadata.asset)" "dist/bilingual-sora-2nd-update.json" --draft --verify-tag --title "Bilingual Sora 2nd $env:GITHUB_REF_NAME" --notes-file RELEASE_NOTES.md
+          gh release create $env:GITHUB_REF_NAME "dist/$($metadata.installer.asset)" "dist/$($metadata.asset)" "dist/$($metadata.components.application.asset)" "dist/$($metadata.components.runtime.asset)" "dist/bilingual-sora-2nd-update.json" --draft --verify-tag --title "Bilingual Sora 2nd $env:GITHUB_REF_NAME" --notes-file RELEASE_NOTES.md
           if ($LASTEXITCODE -ne 0) { throw 'Draft/upload failed; no partial release is published' }
           gh release edit $env:GITHUB_REF_NAME --draft=false --latest
           if ($LASTEXITCODE -ne 0) { throw 'Publish failed' }

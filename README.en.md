@@ -1,12 +1,24 @@
-# Bilingual Sora 2nd
+# Bilingual Sora 2nd — Trails in the Sky the 2nd Bilingual Subtitles Mod
 
 [简体中文](README.md) · **English** · [日本語](README.ja.md)
+
+**空之轨迹 the 2nd 双语字幕 Mod · 空の軌跡 the 2nd 二言語字幕 Mod**
+
+Compare English/Japanese, Chinese/Japanese, or other language pairs in dialogue subtitles and menus. Hold or toggle a shortcut to switch languages, or use bilingual ruby-style annotations for language learning.
 
 A native bilingual text mod for the PC version of **Trails in the Sky the 2nd**. Choose your primary and secondary languages independently from English, Japanese, Simplified Chinese, Traditional Chinese, Korean, French, German, and Spanish. For an English-language game, first-time setup keeps English as the main text and adds Japanese annotations for comparison and language learning.
 
 Currently supports Steam build **25386012**, executable **1.03.2**. The tool checks the game build before installing hooks; it does not force hooks into unsupported versions or rewrite the original PAC/EXE files. This is an early project with offline regression tests and partial in-game validation. Full-game coverage, layout across all languages, and controller compatibility still need in-game feedback.
 
 ## Installation
+
+**Recommended installer:** Download `bilingual-sora-2nd-VERSION-windows-x64-setup.exe` from [Releases](https://github.com/Llugaes/bilingual-sora-2nd/releases/latest). The English/Japanese/Chinese wizard installs for the current user without administrator rights, adds a Start menu entry and an optional desktop shortcut, and bundles all dependencies for offline installation. Uninstall through Windows Installed apps; settings are retained. Exit the tool from its tray menu and end its game connection before reinstalling or uninstalling. Setup never force-closes the game.
+
+**Portable alternative:** Follow the ZIP steps below if you prefer managing the folder yourself.
+
+From **0.3.4**, automatic updates download the small application component when dependencies are unchanged, and fetch the runtime only when needed. Versions 0.3.0–0.3.3 download one complete upgrade first. Intermediate versions can be skipped. The `app` and `runtime` ZIPs are updater components; choose the installer or complete ZIP for manual installation.
+
+**0.2.2 reports “更新包文件过多” (too many files)?** Its old updater cannot install the bundled-runtime release. Use the installer and migrate your settings using the 0.2.x instructions below. The new updater provides a download action on failure, keeping technical diagnostics in logs.
 
 1. Download **bilingual-sora-2nd-VERSION-windows-x64.zip** from [Releases](https://github.com/Llugaes/bilingual-sora-2nd/releases/latest) and extract the entire ZIP into a writable folder.
 2. Double-click **BilingualSora2nd.exe**. Python and all runtime dependencies are included: no Python installation, CMD scripts, or first-run dependency downloads. Supports Windows 10/11 x64.
@@ -89,7 +101,7 @@ See the [architecture](https://github.com/Llugaes/bilingual-sora-2nd/blob/main/d
 For a release, maintainers update both **distribution.json** and **pyproject.toml**, then push a matching **vX.Y.Z** tag. GitHub Actions validates on Windows, builds from an explicit file allowlist, uploads all assets to a draft, then publishes them together. Manual build:
 
 ```powershell
-.venv\Scripts\python.exe -m tools.build_portable --version 0.3.3 --repository Llugaes/bilingual-sora-2nd
+.venv\Scripts\python.exe -m tools.build_portable --version 0.3.4 --repository Llugaes/bilingual-sora-2nd
 ```
 
 Neither the repository nor releases contain game resources, generated fonts, complete text indexes, logs, screenshots, or user settings.
@@ -107,5 +119,6 @@ Thanks to the projects and maintainers whose work makes this tool possible:
 - [sora2looseload](https://github.com/lmaple0/sora2looseload): the optional game-font loader; its DLL is not bundled.
 - [Frida](https://github.com/frida/frida): native runtime text handling; [Qt for Python / PySide6](https://doc.qt.io/qtforpython-6/): settings and status UI.
 - [pygame-ce / SDL](https://github.com/pygame-community/pygame-ce): controller input; [pefile](https://github.com/erocarrera/pefile): PE inspection; [python-lz4 / LZ4](https://github.com/python-lz4/python-lz4): font-texture compression.
+- [Inno Setup](https://jrsoftware.org/) and its [Chinese translation](https://github.com/kira-96/Inno-Setup-Chinese-Simplified-Translation): Windows installer.
 
 Dependencies retain their own licenses. Notices for adapted code are preserved in [THIRD_PARTY.md](THIRD_PARTY.md).

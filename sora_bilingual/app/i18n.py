@@ -218,6 +218,31 @@ MESSAGES.update(
             "en": "Requires the Windows portable release",
             "ja": "Windows ポータブル版が必要です",
         },
+        "下载完整包（含 EXE）": {
+            "en": "Download complete package (includes EXE)",
+            "ja": "完全版をダウンロード（EXE 同梱）",
+        },
+        "下载安装程序": {"en": "Download installer", "ja": "インストーラーをダウンロード"},
+        "自动更新未完成。请重试，或使用下方下载入口重新安装；原目录与配置请保留。详细原因见日志。": {
+            "en": "Automatic update could not finish. Retry, or use the download button below to reinstall. Keep your original folder and settings. Details are in the logs.",
+            "ja": "自動更新を完了できませんでした。再試行するか、下のダウンロードボタンから再インストールしてください。元のフォルダーと設定は保持してください。詳細はログに記録されています。",
+        },
+        "安装版请运行下载的 Setup；便携版请完整解压后运行 EXE。迁移到新目录前先退出旧工具，复制 generated/native-control.json 和 generated/overlay-window.ini；保留原目录，不复制旧程序或更新缓存。": {
+            "en": "Run Setup for the installer, or extract the complete portable ZIP and run its EXE. To move folders, exit the old tool and copy generated/native-control.json and generated/overlay-window.ini. Keep the original folder; do not copy old program files or update caches.",
+            "ja": "インストーラーは Setup を実行し、ポータブル版は全体を展開して EXE を実行してください。移行時は旧ツールを終了し、generated/native-control.json と generated/overlay-window.ini をコピーしてください。元フォルダーは保持し、旧プログラムや更新キャッシュはコピーしないでください。",
+        },
+        "解压完整包后运行 BilingualSora2nd.exe。迁移时先退出旧工具，将 generated/native-control.json 和 generated/overlay-window.ini 复制到新目录；不要复制旧程序或更新缓存。": {
+            "en": "Extract and run BilingualSora2nd.exe. To migrate, exit the old tool first, then copy generated/native-control.json and generated/overlay-window.ini to the new folder. Do not copy old program files or update caches.",
+            "ja": "展開後に BilingualSora2nd.exe を実行します。移行時は旧ツールを終了し、generated/native-control.json と generated/overlay-window.ini を新フォルダーにコピーしてください。旧プログラムや更新キャッシュはコピーしないでください。",
+        },
+        "正在下载程序更新…": {
+            "en": "Downloading application update…",
+            "ja": "プログラム更新をダウンロード中…",
+        },
+        "正在下载变更的运行依赖…": {
+            "en": "Downloading changed runtime dependencies…",
+            "ja": "変更された実行環境をダウンロード中…",
+        },
     }
 )
 

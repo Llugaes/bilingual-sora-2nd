@@ -169,10 +169,58 @@ class GitHubClient:
             raise ValueError("GitHub 与清单中的包大小不一致")
         if package.get("digest") and package["digest"] != "sha256:" + meta["sha256"]:
             raise ValueError("GitHub 与清单中的摘要不一致")
+        if "components" in meta:
+            components = meta["components"]
+            if (
+                not isinstance(components, dict)
+                or components.get("schema") != 1
+                or not re.fullmatch("[0-9a-f]{16}", str(components.get("runtime_id")))
+            ):
+                raise ValueError("不支持的组件更新格式")
+            runtime_id = components["runtime_id"]
+            for kind, expected_name in [
+                ("application", f"{ASSET_PREFIX}-{meta['version']}-app-windows-x64.zip"),
+                ("runtime", f"{ASSET_PREFIX}-runtime-{runtime_id}-windows-x64.zip"),
+            ]:
+                descriptor = components.get(kind)
+                if (
+                    not isinstance(descriptor, dict)
+                    or descriptor.get("asset") != expected_name
+                    or type(descriptor.get("size")) is not int
+                    or not 0 < descriptor["size"] <= MAX_PACKAGE
+                    or not re.fullmatch("[0-9a-f]{64}", str(descriptor.get("sha256")))
+                ):
+                    raise ValueError("组件更新清单无效")
+                self.component_asset(release, descriptor)
+        if "installer" in meta:
+            descriptor = meta["installer"]
+            if (
+                not isinstance(descriptor, dict)
+                or descriptor.get("asset")
+                != f"{ASSET_PREFIX}-{meta['version']}-windows-x64-setup.exe"
+                or type(descriptor.get("size")) is not int
+                or not 0 < descriptor["size"] <= MAX_PACKAGE
+                or not re.fullmatch("[0-9a-f]{64}", str(descriptor.get("sha256")))
+            ):
+                raise ValueError("安装程序清单无效")
+            self.component_asset(release, descriptor)
         return meta, package
+
+    def component_asset(self, release, descriptor):
+        asset = self._asset(release, descriptor["asset"])
+        if asset.get("size") != descriptor["size"] or (
+            asset.get("digest") and asset["digest"] != "sha256:" + descriptor["sha256"]
+        ):
+            raise ValueError("组件大小或摘要与 GitHub 不一致")
+        return asset
 
     def download(self, asset, meta, path, progress=lambda _: None):
         path = Path(path)
+        # A failed installation/retry must not redownload an already verified ZIP.
+        if path.is_file() and path.stat().st_size == meta["size"]:
+            if sha256(path.read_bytes()) == meta["sha256"]:
+                progress(1)
+                return
         temporary = path.with_suffix(path.suffix + ".part")
         digest = hashlib.sha256()
         size = 0

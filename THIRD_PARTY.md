@@ -73,3 +73,9 @@ upstream projects linked above. Users may modify or replace the dynamically
 loaded libraries and debug those changes; this project adds no restriction
 on those rights. Modifying installed files disables automatic overwrites so
 that such local changes are preserved.
+
+## Windows installer
+
+Setup is built with [Inno Setup 6.7.3](https://github.com/jrsoftware/issrc/releases/tag/is-6_7_3), Copyright Jordan Russell and Martijn Laan. The compiler is a build dependency. See its [license](https://github.com/jrsoftware/issrc/blob/is-6_7_3/license.txt).
+
+Chinese installer messages use [kira-96/Inno-Setup-Chinese-Simplified-Translation](https://github.com/kira-96/Inno-Setup-Chinese-Simplified-Translation) at commit `1ff90acc4ed4aee82b1cda43253243deee3daed4`, under MIT. Notices remain in `tools/installer-language/`; a license copy ships in `licenses/Inno-Chinese-Translation-MIT.txt`.

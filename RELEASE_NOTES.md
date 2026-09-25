@@ -1,28 +1,37 @@
-# Bilingual Sora 2nd v0.3.3
+# Bilingual Sora 2nd v0.3.4
 
 ## 简体中文
 
-- Windows ZIP 从 **146.9 MiB 缩减到约 98.9 MiB（约 33%）**。移除未使用的 Qt QML、开发工具以及 pygame 文档、示例和测试；保留运行依赖、手柄支持、图形回退及许可证。
-- GitHub 附件直接展示规范文件名，包含游戏名、版本、系统及架构；使用说明放在正文，不再遮住文件名。
-- 下载 **bilingual-sora-2nd-0.3.3-windows-x64.zip**，完整解压后双击 **BilingualSora2nd.exe**。无需另装 Python 或下载依赖。更新清单 JSON 无需手动下载。
-- 0.3.x 便携版可自动升级，保留设置。升级时旧运行环境仍保留用于恢复，因此已有安装目录不会立即缩小到全新解压的大小。
+- **推荐下载 `bilingual-sora-2nd-0.3.4-windows-x64-setup.exe`**：中／英／日文安装向导，当前用户安装，无需管理员权限；离线安装、开始菜单、可选桌面快捷方式、卸载均支持，配置保留。
+- **程序与依赖分离更新**：依赖未变时只下载约 0.2 MiB 程序包，依赖变更时才获取运行环境。逐文件校验、安装互斥、失败回滚与下载缓存复用继续有效。
+- 失败时提供恢复说明及安装器／完整包下载按钮，技术错误仅写日志。
+- **0.3.0–0.3.3** 先自动下载一次完整包升级，之后使用组件更新。**0.2.2 的“更新包文件过多”是旧更新器限制**：请手动安装，退出旧工具后将 `generated/native-control.json` 和 `generated/overlay-window.ini` 复制到新目录。不要复制旧程序、.venv 或更新缓存。
+- 完善多语言仓库描述、Topics 和三语 README 搜索入口。
 
 ## English
 
-- Windows ZIP reduced from **146.9 MiB to approximately 98.9 MiB (33%)**. Removes unused Qt QML/developer tools and pygame documentation, examples, and tests; retains runtime dependencies, controller support, graphics fallback, and licenses.
-- Release assets now show their actual game/version/platform/architecture filenames instead of descriptive labels.
-- Download **bilingual-sora-2nd-0.3.3-windows-x64.zip**, extract the entire archive, and run **BilingualSora2nd.exe**. No Python installation or dependency downloads. The JSON asset is only for the updater.
-- Portable 0.3.x installations upgrade automatically and keep settings. Previous runtimes remain available for recovery, so an existing installation does not immediately shrink to the size of a fresh extraction.
+- Recommended: **bilingual-sora-2nd-0.3.4-windows-x64-setup.exe**. Offline per-user setup without administrator rights; English/Japanese/Chinese wizard, Start menu entry, optional desktop shortcut and uninstall. Settings are retained.
+- Separate application/runtime updates: unchanged dependencies require only the roughly 0.2 MiB application package. Runtime updates are downloaded only when needed, with file verification, rollback and reusable downloads.
+- Update failures offer recovery instructions and installer/complete-package download. Technical diagnostics stay in logs.
+- **0.3.0–0.3.3:** one full automatic upgrade enables component updates. **0.2.2:** its file-count limit requires manual installation. Exit the old tool, then copy `generated/native-control.json` and `generated/overlay-window.ini`; do not copy old program files, .venv or update caches.
 
 ## 日本語
 
-- Windows ZIP を **146.9 MiB から約 98.9 MiB へ約 33% 削減**。未使用の Qt QML・開発ツールと pygame のドキュメント・サンプル・テストを除外。実行に必要な依存関係、コントローラー対応、描画フォールバック、ライセンスは保持しています。
-- GitHub 添付ファイルには、ゲーム名・バージョン・OS・アーキテクチャを含む実際のファイル名を表示します。
-- **bilingual-sora-2nd-0.3.3-windows-x64.zip** を全て展開し、**BilingualSora2nd.exe** を実行してください。Python のインストールや追加ダウンロードは不要です。JSON は自動更新用です。
-- 0.3.x のポータブル版は設定を保持して自動更新できます。復旧用に旧ランタイムを残すため、既存フォルダーの容量が直ちに新規展開時のサイズになるわけではありません。
+- **bilingual-sora-2nd-0.3.4-windows-x64-setup.exe** を推奨。管理者権限不要のオフラインインストール。日／英／中文ウィザード、スタートメニュー、任意のショートカット、設定を保持するアンインストールに対応。
+- 依存関係が同じ場合は約 0.2 MiB のプログラム部分だけを取得し、必要な場合だけ実行環境を取得します。ファイル検証・ロールバック・ダウンロード再利用に対応。
+- 更新失敗時は復旧手順とダウンロード入口を表示し、詳細はログに記録します。
+- **0.3.0–0.3.3** は一度の完全版自動更新が必要です。**0.2.2 の「更新包文件过多」は旧更新器の制限**です。手動インストール後、旧ツールを終了して上記の設定ファイルを移行してください。
 
----
+## Downloads
 
-Validation: 188 Python tests (resource-dependent skips) and 37 JavaScript tests; packaged EXE checks without Python on PATH, Unicode paths, icon/SVG loading, styles, TLS, SDL input initialization, interrupted-update recovery, live updates, hot reload, and single instance. No game launch or attachment was performed for this packaging change.
+| File | Purpose |
+|---|---|
+| `bilingual-sora-2nd-0.3.4-windows-x64-setup.exe` | Recommended offline installer |
+| `bilingual-sora-2nd-0.3.4-windows-x64.zip` | Complete portable alternative |
+| `bilingual-sora-2nd-0.3.4-app-windows-x64.zip` | Updater only: application |
+| `bilingual-sora-2nd-runtime-<id>-windows-x64.zip` | Updater only: dependencies |
+| `bilingual-sora-2nd-update.json` | Updater metadata |
 
-Supported game: Steam build **25386012**, EXE **1.03.2**. No game resources are distributed. See the [README](https://github.com/Llugaes/bilingual-sora-2nd#readme) for setup and migration from 0.2.x.
+Validation covers Python/JavaScript tests, program-only updates with real loaded DLLs, corruption and rollback, offline install/repair/uninstall, retained settings, and protection against installing over a running runtime. No game was launched.
+
+Supported game: Steam build **25386012**, EXE **1.03.2**. No game resources are distributed. See the [README](https://github.com/Llugaes/bilingual-sora-2nd#readme).
