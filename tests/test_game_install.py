@@ -15,7 +15,7 @@ class GameInstallTests(unittest.TestCase):
             exe.touch()
             with patch.object(install, "LOCATION", Path(tmp) / "location.json"):
                 install.remember_game(game)
-                self.assertEqual(install.find_game(), game)
+                self.assertTrue(install.find_game().samefile(game))
                 exe.unlink()
                 with patch("winreg.OpenKey", side_effect=OSError):
                     self.assertIsNone(install.find_game())

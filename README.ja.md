@@ -98,7 +98,7 @@ py -3.14 -m venv .venv
 公開時は **distribution.json** と **pyproject.toml** のバージョンを揃え、対応する **vX.Y.Z** タグを push します。GitHub Actions が Windows 上で検証し、明示したファイル一覧から ZIP を生成します。すべての配布ファイルをドラフトへアップロードした後、まとめて公開します。手動ビルド：
 
 ```powershell
-.venv\Scripts\python.exe -m tools.build_portable --version 0.3.8 --repository Llugaes/bilingual-sora-2nd
+.venv\Scripts\python.exe -m tools.build_portable --version 0.3.9 --repository Llugaes/bilingual-sora-2nd
 ```
 
 リポジトリと配布パッケージには、ゲームリソース、生成フォント、完全なテキスト索引、ログ、スクリーンショット、ユーザー設定を含めません。

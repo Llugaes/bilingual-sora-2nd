@@ -1,4 +1,4 @@
-# Bilingual Sora 2nd v0.3.8
+# Bilingual Sora 2nd v0.3.9
 
 ## 简体中文
 
@@ -32,4 +32,4 @@
 
 ## Downloads
 
-New users: `bilingual-sora-2nd-0.3.8-windows-x64-setup.exe` or `bilingual-sora-2nd-0.3.8-windows-x64.zip`. App/runtime ZIPs and the JSON manifest are updater components. Existing installations retain settings and reuse unchanged dependencies. Updates apply after the game connection ends. Open the tool before the game to let first-time cache preparation finish in the background.
+New users: `bilingual-sora-2nd-0.3.9-windows-x64-setup.exe` or `bilingual-sora-2nd-0.3.9-windows-x64.zip`. App/runtime ZIPs and the JSON manifest are updater components. Existing installations retain settings and reuse unchanged dependencies. Updates apply after the game connection ends. Open the tool before the game to let first-time cache preparation finish in the background.
