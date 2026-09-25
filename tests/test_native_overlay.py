@@ -48,13 +48,13 @@ class OverlayStatusTests(unittest.TestCase):
             a: InputManager(
                 {"hotkey": b}, key_state=lambda k: k in physical, joystick_provider=lambda: []
             )
-            for a, b in config["hotkeys"].items()
+            for a, b in {"switch": config["switch_binding"]}.items()
         }
-        policy = ActionPolicy("annotation")
+        policy = ActionPolicy("language_hold")
 
         def sample():
             states = {a: i.poll_state(True) for a, i in inputs.items()}
-            mode = policy.advance(states)
+            mode = policy.advance(states["switch"])
             return describe_state(
                 config,
                 dict(
@@ -62,8 +62,8 @@ class OverlayStatusTests(unittest.TestCase):
                     updated_at=100,
                     enabled=True,
                     render_mode=mode,
-                    hold_active=states["language_hold"].held,
-                    interaction="annotation",
+                    hold_active=states["switch"].held,
+                    interaction="language_hold",
                     primary="zh-Hans",
                     secondary="ja",
                 ),
@@ -72,11 +72,11 @@ class OverlayStatusTests(unittest.TestCase):
             )
 
         base = sample()
-        physical.update((0x11, 0x10, 0x7B))
+        physical.update((0x11, 0x10, 0x79))
         held = sample()
         physical.clear()
         released = sample()
-        self.assertIn("双语", base["title"])
+        self.assertIn("主语言", base["title"])
         self.assertIn("按住中", held["title"])
         self.assertNotEqual(base["color"], held["color"])
         self.assertEqual(released, base)
@@ -196,7 +196,7 @@ class OverlayUiTests(unittest.TestCase):
         self.assertGreater(two, one)
 
     def test_panel_keyboard_capture_conflict_keeps_previous_binding_and_escape_cancels(self):
-        self.window.binding_action.setCurrentIndex(3)
+        self.window.binding_action.setCurrentIndex(self.window.binding_action.findData("overlay"))
         self.window.show()
         self.app.processEvents()
         self.window._begin_keyboard_capture()
@@ -217,7 +217,7 @@ class OverlayUiTests(unittest.TestCase):
         self.assertEqual(read_config(self.control)["overlay_binding"]["keyboard"], ["CTRL", "F8"])
 
     def test_controller_binding_is_saved_to_selected_action_and_can_be_cleared(self):
-        self.window.binding_action.setCurrentIndex(3)
+        self.window.binding_action.setCurrentIndex(self.window.binding_action.findData("overlay"))
         self.window._capture_action = "overlay"
         binding = {
             "gamepad": {
@@ -236,7 +236,7 @@ class OverlayUiTests(unittest.TestCase):
 
     def test_controller_conflict_does_not_replace_existing_binding(self):
         binding = {"gamepad": {"guid": "pad", "buttons": [1, 2]}}
-        update_control({"hotkeys": {"language_hold": binding}}, self.control)
+        update_control({"switch_binding": binding}, self.control)
         with self.assertRaises(ValueError):
             update_control({"overlay_binding": binding}, self.control)
         self.assertEqual(read_config(self.control)["overlay_binding"]["gamepad"], {})

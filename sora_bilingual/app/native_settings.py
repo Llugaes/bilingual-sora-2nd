@@ -37,6 +37,16 @@ from PySide6.QtWidgets import (
 )
 
 from sora_bilingual.platform.inputs import vk_for_key, InputManager
+from sora_bilingual.app.i18n import UI_LANGUAGES, set_language
+from sora_bilingual.app.ui_widgets import (
+    QLabel,
+    QPushButton,
+    QComboBox,
+    QCheckBox,
+    QFormLayout,
+    QTabWidget,
+    retranslate,
+)
 from sora_bilingual.config.native_config import (
     read_config,
     normalize_config,
@@ -152,10 +162,15 @@ def update_control(patch: dict[str, Any], path: Path = CONTROL_PATH) -> dict[str
         raise ValueError("sources 和 stop 由后端管理，设置窗口不能修改")
     latest = _read_json_object(path)
     result = deepcopy(latest)
+    # Freeze the legacy binding before a mode change can influence migration.
+    if "switch_binding" not in result and any(k in latest for k in ("hotkeys", "hotkey")):
+        result["switch_binding"] = read_config(path)["switch_binding"]
     for key in (
         "primary",
         "secondary",
         "game_language",
+        "ui_language",
+        "switch_binding",
         "enabled",
         "interaction",
         "mode_request",
@@ -229,6 +244,7 @@ class NativeSettingsWindow(QWidget):
         super().__init__()
         self.control_path = Path(control_path)
         self.status_path = Path(status_path)
+        set_language(read_control(self.control_path)["ui_language"])
         self._updating = False
         self._recording_keyboard = False
         self._controller = InputManager()
@@ -263,6 +279,9 @@ class NativeSettingsWindow(QWidget):
         self.primary = QComboBox()
         self.secondary = QComboBox()
         self.game_language = QComboBox()
+        self.ui_language = QComboBox()
+        for code, label in UI_LANGUAGES.items():
+            self.ui_language.addItem(label, code)
         for code, label in LANGUAGES:
             self.primary.addItem(label, code)
             self.secondary.addItem(label, code)
@@ -276,6 +295,7 @@ class NativeSettingsWindow(QWidget):
         self.annotation_scale.setRange(0.7, 1.0)
         self.annotation_scale.setSingleStep(0.05)
         self.annotation_scale.setDecimals(2)
+        form.addRow("界面语言", self.ui_language)
         form.addRow("主语言", self.primary)
         form.addRow("副语言", self.secondary)
         form.addRow(self.enabled)
@@ -323,7 +343,7 @@ class NativeSettingsWindow(QWidget):
         self.apply_mode.clicked.connect(self.select_mode)
         language_layout.addWidget(self.apply_mode)
         note = QLabel(
-            "同时显示：普通文本用上方小字注解；过场字幕用整段上下双语。\n按住副语言时临时覆盖当前显示，松开恢复。"
+            "按住：副语言单语，松开：主语言单语。单击切换：主／副单语来回切换。\n双语注解是轨迹专用模式；普通文本小字注解，过场字幕上下分段。"
         )
         note.setWordWrap(True)
         language_layout.addWidget(note)
@@ -355,9 +375,7 @@ class NativeSettingsWindow(QWidget):
         row = QHBoxLayout()
         self.binding_action = QComboBox()
         for title, action in [
-            ("同时显示双语 / 主语言", "annotation"),
-            ("单击切换语言", "language_toggle"),
-            ("按住副语言", "language_hold"),
+            ("语言切换（按所选模式）", "switch"),
             ("展开 / 隐藏界面", "overlay"),
         ]:
             self.binding_action.addItem(title, action)
@@ -365,12 +383,12 @@ class NativeSettingsWindow(QWidget):
         self.hotkey_label = QLabel()
         self.record_keyboard = QPushButton("录制键盘组合")
         self.record_controller = QPushButton("录制手柄组合")
-        row.addWidget(self.hotkey_label, 1)
+        binding_layout.addWidget(self.hotkey_label)
         row.addWidget(self.record_keyboard)
         row.addWidget(self.record_controller)
         binding_layout.addLayout(row)
         note = QLabel(
-            "三个显示动作同时有效，游戏在前台时响应。\n录制键盘：按下组合键；Esc 取消。\n录制手柄：先松开所有按键和摇杆，再按住组合，全部松开后保存。"
+            "同一组快捷键按所选模式工作：按住、单击切换，或轨迹双语注解。\n录制键盘：按下组合键；Esc 取消。\n录制手柄：先松开所有按键和摇杆，再按住组合，全部松开后保存。"
         )
         note.setWordWrap(True)
         binding_layout.addWidget(note)
@@ -400,6 +418,7 @@ class NativeSettingsWindow(QWidget):
             self.interaction.currentIndexChanged,
             self.annotation_scale.valueChanged,
             self.game_language.currentIndexChanged,
+            self.ui_language.currentIndexChanged,
             self.ruby_scale.valueChanged,
             self.ruby_gap.valueChanged,
             self.ruby_offset_x.valueChanged,
@@ -418,17 +437,22 @@ class NativeSettingsWindow(QWidget):
         self._capture_timer.start(16)
         self.refresh_status()
         QApplication.instance().installEventFilter(self)
+        retranslate(self)
 
     @property
     def capturing(self):
         return self._recording_keyboard or self._capture_action is not None
 
     def _binding(self, control, action):
-        return control["overlay_binding"] if action == "overlay" else control["hotkeys"][action]
+        return control["overlay_binding"] if action == "overlay" else control["switch_binding"]
 
     def _save_binding(self, action, binding):
         patch = (
-            {"overlay_binding": binding} if action == "overlay" else {"hotkeys": {action: binding}}
+            {"overlay_binding": binding}
+            if action == "overlay"
+            else {
+                "switch_binding": {**read_control(self.control_path)["switch_binding"], **binding}
+            }
         )
         update_control(patch, self.control_path)
         self.settings_changed.emit()
@@ -518,6 +542,7 @@ class NativeSettingsWindow(QWidget):
     def reload_control(self) -> None:
         control = read_control(self.control_path)
         self._updating = True
+        self._set_combo(self.ui_language, control["ui_language"])
         self._set_combo(self.primary, str(control["primary"]))
         self._set_combo(self.secondary, str(control["secondary"]))
         self._set_combo(self.game_language, str(control["game_language"]))
@@ -537,6 +562,7 @@ class NativeSettingsWindow(QWidget):
         if self._updating:
             return
         values = {
+            "ui_language": self.ui_language.currentData(),
             "primary": self.primary.currentData(),
             "secondary": self.secondary.currentData(),
             "enabled": self.enabled.isChecked(),
@@ -558,6 +584,9 @@ class NativeSettingsWindow(QWidget):
                 self.backend_label.setText("未保存：" + str(exc))
                 return
             self.reload_control()
+            if "ui_language" in patch:
+                set_language(values["ui_language"])
+                retranslate(self)
             self.settings_changed.emit()
 
     def _begin_keyboard_capture(self) -> None:

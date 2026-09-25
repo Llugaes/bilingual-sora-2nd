@@ -13,7 +13,6 @@ from sora_bilingual.localization.native_catalog import load_entries, load_model,
 from sora_bilingual.config.native_config import (
     ROOT,
     CONTROL,
-    ACTIONS,
     read_config,
     write_config,
     ActionPolicy,
@@ -42,6 +41,7 @@ def model_identity(config):
 
 
 def run(game=None, duration=0):
+    connection_started = time.monotonic()
     lock = BackendLock()
     native = None
     heartbeat = None
@@ -82,7 +82,9 @@ def run(game=None, duration=0):
                 )
                 + "\n"
             )
+        model_started = time.monotonic()
         model, signature, entries = ready_model(game, config)
+        model_seconds = time.monotonic() - model_started
         applied_config = dict(config)
         # A cached locale needs no catalog load. Keep all preparation, including
         # first-time catalog compilation, away from the input/status loop.
@@ -91,7 +93,7 @@ def run(game=None, duration=0):
         last_release_check = 0
         update_notice = None
         entries = None
-        inputs = {a: InputManager({"hotkey": config["hotkeys"][a]}) for a in ACTIONS}
+        inputs = {"switch": InputManager({"hotkey": config["switch_binding"]})}
         # Share one physical SDL snapshot per input tick across all bindings.
         controller = InputManager()
         pad_states = []
@@ -129,6 +131,13 @@ def run(game=None, duration=0):
             native = NativeLabels(log)
             log({"type": "run_start", "pid": pid, "exact_sources": len(model["pairs"])})
             native.attach(pid, exe, model=model, config=config, mode=mode)
+            log(
+                {
+                    "type": "connection_ready",
+                    "model_seconds": round(model_seconds, 3),
+                    "total_seconds": round(time.monotonic() - connection_started, 3),
+                }
+            )
             heartbeat.loading("ready")
             print("双语已连接；关闭双语后保留连接，游戏退出时自动结束。", flush=True)
             start = time.monotonic()
@@ -170,9 +179,10 @@ def run(game=None, duration=0):
                             raw = text
                     if next_config is not None:
                         stopping = bool(next_config.get("stop"))
-                        if next_config["hotkeys"] != config["hotkeys"]:
-                            for a in ACTIONS:
-                                inputs[a].update_config({"hotkey": next_config["hotkeys"][a]})
+                        if next_config["switch_binding"] != config["switch_binding"]:
+                            inputs["switch"].update_config(
+                                {"hotkey": next_config["switch_binding"]}
+                            )
                         if next_config["interaction"] != config["interaction"] or next_config.get(
                             "mode_request"
                         ) != config.get("mode_request"):
@@ -215,7 +225,7 @@ def run(game=None, duration=0):
                             capture_action = next_config.get(
                                 "capture_action", next_config["interaction"]
                             )
-                            if capture_action not in ACTIONS:
+                            if capture_action != "switch":
                                 raise ValueError("未知手柄快捷键模式")
                             controller.begin_controller_capture(30)
                         config = next_config
@@ -270,7 +280,7 @@ def run(game=None, duration=0):
                         native.disable()
                     pads_bound = any(
                         b.get("gamepad", {}).get("buttons") or b.get("gamepad", {}).get("axes")
-                        for b in config["hotkeys"].values()
+                        for b in (config["switch_binding"],)
                     )
                     if (
                         pads_bound
@@ -281,14 +291,14 @@ def run(game=None, duration=0):
                         last_devices = now
                     active = bool(foreground_rect(pid)) and not stopping and not error
                     states = {a: i.poll_state(active) for a, i in inputs.items()}
-                    desired = policy.advance(states)
+                    desired = policy.advance(states["switch"])
                     if desired != mode:
                         mode = desired
                         native.select(mode, config["enabled"] and not stopping and not error)
                     binding = controller.poll_capture()
                     if binding and capture_action:
                         latest = read_config()
-                        latest["hotkeys"][capture_action]["gamepad"] = binding["gamepad"]
+                        latest["switch_binding"]["gamepad"] = binding["gamepad"]
                         latest.pop("capture_controller", None)
                         write_config(latest)
                     # Lightweight UI telemetry: input edges immediately, heartbeat
@@ -296,7 +306,7 @@ def run(game=None, duration=0):
                     next_live = (
                         mode,
                         policy.base,
-                        states["language_hold"].held,
+                        config["interaction"] == "language_hold" and states["switch"].held,
                         config["enabled"] and not stopping and not error,
                         policy.interaction,
                         error,
@@ -310,7 +320,7 @@ def run(game=None, duration=0):
                                 "updated_at": time.time(),
                                 "render_mode": mode,
                                 "base_mode": policy.base,
-                                "hold_active": states["language_hold"].held,
+                                "hold_active": next_live[2],
                                 "enabled": bool(next_live[3]),
                                 "interaction": policy.interaction,
                                 "primary": applied_config["primary"],

@@ -35,6 +35,8 @@ from sora_bilingual.app.native_settings import (
 )
 from sora_bilingual.platform.win32 import foreground_rect
 from sora_bilingual.app.presentation import describe_state
+from sora_bilingual.app.i18n import set_language, tr
+from sora_bilingual.app.ui_widgets import QLabel, QPushButton, retranslate
 
 STYLE = """
 QWidget { background:#141e29; color:#e9edf1; font-size:13px; }
@@ -148,6 +150,12 @@ class StatusBar(QWidget):
         self.status.setText("●  " + state["title"])
         self.status.setStyleSheet("color:" + state["color"])
         self.detail.setText(state["pair"] + "  ·  " + hint)
+        self.setFixedWidth(
+            min(
+                max(430, self.layout().sizeHint().width()),
+                self.screen().availableGeometry().width() - 24,
+            )
+        )
 
 
 class OverlayPanel(QWidget):
@@ -233,6 +241,7 @@ class OverlayController(QObject):
     ):
         super().__init__()
         self.control_path = Path(control)
+        set_language(read_control(control)["ui_language"])
         self.live = JsonSnapshot(Path(status).with_name("native-live.json"))
         self.backend = JsonSnapshot(status)
         self.auto_connect = auto_connect
@@ -259,17 +268,20 @@ class OverlayController(QObject):
         self._last_pid = None
         self._last_state = None
         self.tray = QSystemTrayIcon(app_icon(), self)
-        self.tray.setToolTip("Sora 双语控制台")
+        self.tray.setToolTip(tr("Sora 双语控制台"))
         menu = QMenu()
         for title, callback in [
             ("打开设置", self.expand),
             ("隐藏界面（后台继续运行）", self.hide_interface),
             ("退出界面程序（保留双语连接）", self.quit),
         ]:
-            action = QAction(title, menu)
+            action = QAction(tr(title), menu)
+            action.setData(title)
             action.triggered.connect(callback)
             menu.addAction(action)
         self.tray.setContextMenu(menu)
+        retranslate(self.bar)
+        retranslate(self.panel)
         self.tray.activated.connect(
             lambda reason: (
                 self.expand() if reason == QSystemTrayIcon.ActivationReason.Trigger else None
@@ -304,6 +316,13 @@ class OverlayController(QObject):
             config = read_control(self.control_path)
             if config["overlay_binding"] != self.config["overlay_binding"]:
                 self.hotkey.update_config({"hotkey": config["overlay_binding"]})
+            if config["ui_language"] != self.config["ui_language"]:
+                set_language(config["ui_language"])
+                retranslate(self.bar)
+                retranslate(self.panel)
+                self.tray.setToolTip(tr("Sora 双语控制台"))
+                for action in self.tray.contextMenu().actions():
+                    action.setText(tr(action.data()))
             self.config = config
         except OSError, ValueError:
             return

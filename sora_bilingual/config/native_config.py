@@ -37,7 +37,33 @@ DEFAULTS = {
     "line_gap": 12,
     "hotkeys": DEFAULT_BINDINGS,
     "overlay_binding": {"keyboard": ["CTRL", "SHIFT", "F9"], "gamepad": {}},
+    "ui_language": "auto",
 }
+
+
+def switch_binding(value):
+    """Migrate the user's actual controller/keyboard bindings once, not on mode changes."""
+    if "switch_binding" in value:
+        return deepcopy(value["switch_binding"])
+    bindings = value.get("hotkeys", {})
+    preferred = value.get("interaction") or "annotation"
+    order = list(dict.fromkeys((preferred, *ACTIONS)))
+    result = deepcopy(DEFAULT_BINDINGS["annotation"])
+    for action in order:
+        binding = bindings.get(action, {})
+        if binding.get("keyboard") and binding["keyboard"] != DEFAULT_BINDINGS[action]["keyboard"]:
+            result["keyboard"] = deepcopy(binding["keyboard"])
+            break
+    for action in order:
+        pad = bindings.get(action, {}).get("gamepad", {})
+        if not isinstance(pad, dict):
+            raise ValueError("手柄配置必须是对象")
+        if pad.get("buttons") or pad.get("axes"):
+            result["gamepad"] = deepcopy(pad)
+            break
+    if not bindings and isinstance(value.get("hotkey"), dict):
+        result.update(deepcopy(value["hotkey"]))
+    return result
 
 
 def read_config(path=CONTROL):
@@ -55,6 +81,8 @@ def normalize_config(value):
         raise ValueError("未知显示模式")
     if not isinstance(value.get("hotkeys", {}), dict):
         raise ValueError("快捷键配置必须是对象")
+    if result["ui_language"] not in ("auto", "zh-Hans", "en", "ja"):
+        raise ValueError("未知界面语言")
     if any(
         not isinstance(result[k], str) or result[k] not in LOCALES
         for k in ("primary", "secondary", "game_language")
@@ -87,7 +115,8 @@ def normalize_config(value):
         v = result[key]
         if type(v) not in (int, float) or not math.isfinite(v) or not lo <= v <= hi:
             raise ValueError("字号或间距超出范围：" + key)
-    all_bindings = [*result["hotkeys"].values(), result["overlay_binding"]]
+    result["switch_binding"] = switch_binding(value)
+    all_bindings = [result["switch_binding"], result["overlay_binding"]]
     for binding in all_bindings:
         if not isinstance(binding, dict):
             raise ValueError("快捷键配置必须是对象")
@@ -173,20 +202,20 @@ def write_config(value, path=CONTROL):
 
 
 class ActionPolicy:
-    """Independent bindings. Hold is temporary and restores the previous view."""
+    """One binding, whose semantics follow the selected mode. No implicit mode changes."""
 
     def __init__(self, interaction="annotation"):
         self.interaction = interaction
         self.base = "annotation" if interaction == "annotation" else "primary"
 
-    def advance(self, states):
-        if states["annotation"].pressed:
+    def advance(self, state):
+        if self.interaction == "language_hold":
+            return "secondary" if state.held else "primary"
+        if self.interaction == "annotation" and state.pressed:
             self.base = "primary" if self.base == "annotation" else "annotation"
-            self.interaction = "annotation"
-        if states["language_toggle"].pressed:
+        if self.interaction == "language_toggle" and state.pressed:
             self.base = "primary" if self.base == "secondary" else "secondary"
-            self.interaction = "language_toggle"
-        return "secondary" if states["language_hold"].held else self.base
+        return self.base
 
 
 class BackendLock:

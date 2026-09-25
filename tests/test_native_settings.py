@@ -8,6 +8,24 @@ from sora_bilingual.app.native_settings import read_control, update_control, val
 
 
 class NativeSettingsTests(unittest.TestCase):
+    def test_changing_mode_preserves_the_migrated_controller_binding(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "control.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "interaction": "annotation",
+                        "hotkeys": {
+                            "annotation": {"gamepad": {"buttons": [1]}},
+                            "language_hold": {"gamepad": {"buttons": [2]}},
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            result = update_control({"interaction": "language_hold"}, path)
+            self.assertEqual(result["switch_binding"]["gamepad"], {"buttons": [1]})
+
     def test_first_run_saves_selected_pair_and_preserves_it_on_relaunch(self):
         from sora_bilingual.app.native_settings import configure_first_run, QDialog
         from sora_bilingual.config.locales import LOCALES

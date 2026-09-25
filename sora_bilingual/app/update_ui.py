@@ -5,6 +5,7 @@ from sora_bilingual.paths import ROOT
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QComboBox, QPushButton
 from sora_bilingual.updates.update_service import UpdateService
+from sora_bilingual.app.ui_widgets import QLabel, QComboBox, QPushButton
 
 
 class UpdatePage(QWidget):

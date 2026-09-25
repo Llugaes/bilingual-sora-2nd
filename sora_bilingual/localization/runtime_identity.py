@@ -238,7 +238,7 @@ def compile_script_identities(game, entries, primary, secondary, language):
         archive.close()
 
 
-def compile_table_identities(game, entries, primary, secondary, language):
+def compile_table_identities(game, entries, primary, secondary, language, *, resolved_pairs=None):
     """Recover the record key from direct native table-string pointers.
 
     The immutable descriptor and full string pool identify the actual file;
@@ -249,14 +249,15 @@ def compile_table_identities(game, entries, primary, secondary, language):
     from sora_bilingual.localization.tables import _TABLE_ARCHIVES, _logical_tables
     from sora_bilingual.localization.menu_tables import sections, schema_for, SCHEMAS
 
-    global_tr = MenuTranslator(entries, primary, secondary, language)
+    if resolved_pairs is None:
+        resolved_pairs = MenuTranslator(entries, primary, secondary, language).pairs
     needed = {
         e["key"]: e
         for e in entries
         if e.get("key", "").startswith("table/")
         and e["texts"].get(language, "").strip()
         and complete_pair(e["texts"], primary, secondary)
-        and e["texts"][language] not in global_tr.pairs
+        and e["texts"][language] not in resolved_pairs
     }
     sources = defaultdict(list)
     models = {}

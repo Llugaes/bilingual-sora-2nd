@@ -23,7 +23,7 @@ Currently supports Steam build **25386012**, executable **1.03.2**. The tool che
 | Simplified / Traditional Chinese | Same as the game | Japanese |
 | Korean / French / German / Spanish | Same as the game | Japanese |
 
-These are initial preferences, not restrictions on language pairs. Existing settings survive restarts and updates unchanged. The first-run prompt includes English, Chinese, and Japanese; the full settings panel is currently mostly in Chinese. The README language does not select the mod's display languages.
+These are initial preferences, not restrictions on language pairs. Existing settings survive restarts and updates unchanged. The interface supports English, Simplified Chinese, and Japanese, defaults to the system language, and switches live via **Interface language**. UI language, source matching, and display languages are independent.
 
 The first load parses your local game resources and builds a cache, which can take time. Text is then rendered by native game controls; the Qt interface provides configuration and status. Use windowed or borderless mode; the settings overlay is not guaranteed to appear over exclusive fullscreen.
 
@@ -45,11 +45,15 @@ Click **设置** (Settings) on the status bar to open the full panel. **× / Esc
 | Action | Default shortcut |
 |---|---|
 | Show / hide the interface | Ctrl + Shift + F9 |
-| Toggle bilingual annotations | Ctrl + Shift + F10 |
-| Toggle primary / secondary text | Ctrl + Shift + F11 |
-| Hold for secondary; release to restore | Ctrl + Shift + F12 |
+| Language switch for the selected mode | Ctrl + Shift + F10 |
 
-Use **按键绑定** (Bindings) to record keyboard combinations or buttons, hats, and triggers on SDL-supported controllers. By default, gameplay bindings respond while the game is in the foreground. Three display modes are available: simultaneous bilingual text, press to toggle, and hold to switch. Font scale, offsets, and spacing can be adjusted live under **字号与位置** (Size and position).
+Record one keyboard or SDL controller combination under **Bindings**. The same binding follows the selected mode. Existing custom bindings migrate; F11/F12 are no longer separate simultaneously active actions. By default, bindings respond while the game is in the foreground.
+
+- **Hold**: primary text normally, secondary-only text while held; release or focus loss restores primary text.
+- **Toggle**: one press switches to secondary-only text, the next switches back. Holding does not repeatedly toggle.
+- **Trails annotations**: uses this game's native ruby layout for simultaneous bilingual text; the shortcut turns annotations on/off. This mode depends on the game's special rendering support.
+
+Text scale, offsets, and spacing remain adjustable live. Initial resource parsing still takes time; valid caches load directly. UI translations and initial language preferences no longer invalidate the game-resource index. Connection logs report model preparation and total connection time separately.
 
 Menus, items, skills, NPC conversations, and story dialogue use small annotations. Only native cutscene subtitles use a complete primary block above a complete secondary block. Original ruby and emphasis marks retain their positions; the secondary language uses a separate annotation layer. Text baked into images or videos is outside the supported scope. Uncertain matches keep the original text rather than guessing a translation.
 
@@ -78,7 +82,7 @@ See the [architecture](https://github.com/Llugaes/bilingual-sora-2nd/blob/main/d
 For a release, maintainers update both **distribution.json** and **pyproject.toml**, then push a matching **vX.Y.Z** tag. GitHub Actions validates on Windows, builds from an explicit file allowlist, uploads all assets to a draft, then publishes them together. Manual build:
 
 ```powershell
-.venv\Scripts\python.exe -m tools.build_release --version 0.2.2 --repository Llugaes/bilingual-sora-2nd
+.venv\Scripts\python.exe -m tools.build_release --version 0.2.3 --repository Llugaes/bilingual-sora-2nd
 ```
 
 Neither the repository nor releases contain game resources, generated fonts, complete text indexes, logs, screenshots, or user settings.

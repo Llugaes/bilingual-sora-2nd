@@ -6,13 +6,13 @@ from collections import Counter
 from pathlib import Path
 from sora_bilingual.localization.catalog_build import build_all
 from sora_bilingual.localization.menu_text import MenuTranslator
-from sora_bilingual.config.locales import DEFAULT_PRIMARY
+from sora_bilingual.config.locales import DEFAULT_PRIMARY, archive_names
 from sora_bilingual.localization.cache_io import publish_json, read_model
 
 from sora_bilingual.paths import ROOT
 
 
-def fingerprint(game):
+def fingerprint(game, *, legacy=False):
     paths = sorted((Path(game) / "pac" / "steam").glob("*.pac"))
     resources = [
         (p.name, p.stat().st_size, p.stat().st_mtime_ns)
@@ -26,9 +26,15 @@ def fingerprint(game):
             "sora_bilingual/localization/tables.py",
             "sora_bilingual/localization/menu_tables.py",
             "sora_bilingual/localization/catalog_build.py",
-            "sora_bilingual/config/locales.py",
         )
     )
+    # Presentation labels and first-run preferences cannot invalidate parsed game data.
+    legacy_parser_code = parser_code + (ROOT / "sora_bilingual/config/locales.py").read_bytes()
+    parser_code += json.dumps(
+        [archive_names("script"), archive_names("table")], sort_keys=True
+    ).encode()
+    if legacy:
+        parser_code = legacy_parser_code
     code = hashlib.sha256(
         parser_code
         + b"".join(
@@ -57,6 +63,20 @@ def load_entries(game, output=ROOT / "generated"):
     )
     manifest = output / "catalog-signature.json"
     catalog = output / "catalog.json"
+    if (
+        manifest.exists()
+        and catalog.exists()
+        and manifest.read_text(encoding="utf-8") != catalog_signature
+    ):
+        legacy = json.dumps(
+            {
+                "resources": stamp["resources"],
+                "code": fingerprint(game, legacy=True)["catalog_code"],
+            },
+            sort_keys=True,
+        )
+        if manifest.read_text(encoding="utf-8") == legacy:
+            manifest.write_text(catalog_signature, encoding="utf-8")
     if (
         not manifest.exists()
         or manifest.read_text(encoding="utf-8") != catalog_signature
@@ -104,12 +124,13 @@ def load_model(entries, signature, config, output=ROOT / "generated", *, game):
         sources = set(config.get("sources", []))
         lang = config.get("game_language", DEFAULT_PRIMARY)
         selected = [e for e in entries if e["texts"].get(lang) in sources]
-    model = MenuTranslator(
+    translator = MenuTranslator(
         selected,
         config["primary"],
         config["secondary"],
         config.get("game_language", DEFAULT_PRIMARY),
-    ).runtime_model()
+    )
+    model = translator.runtime_model()
     coverage = Counter()
     source = config.get("game_language", DEFAULT_PRIMARY)
     for entry in selected:
@@ -142,7 +163,7 @@ def load_model(entries, signature, config, output=ROOT / "generated", *, game):
         config.get("game_language", DEFAULT_PRIMARY),
     )
     model["script_identities"] = compile_script_identities(*args)
-    model["table_identities"] = compile_table_identities(*args)
+    model["table_identities"] = compile_table_identities(*args, resolved_pairs=translator.pairs)
     publish_json(path, model)
     return model
 

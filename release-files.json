@@ -21,6 +21,8 @@
   "sora_bilingual/app/native_settings.py",
   "sora_bilingual/app/overlay_reloader.py",
   "sora_bilingual/app/presentation.py",
+  "sora_bilingual/app/i18n.py",
+  "sora_bilingual/app/ui_widgets.py",
   "sora_bilingual/app/update_ui.py",
   "sora_bilingual/bootstrap.py",
   "sora_bilingual/config/__init__.py",

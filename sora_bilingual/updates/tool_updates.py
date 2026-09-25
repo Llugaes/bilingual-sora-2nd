@@ -19,6 +19,8 @@ GROUPS = {
         "sora_bilingual/updates/__init__.py",
         "sora_bilingual/app/native_overlay.py",
         "sora_bilingual/app/presentation.py",
+        "sora_bilingual/app/i18n.py",
+        "sora_bilingual/app/ui_widgets.py",
         "sora_bilingual/paths.py",
         "launch.py",
         "sora_bilingual/app/native_settings.py",

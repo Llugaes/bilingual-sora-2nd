@@ -16,13 +16,6 @@ from sora_bilingual.game.native_runtime import NativeLabels
 from sora_bilingual.game.native_probe import write_telemetry
 
 
-def states(press=None, hold=False):
-    return {
-        a: SimpleNamespace(pressed=a == press, held=hold if a == "language_hold" else False)
-        for a in ("annotation", "language_toggle", "language_hold")
-    }
-
-
 class NativeConfigTests(unittest.TestCase):
     def test_language_defaults_follow_source_and_explicit_pairs_are_preserved(self):
         from sora_bilingual.config.locales import LOCALES
@@ -66,17 +59,50 @@ class NativeConfigTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 normalize_config(value)
 
-    def test_hold_restores_annotation_and_each_toggled_language(self):
-        p = ActionPolicy()
-        self.assertEqual(p.advance(states(hold=True)), "secondary")
-        self.assertEqual(p.advance(states()), "annotation")
-        self.assertEqual(p.advance(states("language_toggle")), "secondary")
-        self.assertEqual(p.interaction, "language_toggle")
-        self.assertEqual(p.advance(states("language_toggle")), "primary")
-        self.assertEqual(p.advance(states(hold=True)), "secondary")
-        self.assertEqual(p.advance(states()), "primary")
-        self.assertEqual(p.advance(states("annotation")), "annotation")
-        self.assertEqual(p.interaction, "annotation")
+    def test_selected_mode_defines_press_hold_and_release(self):
+        up = SimpleNamespace(pressed=False, held=False)
+        down = SimpleNamespace(pressed=True, held=True)
+        held = SimpleNamespace(pressed=False, held=True)
+        for mode, expected in (
+            ("language_hold", "secondary"),
+            ("language_toggle", "secondary"),
+            ("annotation", "primary"),
+        ):
+            policy = ActionPolicy(mode)
+            self.assertEqual(policy.advance(down), expected)
+            for _ in range(20):
+                self.assertEqual(policy.advance(held), expected)
+            self.assertEqual(policy.advance(up), "primary" if mode == "language_hold" else expected)
+            self.assertEqual(policy.interaction, mode)
+            if mode != "language_hold":
+                self.assertEqual(
+                    policy.advance(down), "annotation" if mode == "annotation" else "primary"
+                )
+
+    def test_legacy_controller_binding_follows_mode_after_migration(self):
+        from sora_bilingual.platform.inputs import InputManager
+
+        pad = {"guid": "pad", "buttons": [1]}
+        config = normalize_config(
+            {"interaction": "language_hold", "hotkeys": {"annotation": {"gamepad": pad}}}
+        )
+        self.assertEqual(config["switch_binding"]["gamepad"], pad)
+        buttons = set()
+        manager = InputManager(
+            {"hotkey": config["switch_binding"]},
+            key_state=lambda _: False,
+            joystick_provider=lambda: [{"id": "1", "guid": "pad", "buttons": buttons}],
+        )
+        policy = ActionPolicy("language_hold")
+        self.assertEqual(policy.advance(manager.poll_state(True)), "primary")
+        buttons.add(1)
+        self.assertEqual(policy.advance(manager.poll_state(True)), "secondary")
+        self.assertEqual(policy.advance(manager.poll_state(True)), "secondary")
+        buttons.clear()
+        self.assertEqual(policy.advance(manager.poll_state(True)), "primary")
+        buttons.add(1)
+        self.assertEqual(policy.advance(manager.poll_state(True)), "secondary")
+        self.assertEqual(policy.advance(manager.poll_state(False)), "primary")
 
     def test_legacy_binding_migrates_only_to_its_action(self):
         with tempfile.TemporaryDirectory() as tmp:

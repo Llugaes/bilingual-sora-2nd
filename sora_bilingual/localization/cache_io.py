@@ -14,7 +14,8 @@ def publish_json(path, value):
     ) as out:
         temporary = Path(out.name)
         try:
-            json.dump(value, out, ensure_ascii=False, separators=(",", ":"))
+            # dumps uses the C encoder; dump walks millions of fragments in Python.
+            out.write(json.dumps(value, ensure_ascii=False, separators=(",", ":")))
         except Exception:
             out.close()
             temporary.unlink(missing_ok=True)
