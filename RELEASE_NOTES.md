@@ -2,6 +2,7 @@
 
 - **下载 ZIP，解压后双击 BilingualSora2nd.exe 即可使用。** 内置 Python 3.14.7 和全部运行依赖，无需自行安装环境或运行 CMD。
 - 发布附件统一为 bilingual-sora-2nd-VERSION-windows-x64.zip 和自动更新清单；去掉重复的旧名称安装包。
+- 修复“关闭窗口只隐藏”的处理拦截热更新退出、导致重载偶发超时的问题。
 - 首次设置后直接打开面板；更新页新增桌面快捷方式、日志/配置目录与说明入口。依赖更新使用独立版本目录，保留配置、缓存和正在使用的 DLL。
 - **0.2.x 用户需一次手动迁移**：退出旧工具，解压新包到新目录，复制 generated/native-control.json 和 generated/overlay-window.ini，再启动新 EXE。之后自动更新内置运行环境。无需复制旧 .venv 或 generated/updates。
 
@@ -15,6 +16,7 @@
 
 - **Extract the ZIP and run BilingualSora2nd.exe.** Includes Python 3.14.7 and all runtime dependencies; no Python installation or CMD scripts.
 - One consistently named Windows ZIP plus updater metadata; duplicate legacy assets removed.
+- Fix close-to-hide handlers cancelling the explicit exit used for hot updates.
 - First launch opens settings. Desktop shortcut creation, logs/settings folder, and help are available in Updates. Runtime upgrades are side by side, preserving settings and loaded DLLs.
 - **One-time migration from 0.2.x:** exit the old tool, extract into a new folder, copy generated/native-control.json and generated/overlay-window.ini, then run the new EXE. Do not copy .venv or generated/updates. Future portable releases update the runtime automatically.
 
@@ -28,6 +30,7 @@
 
 - **ZIP を展開し BilingualSora2nd.exe を実行するだけ。** Python 3.14.7 と依存ライブラリを同梱し、環境構築や CMD は不要です。
 - 配布ファイルはゲーム名入りの Windows ZIP と更新用メタデータに統一。旧名称の重複配布を削除しました。
+- ホット更新時の終了が「閉じると非表示」の処理に阻止される問題を修正。
 - 初回は設定画面を開きます。更新タブにショートカット作成、ログ・設定フォルダー、使い方を追加。ランタイム更新は別フォルダーで適用し、設定と使用中の DLL を保持します。
 - **0.2.x からは一度だけ手動移行が必要です。** 旧ツールを終了し、新フォルダーへ展開後、generated/native-control.json と generated/overlay-window.ini をコピーして新 EXE を実行してください。.venv や generated/updates はコピー不要です。以降はランタイムも自動更新します。
 

@@ -370,7 +370,9 @@ class OverlayController(QObject):
         self.tray.hide()
         if self.panel.settings._auto_connector:
             self.panel.settings._auto_connector.close()
-        QApplication.instance().quit()
+        # quit() sends a cancellable Quit event; our close-to-hide windows reject
+        # it. Explicit program exit/handoff must bypass those user-close handlers.
+        QApplication.instance().exit(0)
 
     def reload_interface(self):
         if self._reload_started:
