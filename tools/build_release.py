@@ -13,8 +13,6 @@ from sora_bilingual.updates.github_updates import (
     repository_name,
     ASSET_PREFIX,
     ASSET_MANIFEST,
-    LEGACY_PREFIX,
-    LEGACY_MANIFEST,
 )
 from sora_bilingual.updates.update_installer import validate_manifest
 
@@ -24,16 +22,19 @@ from sora_bilingual.paths import ROOT
 FILES = json.loads((ROOT / "release-files.json").read_text("utf-8"))
 
 
-def build(version, repository, output, root=ROOT):
+def build(version, repository, output, root=ROOT, *, extra=None, runtime_id=None):
     version = ".".join(map(str, version_tuple(version)))
     repository_name(repository)
     contents = {name: (root / name).read_bytes() for name in FILES}
+    if runtime_id:
+        contents = {k: v for k, v in contents.items() if not k.endswith((".cmd", ".ps1"))}
+    contents.update(extra or {})
     project = tomllib.loads(contents["pyproject.toml"].decode("utf-8"))["project"]
     distribution = json.loads(contents["distribution.json"])
     if project["version"] != distribution["version"]:
         raise ValueError("pyproject.toml 与 distribution.json 版本不一致")
     contents["pyproject.toml"] = re.sub(
-        r'(?m)^version = "[^"]+"$',
+        r'(?m)^version = "[^"]+"\r?$',
         f'version = "{version}"',
         contents["pyproject.toml"].decode("utf-8"),
     ).encode("utf-8")
@@ -54,6 +55,8 @@ def build(version, repository, output, root=ROOT):
         "files": {name: sha(data) for name, data in contents.items()},
         "hot_release": hot,
     }
+    if runtime_id:
+        manifest["runtime_id"] = runtime_id
     validate_manifest(manifest)
     output = Path(output)
     output.mkdir(parents=True, exist_ok=True)
@@ -76,12 +79,6 @@ def build(version, repository, output, root=ROOT):
         "size": package.stat().st_size,
     }
     (output / ASSET_MANIFEST).write_text(json.dumps(meta, indent=2), encoding="utf-8")
-    # v0.2.0 validates the old filename. Keep its protocol entry until it upgrades.
-    legacy_name = f"{LEGACY_PREFIX}-{version}-windows-x64.zip"
-    (output / legacy_name).write_bytes(package.read_bytes())
-    (output / LEGACY_MANIFEST).write_text(
-        json.dumps({**meta, "asset": legacy_name}, indent=2), encoding="utf-8"
-    )
     return package, meta
 
 

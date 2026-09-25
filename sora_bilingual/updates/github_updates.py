@@ -13,7 +13,7 @@ ASSET_MANIFEST = ASSET_PREFIX + "-update.json"
 LEGACY_PREFIX = "sora-bilingual"
 LEGACY_MANIFEST = LEGACY_PREFIX + "-update.json"
 API_VERSION = "2026-03-10"
-MAX_PACKAGE = 128 * 1024 * 1024  # Code-only update format; no runtime/game payloads.
+MAX_PACKAGE = 768 * 1024 * 1024  # Includes the private CPython/Qt runtime, never game data.
 
 
 def version_tuple(value):

@@ -66,8 +66,8 @@ Sora 双语控制台|Sora bilingual controls|Sora 二言語コントロール
 键盘：|Keyboard: |キーボード：
 手柄：|Controller: |コントローラー：
 设备：|Devices: |デバイス：
-按钮 |Button |ボタン 
-轴 |Axis |軸 
+按钮 |Button |ボタン\x20
+轴 |Axis |軸\x20
  正向| positive| 正方向
  反向| negative| 逆方向
 未绑定|Not bound|未登録
@@ -79,7 +79,7 @@ Sora 双语控制台|Sora bilingual controls|Sora 二言語コントロール
 运行中|Running|動作中
 未保存：|Not saved: |保存できません：
 不支持的键盘组合|Unsupported keyboard shortcut|未対応のキーの組み合わせ
-该按键暂不支持，未保存|Unsupported key; not saved|未対応のキーのため保存していません
+该按键暂不支持；未保存|Unsupported key; not saved|未対応のキーのため保存していません
 未知快捷键动作|Unknown shortcut action|不明なショートカット操作
 键盘组合含不支持的 Win32 按键|Shortcut contains an unsupported Win32 key|未対応の Win32 キーが含まれています
 不支持的面板键盘组合|Unsupported panel shortcut|未対応の画面操作キー
@@ -100,7 +100,7 @@ Sora 双语控制台|Sora bilingual controls|Sora 二言語コントロール
 已停用 · 游戏原文|Disabled · Original game text|無効 · ゲームの原文
 连接保留，可随时重新启用|Connection retained; enable whenever needed|接続は維持され、いつでも再有効化できます
 按住中 · 副语言|Held · Secondary language|押下中 · 副言語
-已松开 · |Released · |解放 · 
+已松开 · |Released · |解放 ·\x20
 正在准备新语言，当前语言继续显示…|Preparing new languages; current text remains…|新しい言語を準備中。現在の表示を維持します…
 正在应用新语言…|Applying new languages…|新しい言語を適用中…
 正在应用设置…|Applying settings…|設定を適用中…
@@ -191,6 +191,37 @@ MESSAGES.update(
 )
 
 
+MESSAGES.update(
+    {
+        "× / Esc 只收起设置；隐藏界面后可从托盘或再次双击程序打开。": {
+            "en": "× / Esc collapses settings. Reopen a hidden interface from the tray or by launching the app again.",
+            "ja": "× / Esc は設定を閉じるだけです。非表示の画面はトレイかアプリの再起動で開けます。",
+        },
+        "打开使用说明": {"en": "User guide", "ja": "使い方"},
+        "打开日志与配置文件夹": {
+            "en": "Open logs and settings folder",
+            "ja": "ログと設定フォルダーを開く",
+        },
+        "创建桌面快捷方式": {
+            "en": "Create desktop shortcut",
+            "ja": "デスクトップショートカットを作成",
+        },
+        "桌面快捷方式已创建": {
+            "en": "Desktop shortcut created",
+            "ja": "ショートカットを作成しました",
+        },
+        "创建快捷方式失败：": {
+            "en": "Could not create shortcut: ",
+            "ja": "ショートカットを作成できません：",
+        },
+        "此功能需要 Windows 便携发行包": {
+            "en": "Requires the Windows portable release",
+            "ja": "Windows ポータブル版が必要です",
+        },
+    }
+)
+
+
 def set_language(value):
     global _language
     if value == "auto":
@@ -207,6 +238,10 @@ def set_language(value):
 
 def tr(text):
     return _translate(text, _language)
+
+
+def current_language():
+    return _language
 
 
 _FRAGMENTS = tuple(

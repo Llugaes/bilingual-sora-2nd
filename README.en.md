@@ -8,11 +8,17 @@ Currently supports Steam build **25386012**, executable **1.03.2**. The tool che
 
 ## Installation
 
-1. Install **Python 3.14 for Windows x64**, including the Python Launcher.
-2. Download **bilingual-sora-2nd-VERSION-windows-x64.zip** from [Releases](https://github.com/Llugaes/bilingual-sora-2nd/releases/latest). Extract it into its own writable directory. GitHub's automatically generated Source code archives are not the installable release.
-3. Run **Setup.cmd** to install dependencies and create a desktop shortcut. This is a first-time step; subsequent compatible software updates install automatically.
-4. Open **Sora Bilingual** from the desktop. On the first run, select the game's current text language. This sets the initial language pair before the tool automatically connects to the running game or waits for it to start. The tool never launches the game. Cancelling setup exits the tool; reopen it to try again.
-5. Change either display language under **语言与模式** (Languages and mode). If you later change the language in the game itself, also change **高级：原文识别** (Advanced: source matching). The source language identifies incoming game text; the primary language controls what the mod displays. Game-language detection is not automatic.
+1. Download **bilingual-sora-2nd-VERSION-windows-x64.zip** from [Releases](https://github.com/Llugaes/bilingual-sora-2nd/releases/latest) and extract the entire ZIP into a writable folder.
+2. Double-click **BilingualSora2nd.exe**. Python and all runtime dependencies are included: no Python installation, CMD scripts, or first-run dependency downloads. Supports Windows 10/11 x64.
+3. Select the game's current text language on first launch. Settings open immediately; the tool automatically connects to the game or waits for it to start. It never launches the game itself.
+
+The Updates page includes desktop shortcut creation, the logs/settings folder, and a user guide. Launching the EXE again opens the existing interface without starting a second backend. The interface supports English, Japanese, and Simplified Chinese.
+
+Download the ZIP only. **bilingual-sora-2nd-update.json** is updater metadata; GitHub's Source code archives are for developers. Keep the extracted folder intact; do not move only the EXE.
+
+Upgrading from **0.2.x** requires a one-time manual migration because the old updater cannot install a bundled runtime. Exit the old tool, extract the new release into a new folder, copy **generated/native-control.json** and **generated/overlay-window.ini** (not **.venv/**, **generated/updates/**, or the old hot-reload manifest), then run the new EXE. Future portable releases automatically update both code and dependencies. Keep source checkouts separate.
+
+Choose any primary/secondary pair under Languages and mode. If you change the language in the game itself, also change Advanced: source matching. Source language identifies incoming text; primary language controls the mod's displayed text.
 
 ### First-run defaults
 
@@ -32,8 +38,9 @@ The first load parses your local game resources and builds a cache, which can ta
 Some language pairs need an expanded game font to avoid missing characters appearing as question marks. Generate fonts from your own game installation; game fonts are not distributed here. Exit the game before running:
 
 ```powershell
-.venv\Scripts\python.exe -m sora_bilingual.fonts.universal_fonts --game "PATH_TO_GAME"
-.venv\Scripts\python.exe -m sora_bilingual.fonts.install_font_patch --game "PATH_TO_GAME" --loader "PATH_TO_xinput1_4.dll" --install
+$runtime = Get-Content runtime/current.txt
+& ".\runtime\$runtime\python.exe" -m sora_bilingual.fonts.universal_fonts --game "PATH_TO_GAME"
+& ".\runtime\$runtime\python.exe" -m sora_bilingual.fonts.install_font_patch --game "PATH_TO_GAME" --loader "PATH_TO_xinput1_4.dll" --install
 ```
 
 The optional loader comes from [sora2looseload](https://github.com/lmaple0/sora2looseload). The installer accepts only the verified DLL with SHA-256 **e08a18068a482bb5d187a62023759c0e14ab69d76395b773ef0405d35e2ac8c7**. Do not bypass a mismatch; keep the existing files and report it. Other mods' files are not overwritten. Use **--update** only for an installation already recorded by this tool. Automatic software updates do not modify the game directory, loader, or generated fonts.
@@ -61,9 +68,9 @@ Menus, items, skills, NPC conversations, and story dialogue use small annotation
 
 The **版本更新** (Updates) tab defaults to **automatically checking and installing stable releases** from this repository on startup and every six hours. You can also check immediately, choose notification-only updates, or disable checks.
 
-Downloads are verified against the repository, version, file list, and SHA-256 hashes. Installation waits until the game connection ends. The interface then reloads automatically, restoring its position and expanded/hidden state. Settings and caches stay in **generated/**; dependencies stay in **.venv/**. If installation is interrupted, the next shortcut launch completes it or restores the old files. Backups live under **generated/updates/backup-***.
+Downloads are verified against the repository, version, file list, and SHA-256 hashes. Installation waits until the game connection ends. The interface then reloads automatically, restoring its position and expanded/hidden state. Settings and caches stay in **generated/**; bundled dependencies stay in **runtime/**. If installation is interrupted, the next shortcut launch completes it or restores the old files. Backups live under **generated/updates/backup-***.
 
-Automatic installation requires a release installation containing **installed-manifest.json**. Git development directories and manually modified software files are not overwritten. Updates needing a different Python or dependency version request a runtime upgrade instead of replacing running Python/DLL files. Drafts, prereleases, and older versions are not installed automatically.
+Automatic installation requires a release installation containing **installed-manifest.json**. Git development directories and manually modified software files are not overwritten. Runtime updates install into a new versioned directory and switch on UI reload. Loaded DLLs are not overwritten; old runtimes remain available for recovery and consume additional disk space. Drafts, prereleases, and older versions are not installed automatically.
 
 ## Development and contributing
 
@@ -82,7 +89,7 @@ See the [architecture](https://github.com/Llugaes/bilingual-sora-2nd/blob/main/d
 For a release, maintainers update both **distribution.json** and **pyproject.toml**, then push a matching **vX.Y.Z** tag. GitHub Actions validates on Windows, builds from an explicit file allowlist, uploads all assets to a draft, then publishes them together. Manual build:
 
 ```powershell
-.venv\Scripts\python.exe -m tools.build_release --version 0.2.3 --repository Llugaes/bilingual-sora-2nd
+.venv\Scripts\python.exe -m tools.build_portable --version 0.3.0 --repository Llugaes/bilingual-sora-2nd
 ```
 
 Neither the repository nor releases contain game resources, generated fonts, complete text indexes, logs, screenshots, or user settings.

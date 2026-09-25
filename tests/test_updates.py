@@ -107,35 +107,13 @@ class GitHubTests(unittest.TestCase):
 
 
 class InstallationTests(unittest.TestCase):
-    def test_explicit_game_names_and_legacy_upgrade_assets(self):
-        from sora_bilingual.updates.github_updates import ASSET_MANIFEST, LEGACY_MANIFEST
+    def test_release_assets_have_one_unambiguous_package(self):
+        from sora_bilingual.updates.github_updates import ASSET_MANIFEST
 
-        modern = self.new.parent / ASSET_MANIFEST
-        legacy = self.new.parent / LEGACY_MANIFEST
-        old_meta = json.loads(legacy.read_text("utf-8"))
-        old_zip = self.new.parent / old_meta["asset"]
+        self.assertEqual(
+            {p.name for p in self.new.parent.iterdir()}, {self.new.name, ASSET_MANIFEST}
+        )
         self.assertTrue(self.new.name.startswith("bilingual-sora-2nd-"))
-        self.assertEqual(self.new.read_bytes(), old_zip.read_bytes())
-
-        def asset(path):
-            return {
-                "name": path.name,
-                "state": "uploaded",
-                "size": path.stat().st_size,
-                "digest": "sha256:" + sha256(path.read_bytes()),
-                "browser_download_url": "https://github.com/test/mod/releases/download/v0.1.1/"
-                + path.name,
-            }
-
-        release = {
-            "tag_name": "v0.1.1",
-            "assets": [asset(p) for p in (modern, legacy, self.new, old_zip)],
-        }
-        client = GitHubClient("test/mod", Opener(modern.read_bytes()))
-        self.assertEqual(client.metadata(release)[0]["asset"], self.new.name)
-        release["assets"] = [asset(p) for p in (legacy, old_zip)]
-        client = GitHubClient("test/mod", Opener(legacy.read_bytes()))
-        self.assertEqual(client.metadata(release)[0]["asset"], old_zip.name)
 
     @classmethod
     def setUpClass(cls):
@@ -213,7 +191,10 @@ class InstallationTests(unittest.TestCase):
         def crash(path, data):
             nonlocal count
             write(path, data)
-            if Path(path).parent == self.root / "sora_bilingual/app":
+            if Path(path).parent == self.root and Path(path).name in (
+                "distribution.json",
+                "pyproject.toml",
+            ):
                 count += 1
                 if count == 2:
                     raise KeyboardInterrupt("simulated process death")

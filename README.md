@@ -8,11 +8,17 @@
 
 ## 安装和启动
 
-1. 安装 Windows x64 的 Python **3.14**（包含 Python Launcher）。
-2. 从 [Releases](https://github.com/Llugaes/bilingual-sora-2nd/releases/latest) 下载 `bilingual-sora-2nd-版本-windows-x64.zip`，解压到有写权限的独立目录。不要下载 GitHub 自动生成的 Source code 包来代替发行包。
-3. 双击 `Setup.cmd` 安装依赖并创建桌面快捷方式。这是首次安装步骤，后续同运行环境的软件更新会自动安装。
-4. 双击桌面 **Sora Bilingual**。首次启动先选择游戏当前的文本语言；工具据此设置主、副语言，然后自动关联已运行的游戏，也会等待稍后启动的游戏。工具本身不启动游戏，取消首次设置会退出工具，稍后可重新打开。
-5. 在“语言与模式”自由选择主、副语言。若以后在游戏中更改语言，请同步修改“高级：原文识别”。主语言是 Mod 显示的正文，识别源语言用于匹配游戏传入的原文，两者职责不同。目前不自动识别游戏语言。
+1. 从 [Releases](https://github.com/Llugaes/bilingual-sora-2nd/releases/latest) 下载 **bilingual-sora-2nd-版本-windows-x64.zip**，完整解压到有写权限的独立文件夹。
+2. 双击 **BilingualSora2nd.exe**。包内已带 Python 和全部运行依赖，无需安装 Python、运行 CMD 或首次联网安装依赖。适用于 Windows 10/11 x64。
+3. 首次选择游戏当前的文本语言，随后直接进入设置。工具自动关联正在运行的游戏，也会等待游戏启动；它不会替你启动游戏。
+
+“版本更新”页可以创建桌面快捷方式、打开日志与配置文件夹、查看使用说明。再次双击 EXE 会打开已有界面，不会重复启动后台。界面支持中文、英文、日文。
+
+Release 中只需下载 ZIP；`bilingual-sora-2nd-update.json` 给自动更新使用，GitHub 的 Source code 附件给开发者使用。请保留解压后的完整目录，不要单独移动 EXE。
+
+从 **0.2.x** 升级：旧版更新器无法安装内置运行环境，需要一次手动迁移。退出旧工具，将新包解压到新目录，复制旧目录的 `generated/native-control.json` 和 `generated/overlay-window.ini`（不要复制 `.venv/`、`generated/updates/` 或旧热加载清单），再运行新 EXE。之后便携版的程序和依赖都支持自动更新。开发目录继续保留，不覆盖其源码。
+
+主、副语言可在“语言与模式”中自由搭配。若修改了游戏本身的语言，请同步修改“高级：原文识别”；游戏源语言用于识别文本，主语言决定 Mod 显示的正文。
 
 ### 首次运行的默认语言
 
@@ -32,8 +38,9 @@
 某些跨语言组合需要补充游戏字库，否则游戏原字体没有的字符可能显示为问号。字库必须从自己的游戏资源生成，不随本项目分发。退出游戏后执行：
 
 ```powershell
-.venv\Scripts\python.exe -m sora_bilingual.fonts.universal_fonts --game "你的游戏安装目录"
-.venv\Scripts\python.exe -m sora_bilingual.fonts.install_font_patch --game "你的游戏安装目录" --loader "xinput1_4.dll 的路径" --install
+$runtime = Get-Content runtime/current.txt
+& ".\runtime\$runtime\python.exe" -m sora_bilingual.fonts.universal_fonts --game "你的游戏安装目录"
+& ".\runtime\$runtime\python.exe" -m sora_bilingual.fonts.install_font_patch --game "你的游戏安装目录" --loader "xinput1_4.dll 的路径" --install
 ```
 
 加载器取自 [sora2looseload](https://github.com/lmaple0/sora2looseload)。当前安装器只接受已校验的 DLL，SHA-256 为 `e08a18068a482bb5d187a62023759c0e14ab69d76395b773ef0405d35e2ac8c7`，不接受任意新版本替换。遇到摘要不匹配时保留现有文件并反馈，不要跳过校验。安装器拒绝覆盖其他 Mod 的文件；已有本工具安装记录时可添加 `--update` 更新。软件自动更新不修改游戏目录、加载器或生成字库。
@@ -61,9 +68,9 @@
 
 “版本更新”页默认 **自动检查并安装稳定版**：启动时和每 6 小时检查本仓库 Releases。可以立即检查，也可以选择仅提示或关闭自动检查。
 
-更新包在后台下载并核验仓库、版本、文件清单及 SHA-256。游戏连接期间等待，连接结束后安装；完成后控制界面自动重载，恢复位置和展开／隐藏状态。配置和缓存保留在 `generated/`，依赖保留在 `.venv/`。安装发生中断时，下次从快捷方式启动会先完成提交或恢复旧文件。备份在 `generated/updates/backup-*`。
+更新包在后台下载并核验仓库、版本、文件清单及 SHA-256。游戏连接期间等待，连接结束后安装；完成后控制界面自动重载，恢复位置和展开／隐藏状态。配置和缓存保留在 `generated/`，内置依赖位于 `runtime/`。安装发生中断时，下次从快捷方式启动会先完成提交或恢复旧文件。备份在 `generated/updates/backup-*`。
 
-自动更新只适用于带 `installed-manifest.json` 的发行包安装。Git 开发目录及被手工改动的软件文件不会被覆盖。更新若要求不同的 Python 或依赖版本，会提示按发行说明升级运行环境；不会在运行中替换 Python/DLL。预发布、草稿和旧版本不会自动安装。
+自动更新只适用于带 `installed-manifest.json` 的发行包安装。Git 开发目录及被手工改动的软件文件不会被覆盖。运行环境更新会写入新的版本目录，界面重载后切换；不覆盖正在使用的 Python/DLL。旧运行环境保留供恢复，可能占用额外磁盘空间。预发布、草稿和旧版本不会自动安装。
 
 ## 开发和发布
 
@@ -82,7 +89,7 @@ py -3.14 -m venv .venv
 维护者同步修改 distribution.json 和 pyproject.toml 版本后推送 `vX.Y.Z` 标签。GitHub Actions 在 Windows 上验证测试，从明确的文件白名单构建 ZIP 和更新清单，上传到草稿 Release 后一起公开；后续客户端自动发现。手动构建：
 
 ```powershell
-.venv\Scripts\python.exe -m tools.build_release --version 0.2.3 --repository Llugaes/bilingual-sora-2nd
+.venv\Scripts\python.exe -m tools.build_portable --version 0.3.0 --repository Llugaes/bilingual-sora-2nd
 ```
 
 发布包和仓库不包含游戏资源、生成字库、完整文本索引、日志、截图或用户配置。报告问题时请附工具版本、游戏版本、语言组合与精简错误信息，避免上传完整游戏数据。

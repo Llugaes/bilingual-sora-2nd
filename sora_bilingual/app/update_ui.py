@@ -2,7 +2,8 @@
 
 from pathlib import Path
 from sora_bilingual.paths import ROOT
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QTimer, QUrl
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QComboBox, QPushButton
 from sora_bilingual.updates.update_service import UpdateService
 from sora_bilingual.app.ui_widgets import QLabel, QComboBox, QPushButton
@@ -43,6 +44,20 @@ class UpdatePage(QWidget):
         )
         note.setWordWrap(True)
         layout.addWidget(note)
+        help_note = QLabel("× / Esc 只收起设置；隐藏界面后可从托盘或再次双击程序打开。")
+        help_note.setWordWrap(True)
+        layout.addWidget(help_note)
+        for title, callback in [
+            ("打开使用说明", self.open_guide),
+            ("打开日志与配置文件夹", self.open_data),
+            ("创建桌面快捷方式", self.create_shortcut),
+        ]:
+            button = QPushButton(title)
+            button.clicked.connect(callback)
+            layout.addWidget(button)
+        self.help_state = QLabel()
+        self.help_state.setWordWrap(True)
+        layout.addWidget(self.help_state)
         if not (self.service.root / "installed-manifest.json").exists():
             label = QLabel("当前是开发目录：可检查版本，自动更新不会覆盖本地源码。")
             label.setWordWrap(True)
@@ -51,6 +66,30 @@ class UpdatePage(QWidget):
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.refresh)
         self.refresh(False)
+
+    def open_guide(self):
+        from sora_bilingual.app.i18n import current_language
+
+        filename = {"en": "README.en.md", "ja": "README.ja.md"}.get(current_language(), "README.md")
+        QDesktopServices.openUrl(
+            QUrl(
+                f"https://github.com/{self.service.distribution['repository']}/blob/main/{filename}"
+            )
+        )
+
+    def open_data(self):
+        directory = self.service.root / "generated"
+        directory.mkdir(parents=True, exist_ok=True)
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(directory)))
+
+    def create_shortcut(self):
+        from sora_bilingual.platform.shortcuts import create_desktop_shortcut
+
+        try:
+            create_desktop_shortcut(self.service.root)
+            self.help_state.setText("桌面快捷方式已创建")
+        except Exception as exc:
+            self.help_state.setText("创建快捷方式失败：" + str(exc))
 
     def start(self):
         self.timer.start(1000)

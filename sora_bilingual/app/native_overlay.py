@@ -501,6 +501,7 @@ def main():
         return 1
     from sora_bilingual.app.native_settings import configure_first_run
 
+    first_run = not args.control.exists()
     if not args.no_auto_connect and not configure_first_run(args.control):
         server.close()
         return 0
@@ -554,7 +555,7 @@ def main():
         message()
 
     server.newConnection.connect(connected)
-    if args.expanded:
+    if args.expanded or (first_run and not args.no_auto_connect):
         controller.expand()
     if args.restore:
         controller.restore_interface()

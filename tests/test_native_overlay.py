@@ -20,6 +20,7 @@ from sora_bilingual.config.native_config import read_config, write_config, Actio
 from sora_bilingual.app.native_settings import NativeSettingsWindow, update_control, ROOT
 from sora_bilingual.app.native_overlay import describe_state, JsonSnapshot, OverlayController, STYLE
 from sora_bilingual.platform.inputs import InputManager
+from sora_bilingual.app.i18n import tr
 
 
 class OverlayStatusTests(unittest.TestCase):
@@ -182,7 +183,9 @@ class OverlayUiTests(unittest.TestCase):
         )
         self.window.refresh_status()
         self.assertIsNone(self.window._connection_error)
-        self.assertIn("正在准备", self.window.backend_label.text())
+        self.assertEqual(
+            tr("正在准备语言索引，当前语言继续显示…"), self.window.backend_label.text()
+        )
 
     def test_reselecting_same_mode_issues_a_new_request_not_backend_restart(self):
         with patch(
@@ -208,7 +211,7 @@ class OverlayUiTests(unittest.TestCase):
         self.assertEqual(
             read_config(self.control)["overlay_binding"]["keyboard"], ["CTRL", "SHIFT", "F9"]
         )
-        self.assertIn("未保存", self.window.backend_label.text())
+        self.assertIn(tr("未保存："), self.window.backend_label.text())
         self.window._begin_keyboard_capture()
         QTest.keyClick(self.window, Qt.Key.Key_Escape)
         self.assertFalse(self.window.capturing)

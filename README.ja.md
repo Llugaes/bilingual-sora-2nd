@@ -8,11 +8,17 @@ PC 版『空の軌跡 the 2nd』のゲーム内テキストを二言語で表示
 
 ## インストール
 
-1. **Windows x64 版 Python 3.14** を Python Launcher とともにインストールします。
-2. [Releases](https://github.com/Llugaes/bilingual-sora-2nd/releases/latest) から **bilingual-sora-2nd-VERSION-windows-x64.zip** をダウンロードし、書き込み可能な専用フォルダーに展開します。GitHub が自動生成する Source code アーカイブは配布用パッケージではありません。
-3. **Setup.cmd** を実行し、依存ライブラリとデスクトップのショートカットを用意します。通常は初回のみ必要で、同じ実行環境で利用できるソフトウェア更新は自動でインストールされます。
-4. デスクトップの **Sora Bilingual** を開きます。初回はゲームの現在の表示言語を選択します。その言語に応じた初期設定を保存してから、起動中のゲームに自動接続します。ゲームがまだ起動していない場合は待機します。ツールがゲームを起動することはありません。初回設定をキャンセルするとツールは終了し、次回起動時に再設定できます。
-5. **语言与模式**（言語とモード）で主言語・副言語を変更できます。ゲーム側の言語を後から変えた場合は、**高级：原文识别**（詳細：原文の照合）も合わせて変更してください。照合元言語はゲームから渡される原文の識別に、主言語は Mod の本文表示に使います。ゲーム言語の自動判定は行いません。
+1. [Releases](https://github.com/Llugaes/bilingual-sora-2nd/releases/latest) から **bilingual-sora-2nd-VERSION-windows-x64.zip** をダウンロードし、書き込み可能なフォルダーに全体を展開します。
+2. **BilingualSora2nd.exe** をダブルクリックします。Python と必要なライブラリは同梱済みです。Python のインストール、CMD の実行、初回の依存ライブラリ取得は不要です。Windows 10/11 x64 対応。
+3. 初回にゲームの現在の表示言語を選ぶと、設定画面が開きます。起動中のゲームへ自動接続し、未起動の場合は待機します。ツール自体はゲームを起動しません。
+
+更新タブからデスクトップショートカットの作成、ログ・設定フォルダー、使い方を開けます。EXE を再実行すると既存の画面が開き、バックグラウンド処理は重複しません。画面は日本語・英語・簡体字中国語に対応します。
+
+必要なのは ZIP のみです。**bilingual-sora-2nd-update.json** は自動更新用、GitHub の Source code は開発者用です。EXE だけを移動せず、展開したフォルダー全体を保持してください。
+
+**0.2.x** からは一度だけ手動移行が必要です。旧更新機能は同梱ランタイムを扱えません。旧ツールを終了し、新しいフォルダーに展開して、旧 **generated/native-control.json** と **generated/overlay-window.ini** をコピーしてください（**.venv/**、**generated/updates/**、旧ホットリロード情報はコピーしません）。新 EXE の起動後はプログラムと依存ライブラリの自動更新が可能です。ソースの作業フォルダーとは分けてください。
+
+主言語・副言語は自由に組み合わせられます。ゲーム本体の言語を変更した場合は「詳細：原文の照合」も更新してください。照合元言語と Mod の主言語は別の役割です。
 
 ### 初回の言語設定
 
@@ -32,8 +38,9 @@ PC 版『空の軌跡 the 2nd』のゲーム内テキストを二言語で表示
 言語の組み合わせによっては、元のゲームフォントにない文字が「?」になるため、拡張フォントが必要です。フォントは自分のゲームリソースから生成し、このプロジェクトでは配布しません。ゲームを終了してから実行します。
 
 ```powershell
-.venv\Scripts\python.exe -m sora_bilingual.fonts.universal_fonts --game "ゲームのインストール先"
-.venv\Scripts\python.exe -m sora_bilingual.fonts.install_font_patch --game "ゲームのインストール先" --loader "xinput1_4.dll のパス" --install
+$runtime = Get-Content runtime/current.txt
+& ".\runtime\$runtime\python.exe" -m sora_bilingual.fonts.universal_fonts --game "ゲームのインストール先"
+& ".\runtime\$runtime\python.exe" -m sora_bilingual.fonts.install_font_patch --game "ゲームのインストール先" --loader "xinput1_4.dll のパス" --install
 ```
 
 任意導入のローダーは [sora2looseload](https://github.com/lmaple0/sora2looseload) を使用します。インストーラーが受け付ける DLL の SHA-256 は **e08a18068a482bb5d187a62023759c0e14ab69d76395b773ef0405d35e2ac8c7** です。一致しない場合は検証を無効化せず、既存ファイルを保持して報告してください。他の Mod のファイルは上書きしません。本ツールの導入記録がある場合のみ **--update** で更新できます。ソフトウェアの自動更新ではゲームフォルダー、ローダー、生成フォントを変更しません。
@@ -61,9 +68,9 @@ PC 版『空の軌跡 the 2nd』のゲーム内テキストを二言語で表示
 
 **版本更新**（更新）タブの初期設定は、**安定版を自動確認・インストール**です。起動時と六時間ごとにこのリポジトリの Releases を確認します。手動確認、通知のみ、自動確認の無効化も選べます。
 
-更新パッケージはバックグラウンドで取得し、リポジトリ、バージョン、ファイル一覧、SHA-256 を検証します。ゲームに接続している間は適用を待ち、接続終了後にインストールします。画面は自動で再読み込みされ、位置と展開・非表示状態を復元します。設定とキャッシュは **generated/**、依存ライブラリは **.venv/** に保持します。更新が中断された場合、次のショートカット起動時に適用を完了するか旧ファイルへ復元します。バックアップは **generated/updates/backup-*** にあります。
+更新パッケージはバックグラウンドで取得し、リポジトリ、バージョン、ファイル一覧、SHA-256 を検証します。ゲームに接続している間は適用を待ち、接続終了後にインストールします。画面は自動で再読み込みされ、位置と展開・非表示状態を復元します。設定とキャッシュは **generated/**、依存ライブラリは **runtime/** に保持します。更新が中断された場合、次のショートカット起動時に適用を完了するか旧ファイルへ復元します。バックアップは **generated/updates/backup-*** にあります。
 
-自動インストールは **installed-manifest.json** を含む配布版が対象です。Git の開発フォルダーや、手動変更されたソフトウェアファイルは上書きしません。異なる Python・依存ライブラリが必要な更新では、実行中の Python / DLL を置き換えず、実行環境の更新を案内します。ドラフト、プレリリース、旧バージョンは自動導入しません。
+自動インストールは **installed-manifest.json** を含む配布版が対象です。Git の開発フォルダーや、手動変更されたソフトウェアファイルは上書きしません。ランタイム更新は別のバージョン用フォルダーに適用し、画面の再読み込み時に切り替えます。使用中の DLL は上書きしません。旧ランタイムは復旧用に残り、追加のディスク容量を使用します。ドラフト、プレリリース、旧バージョンは自動導入しません。
 
 ## 開発とコントリビュート
 
@@ -82,7 +89,7 @@ py -3.14 -m venv .venv
 公開時は **distribution.json** と **pyproject.toml** のバージョンを揃え、対応する **vX.Y.Z** タグを push します。GitHub Actions が Windows 上で検証し、明示したファイル一覧から ZIP を生成します。すべての配布ファイルをドラフトへアップロードした後、まとめて公開します。手動ビルド：
 
 ```powershell
-.venv\Scripts\python.exe -m tools.build_release --version 0.2.3 --repository Llugaes/bilingual-sora-2nd
+.venv\Scripts\python.exe -m tools.build_portable --version 0.3.0 --repository Llugaes/bilingual-sora-2nd
 ```
 
 リポジトリと配布パッケージには、ゲームリソース、生成フォント、完全なテキスト索引、ログ、スクリーンショット、ユーザー設定を含めません。

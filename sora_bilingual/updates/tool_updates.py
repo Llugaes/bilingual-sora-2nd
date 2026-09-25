@@ -37,6 +37,7 @@ GROUPS = {
         "sora_bilingual/updates/update_installer.py",
         "sora_bilingual/updates/update_service.py",
         "sora_bilingual/app/update_ui.py",
+        "sora_bilingual/platform/shortcuts.py",
     ),
     "logic": (
         "sora_bilingual/game/scripts/runtime_text.js",

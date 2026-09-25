@@ -1,4 +1,4 @@
-"""Verified code-only updates with an on-disk rollback journal. Standard library only."""
+"""Verified application updates; immutable runtimes and an on-disk rollback journal."""
 
 import hashlib
 import json
@@ -10,6 +10,9 @@ import sys
 import tempfile
 import uuid
 import zipfile
+
+MAX_FILES = 20000
+MAX_EXPANDED = 2 * 1024 * 1024 * 1024
 
 PROTECTED = {
     ".git",
@@ -55,7 +58,14 @@ def relative_file(name, internal=False):
     if parts[0].lower() in PROTECTED or any(p.startswith(".") for p in parts):
         return False
     return (
-        (
+        name in ("BilingualSora2nd.exe", "runtime/current.txt")
+        or (len(parts) == 2 and parts[0] == "licenses" and Path(name).suffix == ".txt")
+        or (
+            len(parts) >= 3
+            and parts[0] == "runtime"
+            and re.fullmatch("[0-9a-f]{16}", parts[1]) is not None
+        )
+        or (
             len(parts) == 1
             and (
                 name == "LICENSE"
@@ -153,7 +163,7 @@ def validate_manifest(manifest):
     ):
         raise ValueError("更新运行环境不兼容")
     files = manifest.get("files")
-    if not isinstance(files, dict) or not files or len(files) > 500:
+    if not isinstance(files, dict) or not files or len(files) > MAX_FILES:
         raise ValueError("更新文件清单不合法")
     folded = set()
     for name, value in files.items():
@@ -162,8 +172,29 @@ def validate_manifest(manifest):
             or name.casefold() in folded
             or not re.fullmatch("[0-9a-f]{64}", str(value))
         ):
-            raise ValueError("更新路径或摘要不合法")
+            raise ValueError("更新路径或摘要不合法：" + str(name))
         folded.add(name.casefold())
+    runtime_id = manifest.get("runtime_id")
+    if runtime_id is not None:
+        if not re.fullmatch("[0-9a-f]{16}", str(runtime_id)):
+            raise ValueError("更新运行环境标识无效")
+        if not {
+            "BilingualSora2nd.exe",
+            "runtime/current.txt",
+            f"runtime/{runtime_id}/pythonw.exe",
+            f"runtime/{runtime_id}/python.exe",
+            f"runtime/{runtime_id}/python314._pth",
+        } <= set(files):
+            raise ValueError("更新缺少完整运行环境")
+        if any(
+            n.startswith("runtime/")
+            and n != "runtime/current.txt"
+            and not n.startswith(f"runtime/{runtime_id}/")
+            for n in files
+        ):
+            raise ValueError("更新包含非当前运行环境")
+    elif any(n.startswith("runtime/") or n == "BilingualSora2nd.exe" for n in files):
+        raise ValueError("更新缺少运行环境标识")
     if not {
         "launch.py",
         "sora_bilingual/app/native_overlay.py",
@@ -188,19 +219,22 @@ def validate_manifest(manifest):
 
 
 def package_contents(package, expected):
-    if Path(package).stat().st_size > 128 * 1024 * 1024:
+    from sora_bilingual.updates.github_updates import MAX_PACKAGE
+
+    if Path(package).stat().st_size > MAX_PACKAGE:
         raise ValueError("更新包过大")
     raw = Path(package).read_bytes()
     if len(raw) != expected["size"] or digest(raw) != expected["sha256"]:
         raise ValueError("更新包校验失败")
+    del raw
     with zipfile.ZipFile(package) as archive:
         entries = archive.infolist()
         names = [e.filename for e in entries]
-        if len(entries) > 501:
+        if len(entries) > MAX_FILES + 1:
             raise ValueError("更新包文件过多")
         if len(names) != len(set(n.casefold() for n in names)):
             raise ValueError("更新包存在重复路径")
-        if sum(e.file_size for e in entries) > 128 * 1024 * 1024:
+        if sum(e.file_size for e in entries) > MAX_EXPANDED:
             raise ValueError("更新包展开过大")
         for e in entries:
             if e.is_dir() or stat.S_ISLNK(e.external_attr >> 16) or (e.external_attr & 0x400):
@@ -218,6 +252,11 @@ def package_contents(package, expected):
         contents = {name: archive.read(name) for name in manifest["files"]}
         if any(digest(data) != manifest["files"][name] for name, data in contents.items()):
             raise ValueError("更新文件摘要不匹配")
+        if (
+            manifest.get("runtime_id")
+            and contents["runtime/current.txt"].decode().strip() != manifest["runtime_id"]
+        ):
+            raise ValueError("运行环境选择器不匹配")
         distribution = json.loads(contents["distribution.json"])
         if distribution.get("version") != manifest["version"] or distribution.get(
             "repository"
@@ -291,9 +330,15 @@ def install(root, package, expected):
         raise ValueError("不安装相同或更旧的版本")
     if old.get("repository") != manifest.get("repository"):
         raise ValueError("更新来源与安装来源不一致")
-    if manifest.get("python") != list(sys.version_info[:2]):
+    if manifest.get("runtime_id") and not old.get("runtime_id"):
+        raise ValueError("请将便携版解压到新目录，再迁移配置文件")
+    if old.get("runtime_id") and not manifest.get("runtime_id"):
+        raise ValueError("便携版不能降级为不带运行环境的版本")
+    if not manifest.get("runtime_id") and manifest.get("python") != list(sys.version_info[:2]):
         raise ValueError("此更新需要不同的 Python 运行环境，请按发行说明升级")
-    if digest((root / "requirements.txt").read_bytes()) != manifest.get("requirements_sha256"):
+    if not manifest.get("runtime_id") and digest(
+        (root / "requirements.txt").read_bytes()
+    ) != manifest.get("requirements_sha256"):
         raise ValueError("此更新改变了运行依赖，请按发行说明升级运行环境")
     with UpdateLease(root):
         _recover_locked(root)
@@ -306,12 +351,29 @@ def install(root, package, expected):
                 raise ValueError("检测到本地文件修改，已停止覆盖：" + name)
         for name in set(contents) - set(old["files"]):
             if target(root, name).exists():
-                raise ValueError("新文件与本地文件冲突：" + name)
+                # A previously used immutable runtime may be selected again.
+                if (
+                    not name.startswith("runtime/")
+                    or digest(target(root, name).read_bytes()) != manifest["files"][name]
+                ):
+                    raise ValueError("新文件与本地文件冲突：" + name)
+        if old.get("runtime_id") == manifest.get("runtime_id") and old.get("runtime_id"):
+            prefix = f"runtime/{old['runtime_id']}/"
+            if {k: v for k, v in old["files"].items() if k.startswith(prefix)} != {
+                k: v for k, v in manifest["files"].items() if k.startswith(prefix)
+            }:
+                raise ValueError("不能原地修改正在使用的运行环境")
         updates = {
-            **contents,
+            **{
+                k: v
+                for k, v in contents.items()
+                if not target(root, k).exists() or digest(target(root, k).read_bytes()) != digest(v)
+            },
             "installed-manifest.json": json.dumps(manifest, ensure_ascii=False, indent=2).encode(),
         }
-        names = set(old["files"]) | set(updates) | {"generated/tool-release.json"}
+        # Old runtimes may still be loaded by the UI/reloader. Retain them intact.
+        removed = {n for n in set(old["files"]) - set(contents) if not n.startswith("runtime/")}
+        names = removed | set(updates) | {"generated/tool-release.json"}
         token = uuid.uuid4().hex
         backup = root / "generated/updates" / ("backup-" + token)
         previous = {}
@@ -325,6 +387,7 @@ def install(root, package, expected):
                 previous[name] = None
         state = {
             "id": token,
+            "recovery_runtime": old.get("runtime_id"),
             "phase": "prepared",
             "previous": previous,
             "next": {k: digest(v) for k, v in updates.items()},
@@ -334,7 +397,7 @@ def install(root, package, expected):
         try:
             for name, data in updates.items():
                 atomic_bytes(target(root, name, True), data)
-            for name in set(old["files"]) - set(contents):
+            for name in removed:
                 target(root, name).unlink()
             state["phase"] = "committed"
             write_json(_journal(root), state)

@@ -60,5 +60,8 @@
   "sora_bilingual/updates/github_updates.py",
   "sora_bilingual/updates/tool_updates.py",
   "sora_bilingual/updates/update_installer.py",
-  "sora_bilingual/updates/update_service.py"
+  "sora_bilingual/updates/update_service.py",
+  "sora_bilingual/platform/shortcuts.py",
+  "licenses/GPL-3.0-only.txt",
+  "licenses/LGPL-3.0-only.txt"
 ]

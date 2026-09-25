@@ -4,6 +4,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 from PySide6.QtWidgets import QApplication
 from sora_bilingual.app.native_overlay import OverlayController
@@ -12,6 +13,17 @@ from sora_bilingual.config.native_config import read_config, write_config
 
 
 class UiLanguageTests(unittest.TestCase):
+    def test_automatic_ui_locale_uses_system_language(self):
+        for system, text in (
+            ("English_United States", "Settings"),
+            ("ja_JP", "設定"),
+            ("Chinese (Simplified)_China", "设置"),
+            ("de_DE", "Settings"),
+        ):
+            with patch("sora_bilingual.app.i18n.locale.getlocale", return_value=(system, "UTF-8")):
+                set_language("auto")
+                self.assertEqual(tr("设置"), text)
+
     def tearDown(self):
         set_language("zh-Hans")
 

@@ -29,9 +29,10 @@ def main():
             k.CloseHandle(handle)
     from sora_bilingual.paths import ROOT as root
 
-    command = [
-        sys.executable,
-        str(root / "launch.py"),
+    launcher = root / "BilingualSora2nd.exe"
+    command = (
+        [str(launcher)] if launcher.is_file() else [sys.executable, str(root / "launch.py")]
+    ) + [
         "--control",
         args.control,
         "--status",

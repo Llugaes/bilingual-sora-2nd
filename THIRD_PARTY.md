@@ -39,7 +39,7 @@ File-format references (no bundled game data):
 Merged FNT and DDS files contain locally extracted game font data. They are
 generated on the user's machine and excluded from Git and redistribution.
 
-Runtime dependencies (installed in `.venv`, not vendored into the release ZIP):
+Runtime dependencies (bundled in the portable release under `runtime/<id>/`):
 
 | Project | Use |
 |---|---|
@@ -51,3 +51,25 @@ Runtime dependencies (installed in `.venv`, not vendored into the release ZIP):
 
 Python dependencies and their transitive dependencies retain their own licenses.
 See each installed distribution's license files and upstream documentation.
+
+The portable package includes the official CPython 3.14.7 embeddable distribution
+([release and source](https://www.python.org/downloads/release/python-3147/)),
+with its license in `runtime/<id>/LICENSE.txt`. Its upstream SHA-256 is pinned
+in `tools/build_portable.py`.
+
+Wheel license directories and distribution metadata are preserved under
+`runtime/<id>/Lib/site-packages/*dist-info/` (including `licenses/` where supplied).
+Qt/PySide and SDL are dynamically loaded and remain replaceable under their
+licenses; no modifications to those libraries are made. PySide6 Essentials
+contains the Qt modules used by this application; unused Qt Addons are not included.
+Sources: [Qt 6.11](https://download.qt.io/archive/qt/6.11/),
+[PySide sources](https://code.qt.io/cgit/pyside/pyside-setup.git/),
+[pygame-ce sources](https://github.com/pygame-community/pygame-ce/releases).
+The Windows launcher uses the .NET Framework included in supported Windows versions.
+
+Copies of the GNU LGPLv3 and GPLv3 texts from Qt for Python v6.11.2 are also
+included in `licenses/`. Library sources and notices are available from the
+upstream projects linked above. Users may modify or replace the dynamically
+loaded libraries and debug those changes; this project adds no restriction
+on those rights. Modifying installed files disables automatic overwrites so
+that such local changes are preserved.
