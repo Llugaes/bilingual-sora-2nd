@@ -6,7 +6,7 @@ import threading
 import time
 
 
-def prepare_fresh(game, config):
+def prepare_fresh(game, config, *, cache_only=False):
     """Isolate compiler updates from already-imported resident Python modules."""
     import json, subprocess, sys, tempfile
     from pathlib import Path
@@ -35,7 +35,10 @@ def prepare_fresh(game, config):
             raise RuntimeError(
                 process.stderr.decode("utf-8", errors="replace")[-1500:] or "索引准备进程失败"
             )
-        model = read_model(json.loads(result.read_text("utf-8"))["path"])
+        path = json.loads(result.read_text("utf-8"))["path"]
+        if cache_only:
+            return path
+        model = read_model(path)
         if model is None:
             raise ValueError("准备后的模型校验失败")
         return model

@@ -26,7 +26,9 @@ class NativeDictionaryTests(unittest.TestCase):
             exports_sync=SimpleNamespace(configure=lambda *_: calls.append("configure")),
         )
         scripts = iter((probe, agent))
-        session = SimpleNamespace(on=lambda *_: None, create_script=lambda _: next(scripts))
+        session = SimpleNamespace(
+            on=lambda *_: None, create_script=lambda _, **kwargs: next(scripts)
+        )
         with (
             patch(
                 "sora_bilingual.game.native_runtime.native_report",

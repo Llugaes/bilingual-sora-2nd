@@ -104,6 +104,7 @@ function makeRuntime(rubyCase = null) {
             ruby_context_init: {rva: 0x600, bytes: '00000000000000000000000000000000'},
             ruby_place_return: {rva: 0x700, bytes: '00000000000000000000000000000000'},
             ruby_measure_return: {rva: 0x800, bytes: '00000000000000000000000000000000'},
+            ruby_base_measure_return: {rva:0x880,bytes:'00000000000000000000000000000000'},
             newline_prepare: {rva: 0x900, bytes: '00000000000000000000000000000000'},
             ruby_base_measure_end:{rva:0xa00,bytes:'00000000000000000000000000000000'},
             ruby_compensate:{rva:0xb00,bytes:'00000000000000000000000000000000'},
@@ -143,7 +144,7 @@ function makeRuntime(rubyCase = null) {
                 const call = {returnAddress:base.add(rubyCase.wrongCallsite ? 0x777 : rubyCase.measurement ? 0x800 : 0x700),
                     context:{r15:rubyCase.wrongLabel ? new Pointer(123) : label,
                         rbx:{readFloat:()=> (rubyCase.baseLeft??0)+40,add:()=>({readFloat:()=>rubyCase.origin??0})},
-                        rbp:{add:off=>({readS32:()=>({0x3c8:0,0x3d0:40,0x17c:0,0x184:rubyCase.bottom??18})[off]??0})}}};
+                        rbp:{add:off=>({readS32:()=>({0x3c8:0,0x3cc:rubyCase.primaryTop??0,0x3d0:40,0x17c:0,0x184:rubyCase.bottom??18})[off]??0})}}};
                 hook.onEnter.call(call, [ctx]);
                 hook.onLeave.call(call);
                 rubyCase.after = values.get(0);
@@ -229,6 +230,14 @@ function makeRuntime(rubyCase = null) {
             frame.add(0x17c).writeS32(0);frame.add(0x184).writeS32(geometry.bottom??18);
             for(const off of [0x3c8,0x3cc,0x3d0,0x3d4])frame.add(off).writeS32(0x7fffffff);
             const machine={r15:label,rbx:parser,rbp:frame};
+            const measureContext=new ScratchPointer(0x880000),measureArgs=[measureContext,allocate(''),new Pointer(0)];
+            const measureCall={returnAddress:base.add(0x880),context:machine};
+            const initializer=hooks.get(String(base.add(0x600)));
+            initializer.onEnter.call(measureCall,measureArgs);initializer.onLeave.call(measureCall);
+            assert.equal(measureArgs[1].readUtf8String(),layer.primary);
+            assert.equal(measureArgs[2].toInt32(),[...layer.primary].length);
+            assert.equal(measureContext.add(0x1a9).readU8(),0,'measurement must not draw duplicate text');
+            frame.add(0x3cc).writeS32(geometry.primaryTop??0);
             hooks.get(String(base.add(0xa00))).onEnter.call({context:machine});
             const init=hooks.get(String(base.add(0x600)));
             const results=[];
@@ -463,16 +472,37 @@ test('unannotated numeric lines inside a formatted paragraph retain their native
     assert.equal(label.text(),'<R></R_><C2>Text</C>\n4');
 });
 
+test('late native font changes and rebuilt menus use the same size as a hot style refresh',()=>{
+    const r=makeRuntime(),a='鼠标·键盘';r.api.configure({[a]:'<R>'+a+'</Rマウス・キーボード>'},true,.85);
+    const label=r.label(0x4660,'',0,32);r.externalSet(label,a);
+    assert.match(label.text(),/^<s27>/);
+    label.fontSize=24;r.update(label);assert.match(label.text(),/^<s20>/);
+    const expected=label.text();r.api.style(.85,{ruby_scale:.85,ruby_gap:2});r.update(label);
+    assert.equal(label.text(),expected);
+    r.destroy(label);const rebuilt=r.label(0x4660,'',0,32);r.externalSet(rebuilt,a);
+    rebuilt.fontSize=24;r.update(rebuilt);assert.equal(rebuilt.text(),expected);
+    const writes=rebuilt.copyCount;r.update(rebuilt);assert.equal(rebuilt.copyCount,writes);
+});
+
+test('formatted footer uses measured primary top rather than the parser baseline',()=>{
+    const a='完成总计<C3>15件</C>委托并汇报。',b='計<C3>１５件</C>のクエストを達成して報告する。';
+    const runtime=makeRuntime();runtime.api.load({pairs:{[a]:[a,b]},plain_pairs:{[a]:[a,b]}},'annotation',true,.85,{ruby_gap:2});
+    const label=runtime.label(0x4670,a);runtime.update(label);
+    const v=runtime.auxiliary(label,0,{origin:100,primaryTop:-12,bottom:18}).results[1];
+    assert.equal(v.y+18,86,'annotation bottom must remain two units above the primary top at 88');
+    assert.equal(runtime.api.status().failed,false);
+});
+
 test('plain and formatted annotation lanes have the same measured gap across sizes and native offsets',()=>{
-    for(const fontSize of [18,32,64])for(const bottom of [10,18,24])for(const nativeY of [30,80,110]) {
-        const sample={x:10,origin:100,bottom,nativeY};const runtime=makeRuntime(sample);
+    for(const fontSize of [18,32,64])for(const bottom of [10,18,24])for(const nativeY of [30,80,110])for(const primaryTop of [-12,0,6]) {
+        const sample={x:10,origin:100,bottom,nativeY,primaryTop};const runtime=makeRuntime(sample);
         runtime.api.configure({'Text':'<R>Text</RTexte>'},true);
         const label=runtime.label(0x4630,'Text',0,fontSize);runtime.update(label);
         const formatted=makeRuntime(),a='<C2>Text</C>',b='<C2>Texte</C>';
         formatted.api.load({pairs:{[a]:[a,b]},plain_pairs:{[a]:[a,b]}},'annotation',true,.9);
         const other=formatted.label(0x4640,a,0,fontSize);formatted.update(other);
-        const y=formatted.auxiliary(other,0,{origin:100,bottom,nativeY}).results[1].y;
-        assert.equal(y,sample.y);assert.equal(100-(y+bottom),3);
+        const y=formatted.auxiliary(other,0,{origin:100,bottom,nativeY,primaryTop}).results[1].y;
+        assert.equal(y,sample.y);assert.equal(100+primaryTop-(y+bottom),3);
         assert.equal(runtime.api.status().failed,false);assert.equal(formatted.api.status().failed,false);
     }
 });

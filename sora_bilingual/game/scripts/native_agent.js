@@ -131,6 +131,7 @@ function activeRewrite(p) {
 }
 function wantedText(row) {
     const p=row.pointer,key=translationKey(row);
+    row.renderSize=p.add(0x304).readU32();
     let wanted=row.original;
     row.plan={text:wanted,layers:[],kind:'plain'};
     if(enabled&&!failed) {
@@ -177,7 +178,7 @@ function wantedText(row) {
             prefixLength=prefix.length;wanted=prefix+wanted;
         }
     }
-    row.layerBuffers=(row.plan.layers||[]).map(layer=>({layer:{...layer,offset:layer.offset+prefixLength},buffer:Memory.allocUtf8String(layer.text)}));
+    row.layerBuffers=(row.plan.layers||[]).map(layer=>({layer:{...layer,offset:layer.offset+prefixLength},buffer:Memory.allocUtf8String(layer.text),primaryBuffer:Memory.allocUtf8String(layer.primary||row.original)}));
     if(wanted.length>32768)throw Error('Rendered text exceeds limit');
     return wanted;
 }
@@ -206,10 +207,11 @@ function auxiliaryLayer(p,parser) {
     const item=row.layerBuffers.find(v=>owned.add(v.layer.offset).equals(current));
     return item ? {...item,row,parser} : null;
 }
-function annotationY(frame,parser,nativeY,protectedLane=false) {
+function annotationY(frame,parser,nativeY,protectedLane=false,primaryTop=0) {
     // The native measuring pass starts at (0,0) and has already applied the
     // selected ruby scale. Its bottom is a font extent, not a guessed fraction
-    // of label size. Anchor every surface to the same primary line origin.
+    // of label size. Anchor to the primary's measured ink top, which may differ
+    // from the parser origin on centered headings and formatted footers.
     const top=frame.add(0x17c).readS32(),bottom=frame.add(0x184).readS32();
     const origin=parser.add(4).readFloat();
     if(!Number.isFinite(origin)||!Number.isFinite(nativeY))throw Error('Invalid annotation origin');
@@ -217,7 +219,8 @@ function annotationY(frame,parser,nativeY,protectedLane=false) {
     if(top>bottom||Math.abs(top)>65536||Math.abs(bottom)>65536)throw Error('Invalid annotation bounds');
     // Original ruby/emphasis keeps its native lane. Place the added lane above
     // its native origin, without moving either original text layer.
-    const edge=protectedLane?Math.min(origin,nativeY):origin;
+    if(!Number.isFinite(primaryTop)||Math.abs(primaryTop)>65536)throw Error('Invalid primary top');
+    const edge=protectedLane?Math.min(origin+primaryTop,nativeY):origin+primaryTop;
     return edge-bottom-rubyGap;
 }
 // Align owned annotations with the measured primary run's left edge.
@@ -229,15 +232,18 @@ Interceptor.attach(base.add(REPORT.native.ruby_context_init.rva), {
         this.target = null;
         this.placement=this.returnAddress.equals(base.add(REPORT.native.ruby_place_return.rva));
         const measurement=REPORT.native.ruby_measure_return && this.returnAddress.equals(base.add(REPORT.native.ruby_measure_return.rva));
-        if(!this.placement && !measurement)return;
+        this.baseMeasurement=REPORT.native.ruby_base_measure_return&&this.returnAddress.equals(base.add(REPORT.native.ruby_base_measure_return.rva));
+        if(!this.placement && !measurement&&!this.baseMeasurement)return;
         try {
             const p = this.context.r15;
             const layer=auxiliaryLayer(p,this.context.rbx);
             if(layer) {
                 this.target=args[0];this.layer=layer;
-                args[1]=layer.buffer;args[2]=ptr([...layer.layer.text].length);
+                const text=this.baseMeasurement?(layer.layer.primary||layer.row.original):layer.layer.text;
+                args[1]=this.baseMeasurement?layer.primaryBuffer:layer.buffer;args[2]=ptr([...text].length);
                 return;
             }
+            if(this.baseMeasurement)return;
             const parent=auxiliaryContexts.get(String(this.context.rbx));
             if(parent) {this.target=args[0];this.inherited=parent;this.parent=this.context.rbx;return;}
             const row = annotatedOwner(p);
@@ -258,6 +264,13 @@ Interceptor.attach(base.add(REPORT.native.ruby_context_init.rva), {
     onLeave() {
         if (!this.target) return;
         try {
+            if(this.baseMeasurement) {
+                // Reuse the engine's existing read-only measuring pass. No
+                // additional native call and no primary text is drawn here.
+                this.target.add(0x1a9).writeU8(0);
+                this.target.add(0x1a5).writeU8(1);
+                return;
+            }
             const x = this.target.readFloat();
             if (!Number.isFinite(x)) throw Error('Non-finite ruby placement');
             for(const offset of [0x158,0x15c]) {
@@ -275,7 +288,7 @@ Interceptor.attach(base.add(REPORT.native.ruby_context_init.rva), {
                     // Move only the new lane. The primary and its original
                     // ruby keep their original font, cursor and line spacing.
                     this.target.add(4).writeFloat(annotationY(this.context.rbp,this.layer.parser,
-                        this.target.add(4).readFloat(),this.layer.layer.protected));
+                        this.target.add(4).readFloat(),this.layer.layer.protected,this.layer.layer.primaryTop||0));
                 }
                 return;
             }
@@ -289,7 +302,8 @@ Interceptor.attach(base.add(REPORT.native.ruby_context_init.rva), {
             if(this.placement) {
                 const y=this.target.add(4).readFloat();
                 if(!Number.isFinite(y))throw Error('Unvalidated ruby position');
-                this.target.add(4).writeFloat(annotationY(this.context.rbp,this.context.rbx,y));
+                this.target.add(4).writeFloat(annotationY(this.context.rbp,this.context.rbx,y,false,
+                    this.context.rbp.add(0x3cc).readS32()));
             }
             if (this.placement) {
                 const shifted=this.baseLeft+rubyOffsetX;
@@ -311,7 +325,9 @@ if(REPORT.native.layout_release) Interceptor.attach(base.add(REPORT.native.layou
 // fingerprinted alongside SetText and only touch the current parser context.
 if(REPORT.native.ruby_base_measure_end) Interceptor.attach(base.add(REPORT.native.ruby_base_measure_end.rva),{onEnter(){
     try {
-        if(!auxiliaryLayer(this.context.r15,this.context.rbx))return;
+        const item=auxiliaryLayer(this.context.r15,this.context.rbx);if(!item)return;
+        const top=this.context.rbp.add(0x3cc).readS32();
+        item.layer.primaryTop=top===0x7fffffff?0:top;
         for(const off of [0x3c8,0x3cc,0x3d0,0x3d4])this.context.rbp.add(off).writeS32(0);
     }catch(e){fail(e);}
 }});
@@ -464,7 +480,7 @@ Interceptor.attach(base.add(REPORT.native.update.rva), {onEnter(args) {
         if (!isLabel(p)) return;
         this.lease=enterLabel(p);if(!this.lease)return;
         const row=labels.get(String(p)) || remember(p,readText(p));
-        if (row.epoch === epoch) return;
+        if (row.epoch === epoch&&row.renderSize===p.add(0x304).readU32()) return;
         // A text write bypassing SetText invalidates our remembered source.
         const current=readText(p);
         if (current !== row.displayed) {row.original=current;row.displayed=current;row.scriptIdentity=null;row.scriptPointer=null;row.tableIdentity=null;}

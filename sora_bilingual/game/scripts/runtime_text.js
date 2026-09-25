@@ -82,7 +82,7 @@ class RuntimeText {
             if(i%2){text+=part;return;}
             const payload=right[i/2];
             if(RuntimeText.needsAnnotation(part,payload)) {
-                layers.push({offset:RuntimeText.byteLength(text)+6,text:payload,protected:a.includes('<R>')||b.includes('<R>')});
+                layers.push({offset:RuntimeText.byteLength(text)+6,text:payload,primary:part,protected:a.includes('<R>')||b.includes('<R>')});
                 text+='<R></R_>';
             }
             text+=part;
@@ -137,7 +137,7 @@ class RuntimeText {
             const inner=this.component(trimmed,mode);
             if(inner!==trimmed) {const at=source.indexOf(trimmed);return source.slice(0,at)+inner+source.slice(at+trimmed.length);}
         }
-        const parts=source.split(/([【】「」：:／/]| - |[ \u3000]{2,}|^[ \u3000]*[·・][ \u3000]*)/);
+        const parts=source.split(/(\r\n|\n|\\n|[【】「」：:／/]| - |[ \u3000]{2,}|^[ \u3000]*[·・][ \u3000]*)/);
         if(parts.length>1)return parts.map((p,i)=>i%2?p:this.component(p,mode)).join('');
         return source;
     }

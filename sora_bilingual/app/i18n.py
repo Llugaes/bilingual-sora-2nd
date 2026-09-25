@@ -111,6 +111,8 @@ Sora 双语控制台|Sora bilingual controls|Sora 二言語コントロール
 点击设置展开|Click Settings to expand|設定をクリックして展開
 自动关联已运行的游戏；游戏稍后启动也会自动连接|Automatically connects when the game is running|起動中のゲームに自動接続します
 自动连接已开启，等待游戏启动|Auto-connect enabled; waiting for game|自動接続有効。ゲームの起動待ち
+正在后台准备语言缓存，完成后自动连接|Preparing language cache in the background; connecting when ready|言語キャッシュを準備中。完了後に自動接続します
+预缓存失败：|Cache preparation failed: |キャッシュの準備に失敗：
 正在安装更新，稍后自动连接|Installing update; connection will follow|更新を適用中。完了後に自動接続します
 检测到多个游戏进程，请保留一个|Multiple game processes detected; keep one|複数のゲームを検出しました。一つだけ起動してください
 自动连接正在运行|Automatic connection in progress|自動接続中

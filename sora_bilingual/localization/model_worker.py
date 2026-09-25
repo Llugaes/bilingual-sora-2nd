@@ -14,5 +14,9 @@ if __name__ == "__main__":
     args = p.parse_args()
     request = json.loads(args.request.read_text("utf-8"))
     config = normalize_config(request["config"])
-    _, signature, _ = ready_model(Path(request["game"]), config)
-    write_config({"path": str(model_path(signature, config))}, args.result)
+    model, signature, _ = ready_model(Path(request["game"]), config)
+    path = model_path(signature, config)
+    from sora_bilingual.localization.model_wire import prepare_wire
+
+    prepare_wire(path, model)
+    write_config({"path": str(path)}, args.result)

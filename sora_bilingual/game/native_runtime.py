@@ -20,6 +20,7 @@ POINTS = {
     "label_text_key_load": 0x584842,
     "node_name_lookup": 0x5814D8,
     "ruby_measure_return": 0x587084,
+    "ruby_base_measure_return": 0x586E80,
     "newline_prepare": 0x587966,
     "ruby_base_measure_end": 0x586E9C,
     "ruby_compensate": 0x587253,
@@ -87,7 +88,17 @@ class NativeLabels:
         self.script = None
         self.exited = threading.Event()
 
-    def attach(self, pid, exe, dictionary=None, *, model=None, config=None, mode="annotation"):
+    def attach(
+        self,
+        pid,
+        exe,
+        dictionary=None,
+        *,
+        model=None,
+        config=None,
+        mode="annotation",
+        cache_path=None,
+    ):
         if self.session is not None:
             raise RuntimeError("Native experiment is already attached")
         report = native_report(exe)
@@ -135,7 +146,7 @@ class NativeLabels:
                         raise RuntimeError("游戏在初始化期间退出")
                 probe.unload()
             self.script = self.session.create_script(
-                "const REPORT=" + json.dumps(report) + ";\n" + source
+                "const REPORT=" + json.dumps(report) + ";\n" + source, runtime="v8"
             )
             startup_errors = []
 
@@ -153,7 +164,7 @@ class NativeLabels:
             if startup_errors:
                 raise RuntimeError(startup_errors[0])
             if model is not None:
-                self.load(model, config, mode)
+                self.load(model, config, mode, cache_path=cache_path)
             else:
                 self.script.exports_sync.configure(dictionary or {}, False, 1)
         except Exception:
@@ -168,8 +179,28 @@ class NativeLabels:
     def configure(self, dictionary, enabled, annotation_scale=0.9):
         return self.script.exports_sync.configure(dictionary, enabled, annotation_scale)
 
-    def load(self, model, config, mode):
+    def load(self, model, config, mode, *, cache_path=None):
         rpc = self.script.exports_sync
+        if cache_path is not None:
+            from sora_bilingual.localization.model_wire import prepare_wire
+
+            try:
+                path = prepare_wire(cache_path, model).resolve()
+                return rpc.modelpackedfile(
+                    str(path),
+                    mode,
+                    bool(config["enabled"]),
+                    config.get("annotation_scale", 0.9),
+                    {
+                        k: config[k]
+                        for k in ("ruby_scale", "ruby_gap", "ruby_offset_x", "line_gap")
+                        if k in config
+                    },
+                )
+            except frida.RPCException, OSError, ValueError:
+                # Corrupt/unsupported cache keeps the active model intact.
+                # The existing bounded transfer is the compatibility fallback.
+                pass
         token = uuid.uuid4().hex
         rpc.modelbegin(token)
         try:

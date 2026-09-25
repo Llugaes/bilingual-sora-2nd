@@ -67,7 +67,9 @@ Record one keyboard or SDL controller combination under **Bindings**. The same b
 - **Toggle**: one press switches to secondary-only text, the next switches back. Holding does not repeatedly toggle.
 - **Trails annotations**: uses this game's native ruby layout for simultaneous bilingual text; the shortcut turns annotations on/off. This mode depends on the game's special rendering support.
 
-Text scale, offsets, and spacing remain adjustable live. Initial resource parsing still takes time; valid caches load directly. UI translations and initial language preferences no longer invalidate the game-resource index. Connection logs report model preparation and total connection time separately.
+Text scale, offsets, and spacing remain adjustable live and survive menu recreation. Spacing uses the engine's measured text bounds.
+
+While waiting for the game, the tool discovers installed resources and prepares the selected language pair in the background. First use and resource/parser changes require preparation once; open the tool before the game and let it finish. Valid caches load directly instead of transferring the full model in chunks. The cached connection path measured about 3.5–3.7 seconds in an offline helper process; game initialization is additional, and logs record actual connection timings. UI translations and initial language preferences do not invalidate the resource index.
 
 Menus, items, skills, NPC conversations, dialogue history, active voices and cutscene subtitles all use small annotations above the primary text, aligned with its left edge. No second-language paragraph is appended to the body. Original ruby and emphasis marks retain their positions; the secondary language uses a separate annotation layer. Text baked into images or videos is outside the supported scope. Uncertain matches keep the original text rather than guessing a translation.
 
@@ -96,7 +98,7 @@ See the [architecture](https://github.com/Llugaes/bilingual-sora-2nd/blob/main/d
 For a release, maintainers update both **distribution.json** and **pyproject.toml**, then push a matching **vX.Y.Z** tag. GitHub Actions validates on Windows, builds from an explicit file allowlist, uploads all assets to a draft, then publishes them together. Manual build:
 
 ```powershell
-.venv\Scripts\python.exe -m tools.build_portable --version 0.3.7 --repository Llugaes/bilingual-sora-2nd
+.venv\Scripts\python.exe -m tools.build_portable --version 0.3.8 --repository Llugaes/bilingual-sora-2nd
 ```
 
 Neither the repository nor releases contain game resources, generated fonts, complete text indexes, logs, screenshots, or user settings.

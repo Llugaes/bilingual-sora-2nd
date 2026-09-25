@@ -11,7 +11,9 @@ from sora_bilingual.config.locales import DEFAULT_PRIMARY
 TOKEN = re.compile(r"(<[^<>]*>|\r\n|\n|\\n)")
 STYLE = re.compile(r"</?[Cc][0-9a-fA-F]*>|<s\d+>")
 FORMAT = re.compile(r"%(?:\d+\$)?[-+0 #]*(?:\d+)?(?:\.\d+)?[dius]")
-SEPARATORS = re.compile(r"([【】「」：:／/]| - |[ \u3000]{2,}|^[ \u3000]*[·・][ \u3000]*)")
+SEPARATORS = re.compile(
+    r"(\r\n|\n|\\n|[【】「」：:／/]| - |[ \u3000]{2,}|^[ \u3000]*[·・][ \u3000]*)"
+)
 
 
 def complete_pair(texts, primary, secondary):
@@ -70,6 +72,7 @@ def annotation_plan(primary, secondary):
                 {
                     "offset": len(out.encode("utf-8")) + 6,
                     "text": payload,
+                    "primary": part,
                     "protected": "<R>" in primary or "<R>" in secondary,
                 }
             )

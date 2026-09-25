@@ -38,11 +38,23 @@ class AutoConnector:
         self.thread.start()
 
     def _run(self):
-        from sora_bilingual.platform.win32 import process_identity
+        from sora_bilingual.platform.win32 import process_identity, process_path
+        from sora_bilingual.game.install import find_game
+        from sora_bilingual.game.native_loading import ModelPreparation, prepare_fresh
+        from sora_bilingual.config.native_config import read_config
+        from sora_bilingual.localization.native_catalog import fingerprint, model_path
+        from sora_bilingual.localization.model_wire import wire_ready
         from sora_bilingual.updates.tool_updates import ReleaseWatch
 
         releases = ReleaseWatch()
         device = None
+        preparation = ModelPreparation(
+            lambda c: prepare_fresh(c["game"], c["config"], cache_only=True), lambda c: c
+        )
+        preparing_key = None
+        preparation_error = None
+        installed_game = None
+        next_discovery = 0
         while not self.stop.is_set():
             try:
                 if (ROOT / "generated/update-installing.json").exists():
@@ -86,7 +98,35 @@ class AutoConnector:
                     # One attempt with the new release, never replace a live
                     # or initializing resident backend.
                     self.policy.attempted.difference_update(games)
-                selected = self.policy.choose(games, busy)
+                prepared = preparation.poll()
+                if prepared:
+                    preparation_error = "预缓存失败：" + str(prepared[2]) if prepared[2] else None
+                if not busy:
+                    if len(games) == 1:
+                        try:
+                            installed_game = process_path(next(iter(games))[0]).parent
+                        except OSError:
+                            pass
+                    if installed_game is None and time.monotonic() >= next_discovery:
+                        installed_game = find_game()
+                        next_discovery = time.monotonic() + 30
+                    if installed_game is not None:
+                        config = read_config()
+                        identity = {
+                            k: config.get(k)
+                            for k in ("primary", "secondary", "game_language", "scope", "sources")
+                        }
+                        key = (
+                            str(installed_game),
+                            json.dumps(fingerprint(installed_game), sort_keys=True),
+                            json.dumps(identity, sort_keys=True),
+                        )
+                        if key != preparing_key:
+                            if not wire_ready(model_path(key[1], config)):
+                                preparation_error = None
+                                preparation.request({"game": installed_game, "config": config})
+                            preparing_key = key
+                selected = self.policy.choose(games, busy or preparation.active)
                 if not games:
                     self.error = None
                     self.message = "自动连接已开启，等待游戏启动"
@@ -106,10 +146,14 @@ class AutoConnector:
                     )
                 elif self.error:
                     self.message = "连接失败：" + self.error
+                if preparation.active:
+                    self.message = "正在后台准备语言缓存，完成后自动连接"
+                elif preparation_error and not games:
+                    self.message = preparation_error
             except Exception as exc:
                 device = None
                 self.message = "自动检测暂不可用：" + str(exc)
-            self.wake.wait(1)
+            self.wake.wait(0.25)
             self.wake.clear()
 
     def close(self):

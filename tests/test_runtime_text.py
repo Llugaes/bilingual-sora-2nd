@@ -8,6 +8,35 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class RuntimeTextTests(unittest.TestCase):
+    def test_save_details_translate_every_line_and_preserve_levels(self):
+        names = [
+            ("艾丝蒂尔", "エステル"),
+            ("克萝赛", "クローゼ"),
+            ("雪拉扎德", "シェラザード"),
+            ("奥利维尔", "オリビエ"),
+        ]
+        tr = MenuTranslator([{"texts": {"zh-Hans": a, "ja": b}} for a, b in names], "zh-Hans", "ja")
+        cases = []
+        for newline in ("\n", "\r\n", "\\n"):
+            source = newline.join("　·" + a + "　　　Lv.39" for a, _ in names)
+            plan = tr.render(source)
+            for _, translated in names:
+                self.assertIn(translated, plan["text"])
+            self.assertEqual(plan["text"].count("Lv.39"), 4)
+            self.assertNotIn("<R>39", plan["text"])
+            cases.append({"source": source, "plan": plan})
+        code = """const fs=require('fs'),assert=require('assert/strict'),{RuntimeText}=require('./sora_bilingual/game/scripts/runtime_text');
+const data=JSON.parse(fs.readFileSync(0,'utf8')),r=new RuntimeText(data.model);
+for(const c of data.cases)assert.deepEqual(r.render(c.source),c.plan);"""
+        result = subprocess.run(
+            ["node", "-e", code],
+            input=json.dumps({"model": tr.runtime_model(), "cases": cases}),
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_annotation_filter_preserves_numeric_icon_and_untranslated_runs(self):
         pairs = [
             ("4", "４"),

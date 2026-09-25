@@ -9,7 +9,12 @@ import traceback
 import sys
 import frida
 from sora_bilingual.game.native_runtime import NativeLabels
-from sora_bilingual.localization.native_catalog import load_entries, load_model, ready_model
+from sora_bilingual.localization.native_catalog import (
+    load_entries,
+    load_model,
+    ready_model,
+    model_path,
+)
 from sora_bilingual.config.native_config import (
     ROOT,
     CONTROL,
@@ -58,6 +63,9 @@ def run(game=None, duration=0):
         game = exe.parent if game is None else Path(game)
         if exe.resolve() != (game / "sora_2nd.exe").resolve():
             raise RuntimeError("运行中的游戏路径与配置不符")
+        from sora_bilingual.game.install import remember_game
+
+        remember_game(game)
         heartbeat = ConnectionHeartbeat(
             write_telemetry,
             ROOT / "generated" / "native-live.json",
@@ -130,7 +138,14 @@ def run(game=None, duration=0):
 
             native = NativeLabels(log)
             log({"type": "run_start", "pid": pid, "exact_sources": len(model["pairs"])})
-            native.attach(pid, exe, model=model, config=config, mode=mode)
+            native.attach(
+                pid,
+                exe,
+                model=model,
+                config=config,
+                mode=mode,
+                cache_path=model_path(signature, config),
+            )
             log(
                 {
                     "type": "connection_ready",

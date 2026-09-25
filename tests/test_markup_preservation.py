@@ -68,7 +68,9 @@ class MarkupPreservationTests(unittest.TestCase):
         b = "女神の傍へ。"
         plan = translator(a, b).render(a)
         self.assertEqual(plan["text"].replace("<R></R_>", ""), a)
-        self.assertEqual(plan["layers"], [{"offset": 6, "text": b, "protected": True}])
+        self.assertEqual(
+            plan["layers"], [{"offset": 6, "text": b, "primary": a, "protected": True}]
+        )
 
     def test_secondary_original_ruby_is_not_flattened(self):
         a = "翡翠之塔"

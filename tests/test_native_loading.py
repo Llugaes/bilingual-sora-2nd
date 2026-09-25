@@ -121,6 +121,7 @@ class LoadingTests(unittest.TestCase):
                         ),
                     ),
                     patch.object(probe.signal, "signal"),
+                    patch("sora_bilingual.game.install.remember_game"),
                 ):
                     probe.run(root)
             finally:

@@ -1,5 +1,5 @@
 import unittest
-import tempfile, time
+import tempfile, time, threading
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -7,6 +7,78 @@ from sora_bilingual.app.auto_connect import ConnectionPolicy
 
 
 class AutoConnectTests(unittest.TestCase):
+    def test_prewarms_before_game_and_waits_for_cache_before_connecting(self):
+        from sora_bilingual.app.auto_connect import AutoConnector
+
+        games, builds, launches = [], [], []
+        entered, release = threading.Event(), threading.Event()
+        ready = [False]
+
+        def prepare(game, config, *, cache_only):
+            self.assertTrue(cache_only)
+            builds.append((game, config))
+            entered.set()
+            release.wait(3)
+            ready[0] = True
+            return "cache.json"
+
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch("sora_bilingual.app.auto_connect.ROOT", Path(tmp)),
+            patch(
+                "sora_bilingual.app.auto_connect.frida.get_local_device",
+                return_value=SimpleNamespace(enumerate_processes=lambda: list(games)),
+            ),
+            patch("sora_bilingual.game.install.find_game", return_value=Path(tmp)),
+            patch(
+                "sora_bilingual.platform.win32.process_path",
+                return_value=Path(tmp) / "sora_2nd.exe",
+            ),
+            patch("sora_bilingual.platform.win32.process_identity", return_value=123),
+            patch("sora_bilingual.localization.native_catalog.fingerprint", return_value={}),
+            patch(
+                "sora_bilingual.localization.model_wire.wire_ready",
+                side_effect=lambda _: ready[0],
+            ),
+            patch("sora_bilingual.game.native_loading.prepare_fresh", side_effect=prepare),
+            patch(
+                "sora_bilingual.app.auto_connect.subprocess.Popen",
+                side_effect=lambda *a, **k: (
+                    launches.append(a) or SimpleNamespace(poll=lambda: None)
+                ),
+            ),
+        ):
+            auto = AutoConnector(Path(tmp) / "status.json")
+            try:
+                self.assertTrue(entered.wait(2))
+                self.assertEqual(launches, [])
+                games.append(SimpleNamespace(pid=42, name="sora_2nd.exe"))
+                auto.wake.set()
+                time.sleep(0.04)
+                self.assertEqual(launches, [])
+                release.set()
+                end = time.monotonic() + 2
+                while not launches and time.monotonic() < end:
+                    auto.wake.set()
+                    time.sleep(0.01)
+                self.assertEqual(len(launches), 1)
+                self.assertEqual(len(builds), 1)
+            finally:
+                release.set()
+                auto.close()
+            # A new UI session uses the disk cache and can connect immediately.
+            entered.clear()
+            auto = AutoConnector(Path(tmp) / "status.json")
+            try:
+                end = time.monotonic() + 2
+                while len(launches) < 2 and time.monotonic() < end:
+                    auto.wake.set()
+                    time.sleep(0.01)
+                self.assertEqual(len(launches), 2)
+                self.assertFalse(entered.is_set())
+            finally:
+                auto.close()
+
     def test_detector_launches_backend_after_late_game_start_and_never_terminates_it(self):
         from sora_bilingual.app.auto_connect import AutoConnector
 
@@ -28,6 +100,8 @@ class AutoConnectTests(unittest.TestCase):
                 "sora_bilingual.platform.win32.process_identity", side_effect=lambda pid: pid * 10
             ),
             patch("sora_bilingual.app.auto_connect.subprocess.Popen", side_effect=launch),
+            patch("sora_bilingual.game.install.find_game", return_value=None),
+            patch("sora_bilingual.platform.win32.process_path", side_effect=OSError),
         ):
             auto = AutoConnector(Path(tmp) / "status.json")
 
