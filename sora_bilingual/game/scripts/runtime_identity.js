@@ -142,4 +142,24 @@ class TableIdentities {
         return found;
     }
 }
-if(typeof module!=='undefined')module.exports={scriptSha256,ScriptIdentities,TableIdentities};
+// The native history owns a 1600-slot ring. Its copied strings no longer
+// identify a script call: keep the observed writer's provenance by slot and
+// validate the entire current record before using it. This is not a text cache.
+class LogIdentities {
+    constructor(){this.owner=null;this.generation=0;this.epoch=0;this.entries=new Map();}
+    reset(owner=this.owner){this.owner=owner;this.entries.clear();this.generation++;this.epoch++;}
+    useOwner(owner){if(owner!==this.owner)this.reset(owner);}
+    commit(slot,stamp,origin){
+        if(!Number.isInteger(slot)||slot<0||slot>=1600)throw Error('Invalid history slot');
+        this.generation++;
+        this.entries.delete(slot);
+        if(origin)this.entries.set(slot,{stamp,origin,generation:this.generation});
+    }
+    lookup(slot,stamp){
+        const item=this.entries.get(slot);
+        if(!item)return null;
+        if(item.stamp!==stamp){this.entries.delete(slot);return null;}
+        return item.origin;
+    }
+}
+if(typeof module!=='undefined')module.exports={scriptSha256,ScriptIdentities,TableIdentities,LogIdentities};

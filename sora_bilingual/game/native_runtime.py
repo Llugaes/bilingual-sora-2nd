@@ -21,6 +21,9 @@ POINTS = {
     "destroy": 0x5839F0,
     "ruby_context_init": 0x5830F0,
     "ruby_begin": 0x58678E,
+    # Shared tail of the verified uppercase/lowercase absolute size commands.
+    # The resident agent validates these exact bytes before attaching.
+    "ruby_size_end": 0x58687E,
     "ruby_place_return": 0x58714F,
     "text_lookup": 0x5E8550,
     "label_text_key_load": 0x584842,
@@ -39,6 +42,20 @@ POINTS = {
     "dialogue_message": 0x4AE990,
     "dialogue_bubble": 0x4AEE20,
     "dialogue_builder": 0x4AD670,
+    "log_write": 0x43DFB0,
+    "log_write_commit": 0x43E2DF,
+    "log_owner_destroyed": 0x2EC73,
+    "log_owner_created": 0x2F946,
+    "log_record_bind": 0x35F700,
+    "log_name_return": 0x35FD71,
+    "log_text_return": 0x3602A4,
+    "log_present_append": 0x35F95D,
+    "log_present_single": 0x35F98E,
+    "log_rows_build": 0x3621B0,
+    "log_row_start": 0x362270,
+    "log_row_append": 0x36240B,
+    "log_row_single": 0x3625A7,
+    "log_row_commit": 0x36250D,
     "quest_builder": 0x422780,
     "quest_paragraph_ready": 0x4229F5,
     "quest_line_return": 0x422C24,
@@ -65,6 +82,7 @@ def native_report(exe):
         report["node_names"] = True
         report["layout_manager_global"] = 0xC60E88
         report["font_manager_global"] = 0xC60ED0
+        report["log_owner_global"] = 0xC60E50
     finally:
         pe.close()
     return report

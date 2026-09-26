@@ -359,6 +359,64 @@ def overdrive_descriptions(entries):
     return result
 
 
+# Verified t_itemhelp.tbl kinds in all eight supported archives. Record hashes
+# mask localized pointers but retain native type IDs (circle 0x0e; HP recovery
+# 0x7b/0x80). Other %s slots can hold attributes, stats or numbers, not grades.
+ITEM_HELP_CIRCLE_LABELS = {
+    "table/t_itemhelp.tbl/SkillRangeHelpData/sha256:6a15f570d7d4b310463cc8eb627186cd7e4586d9ab2b87e663ebb1e538c2d090/label",
+}
+ITEM_HELP_RECOVERY_NAMES = {
+    "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:cc311d9666993ad7471edb97a4292bd44de5cac259718aab39db45a6008a99a8/name",
+    "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:df1cd77615efffbef0c60ea7948cf4aebb17da0a9efa21aea8d9794c8796d00c/name",
+}
+
+
+def item_help_components(entries):
+    """Index the resource-defined combinations built by the item-help UI.
+
+    The verified circle label concatenates a localized size. HP recovery
+    names substitute a localized magnitude, in locale-specific order. Never
+    cross all printf fields with these modifiers: format/attribute slots have
+    different argument contracts. Missing locales and collisions retain the
+    normal pair-admission checks.
+    """
+    named = {e["key"]: e["texts"] for e in entries if "key" in e}
+    ranges = [
+        (key, texts)
+        for key, texts in named.items()
+        if key.startswith("table/t_text.tbl/TXT_ITEM_HELP_RANGE_")
+        and key.rsplit("_", 1)[-1] in {"S", "M", "L", "LL"}
+    ]
+    magnitudes = [
+        (key, texts)
+        for key, texts in named.items()
+        if key.removeprefix("table/t_text.tbl/TXT_ITEM_HELP_")
+        in {"MOSTSMALL", "SMALL", "MIDDLE", "LARGE", "MOSTLARGE"}
+    ]
+    result = []
+    for key, texts in named.items():
+        is_range = key in ITEM_HELP_CIRCLE_LABELS
+        is_effect = key in ITEM_HELP_RECOVERY_NAMES
+        if not (is_range or is_effect):
+            continue
+        for modifier_key, modifiers in ranges if is_range else magnitudes:
+            combined = {}
+            for language, value in texts.items():
+                modifier = modifiers.get(language)
+                if not value.strip() or not modifier or not modifier.strip():
+                    continue
+                if is_range:
+                    if "%" not in value + modifier:
+                        combined[language] = value + modifier
+                elif value.count("%s") == 1 and "%" not in value.replace("%s", "") + modifier:
+                    combined[language] = value.replace("%s", modifier)
+            if combined:
+                result.append(
+                    {"key": key + "/composed/" + modifier_key.rsplit("/", 1)[-1], "texts": combined}
+                )
+    return result
+
+
 class MenuTranslator:
     def __init__(
         self, entries, primary, secondary, source_language=DEFAULT_PRIMARY, _details_only=False
@@ -366,6 +424,7 @@ class MenuTranslator:
         entries = list(entries)
         if not _details_only:
             entries += overdrive_descriptions(entries)
+            entries += item_help_components(entries)
             # The game appends a numeric level to this localized resource.
             # Its prefix, punctuation and spaces all come from that locale.
             entries += [

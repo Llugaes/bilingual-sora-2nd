@@ -8,7 +8,6 @@ source before use; duplicate identities with different translations are denied.
 
 import struct
 import hashlib
-import re
 from collections import defaultdict
 from pathlib import Path
 
@@ -19,7 +18,7 @@ from sora_bilingual.localization.resources import (
     _utf8z,
     _parse_code,
 )
-from sora_bilingual.localization.menu_text import MenuTranslator, complete_pair
+from sora_bilingual.localization.menu_text import MenuTranslator, complete_pair, needs_annotation
 
 
 def script_signature(data):
@@ -33,8 +32,12 @@ def script_signature(data):
     ).hex()
 
 
-def compile_script_identities(game, entries, primary, secondary, language):
+def compile_script_identities(game, entries, primary, secondary, language, *, resolved_pairs=None):
     """Index only functions needed to disambiguate the global source model."""
+    if resolved_pairs is None:
+        resolved_pairs = MenuTranslator(entries, primary, secondary, language).pairs
+    # Use the same admission result as rendering. Comparing only raw duplicate
+    # strings misses conflicts introduced by colour/size normalization.
     candidates = defaultdict(set)
     for e in entries:
         t = e["texts"]
@@ -44,14 +47,8 @@ def compile_script_identities(game, entries, primary, secondary, language):
     ambiguous = {
         s
         for s, pairs in candidates.items()
-        if len(pairs) > 1
-        and any(
-            pair
-            and all(re.sub(r"<[^<>]*>", "", t).strip() for t in pair)
-            and (
-                pair[0] != pair[1]
-                or re.search(r"[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]", pair[0])
-            )
+        if any(
+            pair and needs_annotation(*pair) and tuple(resolved_pairs.get(s, ())) != pair
             for pair in pairs
         )
     }

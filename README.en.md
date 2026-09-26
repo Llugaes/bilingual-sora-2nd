@@ -4,13 +4,38 @@
 
 **空之轨迹 the 2nd 双语字幕 Mod · 空の軌跡 the 2nd 二言語字幕 Mod**
 
-Compare English/Japanese, Chinese/Japanese, or other language pairs in dialogue subtitles and menus. Hold or toggle a shortcut to switch languages, or use bilingual ruby-style annotations for language learning.
-
-A native bilingual text mod for the PC version of **Trails in the Sky the 2nd**. Choose your primary and secondary languages independently from English, Japanese, Simplified Chinese, Traditional Chinese, Korean, French, German, and Spanish. For an English-language game, first-time setup keeps English as the main text and adds Japanese annotations for comparison and language learning.
+A bilingual text mod for **Trails in the Sky the 2nd** on PC. Compare dialogue and menus on screen, or hold a shortcut to switch temporarily. Choose both languages independently: English, Japanese, Simplified or Traditional Chinese, Korean, French, German, and Spanish.
 
 Currently supports Steam build **25386012**, executable **1.03.2**. The tool checks the game build before installing hooks; it does not force hooks into unsupported versions or rewrite the original PAC/EXE files. This is an early project with offline regression tests and partial in-game validation. Full-game coverage, layout across all languages, and controller compatibility still need in-game feedback.
 
 **Recommended for everyday play: single-language display with hold-to-show secondary.** Read the primary language normally, hold your shortcut to compare, then release to return. Simultaneous bilingual text remains available, but opening the dialogue log can hitch and its frame rate can be lower; see the limitations below. This recommendation does not reset existing settings.
+
+## Screenshots
+
+In-game dialogue with English primary text and Japanese secondary text. Open an image to view it at full size.
+
+![English and Japanese dialogue](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/dialogue-en-ja.jpg)
+
+![English and Japanese Arts menu](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/arts-en-ja.jpg)
+
+<details>
+<summary>Items, equipment, and field interface</summary>
+
+The following captures use Chinese primary text and Japanese secondary text.
+
+Item names and descriptions:
+
+![Items](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/items.jpg)
+
+Equipment names and descriptions:
+
+![Equipment](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/equipment.jpg)
+
+Field interactions and notifications:
+
+![Field interface](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/field.jpg)
+
+</details>
 
 ## Installation
 
@@ -57,6 +82,12 @@ The installer includes the audited [sora2looseload](https://github.com/lmaple0/s
 
 ## Controls and configuration
 
+Choose a display mode and adjust the text layout as needed. These are offline captures of the real settings interface, without a game connection. The left image selects the recommended single-language hold mode.
+
+| Language and mode | Text layout |
+|---|---|
+| ![Language settings](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/settings-en.png) | ![Layout settings](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/layout-en.png) |
+
 Click **Settings** on the status bar to open or close the panel. Drag the bar's text, empty space, handle, or the panel header to move both together; buttons retain their click actions. **× / Esc inside the panel** collapses it. **× on the status bar** hides the interface while the background service keeps running. Reopen it from the system tray or desktop shortcut.
 
 | Action | Default shortcut |
@@ -69,12 +100,9 @@ Record one keyboard or SDL controller combination under **Shortcuts**. The same 
 - **Bilingual mode**: shows both languages using the game's native annotation layout. The shortcut turns the secondary language on/off.
 - **Single-language mode**: choose **press to switch** or **hold to show secondary**. Holding does not repeatedly toggle; releasing a hold or losing focus restores primary text.
 
-Text scale, offsets, and spacing remain adjustable live and survive menu recreation. Spacing uses the engine's measured text bounds.
-The bilingual vertical offset defaults to 0; positive values move both languages down and do not affect single-language mode. Secondary color multiplies the original RGB values, while opacity multiplies the original alpha. The default is RGB 230 / 230 / 230 (each divided by 255) and 90% opacity. Adjust opacity directly with the slider below the color button. Main-language colors and icon sizes stay unchanged.
+Text size and spacing update live and persist across menus. Secondary color multiplies the original RGB values; defaults are RGB 230 / 230 / 230 and 90% opacity. Adjust opacity with the slider below the color button. The vertical offset applies only in bilingual mode; positive values move text down.
 
-While waiting for the game, the tool discovers installed resources and prepares the selected language pair in the background. First use and resource/parser changes require preparation once; open the tool before the game and let it finish. Valid caches load directly instead of transferring the full model in chunks. The cached connection path measured about 3.5–3.7 seconds in an offline helper process; game initialization is additional, and logs record actual connection timings. UI translations and initial language preferences do not invalidate the resource index.
-
-Menus, items, skills, NPC conversations, dialogue history, active voices and cutscene subtitles all use small annotations above the primary text, aligned with its left edge. No second-language paragraph is appended to the body. Original ruby and emphasis marks retain their positions; the secondary language uses a separate annotation layer. Text baked into images or videos is outside the supported scope. Uncertain matches keep the original text rather than guessing a translation.
+First use or changed game resources require language-cache preparation. Open the tool before starting the game and let preparation finish; valid caches are reused.
 
 ## Recommended usage and known limitations
 
@@ -113,7 +141,7 @@ For a release, maintainers update both **distribution.json** and **pyproject.tom
 .venv\Scripts\python.exe -m tools.build_portable --version 0.3.9 --repository Llugaes/bilingual-sora-2nd
 ```
 
-Neither the repository nor releases contain game resources, generated fonts, complete text indexes, logs, screenshots, or user settings.
+The repository includes selected demonstration screenshots in its documentation; release packages omit these images. Neither includes game resource archives, generated game fonts, complete text indexes, logs, or user settings.
 
 ## License
 

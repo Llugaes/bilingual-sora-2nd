@@ -17,6 +17,7 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
     const allocations = [];
     let threadId = 1;
     let duringSetter=null;
+    let logOwnerPointer=null;
     const scriptReads=[];
     const memoryCost={scalarReads:0,blockReads:0,scalarWrites:0,blockWrites:0,textReads:0};
     const measureScopes={pushes:[],pops:[]};
@@ -24,6 +25,8 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
     class Pointer {
         constructor(address) { this.address = address; }
         add(offset) { return new Pointer(this.address + offset); }
+        sub(other) {return new Pointer(this.address-other.address);}
+        readPointer(){if(this.address===0x10002000)return logOwnerPointer;throw Error('unexpected global pointer');}
         equals(other) { return this.address === other.address; }
         isNull() { return false; }
         toString() { return `0x${this.address.toString(16)}`; }
@@ -129,6 +132,7 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
         add(n){return new RegionPointer(this.data,this.address+n,this.offset+n);}
         readByteArray(n){scriptReads.push(n);if(this.offset<0||this.offset+n>this.data.length)throw Error('unmapped');return Uint8Array.from(this.data.subarray(this.offset,this.offset+n)).buffer;}
         readU32(){return this.data.readUInt32LE(this.offset);}
+        readUtf8String(){const end=this.data.indexOf(0,this.offset);return this.data.subarray(this.offset,end<0?this.data.length:end).toString('utf8');}
     }
 
     const base = new Pointer(0x10000000);
@@ -139,6 +143,7 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
     const REPORT = {
         diagnostics,
         node_names:true,
+        log_owner_global:0x2000,
         icon_callback_vtable:0xb18458,
         vtable: 0x500,
         native: {
@@ -163,6 +168,20 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
             icon_callback_clone:{rva:0xd10,bytes:'00000000000000000000000000000000'},
             dialogue_popup:{rva:0xe00,bytes:'00000000000000000000000000000000'},
             dialogue_builder:{rva:0xf00,bytes:'00000000000000000000000000000000'},
+            log_write:{rva:0xf10,bytes:'00000000000000000000000000000000'},
+            log_write_commit:{rva:0xf20,bytes:'00000000000000000000000000000000'},
+            log_owner_destroyed:{rva:0xf30,bytes:'00000000000000000000000000000000'},
+            log_owner_created:{rva:0xf40,bytes:'00000000000000000000000000000000'},
+            log_record_bind:{rva:0xf50,bytes:'00000000000000000000000000000000'},
+            log_name_return:{rva:0xf60,bytes:'00000000000000000000000000000000'},
+            log_text_return:{rva:0xf70,bytes:'00000000000000000000000000000000'},
+            log_present_append:{rva:0xf80,bytes:'00000000000000000000000000000000'},
+            log_present_single:{rva:0xf90,bytes:'00000000000000000000000000000000'},
+            log_rows_build:{rva:0xfa0,bytes:'00000000000000000000000000000000'},
+            log_row_start:{rva:0xfb0,bytes:'00000000000000000000000000000000'},
+            log_row_append:{rva:0xfc0,bytes:'00000000000000000000000000000000'},
+            log_row_single:{rva:0xfd0,bytes:'00000000000000000000000000000000'},
+            log_row_commit:{rva:0xfe0,bytes:'00000000000000000000000000000000'},
             quest_builder:{rva:0x1100,bytes:'00000000000000000000000000000000'},
             quest_paragraph_ready:{rva:0x1200,bytes:'00000000000000000000000000000000'},
             quest_line_return:{rva:0x1300,bytes:'00000000000000000000000000000000'},
@@ -176,9 +195,9 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
         },
     };
 
-    function invoke(address, args) {
+    function invoke(address, args,returnAddress) {
         const callback = hooks.get(String(address));
-        const call={};
+        const call={returnAddress};
         if (callback) callback.onEnter.call(call,args);
         return ()=>callback?.onLeave?.call(call);
     }
@@ -286,6 +305,16 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
     const context=vm.createContext(sandbox);
     vm.runInContext(RESOLVER+'\n'+PARAGRAPHS+'\n'+IDENTITIES+'\n'+AGENT, context, {filename: 'native_agent.js'});
 
+    logOwnerPointer=new RegionPointer(Buffer.alloc(0x200000),0x50000000);
+    function writeLog(buffer,slots){
+        const owner=logOwnerPointer,leave=invoke(base.add(0xf10),[owner,buffer]);
+        for(const [slot,chunk] of Array.isArray(slots)?slots:[[slots,buffer.readUtf8String()]]){
+            const at=0x1604ec+slot*0x18c;
+            owner.data.fill(0,at,at+0x18c);owner.data.write(chunk,at+0x64,0x120,'utf8');
+            hooks.get(String(base.add(0xf20))).onEnter.call({context:{rbp:owner,r8:owner.add(slot*0x18c)}});
+        }
+        leave();
+    }
     return {
         api: sandbox.rpc.exports,
         messages,
@@ -302,11 +331,25 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
             body.textKeyHash=textKeyHash;
             const window=new ScratchPointer(0x450000);window.add(0x2d8).writeS32(width);
             const begin=hooks.get(String(base.add(0x1400))),rowHook=hooks.get(String(base.add(0x1500))),end=hooks.get(String(base.add(0x1700)));
+            const pending=records.map((row,i)=>{
+                const p=new ScratchPointer(0x460000+i*0x38);
+                p.writeS32(row[2]??i);p.add(0x20).writePointer(allocate(row[0]));p.add(8).writePointer(allocate(row[1]));return p;
+            });
+            const leaveBuild=invoke(base.add(0xfa0),[owner]);
+            for(let i=0;i<records.length;i++){
+                invoke(base.add(0xfb0),[])();
+                const slots=records[i][3]||[records[i][2]??i];
+                for(const slot of slots){
+                    const input=logOwnerPointer.add(0x160550+slot*0x18c);
+                    hooks.get(String(base.add(slots.length>1?0xfc0:0xfd0))).onEnter.call({context:{rbx:new Pointer(slot),r15:new Pointer(slot),rdx:input,rdi:input}});
+                }
+                hooks.get(String(base.add(0xfe0))).onEnter.call({context:{rbx:pending[i]}});
+            }
+            leaveBuild();
             const call={};begin?.onEnter.call(call,[owner]);
-            const result={setters:0,cleanup:0,heights:[],widths:[],ids:[]},vmContext=context;
+            const result={setters:0,cleanup:0,heights:[],widths:[],ids:[],bodies:[]},vmContext=context;
             for(let i=0;i<records.length;i++) {
-                const record=new ScratchPointer(0x460000),descriptor=new ScratchPointer(0x470000);
-                record.add(0x20).writePointer(allocate(records[i][0]));record.add(8).writePointer(allocate(records[i][1]));
+                const record=pending[i],descriptor=new ScratchPointer(0x470000);
                 descriptor.writeS32(i+1);
                 stack.add(0xc0).writePointer(record);stack.add(0xc8).writePointer(descriptor);
                 const context={r13:owner,rsi:name,rdi:body,r14:window,rsp:stack,rip:base.add(0x1500)};
@@ -337,6 +380,7 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
                 end?.onEnter.call({context});
                 result.heights.push(descriptor.add(0x18).readFloat());result.ids.push(descriptor.readS32());
                 result.widths.push(descriptor.add(0x14).readS32());
+                result.bodies.push(body.text());
             }
             // The native destructor tail must run even for every cache hit.
             result.cleanup=records.length;
@@ -344,7 +388,7 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
             assert.equal(sandbox.rpc.exports.status().failed,false,JSON.stringify(sandbox.rpc.exports.status()));
             return result;
         },
-        dialogueSet(label,text,data,functionName,values) {
+        dialogueSet(label,text,data,functionName,values,logSlot) {
             const machine=new ScratchPointer(0x34000000),object=new ScratchPointer(0x35000000),stack=new ScratchPointer(0x36000000);
             object.values.set(0,new RegionPointer(data));machine.values.set(8,object);
             machine.values.set(0x88,allocate(functionName));machine.values.set(0x70,values.length);
@@ -353,9 +397,23 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
             const buffer=allocate(text),leaveHandler=invoke(base.add(0xe00),[]);
             const leaveBuilder=invoke(base.add(0xf00),[nullPointer,buffer,nullPointer,machine]);leaveBuilder();
             const args=[label,buffer],leaveSetter=invoke(base.add(0x100),args);
-            copyIntoLabel(label,args[1]);leaveSetter();leaveHandler();
+            copyIntoLabel(label,args[1]);leaveSetter();
+            if(logSlot!==undefined)writeLog(buffer,logSlot);
+            leaveHandler();
             assert.equal(buffer.text,text,'fixed-size builder output must stay unchanged');
             return buffer;
+        },
+        logWrite(text,slot){writeLog(allocate(text),slot);},
+        logReset(){invoke(base.add(0xf40),[])();},
+        logShow(label,slot,text,slots=[slot]){
+            const controller=new ScratchPointer(0x480000);controller.add(0x18).writePointer(label);
+            const leaveFrame=invoke(base.add(0xf50),[controller,new Pointer(slot)]);
+            for(const piece of slots){
+                const input=logOwnerPointer.add(0x160550+piece*0x18c);
+                hooks.get(String(base.add(slots.length>1?0xf80:0xf90))).onEnter.call({context:{rbx:new Pointer(piece),rdx:input,rdi:input}});
+            }
+            const args=[label,allocate(text)],leave=invoke(base.add(0x100),args,base.add(0xf70));
+            copyIntoLabel(label,args[1]);leave();leaveFrame();
         },
         externalBuffer(label,buffer) {
             const args=[label,buffer],leave=invoke(base.add(0x100),args);copyIntoLabel(label,args[1]);leave();
@@ -450,6 +508,45 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
             return {results,duringCompensation,restoredCompensation:parser.add(0x1a7).readU8(),
                 primaryX:parser.readFloat(),primaryY:parser.add(4).readFloat(),
                 bounds:[0x3c8,0x3cc,0x3d0,0x3d4].map(v=>frame.add(v).readS32())};
+        },
+        inheritedLayerScale(label,index=0,{nativeScale=.375,emphasizedScale=null}={}) {
+            const row=sandbox.rpc.exports.snapshot().find(v=>v.original===label.originalForTest||v.displayed===label.text());
+            const layer=row.layers[index],parser=new ScratchPointer(0x730000),frame=new ScratchPointer(0x740000);
+            parser.values.set(8,label.add(0x318).readPointer().add(layer.offset));
+            const initializer=hooks.get(String(base.add(0x600))),parent=new ScratchPointer(0x750000),parentArgs=[parent,allocate('_'),new Pointer(1)];
+            parent.add(0x158).writeFloat(nativeScale);parent.add(0x15c).writeFloat(nativeScale);
+            const parentCall={returnAddress:base.add(0x800),context:{r15:label,rbx:parser,rbp:frame}};
+            initializer.onEnter.call(parentCall,parentArgs);initializer.onLeave.call(parentCall);
+            const factorOf=pointer=>vm.runInContext('auxiliaryContexts.get('+JSON.stringify(String(pointer))+')?.factor',context);
+            const parentFactor=factorOf(parent);
+            // The verified S/s tail resets this to an absolute label scale and
+            // the native parser applies parentFactor afterwards. Simulate that
+            // real sequence before a colour child inherits the current value.
+            if(emphasizedScale!==null) {
+                parent.add(0x158).writeFloat(emphasizedScale);
+                parent.add(0x15c).writeFloat(emphasizedScale);
+            }
+            parent.add(4).writeFloat(100);
+            const child=new ScratchPointer(0x760000),childArgs=[child,allocate('_'),new Pointer(1)];
+            // ruby_context_init copies the caller's current float arguments.
+            // A colour/style continuation therefore starts with the parent
+            // scale already applied instead of a fresh unit scale.
+            child.add(0x158).writeFloat(parent.add(0x158).readFloat());
+            child.add(0x15c).writeFloat(parent.add(0x15c).readFloat());
+            child.add(4).writeFloat(80);
+            const childCall={returnAddress:base.add(0x700),context:{r15:label,rbx:parent,rbp:frame}};
+            initializer.onEnter.call(childCall,childArgs);initializer.onLeave.call(childCall);
+            const childFactor=factorOf(child);
+            const grandchild=new ScratchPointer(0x770000),grandchildArgs=[grandchild,allocate('_'),new Pointer(1)];
+            grandchild.add(0x158).writeFloat(child.add(0x158).readFloat());
+            grandchild.add(0x15c).writeFloat(child.add(0x15c).readFloat());
+            grandchild.add(4).writeFloat(80);
+            const grandchildCall={returnAddress:base.add(0x700),context:{r15:label,rbx:child,rbp:frame}};
+            initializer.onEnter.call(grandchildCall,grandchildArgs);initializer.onLeave.call(grandchildCall);
+            const grandchildFactor=factorOf(grandchild);
+            return {parent:parent.add(0x15c).readFloat(),child:child.add(0x15c).readFloat(),
+                grandchild:grandchild.add(0x15c).readFloat(),parentFactor,childFactor,grandchildFactor,
+                childY:child.add(4).readFloat(),grandchildY:grandchild.add(4).readFloat()};
         },
         keyTable(hash,key,source) {
             vm.runInContext('textKeys.set('+JSON.stringify(hash)+','+JSON.stringify({key,source})+');',context);
@@ -1062,6 +1159,37 @@ test('secondary icon parser owns a cloned icon callback only for its drawing pas
     assert.equal(runtime.api.status().failed,false);
 });
 
+test('coloured layered continuation preserves its inherited ruby scale',()=>{
+    const a='完成总计<C3>25件</C>委托并汇报。',b='計<C3>２５件</C>のクエストを達成して報告する。';
+    const runtime=makeRuntime();runtime.api.load({pairs:{[a]:[a,b]},plain_pairs:{[a]:[a,b]}},'annotation',true,.85);
+    const label=runtime.label(0x4671,a);runtime.update(label);
+    const scales=runtime.inheritedLayerScale(label);
+    assert.ok(Math.abs(scales.parent-.3)<1e-6);
+    assert.ok(Math.abs(scales.child-scales.parent)<1e-6,'a colour continuation must not square the inherited ruby factor');
+    assert.ok(Math.abs(scales.grandchild-scales.parent)<1e-6,'a nested colour/bold continuation must keep the inherited ruby factor');
+    assert.ok(Math.abs(scales.grandchildY-(scales.childY+(80-scales.childY)*scales.child))<1e-6,
+        'a third continuation must retain the preceding auxiliary context');
+    assert.equal(runtime.api.status().failed,false);
+});
+
+test('coloured emphasis continuations retain the native ruby multiplier',()=>{
+    const a='完成总计<C3>25件</C>委托并汇报。',b='計<C3>２５件</C>のクエストを達成して報告する。';
+    const runtime=makeRuntime();runtime.api.load({pairs:{[a]:[a,b]},plain_pairs:{[a]:[a,b]}},'annotation',true,.85);
+    runtime.api.style(.85,{ruby_scale:.9});
+    const label=runtime.label(0x4672,a);runtime.update(label);
+    // Native ruby .5 times the user .9 is the stable annotation multiplier.
+    // After S5 the copied child scale is .675, but another absolute S5 must
+    // still restore .45 * 1.5, not .675 * 1.5.
+    const scales=runtime.inheritedLayerScale(label,0,{nativeScale:.5,emphasizedScale:.675});
+    assert.ok(Math.abs(scales.parent-.675)<1e-6);
+    assert.ok(Math.abs(scales.parentFactor-.45)<1e-6);
+    assert.ok(Math.abs(scales.child-.675)<1e-6);
+    assert.ok(Math.abs(scales.grandchild-.675)<1e-6);
+    assert.ok(Math.abs(scales.childFactor-.45)<1e-6,'a colour child must retain the stable ruby multiplier after S5');
+    assert.ok(Math.abs(scales.grandchildFactor-.45)<1e-6,'nested colour/bold continuations must retain the stable ruby multiplier after S5');
+    assert.equal(runtime.api.status().failed,false);
+});
+
 test('logic reload rejects native instrumentation before executing any supplied code',()=>{
     const r=makeRuntime(),p=r.label(0x9210,'原文');
     r.api.load({pairs:{'原文':['原文','訳文']},plain_pairs:{'原文':['原文','訳文']}},'secondary',true,1);r.update(p);
@@ -1533,6 +1661,59 @@ test('log parsing validates owned text once per callback, without repeated full 
     const before=r.memoryCost.textReads;
     r.repeatOwnedRubyParse(p,100,1);
     assert.ok(r.memoryCost.textReads-before<=400,'repeated owned checks must share the same callback-local result');
+    assert.equal(r.api.status().failed,false);
+});
+
+function historyFixture(source='相同的完整对白。') {
+    const {scriptSha256}=require('../sora_bilingual/game/scripts/runtime_identity.js');
+    const r=makeRuntime(),data=Buffer.alloc(128);data.write('#scp');data.writeUInt32LE(24,4);data.writeUInt32LE(1,8);
+    const signature=Buffer.concat([data.subarray(0,24),data.subarray(24,56),data.subarray(24,56)]).toString('hex');
+    const local=target=>({pairs:{[source]:[source,target]},plain_pairs:{[source]:[source,target]},numeric:[]});
+    r.api.load({pairs:{},plain_pairs:{},script_identities:{scripts:{[signature]:[{size:data.length,sha256:scriptSha256(data),functions:{Talk:{model:{pairs:{},plain_pairs:{}},calls:{
+        '1,36':{model:local('一つ目の台詞。')},'1,151':{model:local('二つ目の台詞。')}
+    }}}}]}}},'secondary',true,1);
+    const p=r.label(0xab00,'');
+    return {r,source,write:(call,slots)=>r.dialogueSet(p,source,data,'Talk',[1,call],slots)};
+}
+
+test('copied history retains exact branch identity in both measurement and visible rows',()=>{
+    const {r,source,write}=historyFixture('<K>相同的完整对白。');
+    write(36,7);write(151,8);
+    const p=r.label(0xac00,'');
+    r.logShow(p,7,source);assert.equal(p.text(),'一つ目の台詞。');
+    r.logShow(p,8,source);assert.equal(p.text(),'二つ目の台詞。');
+    const first=r.logMeasure([['',source,7]]),second=r.logMeasure([['',source,8]]);
+    assert.equal(first.bodies[0],'一つ目の台詞。');
+    assert.equal(second.bodies[0],'二つ目の台詞。');
+    assert.equal(second.setters,1,'another branch must not reuse the first body descriptor');
+    assert.equal(r.logMeasure([['',source,7]]).setters,0);
+    r.api.select('annotation',true);r.update(p);
+    const rendered=r.api.snapshot().find(row=>row.original===source&&row.presentation==='layered');
+    assert.equal(rendered?.layers[0].text,'二つ目の台詞。');
+    r.api.select('primary',true);r.update(p);assert.equal(p.text(),source);
+    r.api.select('secondary',true);r.update(p);assert.equal(p.text(),'二つ目の台詞。');
+    assert.equal(r.api.status().failed,false);
+});
+
+test('history overwrite, same-address lifecycle reset, and unobserved old records cannot retain provenance',()=>{
+    const {r,source,write}=historyFixture(),p=r.label(0xac00,'');
+    write(36,7);r.logShow(p,7,source);assert.equal(p.text(),'一つ目の台詞。');
+    r.logWrite(source,7);r.logShow(p,7,source);assert.equal(p.text(),source,'equal-byte overwrite must erase identity');
+    write(151,7);r.logReset();r.logShow(p,7,source);assert.equal(p.text(),source);
+    r.logShow(p,9,source);assert.equal(p.text(),source,'unknown history cannot borrow another slot');
+    assert.equal(r.api.status().failed,false);
+});
+
+test('long history validates every contributing slot, rejecting mixed and unknown origins',()=>{
+    const {r,source,write}=historyFixture('<K>'+('很长的剧情正文。'.repeat(24))),p=r.label(0xac00,'');
+    const chunks=[source.slice(0,80),source.slice(80,160),source.slice(160)];
+    write(36,chunks.map((chunk,i)=>[10+i,chunk]));
+    write(151,chunks.map((chunk,i)=>[20+i,chunk]));
+    r.logShow(p,12,source,[10,11,12]);assert.equal(p.text(),'一つ目の台詞。');
+    assert.equal(r.logMeasure([['',source,12,[10,11,12]]]).bodies[0],'一つ目の台詞。');
+    r.logShow(p,12,source,[10,21,12]);assert.equal(p.text(),source,'same bytes are not sufficient across distinct calls');
+    assert.equal(r.logMeasure([['',source,12,[10,21,12]]]).bodies[0],source);
+    r.logWrite(chunks[1],11);r.logShow(p,12,source,[10,11,12]);assert.equal(p.text(),source,'one unknown contributor invalidates the combined body');
     assert.equal(r.api.status().failed,false);
 });
 

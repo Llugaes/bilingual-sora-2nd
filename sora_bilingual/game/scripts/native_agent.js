@@ -27,6 +27,10 @@ let ParagraphFactory=typeof RuntimeParagraphs==='undefined'?null:RuntimeParagrap
 let immediateWrites=0;
 let scriptIdentities=null,tableIdentities=null,identityHits=0,identityMisses=0,tableIdentityHits=0;
 const dialogueFrames=new Map();
+const logOrigins=typeof LogIdentities==='function'?new LogIdentities():null;
+const logWriteFrames=new Map(),logPresentFrames=new Map();
+const logBuildFrames=new Map(),logRows=new Map();
+const logOriginStats={commits:0,withIdentity:0,matched:0,rejected:0,resets:0};
 const questFrames=new Map();
 const logMeasureFrames=new Map(),logHeightCache=new Map(),logNameCache=new Map();
 let logCacheBytes=0,logFontGeneration=0;
@@ -597,10 +601,15 @@ const rubyContextCallbacks={
             }
             const x = this.target.readFloat();
             if (!Number.isFinite(x)) throw Error('Non-finite ruby placement');
+            // ruby_context_init copies its caller's float arguments. A
+            // styled continuation inside a layered secondary therefore
+            // already carries the parent ruby scale; multiplying that scale
+            // by the saved parent factor makes every <C…> continuation tiny.
+            const scaleFactor=this.inherited?1:rubyScale;
             for(const offset of [0x158,0x15c]) {
                 const field=this.target.add(offset),scale=field.readFloat();
                 if(!Number.isFinite(scale)||scale<=0||scale>8)throw Error('Unvalidated ruby scale');
-                field.writeFloat(scale*(this.inherited ? this.inherited.factor : rubyScale));
+                field.writeFloat(scale*scaleFactor);
             }
             if(this.layer) {
                 const factor=this.target.add(0x15c).readFloat();
@@ -618,6 +627,14 @@ const rubyContextCallbacks={
                 return;
             }
             if(this.inherited) {
+                // A colour/bold continuation may itself become the parent of
+                // another continuation. Its fields contain the current scale,
+                // which may already include an absolute <S…>/<s…> emphasis.
+                // Keep the parent's stable native-ruby multiplier so a later
+                // absolute reset remains emphasis * rubyMultiplier.
+                const auxiliary={factor:this.inherited.factor,placement:this.placement};
+                if(nativeParser)nativeParser.set(this.target,auxiliary);
+                else auxiliaryContexts.set(String(this.target),auxiliary);
                 if(this.placement) {
                     inheritAuxiliaryIcons(this.target,this.parent,this.context.r15);
                     const origin=this.parent.add(4).readFloat(),y=this.target.add(4).readFloat();
@@ -625,6 +642,11 @@ const rubyContextCallbacks={
                 }
                 return;
             }
+            // The parser may subsequently consume <S…>/<s…> and reset its
+            // scale fields to an absolute label size. Keep this owned ruby
+            // context available to the verified command tail so it can retain
+            // the native ruby baseline as well as the user's ruby_scale.
+            if(nativeParser)nativeParser.trackScale(this.target,this.target.add(0x15c).readFloat());
             if (this.placement) {
                 const shifted=this.baseLeft+rubyOffsetX;
                 this.target.writeFloat(this.clampLeft?Math.max(0,shifted):shifted);
@@ -637,7 +659,7 @@ const rubyContextCallbacks={
 if(typeof createNativeMeasure==='function')nativeMeasure=createNativeMeasure(rubyContextCallbacks,{
     measurement:base.add(REPORT.native.ruby_measure_return.rva),
     baseMeasurement:base.add(REPORT.native.ruby_base_measure_return.rva)
-},fail);
+},fail,nativeParser);
 Interceptor.attach(base.add(REPORT.native.ruby_context_init.rva),nativeMeasure?{
     onEnter:nativeMeasure.onEnter,onLeave:nativeMeasure.onLeave
 }:rubyContextCallbacks);
@@ -695,6 +717,8 @@ if(REPORT.native.parse_text) Interceptor.attach(base.add(REPORT.native.parse_tex
     },
     onLeave(){if(this.aux)auxiliaryContexts.delete(this.key);recordTiming('parse',this.started);}
 });
+if(nativeParser?.sizeOnEnter&&REPORT.native.ruby_size_end)
+    Interceptor.attach(base.add(REPORT.native.ruby_size_end.rva),{onEnter:nativeParser.sizeOnEnter});
 if(REPORT.native.line_ruby_origin) Interceptor.attach(base.add(REPORT.native.line_ruby_origin.rva),{
     onEnter(args) {
         this.parser=null;
@@ -794,6 +818,152 @@ if(REPORT.native.dialogue_builder)Interceptor.attach(base.add(REPORT.native.dial
         }catch(e){identityMisses++;}finally{recordTiming('identity',started);}
     }
 });
+// The history copies dialogue bytes into a ring; heap strings cannot identify
+// the original script call. Record only synchronous builder -> writer
+// provenance, then validate the current slot payload before giving it to a UI.
+function logOwner() {
+    if(!logOrigins||!REPORT.log_owner_global)return null;
+    const owner=base.add(REPORT.log_owner_global).readPointer();
+    logOrigins.useOwner(owner.isNull()?null:String(owner));
+    return owner.isNull()?null:owner;
+}
+function logStamp(record) {
+    // Status bits at +188 may change when history is viewed; they are not a
+    // record generation. Payload bytes are replaced only by the native writer.
+    return Array.from(new Uint8Array(record.readByteArray(0x188))).map(v=>v.toString(16).padStart(2,'0')).join('');
+}
+function resetLogOrigins() {
+    logOrigins?.reset();logWriteFrames.clear();logPresentFrames.clear();logBuildFrames.clear();logRows.clear();logOriginStats.resets++;
+}
+function newLogContributions() {
+    const owner=logOwner();
+    return {owner:owner?String(owner):null,epoch:logOrigins.epoch,parts:[],invalid:false};
+}
+function captureLogPart(frame,slot,input) {
+    if(!frame||frame.invalid)return;
+    try {
+        const owner=logOwner();
+        if(!owner||frame.owner!==String(owner)||frame.epoch!==logOrigins.epoch||
+                !Number.isInteger(slot)||slot<0||slot>=1600||frame.parts.length>=1600)throw Error('Invalid log contribution');
+        const record=owner.add(0x1604ec+slot*0x18c);
+        if(!record.add(0x64).equals(input))throw Error('Unrelated log source pointer');
+        if(!logOrigins.entries.has(slot)){frame.invalid=true;return;}
+        const stamp=logStamp(record),origin=logOrigins.lookup(slot,stamp);
+        frame.parts.push({slot,entry:logOrigins.entries.get(slot),stamp,text:input.readUtf8String()});
+        if(!origin)frame.invalid=true;
+    }catch(_){frame.invalid=true;}
+}
+function logContributionsIdentity(frame,source) {
+    const owner=logOwner();
+    if(!frame||frame.invalid||!owner||frame.owner!==String(owner)||frame.epoch!==logOrigins.epoch||!frame.parts.length)return null;
+    if(frame.parts.map(v=>v.text).join('')!==source)return null;
+    let identity=null,key=null;
+    for(const part of frame.parts) {
+        const entry=logOrigins.entries.get(part.slot);
+        if(!entry||entry!==part.entry||entry.stamp!==logStamp(owner.add(0x1604ec+part.slot*0x18c)))return null;
+        const current=entry.origin.identity,currentKey=JSON.stringify(current);
+        if(key!==null&&key!==currentKey)return null;
+        identity=current;key=currentKey;
+    }
+    return identity;
+}
+function logInputIdentity(row,input,caller) {
+    if(!logOrigins)return null;
+    try {
+        const thread=Process.getCurrentThreadId(),present=logPresentFrames.get(thread)?.at(-1);
+        if(present&&caller?.equals(base.add(REPORT.native.log_text_return.rva))&&
+                row.pointer.equals(present.body))return logContributionsIdentity(present.parts,row.original);
+        const measure=logMeasureFrames.get(thread)?.at(-1);
+        if(measure?.record&&row.pointer.equals(measure.body)&&input.equals(measure.record.add(8).readPointer()))
+            return logContributionsIdentity(logRows.get(String(measure.owner))?.get(String(measure.record)),row.original);
+    }catch(_){logOriginStats.rejected++;}
+    return null;
+}
+for(const point of ['log_owner_destroyed','log_owner_created'])if(REPORT.native[point])
+    Interceptor.attach(base.add(REPORT.native[point].rva),{onEnter(){resetLogOrigins();}});
+if(logOrigins&&REPORT.native.log_write&&REPORT.native.log_write_commit) {
+    Interceptor.attach(base.add(REPORT.native.log_write.rva),{
+        onEnter(args){
+            this.thread=Process.getCurrentThreadId();
+            const stack=logWriteFrames.get(this.thread)||[],dialogue=dialogueFrames.get(this.thread)?.at(-1);
+            this.frame={owner:args[0],origin:null};
+            stack.push(this.frame);logWriteFrames.set(this.thread,stack);
+            try {
+                const owner=logOwner(),origin=dialogue?.outputs.get(String(args[1]));
+                if(owner?.equals(args[0])&&origin&&args[1].readUtf8String()===origin.source)this.frame.origin=origin;
+            }catch(_){logOriginStats.rejected++;}
+        },
+        onLeave(){
+            const stack=logWriteFrames.get(this.thread);
+            if(stack?.at(-1)===this.frame)stack.pop();else resetLogOrigins();
+            if(!stack?.length)logWriteFrames.delete(this.thread);
+        }
+    });
+    Interceptor.attach(base.add(REPORT.native.log_write_commit.rva),{onEnter(){
+        const frame=logWriteFrames.get(Process.getCurrentThreadId())?.at(-1);
+        try {
+            const owner=logOwner();
+            if(!owner||!frame||!frame.owner.equals(owner)||!this.context.rbp.equals(owner)){
+                resetLogOrigins();return;
+            }
+            const delta=this.context.r8.sub(owner).toInt32(),slot=delta/0x18c;
+            if(!Number.isInteger(slot)||slot<0||slot>=1600||!owner.add(slot*0x18c).equals(this.context.r8)){
+                resetLogOrigins();return;
+            }
+            logOrigins.commit(slot,logStamp(owner.add(0x1604ec+delta)),frame.origin);
+            logOriginStats.commits++;if(frame.origin)logOriginStats.withIdentity++;
+        }catch(_){resetLogOrigins();logOriginStats.rejected++;}
+    }});
+}
+if(logOrigins&&REPORT.native.log_record_bind)Interceptor.attach(base.add(REPORT.native.log_record_bind.rva),{
+    onEnter(args){
+        this.thread=Process.getCurrentThreadId();
+        const stack=logPresentFrames.get(this.thread)||[];
+        this.frame={slot:args[1].toInt32(),body:null,parts:null};
+        try {this.frame.body=args[0].add(0x18).readPointer();this.frame.parts=newLogContributions();}
+        catch(_){logOriginStats.rejected++;}
+        stack.push(this.frame);logPresentFrames.set(this.thread,stack);
+    },
+    onLeave(){
+        const stack=logPresentFrames.get(this.thread);
+        if(stack?.at(-1)===this.frame)stack.pop();else resetLogOrigins();
+        if(!stack?.length)logPresentFrames.delete(this.thread);
+    }
+});
+for(const [point,multiple] of [['log_present_append',true],['log_present_single',false]])if(REPORT.native[point])
+    Interceptor.attach(base.add(REPORT.native[point].rva),{onEnter(){
+        const frame=logPresentFrames.get(Process.getCurrentThreadId())?.at(-1);
+        if(frame?.parts)captureLogPart(frame.parts,multiple?this.context.rbx.toInt32():frame.slot,multiple?this.context.rdx:this.context.rdi);
+    }});
+if(logOrigins&&REPORT.native.log_rows_build)Interceptor.attach(base.add(REPORT.native.log_rows_build.rva),{
+    onEnter(args){
+        this.thread=Process.getCurrentThreadId();
+        const stack=logBuildFrames.get(this.thread)||[];
+        this.frame={owner:args[0],rows:new Map(),parts:null};
+        logRows.delete(String(args[0]));stack.push(this.frame);logBuildFrames.set(this.thread,stack);
+    },
+    onLeave(){
+        const stack=logBuildFrames.get(this.thread);
+        if(stack?.at(-1)===this.frame){
+            stack.pop();if(logRows.size>=16)logRows.clear();logRows.set(String(this.frame.owner),this.frame.rows);
+        }else resetLogOrigins();
+        if(!stack?.length)logBuildFrames.delete(this.thread);
+    }
+});
+for(const point of ['log_row_start','log_row_append','log_row_single','log_row_commit'])if(REPORT.native[point])
+    Interceptor.attach(base.add(REPORT.native[point].rva),{onEnter(){
+        const frame=logBuildFrames.get(Process.getCurrentThreadId())?.at(-1);
+        if(!frame)return;
+        try {
+            if(point==='log_row_start')frame.parts=newLogContributions();
+            else if(point==='log_row_commit') {
+                if(frame.rows.size>=1600)throw Error('Invalid log row count');
+                frame.rows.set(String(this.context.rbx),frame.parts);frame.parts=null;
+            }else if(frame.parts)captureLogPart(frame.parts,
+                point==='log_row_append'?this.context.rbx.toInt32():this.context.r15.toInt32(),
+                point==='log_row_append'?this.context.rdx:this.context.rdi);
+        }catch(_){frame.parts=null;logOriginStats.rejected++;}
+    }});
 // Quest history builds a complete paragraph before splitting it into labels.
 // Keep that exact source only for the verified synchronous builder/callsite;
 // isolated lines must never be matched against an unrelated quest paragraph.
@@ -839,6 +1009,10 @@ function identifyInput(row,input,caller) {
     if(origin&&origin.source===row.original){row.scriptIdentity=origin.identity;identityHits++;}
     const needsIdentity=!resolver||!Object.hasOwn(resolver.model.pairs,row.original);
     const started=needsIdentity?Date.now():undefined;
+    if(needsIdentity&&!row.scriptIdentity){
+        const identity=logInputIdentity(row,input,caller);
+        if(identity){row.scriptIdentity=identity;identityHits++;logOriginStats.matched++;}
+    }
     if(needsIdentity&&!row.scriptIdentity&&tableIdentities) {
         const entry=tableIdentities.select(input,row.original);
         if(entry){row.tableIdentity=entry.key;tableIdentityHits++;}
@@ -950,6 +1124,7 @@ const logMeasureGate=REPORT.native.log_measure_row?installLogMeasureGate({
         const frame=logMeasureFrames.get(Process.getCurrentThreadId())?.at(-1);
         if(!frame||!frame.owner.equals(this.context.r13))return;
         frame.pending=null;
+        frame.record=this.context.rsp.add(0xc0).readPointer();frame.body=this.context.rdi;
         if(!enabled||failed)return;
         try {
             const mode=frame.owner.add(0x1d4).readU32();
@@ -1189,7 +1364,7 @@ rpc.exports = {
     status() {
         const parser=nativeParser?.status();
         const measured=parser?{...timings,parse:{count:parser.count,totalMs:parser.totalMs,maxMs:parser.maxMs,over8Ms:parser.over8Ms}}:timings;
-        return {enabled,failed,failureReason,timings:measured,nativeParser:parser,nativeMeasure:nativeMeasure?.status(),logMeasureStats,logHeightCacheSize:logHeightCache.size,nativeSizeFallbacks:[...nativeSizeFallbacks.keys()],epoch,labels:labels.size,updates,writes,destroyed,threads:[...threads],
+        return {enabled,failed,failureReason,timings:measured,nativeParser:parser,nativeMeasure:nativeMeasure?.status(),logMeasureStats,logOriginStats,logOriginSlots:logOrigins?.entries.size||0,logHeightCacheSize:logHeightCache.size,nativeSizeFallbacks:[...nativeSizeFallbacks.keys()],epoch,labels:labels.size,updates,writes,destroyed,threads:[...threads],
         immediateWrites,identityHits,identityMisses,tableIdentityHits,renderMode,matched:[...labels.values()].filter(r=>r.matched).length,
         modified:[...labels.values()].filter(r=>r.displayed!==r.original).length};}
 };

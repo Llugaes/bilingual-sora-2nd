@@ -2,8 +2,36 @@
 const assert=require('node:assert/strict');
 const test=require('node:test');
 const crypto=require('node:crypto');
-const {scriptSha256,ScriptIdentities,TableIdentities}=require('../sora_bilingual/game/scripts/runtime_identity.js');
+const {scriptSha256,ScriptIdentities,TableIdentities,LogIdentities}=require('../sora_bilingual/game/scripts/runtime_identity.js');
 const model=(a,b)=>({pairs:{[a]:[a,b]},plain_pairs:{[a]:[a,b]},numeric:[]});
+
+test('log identity follows the physical record, not equal text or last observed dialogue',()=>{
+    const records=new LogIdentities(),a={source:'好。',identity:{argumentsToken:'36'}},b={source:'好。',identity:{argumentsToken:'151'}};
+    records.useOwner('owner');
+    records.commit(7,'record bytes',a);records.commit(8,'record bytes',b);
+    assert.equal(records.lookup(7,'record bytes'),a);
+    assert.equal(records.lookup(8,'record bytes'),b);
+    assert.equal(records.lookup(9,'record bytes'),null,'unobserved history must not borrow equal text');
+    records.commit(7,'record bytes',null);
+    assert.equal(records.lookup(7,'record bytes'),null,'even an identical non-dialogue overwrite clears provenance');
+    assert.equal(records.lookup(8,'record bytes'),b);
+});
+
+test('log records reject changed bytes, owner replacement, same-address reset, and stale generation',()=>{
+    const records=new LogIdentities(),origin={source:'source',identity:{argumentsToken:'1'}};
+    records.useOwner('first');records.commit(0,'one',origin);
+    assert.equal(records.lookup(0,'two'),null);
+    assert.equal(records.lookup(0,'one'),null,'a changed record invalidates instead of temporarily hiding its identity');
+    records.commit(0,'one',origin);const generation=records.generation;
+    records.useOwner('first');assert.equal(records.lookup(0,'one'),origin);
+    records.useOwner('second');assert.equal(records.lookup(0,'one'),null);
+    records.commit(0,'one',origin);records.reset('second');
+    assert.equal(records.lookup(0,'one'),null,'reset must clear even when the owner address is reused');
+    assert.ok(records.generation>generation);
+    assert.throws(()=>records.commit(1600,'one',origin),/slot/i);
+    assert.throws(()=>records.commit(-1,'one',origin),/slot/i);
+    assert.equal(records.lookup(1600,'one'),null);
+});
 
 test('script SHA-256 agrees with independent crypto across padding and block boundaries',()=>{
     for(const size of [0,1,3,55,56,63,64,65,511,4096,65536]) {

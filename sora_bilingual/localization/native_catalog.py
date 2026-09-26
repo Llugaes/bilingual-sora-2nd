@@ -162,7 +162,7 @@ def load_model(entries, signature, config, output=ROOT / "generated", *, game):
         config["secondary"],
         config.get("game_language", DEFAULT_PRIMARY),
     )
-    model["script_identities"] = compile_script_identities(*args)
+    model["script_identities"] = compile_script_identities(*args, resolved_pairs=translator.pairs)
     model["table_identities"] = compile_table_identities(*args, resolved_pairs=translator.pairs)
     publish_json(path, model)
     return model

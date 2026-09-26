@@ -4,13 +4,43 @@
 
 **Trails in the Sky the 2nd bilingual subtitles & text mod · 空の軌跡 the 2nd 二言語字幕・テキスト表示 Mod**
 
-提供中日对照、英日对照及其他语言组合，覆盖对白字幕与菜单文本；支持按住切换语言、单击切换和双语小字注解，帮助在游玩时学习语言。
-
-《空之轨迹 the 2nd》PC 原生双语文本 Mod。主、副语言独立选择：简体中文、繁体中文、日文、英文、韩文、法文、德文、西班牙文。使用中文游玩时，首次设置默认保留中文正文，配上日文小字注解，方便对照学习。
+《空之轨迹 the 2nd》PC 双语文本 Mod：对白与菜单可同屏对照，也可按住快捷键临时切换。主、副语言独立选择，支持简中、繁中、日、英、韩、法、德、西班牙文。
 
 目前支持 Steam build `25386012` / EXE `1.03.2`。工具会核验游戏版本；其他版本不强行安装钩子。原始 PAC 和 EXE 不改写。项目处于早期阶段：已有离线回归和部分实机验证，完整游戏覆盖、所有语言的排版与手柄兼容性仍需实机反馈。
 
 **日常游玩推荐：单语言显示＋按住显示副语言。** 平时看主语言，需要对照时按住快捷键，松开恢复。双语同屏仍可使用，但对话日志存在开页停顿和帧率下降的已知限制，详见下方说明。这是使用建议，不会重置已有配置。
+
+## 显示效果
+
+游戏实拍：中文正文＋日文副语言。点击图片可查看原尺寸。
+
+![对话中的双语显示](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/dialogue.jpg)
+
+<details>
+<summary>查看道具、装备与场景界面</summary>
+
+道具名称与底部说明：
+
+![道具界面](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/items.jpg)
+
+装备名称与属性说明：
+
+![装备界面](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/equipment.jpg)
+
+场景交互与提示：
+
+![场景界面](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/field.jpg)
+
+</details>
+
+<details>
+<summary>英文正文＋日文副语言</summary>
+
+![英日对话](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/dialogue-en-ja.jpg)
+
+![英日魔法列表与说明](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/arts-en-ja.jpg)
+
+</details>
 
 ## 安装和启动
 
@@ -57,6 +87,12 @@ $runtime = Get-Content runtime/current.txt
 
 ## 配置和快捷键
 
+选择显示方式，按需要调整字号和间距。以下为真实设置界面的离线截图，未连接游戏；左图选中推荐的“单语言＋按住显示副语言”。
+
+| 语言与模式 | 文字排版 |
+|---|---|
+| ![语言设置](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/settings-zh-Hans.png) | ![排版设置](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/layout-zh-Hans.png) |
+
 小状态条常驻；点击“设置”展开，再点一次收起。拖动状态条的文字、空白、把手或详情顶部，两者一起移动；按钮保留点击操作。详情页 **× / Esc** 只收起详情。状态条 **×** 隐藏界面、保留后台运行；系统托盘或桌面快捷方式可以重新打开。
 
 | 动作 | 默认快捷键 |
@@ -69,12 +105,9 @@ $runtime = Get-Content runtime/current.txt
 - **双语模式**：利用游戏的原生注音布局同时显示两种语言，快捷键开关副语言。
 - **单语言模式**：选择“按一下切换语言”或“按住显示副语言”。按一下切换不会因持续按住而重复触发；按住显示会在松开或失去游戏焦点后恢复主语言。
 
-字号、偏移、上下间距可动态调整，切页后新创建的文字会沿用当前设置。推荐默认值为主字号 0.85、副字号 0.90、上方间距 0、左右偏移 0、多行间距 6。间距按引擎实际测量的文字边界计算。副语言颜色按原 RGB 分量乘以自定义系数，默认 RGB 230 / 230 / 230（各分量除以 255 作为系数），保留原文颜色区别。
-双语整体上下偏移默认为 0，正值向下，单语言模式不应用。副语言不透明度与原 alpha 相乘，默认 90%，可直接拖动颜色按钮下方的滑块调整；主语言颜色及图标尺寸保持原样。检测到的游戏文字语言显示在设置页顶部状态区。
+字号与间距修改后实时生效，切页后保留。副语言颜色按原 RGB 分量相乘，默认 230 / 230 / 230，不透明度 90%；颜色按钮下方的滑块调整不透明度。整体上下偏移仅双语模式生效，正值向下。
 
-工具在等待游戏时会自动寻找本地安装，并提前准备当前语言组合的缓存。首次使用或资源／解析规则改变后需要准备一次；可先打开工具，等后台准备完成再进游戏。有效缓存直接载入，不再逐块传输完整模型。离线测试进程中的缓存连接路径约为 3.5–3.7 秒；游戏初始化时间另计，实际连接耗时记录在日志中。界面翻译和初始语言偏好的变更不会使游戏资源索引失效。
-
-菜单、道具、技能、NPC、对话回顾、主动语音和过场字幕统一使用主文上方的小字注解，默认与主文字左缘对齐，不向正文追加第二语言段落。原文自带注音／强调标记保留在原位置，副语言另走小字层。图像或影片中已经烧录的文字不在覆盖范围内；无法确定对应关系时保留原文，不猜测翻译。
+首次使用或游戏资源变化后，工具需要准备语言缓存。可先打开工具，等后台准备完成再进游戏；有效缓存会直接复用。
 
 ## 推荐用法与已知限制
 
@@ -113,7 +146,7 @@ py -3.14 -m venv .venv
 .venv\Scripts\python.exe -m tools.build_portable --version 0.3.9 --repository Llugaes/bilingual-sora-2nd
 ```
 
-发布包和仓库不包含游戏资源、从游戏生成的字库、完整文本索引、日志、截图或用户配置。报告问题时请附工具版本、游戏版本、语言组合与精简错误信息，避免上传完整游戏数据。
+仓库仅在文档中收录精选演示截图；发行包不附带这些图片。发布包和仓库不包含游戏资源包、从游戏生成的字库、完整文本索引、日志或用户配置。报告问题时请附工具版本、游戏版本、语言组合与精简错误信息，避免上传完整游戏数据。
 
 ## 许可
 

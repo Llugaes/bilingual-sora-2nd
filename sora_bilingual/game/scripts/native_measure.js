@@ -2,7 +2,7 @@
 // Native fast path for the two already-verified ruby measurement returns.
 // Every condition that is not explicitly represented in the per-thread scope
 // stays on the original JavaScript ruby_context_init listener.
-function createNativeMeasure(callbacks, addresses, onError) {
+function createNativeMeasure(callbacks, addresses, onError, scaleTracker=null) {
     const THREADS = 32, DEPTH = 16;
     // Includes alignment/padding before the 64-bit counters in State.
     const STATE_BYTES = 128 + THREADS * (16 + DEPTH * 32);
@@ -12,6 +12,9 @@ function createNativeMeasure(callbacks, addresses, onError) {
     const errorBridge = new NativeCallback(code => {
         onError(new Error(`native ruby measurement fast path disabled (${code})`));
     }, 'void', ['int']);
+    const trackerSymbol=scaleTracker?.trackNative||null;
+    const trackerExtern=trackerSymbol?'extern void measure_track_scale(void *, double);':'';
+    const trackerCall=trackerSymbol?'measure_track_scale(v->args[0],(double)*(float *)((uint8_t *)v->args[0]+0x15c));':'';
     const slowEnter = new NativeCallback((invocation, a0, a1, a2, returnAddress, r15, rbx, rbp) => {
         const key = String(invocation);
         const self = {returnAddress, context: {r15, rbx, rbp}};
@@ -78,6 +81,7 @@ extern State measure_state;
 extern void measure_slow_enter(void *, void *, void *, void *, void *, void *, void *, void *);
 extern void measure_slow_leave(void *);
 extern void measure_error(int);
+${trackerExtern}
 typedef char state_fits[(sizeof(State) <= ${STATE_BYTES}) ? 1 : -1];
 static int finite_double(double value) { return value==value && value<=1.7976931348623157e308 && value>=-1.7976931348623157e308; }
 static int finite_float(float value) { return value==value && value<=3.402823466e38f && value>=-3.402823466e38f; }
@@ -162,7 +166,7 @@ void measure_on_enter(GumInvocationContext *ic) {
 }
 void measure_on_leave(GumInvocationContext *ic) {
     Invocation *v=GUM_IC_GET_INVOCATION_DATA(ic,Invocation);
-    if (v->fast) { if (v->branch==MEASURE) measure_apply_fast(v->args[0],v->factor); return; }
+    if (v->fast) { if (v->branch==MEASURE && measure_apply_fast(v->args[0],v->factor)) { ${trackerCall} } return; }
     v->return_value=gum_invocation_context_get_return_value(ic); measure_slow_leave(v); gum_invocation_context_replace_return_value(ic,v->return_value);
 }
 void measure_snapshot(uint64_t *out) {
@@ -170,7 +174,9 @@ void measure_snapshot(uint64_t *out) {
     out[0]=s->disabled; out[1]=s->pushes; out[2]=s->pops; out[3]=s->overflows; out[4]=s->mismatches; out[5]=s->fast_measure; out[6]=s->fast_base; out[7]=s->slow; out[8]=s->apply_failures;
     gum_spinlock_release(&s->lock);
 }
-`, {measure_state: state, measure_slow_enter: slowEnter, measure_slow_leave: slowLeave, measure_error: errorBridge});
+`, trackerSymbol ? {measure_state: state, measure_slow_enter: slowEnter, measure_slow_leave: slowLeave,
+        measure_error: errorBridge, measure_track_scale: trackerSymbol} : {measure_state: state,
+        measure_slow_enter: slowEnter, measure_slow_leave: slowLeave, measure_error: errorBridge});
     const options = {scheduling: 'exclusive'};
     const initialize = new NativeFunction(module.measure_init, 'void', [], options);
     const pushNative = new NativeFunction(module.measure_push, 'uint64', ['uint64', 'pointer', 'pointer', 'double'], options);

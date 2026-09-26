@@ -90,6 +90,20 @@ class RuntimeIdentityTests(unittest.TestCase):
             ("好。", "よし。"),
         )
 
+    def test_style_normalization_conflict_also_gets_a_call_identity(self):
+        data, entries = self.fixture()
+        data = bytearray(data)
+        for i, (offset, style) in enumerate(((256, "<S5>"), (280, "<S5><C2>"))):
+            entries[i]["texts"] = {k: style + v for k, v in entries[i]["texts"].items()}
+            encoded = entries[i]["texts"]["zh-Hans"].encode() + b"\0"
+            data[offset : offset + len(encoded)] = encoded
+        FakeArchive.data = bytes(data)
+        with patch("sora_bilingual.localization.runtime_identity.FpacArchive", FakeArchive):
+            result = compile_script_identities("unused", entries, "zh-Hans", "ja", "zh-Hans")
+        fn = result["scripts"][script_signature(data)][0]["functions"]["Talk"]
+        call = fn["calls"][f"{0x40000001},{0xC0000000 + 256}"]
+        self.assertEqual(call["model"]["pairs"]["<S5>好。"], ("<S5>好。", "<S5>はい。"))
+
     def test_dynamic_arguments_only_wildcard_the_unresolved_value(self):
         data, entries = self.fixture(True)
         with patch("sora_bilingual.localization.runtime_identity.FpacArchive", FakeArchive):
