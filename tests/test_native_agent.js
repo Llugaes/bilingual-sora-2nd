@@ -36,6 +36,7 @@ function makeRuntime(rubyCase = null) {
     class FieldPointer extends Pointer {
         constructor(label, offset) { super(label.address + offset); this.label = label; this.offset = offset; }
         readPointer() {
+            if(this.offset===0x680)return this.label.glyphManager;
             if(this.offset===0x88)return this.label.name ? allocate(this.label.name) : nullPointer;
             if(this.offset===0x80)return this.label.parent || nullPointer;
             if (this.offset !== 0x318) throw Error(`unexpected pointer field ${this.offset}`);
@@ -46,7 +47,15 @@ function makeRuntime(rubyCase = null) {
             if (this.offset === 0x2ec) return this.label.textKeyHash || 0;
             if (this.offset === 0x304) return this.label.fontSize;
             if (this.offset === 0x330) return this.label.glyphs;
+            if (this.offset === 0x334) return this.label.total;
             throw Error(`unexpected numeric field ${this.offset}`);
+        }
+        readFloat() {if(this.offset===0x378)return this.label.progress;if(this.offset===0x2fc)return -12;throw Error('unexpected float field');}
+        writeFloat(value) {if(this.offset===0x378){this.label.progress=value;return;}throw Error('unexpected float field');}
+        writeU32(value) {if(this.offset===0x2e8){this.label.flags=value;return;}throw Error('unexpected integer field');}
+        writeU8(value) {
+            if (![0x688,0x689].includes(this.offset)) throw Error('unexpected dirty flag');
+            this.label.dirty[this.offset]=value;
         }
     }
 
@@ -59,6 +68,10 @@ function makeRuntime(rubyCase = null) {
             this.fontSize = fontSize;
             this.flags = 1;
             this.copyCount = 0;
+            this.dirty={};
+            this.reflows=0;
+            this.progress=0;this.total=0;this.cursor=0;this.parserText=this.owned;
+            this.resetCount=0;
         }
         add(offset) { return new FieldPointer(this, offset); }
         readPointer() { return this.vtable; }
@@ -99,9 +112,14 @@ function makeRuntime(rubyCase = null) {
         vtable: 0x500,
         native: {
             set_text: {rva: 0x100, bytes: '00000000000000000000000000000000'},
+            reset_text: {rva: 0x180, bytes: '00000000000000000000000000000000'},
+            measure_text: {rva: 0x190, bytes: '00000000000000000000000000000000'},
+            line_ruby_origin: {rva: 0x195, bytes: '00000000000000000000000000000000'},
             destroy: {rva: 0x200, bytes: '00000000000000000000000000000000'},
             update: {rva: 0x300, bytes: '00000000000000000000000000000000'},
+            layout_ready: {rva: 0x380, bytes: '00000000000000000000000000000000'},
             ruby_context_init: {rva: 0x600, bytes: '00000000000000000000000000000000'},
+            ruby_begin: {rva: 0x650, bytes: '00000000000000000000000000000000'},
             ruby_place_return: {rva: 0x700, bytes: '00000000000000000000000000000000'},
             ruby_measure_return: {rva: 0x800, bytes: '00000000000000000000000000000000'},
             ruby_base_measure_return: {rva:0x880,bytes:'00000000000000000000000000000000'},
@@ -127,6 +145,10 @@ function makeRuntime(rubyCase = null) {
         // particular, it never aliases Memory.allocUtf8String's backing data.
         label.owned = {text: buffer.isNull() ? '' : String(buffer.readUtf8String())};
         label.copyCount++;
+        label.total=[...label.owned.text.replace(/<[^>]*>/g,'')].length;
+        // Verified native SetText (0x588a40): animated labels lose their
+        // glyphs/progress, but retain the OLD parser buffer and end cursor.
+        if(label.flags&4){label.glyphs=0;label.progress=0;}
     }
 
     function allocate(text) {
@@ -143,7 +165,7 @@ function makeRuntime(rubyCase = null) {
                 const hook = hooks.get(String(base.add(REPORT.native.ruby_context_init.rva)));
                 const call = {returnAddress:base.add(rubyCase.wrongCallsite ? 0x777 : rubyCase.measurement ? 0x800 : 0x700),
                     context:{r15:rubyCase.wrongLabel ? new Pointer(123) : label,
-                        rbx:{readFloat:()=> (rubyCase.baseLeft??0)+40,add:()=>({readFloat:()=>rubyCase.origin??0})},
+                        rbx:{readFloat:()=> (rubyCase.baseLeft??0)+40,add:()=>({readFloat:()=>rubyCase.origin??0,readU8:()=>0}),toString:()=> '0x700000'},
                         rbp:{add:off=>({readS32:()=>({0x3c8:0,0x3cc:rubyCase.primaryTop??0,0x3d0:40,0x17c:0,0x184:rubyCase.bottom??18})[off]??0})}}};
                 hook.onEnter.call(call, [ctx]);
                 hook.onLeave.call(call);
@@ -153,10 +175,15 @@ function makeRuntime(rubyCase = null) {
     }
 
     function NativeFunction(address) {
+        if(address.equals(base.add(REPORT.native.reset_text.rva)))return label=>{
+            label.resetCount++;label.cursor=0;label.parserText=label.owned;
+            label.glyphs=0;label.progress=0;label.dirty[0x688]=1;
+        };
         if (!address.equals(base.add(REPORT.native.set_text.rva))) throw Error('unexpected native function');
         return (label, buffer) => {
             const args=[label,buffer],leave=invoke(address,args);
             copyIntoLabel(label, args[1]);
+            invoke(base.add(0x190),[label])();
             if(duringSetter){const callback=duringSetter;duringSetter=null;const saved=threadId;try{callback();}finally{threadId=saved;}}
             if (!rubyCase?.deferred) renderRuby(label);
             leave();
@@ -211,9 +238,17 @@ function makeRuntime(rubyCase = null) {
             const args=[label,buffer],leave=invoke(base.add(0x100),args);copyIntoLabel(label,args[1]);leave();
         },
         markSubtitle(root){vm.runInContext('subtitleRoots.add('+JSON.stringify(String(root))+');',context);},
-        compensate(label) {
+        parseOrigin(label,measurement=false,delta=12) {
+            const parser=new ScratchPointer(label.address+0x400);parser.add(4).writeFloat(100);parser.add(0x1ab).writeU8(measurement?1:0);
+            const leave=invoke(base.add(0x195),[label,parser]);
+            if(!measurement)parser.add(4).writeFloat(100+delta);
+            leave();
+            return parser.add(4).readFloat();
+        },
+        compensate(label,measurement=false) {
             const parser=new ScratchPointer(0x700000);
             parser.add(4).writeFloat(100);
+            parser.add(0x1ab).writeU8(measurement?1:0);
             const context={r15:label,rbx:parser};
             hooks.get(String(base.add(0xb00))).onEnter.call({context});
             if(!parser.add(0x1a7).readU8())parser.add(4).writeFloat(112);
@@ -255,15 +290,61 @@ function makeRuntime(rubyCase = null) {
                     nestedRubyDisabled:child.add(0x1a5).readU8()});
                 ph.onLeave.call(parseCall);
             }
+            if(geometry.glyphQuads)label.glyphs=geometry.secondaryCount;
             hooks.get(String(base.add(0xb00))).onEnter.call({context:machine});
             const duringCompensation=parser.add(0x1a7).readU8();
             hooks.get(String(base.add(0xc00))).onEnter.call({context:machine});
+            if(geometry.glyphQuads) {
+                const array=new ScratchPointer(0xa00000),manager=new ScratchPointer(0xb00000);
+                label.glyphs=geometry.glyphQuads.length;manager.values.set(0x20,array);label.glyphManager=manager;
+                geometry.glyphQuads.forEach(([x,y,w,h,kind=0],i)=>{
+                    const q=new ScratchPointer(0xc00000+i*0x100);
+                    for(const [o,v] of [[0x38,x],[0x3c,y],[8,w],[0x1c,h],[0xc0,kind]])q.values.set(o,v);
+                    array.values.set(i*8,q);
+                });
+            }
             return {results,duringCompensation,restoredCompensation:parser.add(0x1a7).readU8(),
                 primaryX:parser.readFloat(),primaryY:parser.add(4).readFloat(),
                 bounds:[0x3c8,0x3cc,0x3d0,0x3d4].map(v=>frame.add(v).readS32())};
         },
         keyTable(hash,key,source) {
             vm.runInContext('textKeys.set('+JSON.stringify(hash)+','+JSON.stringify({key,source})+');',context);
+        },
+        glyphLayout(label) {
+            const lease=this.beginUpdate(label);
+            hooks.get(String(base.add(0x380))).onEnter.call({context:{rsi:label}});
+            // Native Update samples the local matrix here, before onLeave.
+            const a=label.glyphManager.add(0x20).readPointer(),out=[];
+            for(let i=0;i<label.glyphs;i++) {const q=a.add(i*8).readPointer();out.push([0x38,0x3c,8,0x1c].map(o=>q.add(o).readFloat()));}
+            lease();return out;
+        },
+        capturedRuby(label,quads,primaryEnd,measurement=false) {
+            this.capturedRubyRuns(label,quads,[[0,primaryEnd,quads.length]],measurement);
+        },
+        capturedRubyRuns(label,quads,ranges,measurement=false) {
+            const parser=new ScratchPointer(0x770000),frame=new ScratchPointer(0x880000);
+            parser.add(0x1ab).writeU8(measurement?1:0);
+            const context={r15:label,rbx:parser,rbp:frame};
+            const init=hooks.get(String(base.add(0x600)));
+            const target=new ScratchPointer(0x990000);
+            for(const [start,primaryEnd,end] of ranges) {
+                label.glyphs=start;
+                hooks.get(String(base.add(0x650))).onEnter.call({context});
+                label.glyphs=primaryEnd;
+                init.onEnter.call({returnAddress:base.add(0x880),context},[target]);
+                init.onEnter.call({returnAddress:base.add(0x700),context},[target]);
+                label.glyphs=end;
+                hooks.get(String(base.add(0xb00))).onEnter.call({context});
+                hooks.get(String(base.add(0xc00))).onEnter.call({context});
+            }
+            label.glyphs=quads.length;
+            const array=new ScratchPointer(0xaa0000),manager=new ScratchPointer(0xbb0000);
+            manager.values.set(0x20,array);label.glyphManager=manager;
+            quads.forEach(([x,y,w,h,kind=0],i)=>{
+                const q=new ScratchPointer(0xcc0000+i*0x100);
+                for(const [o,v] of [[0x38,x],[0x3c,y],[8,w],[0x1c,h],[0xc0,kind]])q.values.set(o,v);
+                array.values.set(i*8,q);
+            });
         },
         newline(label,bottom) {
             const call={context:{r13:label,r12:new Pointer(bottom)}};
@@ -279,9 +360,20 @@ function makeRuntime(rubyCase = null) {
             leave();
             return buffer;
         },
+        inlinedSet(label,text) {
+            copyIntoLabel(label,allocate(text));
+            invoke(base.add(0x190),[label])();
+            return label.text(); // Native measurement consumes this immediately.
+        },
         update(label, currentThread = 1) {
             threadId = currentThread;
             const leave=invoke(base.add(REPORT.native.update.rva), [label]);
+            if(label.dirty[0x689]) {label.reflows++;label.dirty[0x689]=0;}
+            if((label.flags&4)&&!(label.flags&0x10)&&label.dirty[0x688]) {
+                const count=Math.min(label.total,Math.floor(label.progress));
+                if(label.parserText===label.owned&&count>label.cursor){label.glyphs+=count-label.cursor;label.cursor=count;}
+            }
+            label.dirty[0x688]=0;
             if (rubyCase?.deferred) renderRuby(label);
             leave();
         },
@@ -434,14 +526,68 @@ test('support list ancestry selects its own translation of a repeated name', () 
     assert.equal(other.text(),'反击');
 });
 
-test('ruby measurement and drawing share the smaller size; drawing alone moves upward', () => {
+test('ruby measurement and drawing share scale without a second parser gap adjustment', () => {
     for(const measurement of [false,true]) {
         const sample={x:10,measurement};const runtime=makeRuntime(sample);
         const label=runtime.label(0x4350,'测试');
         runtime.api.configure({'测试':'<R>测试</Rテスト>'},true);runtime.update(label);
         assert.ok(Math.abs(sample.scale-.3)<1e-8);
-        assert.equal(sample.y,measurement?0:-21);
+        assert.equal(sample.y,0,'ink spacing is resolved at the glyph stage, not the parser origin');
     }
+});
+
+test('completed typewriter dialogue survives repeated language and annotation toggles',()=>{
+    for(const flags of [4,5,0x14,0x15,0x45]) {
+    const r=makeRuntime(),a='Hello there.',b='Bonjour !';
+    r.api.load({pairs:{[a]:[a,b]},plain_pairs:{[a]:[a,b]}},'primary',true,1);
+    const label=r.label(0x4700,a);label.flags=flags;
+    r.externalSet(label,a);r.update(label);
+    // Game has already initialized and finished this dialogue before the key.
+    label.parserText=label.owned;label.cursor=label.total;label.progress=label.total;label.glyphs=label.total;
+    for(const mode of ['annotation','primary','secondary','annotation','primary']) {
+        r.api.select(mode,true);r.update(label);
+        assert.ok(label.glyphs>0,mode+': current sentence must not disappear');
+        assert.equal(label.parserText,label.owned,mode+': parser must reference the new owned buffer');
+        assert.equal(label.cursor,label.total,mode+': completed sentence must stay complete');
+        assert.equal(label.flags,flags,'pause and shadow/animation flags remain game-owned');
+    }
+    r.api.disable();r.update(label);assert.equal(label.text(),a);assert.ok(label.glyphs>0);
+    }
+});
+
+test('inlined native writes translate before measurement without waiting for an epoch change',()=>{
+    const r=makeRuntime(),p=r.label(0xa500,'');p.flags=32;r.update(p);
+    r.api.load({pairs:{Estelle:['Estelle','エステル'],Olivier:['Olivier','オリビエ']},
+        plain_pairs:{Estelle:['Estelle','エステル'],Olivier:['Olivier','オリビエ']}},'annotation',true,.8);
+    r.update(p);
+    for(const name of ['Estelle','Olivier','Estelle']) {
+        const text='　·'+name+'　　　Lv.39',display=r.inlinedSet(p,text);
+        assert.match(display,/<R>/);assert.ok(display.includes('Lv.39'));
+        assert.equal(r.api.snapshot()[0].original,text);
+        r.update(p);assert.equal(p.text(),display);
+    }
+    r.api.select('secondary',true);r.update(p);
+    assert.match(r.inlinedSet(p,'　·Estelle　　　Lv.39'),/エステル/);
+    assert.equal(r.api.status().failed,false);
+    r.api.disable();r.update(p);assert.equal(p.text(),'　·Estelle　　　Lv.39');
+    assert.equal(r.inlinedSet(p,'　·Olivier　　　Lv.39'),'　·Olivier　　　Lv.39');
+});
+
+test('typewriter refresh retains partial progress and does not rebuild unchanged frames',()=>{
+    const r=makeRuntime(),a='abcdefghijkl',b='mnopqrstuvwx';
+    r.api.load({pairs:{[a]:[a,b]},plain_pairs:{[a]:[a,b]}},'primary',true,1);
+    const label=r.label(0x4710,a);label.flags=5;r.externalSet(label,a);r.update(label);
+    label.parserText=label.owned;label.progress=6;label.cursor=6;label.glyphs=6;
+    r.api.select('secondary',true);r.update(label);
+    assert.equal(label.progress,6);assert.equal(label.glyphs,6);
+    const resets=label.resetCount;r.update(label);r.update(label);assert.equal(label.resetCount,resets);
+    r.api.select('annotation',true);r.update(label);
+    const ratio=label.progress/label.total, count=label.resetCount;
+    r.api.style(1,{ruby_gap:7});r.update(label);
+    assert.equal(label.progress/label.total,ratio);assert.ok(label.glyphs>0);
+    assert.equal(label.resetCount,count+1);
+    r.externalSet(label,'new game sentence');
+    assert.equal(label.resetCount,count+1,'game-initiated SetText retains its native lifecycle');
 });
 
 test('digits, width variants and icon-only pairs never acquire mod geometry',()=>{
@@ -462,6 +608,8 @@ test('mixed chapter and difficulty keep native size, advance and following basel
     const label=runtime.label(0x4620,source);runtime.update(label);
     assert.equal(label.text(),'<R>第２章“大地翻腾”</R２章「荒ぶる大地」>　　　　 ＜Nightmare＞');
     assert.deepEqual(runtime.compensate(label),{y:100,flag:0});
+    assert.deepEqual(runtime.compensate(label,true),{y:100,flag:0});
+    assert.equal(runtime.parseOrigin(label),100);
     runtime.api.disable();runtime.update(label);assert.equal(label.text(),source);
 });
 
@@ -484,25 +632,75 @@ test('late native font changes and rebuilt menus use the same size as a hot styl
     const writes=rebuilt.copyCount;r.update(rebuilt);assert.equal(rebuilt.copyCount,writes);
 });
 
-test('formatted footer uses measured primary top rather than the parser baseline',()=>{
+test('geometry-only changes remeasure unchanged annotated text once, leaving plain labels alone',()=>{
+    const r=makeRuntime(),label=r.label(0x4680,'Text'),plain=r.label(0x4690,'4');
+    r.api.load({pairs:{Text:['Text','Texte']},plain_pairs:{Text:['Text','Texte']}},'annotation',true,.86);
+    r.update(label);r.update(plain);
+    const text=label.text(),copies=label.copyCount;
+    r.api.style(.86,{ruby_scale:.7,ruby_gap:2,line_gap:5});
+    r.update(label);r.update(plain);
+    assert.equal(label.text(),text);assert.equal(label.copyCount,copies);
+    assert.equal(label.reflows,1);assert.equal(plain.reflows,0);
+    r.update(label);assert.equal(label.reflows,1);
+});
+
+test('mixed party rows retain native baselines, line advances and level geometry',()=>{
+    const r=makeRuntime(),source=' ·Estelle    Lv.39\n ·Olivier    Lv.39';
+    const pairs={Estelle:['Estelle','エステル'],Olivier:['Olivier','オリビエ']};
+    r.api.load({pairs,plain_pairs:pairs},'annotation',true,.8,{ruby_gap:2,line_gap:12});
+    const p=r.label(0x4621,source,0,26);r.inlinedSet(p,source);
+    assert.match(p.text(),/ ·<R>Estelle<\/Rエステル>    Lv.39/);
+    assert.equal(r.newline(p,40),40);
+    for(const delta of [0,12,8])assert.equal(r.parseOrigin(p,false,delta),100);
+    // Two native ruby runs, separated by the untouched level on each line.
+    const input=[[20,30,26,26],[20,18,14,14],[130,30,26,26],
+        [20,76,26,26],[20,64,14,14],[130,76,26,26]];
+    r.capturedRubyRuns(p,input,[[0,1,2],[3,4,5]]);
+    const output=r.glyphLayout(p);
+    for(const i of [0,2,3,5])assert.deepEqual(output[i],input[i]);
+    for(const [main,secondary] of [[0,1],[3,4]])
+        assert.equal(output[main][1]-13-(output[secondary][1]+7),2);
+    r.api.select('primary',true);r.update(p);
+    assert.deepEqual(r.glyphLayout(p),output,'stale ruby ranges cannot move plain glyphs');
+    assert.equal(p.text(),source);assert.equal(r.parseOrigin(p),112);
+});
+
+test('native first measurement reserves the same ruby height as a main-font refresh',()=>{
+    const r=makeRuntime(),label=r.label(0x4681,'输入');
+    r.api.configure({'输入':'<R>输入</R入力>'},true,.86);r.update(label);
+    // Captured native trace: ordinary initial SetText runs parser hooks; a
+    // nested setter from Update measures natively without those callbacks.
+    // Suppression in the first path incorrectly dropped 12 layout units.
+    assert.deepEqual(r.compensate(label,true),{y:112,flag:0});
+    assert.deepEqual(r.compensate(label,false),{y:100,flag:0});
+});
+
+test('formatted footer uses actual glyph edges rather than native measurement bounds',()=>{
     const a='完成总计<C3>15件</C>委托并汇报。',b='計<C3>１５件</C>のクエストを達成して報告する。';
     const runtime=makeRuntime();runtime.api.load({pairs:{[a]:[a,b]},plain_pairs:{[a]:[a,b]}},'annotation',true,.85,{ruby_gap:2});
     const label=runtime.label(0x4670,a);runtime.update(label);
-    const v=runtime.auxiliary(label,0,{origin:100,primaryTop:-12,bottom:18}).results[1];
-    assert.equal(v.y+18,86,'annotation bottom must remain two units above the primary top at 88');
+    const input=[[10,100,14,14],[20,100,14,14],[15,100,24,24],[40,100,24,24]];
+    runtime.auxiliary(label,0,{origin:100,primaryTop:-12,bottom:18,glyphQuads:input,secondaryCount:2});
+    const v=runtime.glyphLayout(label);
+    assert.equal(v[1][1]+7,86,'secondary edge must be two units above the actual primary top at 88');
     assert.equal(runtime.api.status().failed,false);
 });
 
-test('plain and formatted annotation lanes have the same measured gap across sizes and native offsets',()=>{
-    for(const fontSize of [18,32,64])for(const bottom of [10,18,24])for(const nativeY of [30,80,110])for(const primaryTop of [-12,0,6]) {
-        const sample={x:10,origin:100,bottom,nativeY,primaryTop};const runtime=makeRuntime(sample);
+test('plain, outlined, animated and formatted labels share one glyph gap across sizes and offsets',()=>{
+    for(const fontSize of [18,32,64])for(const nativeY of [30,80,110])for(const flags of [0,1,128,773]) {
+        const runtime=makeRuntime();
         runtime.api.configure({'Text':'<R>Text</RTexte>'},true);
-        const label=runtime.label(0x4630,'Text',0,fontSize);runtime.update(label);
+        const label=runtime.label(0x4630,'Text',0,fontSize);label.flags=flags;runtime.update(label);
+        const primary=[20,100,fontSize,fontSize],secondary=[40,nativeY,14,14];
+        runtime.capturedRuby(label,[primary,secondary],1);
+        const ordinary=runtime.glyphLayout(label);
         const formatted=makeRuntime(),a='<C2>Text</C>',b='<C2>Texte</C>';
         formatted.api.load({pairs:{[a]:[a,b]},plain_pairs:{[a]:[a,b]}},'annotation',true,.9);
         const other=formatted.label(0x4640,a,0,fontSize);formatted.update(other);
-        const y=formatted.auxiliary(other,0,{origin:100,bottom,nativeY,primaryTop}).results[1].y;
-        assert.equal(y,sample.y);assert.equal(100+primaryTop-(y+bottom),3);
+        formatted.auxiliary(other,0,{glyphQuads:[secondary,primary],secondaryCount:1});
+        const styled=formatted.glyphLayout(other);
+        assert.deepEqual(ordinary[0],primary);assert.deepEqual(styled[1],primary);
+        assert.deepEqual(ordinary[1],styled[0]);assert.equal(primary[1]-primary[3]/2-(styled[0][1]+7),3);
         assert.equal(runtime.api.status().failed,false);assert.equal(formatted.api.status().failed,false);
     }
 });
@@ -660,7 +858,7 @@ test('original ruby and emphasis remain unchanged while a separately owned lane 
             assert.equal(v.nestedRubyDisabled,i===0?1:0);assert.ok(Math.abs(v.scale-.3)<1e-8);
         }
         assert.equal(result.results[1].x,20);
-        assert.equal(result.results[1].y,59);
+        assert.equal(result.results[1].y,80,'original parser positions remain native');
         runtime.api.select('secondary',true);runtime.update(label);assert.equal(label.text(),b);
         runtime.api.disable();runtime.update(label);assert.equal(label.text(),a);
         assert.equal(runtime.api.status().failed,false);
@@ -691,6 +889,17 @@ test('subtitles and ordinary dialogue both annotate above without appended parag
     runtime.api.disable();runtime.update(subtitle);assert.equal(subtitle.text(),a);
 });
 
+test('fixed dialogue speaker retains its baseline without moving body, menus or original ruby',()=>{
+    const r=makeRuntime(),root=r.label(0xa100,'');r.markSubtitle(root);
+    r.api.load({pairs:{Name:['Name','Nom']},plain_pairs:{Name:['Name','Nom']}},'annotation',true,1);
+    for(const [node,dialogue,expected] of [['name_text',true,100],['prev_name_text',true,100],['text',true,112],['name_text',false,112]]) {
+        const p=r.label(0xa200,'Name');p.name=node;if(dialogue)p.parent=root;r.update(p);
+        assert.equal(r.parseOrigin(p),expected);assert.equal(r.parseOrigin(p,true),100);
+        r.api.select('primary',true);r.update(p);assert.equal(r.parseOrigin(p),112);
+        r.api.select('annotation',true);r.destroy(p);
+    }
+});
+
 test('a long owned rendering may be resubmitted without becoming a new raw source',()=>{
     const runtime=makeRuntime(),label=runtime.label(0x9970,'raw');
     runtime.api.configure({raw:'x'.repeat(20000)},true);runtime.update(label);
@@ -706,9 +915,32 @@ test('ordinary formatted lanes retain configured main size and gap, with correct
     assert.ok(label.text().startsWith('<s29><R></R_>'));
     assert.equal(runtime.newline(label,100),112);
     const result=runtime.auxiliary(label,1);assert.equal(result.results[1].text,'二');
-    assert.equal(result.results[1].y,79,'measured annotation bottom is three units above primary origin');
+    assert.equal(result.results[1].y,80,'spacing is deferred to the shared glyph stage');
     assert.equal(runtime.api.status().failed,false);
     runtime.api.disable();runtime.update(label);assert.equal(label.text(),a);
+});
+
+test('icon labels place the added lane before world transform, on every native rebuild',()=>{
+    const r=makeRuntime(),a='<I1553> Skip scene',b='<I1553> Next scene';
+    r.api.load({pairs:{[a]:[a,b]},plain_pairs:{[a]:[a,b]}},'annotation',true,.8,{ruby_gap:3});
+    const p=r.label(0xa400,a);p.flags=65;r.update(p);
+    // Reduced live capture: two secondary quads (text + shadow), icon,
+    // and primary text + shadow. Icon is taller and farther left.
+    const input=[[32.02,23.4075,14.04,14.04],[34.02,25.4075,14.04,14.04],
+        [16,31.5,32,32,1],[56,31.5,24,24],[58,33.5,24,24]];
+    const check=(gap)=>{
+        p.glyphs=0;r.auxiliary(p,0,{glyphQuads:input,secondaryCount:2});
+        const out=r.glyphLayout(p);
+        assert.deepEqual(out.slice(2),input.slice(2).map(v=>v.slice(0,4)),'icon/primary stay put');
+        assert.ok(Math.abs((out[0][0]-out[0][2]/2)-44)<.001,'align with letters, not icon');
+        assert.ok(Math.abs((31.5-12)-(out[1][1]+out[1][3]/2)-gap)<.001,'gap includes shadow');
+        assert.deepEqual(r.glyphLayout(p),out,'no cumulative shift without a new layout');
+        assert.equal(r.api.status().failed,false);
+    };
+    check(3);check(3);
+    r.api.style(.8,{ruby_gap:6});r.update(p);check(6);
+    r.api.select('primary',true);r.update(p);assert.equal(p.text(),a);
+    r.api.select('annotation',true);r.update(p);check(6);
 });
 
 test('native dialogue carries exact VM identity through its builder without retaining a stale stack buffer',()=>{

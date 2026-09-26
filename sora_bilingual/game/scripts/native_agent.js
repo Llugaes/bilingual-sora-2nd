@@ -32,6 +32,7 @@ for (const [name, point] of Object.entries(REPORT.native)) {
     if (actual !== point.bytes) throw Error('Native runtime code changed at '+name+'; remove other probes before attaching');
 }
 const setter = new NativeFunction(base.add(REPORT.native.set_text.rva), 'void', ['pointer','pointer']);
+const resetText = new NativeFunction(base.add(REPORT.native.reset_text.rva), 'void', ['pointer']);
 const textKeys = new Map();
 if (REPORT.text_table_global) {
     const manager=base.add(REPORT.text_table_global).readPointer();
@@ -78,6 +79,7 @@ function translationKey(row) {
     if(keyed && Object.hasOwn(dictionary,keyed))return keyed;
     row.scope=null;
     row.surface='standard';
+    row.dialogueSpeaker=false;
     if(REPORT.node_names) {
         let p=row.pointer;
         const names=[];
@@ -90,6 +92,7 @@ function translationKey(row) {
             names.push(name);p=p.add(0x80).readPointer();
         }
         if(subtitle&&names[0]==='text')row.surface='subtitle';
+        row.dialogueSpeaker=subtitle&&['name_text','prev_name_text'].includes(names[0]);
         if(names[0]==='name' && names.includes('skill_template')) {
             if(names.includes('ability_list')||names.includes('temp_ability_list'))row.scope='support';
             if(names.includes('overdrive_list')||names.includes('temp_overdrive_list'))row.scope='overdrive';
@@ -133,6 +136,7 @@ function wantedText(row) {
     const p=row.pointer,key=translationKey(row);
     row.renderSize=p.add(0x304).readU32();
     let wanted=row.original;
+    row.glyphLanes=[];row.laneCount=-1;row.lanesDirty=false;
     row.plan={text:wanted,layers:[],kind:'plain'};
     if(enabled&&!failed) {
         if(resolver) {
@@ -160,6 +164,9 @@ function wantedText(row) {
     const hasText=text=>/[A-Za-z0-9\u00c0-\uffff]/.test(text.replace(/<[^<>]*>/g,''));
     const uncovered=row.plan.kind==='ruby'?hasText(wanted.replace(/<R>[^<>]*<\/R[^<>]*>/g,'')):
         row.plan.kind==='layered'&&wanted.split(/\r\n|\n|\\n/).some(line=>!line.includes('<R></R_>')&&hasText(line));
+    row.reserveRubyHeight=row.plan.kind==='ruby'&&!uncovered;
+    row.preservePrimaryLayout=shrink&&Boolean(uncovered);
+    row.extendLineSpacing=shrink&&!uncovered;
     // Mixed labels (e.g. chapter + difficulty) keep their native advances, so
     // shrinking the chapter cannot move the untranslated suffix horizontally.
     if(shrink&&!uncovered&&annotationScale<1) {
@@ -207,22 +214,101 @@ function auxiliaryLayer(p,parser) {
     const item=row.layerBuffers.find(v=>owned.add(v.layer.offset).equals(current));
     return item ? {...item,row,parser} : null;
 }
-function annotationY(frame,parser,nativeY,protectedLane=false,primaryTop=0) {
-    // The native measuring pass starts at (0,0) and has already applied the
-    // selected ruby scale. Its bottom is a font extent, not a guessed fraction
-    // of label size. Anchor to the primary's measured ink top, which may differ
-    // from the parser origin on centered headings and formatted footers.
-    const top=frame.add(0x17c).readS32(),bottom=frame.add(0x184).readS32();
-    const origin=parser.add(4).readFloat();
-    if(!Number.isFinite(origin)||!Number.isFinite(nativeY))throw Error('Invalid annotation origin');
-    if(top===0x7fffffff&&bottom===-2147483648)return nativeY; // no visible glyphs
-    if(top>bottom||Math.abs(top)>65536||Math.abs(bottom)>65536)throw Error('Invalid annotation bounds');
-    // Original ruby/emphasis keeps its native lane. Place the added lane above
-    // its native origin, without moving either original text layer.
-    if(!Number.isFinite(primaryTop)||Math.abs(primaryTop)>65536)throw Error('Invalid primary top');
-    const edge=protectedLane?Math.min(origin+primaryTop,nativeY):origin+primaryTop;
-    return edge-bottom-rubyGap;
+function finishAnnotationLanes(row) {
+    const lanes=row?.glyphLanes;
+    if(!lanes?.length)return;
+    const p=row.pointer,count=p.add(0x330).readU32();
+    if(row.laneCount===count&&!row.lanesDirty)return;
+    row.laneCount=count;row.lanesDirty=false;
+    if(count>32768)throw Error('Invalid native glyph count');
+    const array=p.add(0x680).readPointer().add(0x20).readPointer();
+    const bounds=(start,end)=>{
+        let left=Infinity,top=Infinity,bottom=-Infinity;
+        for(let i=start;i<end;i++) {
+            const q=array.add(i*8).readPointer();
+            // Native icon quads are not letters and must not determine the
+            // secondary text's left edge or vertical clearance.
+            if(q.add(0xc0).readU32()===1)continue;
+            const x=q.add(0x38).readFloat(),y=q.add(0x3c).readFloat();
+            const w=Math.abs(q.add(8).readFloat()),h=Math.abs(q.add(0x1c).readFloat());
+            if(![x,y,w,h].every(Number.isFinite))throw Error('Invalid native glyph geometry');
+            left=Math.min(left,x-w/2);top=Math.min(top,y-h/2);bottom=Math.max(bottom,y+h/2);
+        }
+        return {left,top,bottom};
+    };
+    for(let i=0;i<lanes.length;i++) {
+        const lane=lanes[i];
+        const primaryStart=lane.layer?lane.end:lane.primaryStart;
+        const primaryEnd=lane.layer?(lanes[i+1]?.primaryStart??count):lane.start;
+        if(!(lane.start>=0&&lane.start<lane.end&&lane.end<=count&&
+            primaryStart>=0&&primaryStart<primaryEnd&&primaryEnd<=count))continue;
+        const secondary=bounds(lane.start,lane.end),primary=bounds(primaryStart,primaryEnd);
+        const dx=primary.left+rubyOffsetX-secondary.left,dy=primary.top-rubyGap-secondary.bottom;
+        if(!Number.isFinite(dx)||!Number.isFinite(dy))continue;
+        for(let j=lane.start;j<lane.end;j++) {
+            const q=array.add(j*8).readPointer();
+            q.add(0x38).writeFloat(q.add(0x38).readFloat()+dx);
+            q.add(0x3c).writeFloat(q.add(0x3c).readFloat()+dy);
+        }
+    }
 }
+function copyOwnedText(row,text) {
+    const p=row.pointer,buffer=Memory.allocUtf8String(text);
+    const thread=Process.getCurrentThreadId(),stack=rewriteStacks.get(thread)||[];
+    stack.push({pointer:p,text});rewriteStacks.set(thread,stack);
+    try {setter(p,buffer);} finally {stack.pop();if(!stack.length)rewriteStacks.delete(thread);}
+    if(readText(p)!==text)throw Error('SetText did not retain a copied string');
+    row.displayed=text;writes++;
+}
+function observeNativeText(p) {
+    if(activeRewrite(p)||!isLabel(p))return;
+    const lease=enterLabel(p);if(!lease)return;
+    try {
+        const current=readText(p),existing=labels.get(String(p));
+        if(existing&&existing.displayed===current)return;
+        const row=existing||remember(p,current);
+        row.original=current;row.displayed=current;
+        row.scriptIdentity=null;row.scriptPointer=null;row.tableIdentity=null;
+        const renderEpoch=epoch,wanted=wantedText(row);
+        if(wanted!==current){copyOwnedText(row,wanted);immediateWrites++;}
+        row.epoch=renderEpoch;captureMetadata(row);
+    }finally{leaveLabel(lease);}
+}
+// Several native callers inline SetText's buffer copy (including save-party
+// details), then call this common measuring entry. Resolve before it measures
+// and draws; polling Update afterwards loses to the next inlined write.
+if(REPORT.native.measure_text) Interceptor.attach(base.add(REPORT.native.measure_text.rva),{
+    onEnter(args){try{observeNativeText(args[0]);}catch(e){fail(e);}}
+});
+function beginAnnotationLane(p,parser,phase) {
+    if(parser.add(0x1ab).readU8())return;
+    const layer=auxiliaryLayer(p,parser),row=layer?.row||annotatedOwner(p);
+    if(!row)return;
+    const count=p.add(0x330).readU32(),key=String(parser);
+    if(phase==='open'||phase==='primary') {
+        // Plain ruby draws its base before the closing-tag measurement.
+        // Empty layered anchors have no base; their primary run comes later.
+        if(phase==='primary'&&!layer)return;
+        if(!row.glyphLanes||count===0)row.glyphLanes=[];
+        row.glyphLanes.push({primaryStart:count,parser:key,layer:!!layer});
+    } else {
+        const lane=row.glyphLanes?.findLast(v=>v.parser===key&&v[phase]===undefined);
+        if(lane)lane[phase]=count;
+    }
+    row.lanesDirty=true;
+}
+if(REPORT.native.ruby_begin) Interceptor.attach(base.add(REPORT.native.ruby_begin.rva),{
+    onEnter(){try{beginAnnotationLane(this.context.r15,this.context.rbx,'open');}catch(e){fail(e);}}
+});
+// Update rebuilds flag-0x40 labels every frame. Correct local glyph positions
+// after parsing and BEFORE Update transforms them into the rendered matrix.
+// Doing this in Update.onLeave loses the correction on the next rebuild.
+if(REPORT.native.layout_ready) Interceptor.attach(base.add(REPORT.native.layout_ready.rva),{
+    onEnter(){try{
+        const p=this.context.rsi;
+        if(labels.get(String(p))?.glyphLanes?.length)finishAnnotationLanes(ownedRow(p));
+    }catch(e){fail(e);}}
+});
 // Align owned annotations with the measured primary run's left edge.
 // Only adjust the parser's temporary context
 // for a tracked translated label, never a label/global setting. Layout can
@@ -236,6 +322,8 @@ Interceptor.attach(base.add(REPORT.native.ruby_context_init.rva), {
         if(!this.placement && !measurement&&!this.baseMeasurement)return;
         try {
             const p = this.context.r15;
+            if(this.baseMeasurement)beginAnnotationLane(p,this.context.rbx,'primary');
+            if(this.placement)beginAnnotationLane(p,this.context.rbx,'start');
             const layer=auxiliaryLayer(p,this.context.rbx);
             if(layer) {
                 this.target=args[0];this.layer=layer;
@@ -285,10 +373,8 @@ Interceptor.attach(base.add(REPORT.native.ruby_context_init.rva), {
                     const px=this.layer.parser.readFloat(),py=this.layer.parser.add(4).readFloat();
                     if(!Number.isFinite(px)||!Number.isFinite(py))throw Error('Invalid lane origin');
                     this.target.writeFloat(px+rubyOffsetX);
-                    // Move only the new lane. The primary and its original
-                    // ruby keep their original font, cursor and line spacing.
-                    this.target.add(4).writeFloat(annotationY(this.context.rbp,this.layer.parser,
-                        this.target.add(4).readFloat(),this.layer.layer.protected,this.layer.layer.primaryTop||0));
+                    // Final spacing is shared with plain ruby and is resolved
+                    // from rendered glyph edges in finishAnnotationLanes.
                 }
                 return;
             }
@@ -298,12 +384,6 @@ Interceptor.attach(base.add(REPORT.native.ruby_context_init.rva), {
                     this.target.add(4).writeFloat(origin+(y-origin)*this.inherited.factor);
                 }
                 return;
-            }
-            if(this.placement) {
-                const y=this.target.add(4).readFloat();
-                if(!Number.isFinite(y))throw Error('Unvalidated ruby position');
-                this.target.add(4).writeFloat(annotationY(this.context.rbp,this.context.rbx,y,false,
-                    this.context.rbp.add(0x3cc).readS32()));
             }
             if (this.placement) {
                 const shifted=this.baseLeft+rubyOffsetX;
@@ -326,15 +406,18 @@ if(REPORT.native.layout_release) Interceptor.attach(base.add(REPORT.native.layou
 if(REPORT.native.ruby_base_measure_end) Interceptor.attach(base.add(REPORT.native.ruby_base_measure_end.rva),{onEnter(){
     try {
         const item=auxiliaryLayer(this.context.r15,this.context.rbx);if(!item)return;
-        const top=this.context.rbp.add(0x3cc).readS32();
-        item.layer.primaryTop=top===0x7fffffff?0:top;
         for(const off of [0x3c8,0x3cc,0x3d0,0x3d4])this.context.rbp.add(off).writeS32(0);
     }catch(e){fail(e);}
 }});
 if(REPORT.native.ruby_compensate) Interceptor.attach(base.add(REPORT.native.ruby_compensate.rva),{onEnter(){
     try {
         const p=this.context.rbx;
+        beginAnnotationLane(this.context.r15,p,'end');
         if(!auxiliaryLayer(this.context.r15,p)&&!annotatedOwner(this.context.r15))return;
+        // Keep native ruby height in the measuring pass. Drawing already uses
+        // that cached height for its baseline; dropping it only here makes
+        // newly created centered headings differ from a hot font refresh.
+        if(annotatedOwner(this.context.r15)?.reserveRubyHeight&&p.add(0x1ab).readU8())return;
         compensation.set(String(p),p.add(0x1a7).readU8());p.add(0x1a7).writeU8(1);
     }catch(e){fail(e);}
 }});
@@ -352,11 +435,28 @@ if(REPORT.native.parse_text) Interceptor.attach(base.add(REPORT.native.parse_tex
     },
     onLeave(){if(this.aux)auxiliaryContexts.delete(this.key);}
 });
+if(REPORT.native.line_ruby_origin) Interceptor.attach(base.add(REPORT.native.line_ruby_origin.rva),{
+    onEnter(args) {
+        this.parser=null;
+        try {
+            const row=ownedRow(args[0]),parser=args[1];
+            // Keep speaker names and mixed rows (name + level, chapter +
+            // difficulty) on their original baselines. Only undo this native
+            // ruby-specific offset, not alignment, wrapping or original ruby.
+            if(row?.plan.kind==='ruby'&&(row.dialogueSpeaker||row.preservePrimaryLayout)&&
+                    !row.original.includes('<R>')&&!parser.add(0x1ab).readU8()) {
+                this.y=parser.add(4).readFloat();this.parser=parser;
+                if(!Number.isFinite(this.y))throw Error('Invalid native line origin');
+            }
+        }catch(e){fail(e);}
+    },
+    onLeave(){if(this.parser)try{this.parser.add(4).writeFloat(this.y);}catch(e){fail(e);}}
+});
 if(REPORT.native.newline_prepare) Interceptor.attach(base.add(REPORT.native.newline_prepare.rva),{
     onEnter() {
         try {
             const row=ownedRow(this.context.r13);
-            if(!row || !(row.plan.kind==='ruby'||(row.plan.kind==='layered'&&!row.plan.layers.some(v=>v.protected))))return;
+            if(!row?.extendLineSpacing)return;
             const bottom=this.context.r12.toInt32();
             if(bottom < -16384 || bottom > 65536)throw Error('Unvalidated newline extent');
             // The native newline path adds label spacing to r12, the previous
@@ -473,6 +573,7 @@ Interceptor.attach(base.add(REPORT.native.set_text.rva), {onEnter(args) {
 }});
 Interceptor.attach(base.add(REPORT.native.update.rva), {onEnter(args) {
     this.lease=null;
+    this.pausedReveal=null;
     if (activeRewrite(args[0])) return;
     updates++;
     try {
@@ -486,20 +587,43 @@ Interceptor.attach(base.add(REPORT.native.update.rva), {onEnter(args) {
         if (current !== row.displayed) {row.original=current;row.displayed=current;row.scriptIdentity=null;row.scriptPointer=null;row.tableIdentity=null;}
         const renderEpoch=epoch,wanted=wantedText(row);
         const replay = epoch === replayEpoch && Object.hasOwn(dictionary,row.original);
+        const changed=wanted!==row.displayed||replay;
+        const geometry=!changed&&(row.plan.kind==='ruby'||row.plan.kind==='layered');
+        // SetText's animated branch clears glyphs without reinitializing the
+        // persistent parser. Snapshot BEFORE the setter, then use the game's
+        // initializer to replace its stale cursor/buffer on this UI callback.
+        const reveal=(changed||geometry)&&(p.add(0x2e8).readU32()&4)?{
+            progress:p.add(0x378).readFloat(),total:p.add(0x334).readU32()
+        }:null;
         if (wanted !== row.displayed || replay) {
-            const buffer=Memory.allocUtf8String(wanted);
-            const thread=Process.getCurrentThreadId(),stack=rewriteStacks.get(thread)||[];
-            stack.push({pointer:p,text:wanted});rewriteStacks.set(thread,stack);
-            try {setter(p,buffer);} finally {stack.pop();if(!stack.length)rewriteStacks.delete(thread);}
-            if (readText(p) !== wanted) throw Error('SetText did not retain a copied string');
-            row.displayed=wanted; writes++;
+            copyOwnedText(row,wanted);
             send({type:replay ? 'native_replay' : 'native_text', original:row.original, displayed:wanted,
                   glyphs:p.add(0x330).readU32(), fontSize:p.add(0x304).readU32(), thread:Process.getCurrentThreadId()});
+        } else if(geometry) {
+            // SetText returns immediately for equal strings. Let this object's
+            // native Update remeasure and redraw after a geometry-only change.
+            p.add(0x689).writeU8(1);
+            p.add(0x688).writeU8(1);
+        }
+        if(reveal) {
+            resetText(p);
+            const total=p.add(0x334).readU32();
+            const fraction=reveal.total>0?Math.min(1,Math.max(0,reveal.progress/reveal.total)):0;
+            p.add(0x378).writeFloat(total*fraction);
+            // A paused, already visible sentence still needs one redraw.
+            // Restore only this pause bit after native Update; other flags
+            // remain owned by the game.
+            const flags=p.add(0x2e8).readU32();
+            if(flags&0x10){this.pausedReveal=p;p.add(0x2e8).writeU32(flags&~0x10);}
         }
         row.epoch=renderEpoch;
         captureMetadata(row);
     } catch(e) {fail(e);}
-},onLeave(){leaveLabel(this.lease);
+},onLeave(){
+    try {
+        if(this.pausedReveal){const p=this.pausedReveal;p.add(0x2e8).writeU32(p.add(0x2e8).readU32()|0x10);}
+    }
+    catch(e){fail(e);}finally{leaveLabel(this.lease);}
 }});
 rpc.exports = {
     load(model, mode, active, scale=0.9, layout={}) {

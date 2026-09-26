@@ -1,35 +1,35 @@
-# Bilingual Sora 2nd v0.3.9
+# Bilingual Sora 2nd v0.3.10
 
 ## 简体中文
 
-- 修复菜单切页后注解尺寸恢复错误的问题：游戏晚于文本创建设置字号时，也会重新按当前配置排版。
-- 标题、兑换栏和带颜色的底部说明改用正文实际字形上缘计算注解间距，避免把排版起点当作文字边界。保留原文颜色、注音及强调标记。未更改用户字号和间距配置；游戏内视觉效果待验收。
-- 修复存档详情组合文本只处理第一行姓名的问题。逐行处理姓名，保留项目符号、换行和等级数字。
-- 等待游戏时提前准备当前语言组合的本地缓存，自动发现 Steam 库或使用此前连接过的安装位置。准备过程中不启动或附加游戏。
-- 完整模型无损去重，通过本机文件直接载入 V8，减少重复序列化和逐块传输。本机样本从约 190 MB 降至约 60 MB，语言覆盖不变。缓存损坏时回退原传输方式，避免破坏已生效的模型。
-- 缓存就绪后的离线连接路径三次实测为 3.55–3.69 秒，包含读取、EXE 校验、附加测试进程和运行时载入。实际游戏初始化及钩子安装仍需游戏内测量；首次缓存准备不包含在此时间内。
-- 已验证 64 种主／副语言组合的 172,032 项回放检查。
+- 统一普通注音与独立注解的间距计算。副语言按实际绘制字形的边缘定位，涵盖对话、姓名、跳过按钮和带颜色的底部说明；按钮图标不参与文字间距计算，原文注音和强调点保留原位置。
+- 修复只调整主字号才刷新、切换设置页后位置不一致的问题。只修改副语言间距或字号也会重新排版。
+- 固定对话框中的姓名保留原生基线，避免新增注解把姓名向正文挤压。
+- 补上绕过普通文本设置接口的读档角色名单。姓名旁的等级、章节旁的难度以及游玩时间保留原有布局，无需按姓名或语言写特例。
+- 修复暂停中的长对话在单语／双语切换后消失的问题；重排时保留文本显示进度。
+- 已在游戏内测量对话、姓名、隐藏界面和两个跳过按钮的间距，并验证读档姓名与设置页重建。缓存就绪后的本次真实游戏连接耗时为 3.81 秒，不含首次缓存准备；实际耗时取决于机器和游戏初始化。
+- 已知限制：固定高度的窄标题条可能容不下当前字号和新增注解。统一间距不会扩大背景或自动缩小用户字号；不同控件的缩放与字形留白仍可能造成视觉差异。
 
 ## English
 
-- Keep live annotation sizing after menus recreate their labels, including font sizes assigned after text creation.
-- Anchor spacing to measured main-text ink bounds on headings, exchange columns and colored footers. Preserve original colors, ruby and emphasis without changing saved layout preferences. In-game visual acceptance remains pending.
-- Annotate every matched name in multiline save details while retaining bullets, line breaks and level numbers.
-- Prepare the selected language cache while waiting for the game, using Steam libraries or a previously connected installation. Preparation never starts or attaches to the game.
-- Deduplicate the complete model losslessly and load it directly into V8 from a local file. The local sample shrinks from about 190 MB to 60 MB without reducing language coverage. Invalid caches fall back to bounded transfer without replacing the active model prematurely.
-- Three cached offline connection-path measurements took 3.55–3.69 seconds, including reading, EXE verification, helper attachment and runtime loading. Game initialization and hook installation require separate in-game measurement; first-time cache preparation is excluded.
-- Validated 172,032 replay checks across 64 primary/secondary language combinations.
+- Use one glyph-bound spacing calculation for native ruby and separate annotations, including dialogue, speaker names, skip controls and colored footers. Exclude button icons from text bounds and preserve original ruby and emphasis positions.
+- Reflow on secondary-size or gap changes as well as main-size changes. Keep initial layout and recreated settings pages consistent.
+- Retain the native speaker-name baseline in fixed dialogue boxes.
+- Catch save-party text written outside the regular setter. Preserve levels, difficulty labels and playtime without language- or name-specific rules.
+- Keep paused dialogue visible when switching between single-language and annotated modes, retaining reveal progress during reflow.
+- Verified live gaps in dialogue, names, Hide UI and both skip controls, plus save-party names and settings-page recreation. One real-game connection with a prepared cache took 3.81 seconds; first-time cache preparation is excluded and timing varies by system and game initialization.
+- Known limitation: fixed-height narrow headings may not fit the selected sizes plus annotations. Unified spacing does not enlarge backgrounds or automatically shrink saved font sizes. Widget scaling and glyph padding can still affect perceived spacing.
 
 ## 日本語
 
-- メニューの再作成後も注釈サイズを維持します。テキスト作成後にゲームが文字サイズを変更する場合にも再計算します。
-- 見出し、交換画面、色付きフッターでは、本文の実測境界を使って間隔を計算します。元の色、ルビ、強調点と保存済みの設定を維持します。ゲーム内の見た目は確認待ちです。
-- セーブ情報の複数行の名前をすべて処理し、箇条書き、改行、レベル数値を維持します。
-- Steam ライブラリまたは接続済みのインストール先を見つけ、ゲーム起動待ち中に選択中の言語キャッシュを準備します。準備時にゲームの起動・接続は行いません。
-- モデルを情報損失なく共有化し、ローカルファイルから V8 に直接読み込みます。ローカルサンプルは約 190 MB から 60 MB に縮小し、言語対応範囲を維持しました。破損時は従来の分割転送に戻ります。
-- キャッシュ準備後のオフライン接続処理は 3 回の計測で 3.55–3.69 秒でした。読込、EXE 検証、検証用プロセスへの接続、ランタイム読込を含みます。ゲーム初期化・フック設置は実機確認が必要で、初回のキャッシュ作成時間は含みません。
-- 64 言語ペア、172,032 件の再生検証を実施しました。
+- 会話、名前、スキップ操作、色付きフッターの注釈間隔を、実際に描画する文字の境界から共通計算します。ボタンアイコンは計算から除外し、元のルビ・強調点の位置を維持します。
+- 主言語の文字サイズだけでなく、副言語サイズや間隔の変更でも再配置します。設定ページの初回表示と再作成後の配置を統一しました。
+- 固定会話ウィンドウの話者名を元のベースラインに維持します。
+- 通常のテキスト設定処理を通らないセーブ情報のキャラクター名にも対応。レベル、難易度、プレイ時間の配置を維持し、特定の名前や言語に依存しません。
+- 一時停止中の長い会話で、単言語／注釈表示を切り替えると本文が消える問題を修正。再配置時も表示進行度を維持します。
+- 実機で会話・名前・UI非表示・両スキップ操作の間隔、セーブ情報の名前、設定ページの再作成を確認しました。キャッシュ準備済みの実ゲーム接続は今回 3.81 秒でした。初回キャッシュ作成を含まず、環境やゲームの初期化によって変わります。
+- 既知の制限：高さが固定された細い見出しには、設定した文字サイズと注釈が収まらない場合があります。背景の拡張や文字サイズの自動縮小は行いません。ウィジェットの倍率と文字の余白によって見た目の間隔に差が残る場合があります。
 
 ## Downloads
 
-New users: `bilingual-sora-2nd-0.3.9-windows-x64-setup.exe` or `bilingual-sora-2nd-0.3.9-windows-x64.zip`. App/runtime ZIPs and the JSON manifest are updater components. Existing installations retain settings and reuse unchanged dependencies. Updates apply after the game connection ends. Open the tool before the game to let first-time cache preparation finish in the background.
+New users: `bilingual-sora-2nd-0.3.10-windows-x64-setup.exe` or `bilingual-sora-2nd-0.3.10-windows-x64.zip`. App/runtime ZIPs and the JSON manifest are updater components. Existing installations retain settings and reuse unchanged dependencies. Native-hook updates apply after the current game connection ends; no game restart is forced.

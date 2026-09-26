@@ -12,9 +12,14 @@ from sora_bilingual.paths import ROOT
 
 POINTS = {
     "set_text": 0x588A40,
+    "reset_text": 0x585320,
+    "measure_text": 0x588710,
+    "line_ruby_origin": 0x588570,
     "update": 0x584CA0,
+    "layout_ready": 0x584CF4,
     "destroy": 0x5839F0,
     "ruby_context_init": 0x5830F0,
+    "ruby_begin": 0x58678E,
     "ruby_place_return": 0x58714F,
     "text_lookup": 0x5E8550,
     "label_text_key_load": 0x584842,
