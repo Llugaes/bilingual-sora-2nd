@@ -821,6 +821,13 @@ class NativeSettingsWindow(QWidget):
             return
         self.display_form.setRowVisible(self.single_options, self.single_mode.isChecked())
         self._save_form()
+        if self.single_mode.isChecked():
+            # Wait for the newly revealed form row to receive its final geometry.
+            QTimer.singleShot(0, self._show_single_options)
+
+    def _show_single_options(self) -> None:
+        if self.single_mode.isChecked() and self.single_options.isVisible():
+            self.pages[0].ensureWidgetVisible(self.single_options, 0, 8)
 
     def _present_source_language(self, status: dict[str, Any]) -> None:
         detected = status.get("detected_game_language")

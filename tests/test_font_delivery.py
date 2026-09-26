@@ -86,7 +86,7 @@ class FontDeliveryTests(unittest.TestCase):
 
     def prepare(self, game: Path, state: Path):
         def builder(source, output):
-            self.assertEqual(source, game)
+            self.assertTrue(source.samefile(game), f"builder source differs: {source} != {game}")
             return _candidate(output, (source / "pac/steam/asset_common_font.pac").read_bytes()[0])
 
         return font_delivery.prepare(game, root=state, builder=builder)

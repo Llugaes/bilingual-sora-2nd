@@ -280,6 +280,7 @@ class OverlayUiTests(unittest.TestCase):
         self.assertIn("matched", self.window.detected_game_language.text())
 
     def test_connection_strip_stays_outside_language_scroll_and_single_modes_fit_first_view(self):
+        update_control({"ui_language": "en"}, self.control)
         controller = OverlayController(
             self.control, self.status, start_timers=False, auto_connect=False
         )
