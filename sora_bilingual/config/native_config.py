@@ -17,6 +17,7 @@ from sora_bilingual.config.locales import (
 from sora_bilingual.paths import ROOT
 
 CONTROL = ROOT / "generated" / "native-control.json"
+LANGUAGE_DEFAULTS_PENDING = "language_defaults_pending"
 ACTIONS = ("annotation", "language_toggle", "language_hold")
 DEFAULT_BINDINGS = {
     action: {"keyboard": ["CTRL", "SHIFT", f"F{10 + i}"], "gamepad": {}}
@@ -30,11 +31,14 @@ DEFAULTS = {
     "sources": [],
     "enabled": True,
     "interaction": "annotation",
-    "annotation_scale": 0.9,
-    "ruby_scale": 0.8,
-    "ruby_gap": 3,
+    "annotation_scale": 0.85,
+    "ruby_scale": 0.9,
+    "ruby_gap": 0,
     "ruby_offset_x": 0,
-    "line_gap": 12,
+    "line_gap": 6,
+    "secondary_color": [230 / 255, 230 / 255, 230 / 255],
+    "secondary_opacity": 0.9,
+    "bilingual_offset_y": 0,
     "hotkeys": DEFAULT_BINDINGS,
     "overlay_binding": {"keyboard": ["CTRL", "SHIFT", "F9"], "gamepad": {}},
     "ui_language": "auto",
@@ -77,6 +81,8 @@ def normalize_config(value):
     result = deepcopy(DEFAULTS)
     result.update(language_defaults(value.get("game_language", DEFAULT_PRIMARY)))
     result.update(value)
+    if LANGUAGE_DEFAULTS_PENDING in value and type(value[LANGUAGE_DEFAULTS_PENDING]) is not bool:
+        raise ValueError("首次语言默认标记必须是布尔值")
     if result["interaction"] not in (*ACTIONS, None):
         raise ValueError("未知显示模式")
     if not isinstance(value.get("hotkeys", {}), dict):
@@ -111,11 +117,22 @@ def normalize_config(value):
         ("ruby_gap", 0, 8),
         ("ruby_offset_x", -24, 24),
         ("line_gap", 0, 24),
+        ("secondary_opacity", 0, 1),
+        ("bilingual_offset_y", -24, 24),
     ]:
         v = result[key]
         if type(v) not in (int, float) or not math.isfinite(v) or not lo <= v <= hi:
             raise ValueError("字号或间距超出范围：" + key)
     result["switch_binding"] = switch_binding(value)
+    color = result["secondary_color"]
+    if (
+        not isinstance(color, list)
+        or len(color) != 3
+        or any(
+            type(v) not in (int, float) or not math.isfinite(v) or not 0 <= v <= 1 for v in color
+        )
+    ):
+        raise ValueError("副语言颜色必须为三个 0..1 的 RGB 系数")
     all_bindings = [result["switch_binding"], result["overlay_binding"]]
     for binding in all_bindings:
         if not isinstance(binding, dict):
@@ -170,6 +187,16 @@ def normalize_config(value):
                 == sorted(other.get("axes", []), key=lambda a: a["index"])
             ):
                 raise ValueError("显示动作和面板需要使用不同的手柄组合")
+    return result
+
+
+def apply_pending_language_defaults(config, game_language):
+    """Consume a new-user default marker after source detection succeeds."""
+    if config.get(LANGUAGE_DEFAULTS_PENDING) is not True:
+        return config
+    result = deepcopy(config)
+    result.update(language_defaults(game_language))
+    result.pop(LANGUAGE_DEFAULTS_PENDING, None)
     return result
 
 

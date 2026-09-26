@@ -1,7 +1,7 @@
 import struct
 import unittest
 from sora_bilingual.fonts.font_merge import parse_fnt, parse_dds, FontFormatError
-from sora_bilingual.fonts.universal_fonts import merge_fonts
+from sora_bilingual.fonts.universal_fonts import merge_fonts, read_fallback_donor
 from test_font_merge import _fnt
 
 
@@ -21,6 +21,25 @@ def atlas(seed):
         struct.pack_into("<I", header, offset, value)
     header[84:88] = b"DX10"
     return parse_dds(bytes(header) + b"".join(bytes([(seed + i) % 256]) * 16 for i in range(64)))
+
+
+def sized_atlas(width, height, seed):
+    header = bytearray(148)
+    header[:4] = b"DDS "
+    for offset, value in (
+        (4, 124),
+        (12, height),
+        (16, width),
+        (20, width * height),
+        (28, 1),
+        (76, 32),
+        (128, 98),
+        (140, 1),
+    ):
+        struct.pack_into("<I", header, offset, value)
+    header[84:88] = b"DX10"
+    blocks = width // 4 * height // 4
+    return parse_dds(bytes(header) + bytes([seed]) * (blocks * 16))
 
 
 class UniversalFontsTests(unittest.TestCase):
@@ -47,6 +66,19 @@ class UniversalFontsTests(unittest.TestCase):
                 self.assertEqual(image.payload[a : a + 16], donor[1].payload[b : b + 16])
         with self.assertRaises(FontFormatError):
             merge_fonts(base, [donor], max_bytes=160)
+
+    def test_static_donor_is_valid_and_never_replaces_an_existing_game_glyph(self):
+        donor = read_fallback_donor()
+        self.assertEqual(donor[0].codepoints, {0xC80B, 0xD591})
+        base = (
+            parse_fnt(_fnt([(0xC80B, 3, 4, 8, 6)]), atlas_width=128, atlas_height=64),
+            sized_atlas(128, 64, 17),
+        )
+        fnt, dds = merge_fonts(base, [donor])
+        result = parse_fnt(fnt, atlas_width=128, atlas_height=parse_dds(dds).height)
+        records = {glyph.codepoint: glyph.raw for glyph in result.glyphs}
+        self.assertEqual(result.codepoints, {0xC80B, 0xD591})
+        self.assertEqual(records[0xC80B], base[0].glyphs[0].raw)
 
 
 if __name__ == "__main__":

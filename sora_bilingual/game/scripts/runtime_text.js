@@ -70,12 +70,110 @@ class RuntimeText {
     static byteLength(text) {
         let n=0;for(const ch of text) {const c=ch.codePointAt(0);n+=c<128?1:c<2048?2:c<65536?3:4;}return n;
     }
+    static latinWordCharacter(value) {
+        return /^[A-Za-z0-9\u00c0-\u024f]$/.test(value);
+    }
+    static secondaryText(lines) {
+        const result=[];
+        for(const line of lines) {
+            const last=result.at(-1);
+            if(last&&line&&RuntimeText.latinWordCharacter(last.at(-1))&&RuntimeText.latinWordCharacter(line[0]))result.push(' ');
+            result.push(line);
+        }
+        return result.join('');
+    }
+    static secondaryUnits(text) {
+        const result=[],characterAt=at=>String.fromCodePoint(text.codePointAt(at));
+        for(let at=0;at<text.length;) {
+            if(text.startsWith('<R>',at)) {
+                const close=text.indexOf('</R',at+3);if(close<0)return null;
+                const end=text.indexOf('>',close);if(end<0)return null;
+                const value=text.slice(at,end+1),base=text.slice(at+3,close);
+                result.push({value,width:Array.from(base).filter(character=>!/^\s$/u.test(character)).length,tag:false});at=end+1;continue;
+            }
+            if(text[at]==='<') {
+                const tag=/^<[^<>]*>/.exec(text.slice(at));
+                if(!tag||!/^<\/?[Cc][0-9a-fA-F]*>$|^<\/?B>$|^<[sS]\d+>$|^<I\d+>$/.test(tag[0]))return null;
+                result.push({value:tag[0],width:0,tag:true});at+=tag[0].length;continue;
+            }
+            let end=at+characterAt(at).length;
+            if(RuntimeText.latinWordCharacter(characterAt(at))) {
+                while(end<text.length&&RuntimeText.latinWordCharacter(characterAt(end)))end+=characterAt(end).length;
+                while(end<text.length&&"'’‐-".includes(characterAt(end))&&end+characterAt(end).length<text.length&&RuntimeText.latinWordCharacter(characterAt(end+characterAt(end).length))) {
+                    end+=characterAt(end).length;while(end<text.length&&RuntimeText.latinWordCharacter(characterAt(end)))end+=characterAt(end).length;
+                }
+            }
+            const value=text.slice(at,end);result.push({value,width:Array.from(value).filter(character=>!/^\s$/u.test(character)).length,tag:false});at=end;
+        }
+        return result;
+    }
+    static reflowSecondaryParagraph(text,capacities) {
+        const units=RuntimeText.secondaryUnits(text);if(units===null)return null;
+        const result=[],state={colours:[],bold:false,size:''};
+        const update=tag=>{
+            if(/^<[Cc][0-9a-fA-F]*>$/.test(tag))state.colours.push(tag);
+            else if(tag==='</C>'){if(state.colours.length)state.colours.pop();}
+            else if(tag==='<B>')state.bold=true;
+            else if(tag==='</B>')state.bold=false;
+            else if(/^<[sS]\d+>$/.test(tag))state.size=tag;
+        };
+        const prefix=()=>state.colours.join('')+(state.bold?'<B>':'')+state.size;
+        const close=()=>(state.bold?'</B>':'')+'</C>'.repeat(state.colours.length);
+        const startsPunctuation=()=>{
+            for(const unit of units)if(unit.width)return '、。！？）】》〉」』〕］｝'.includes(Array.from(unit.value.replace(/<[^<>]*>/g,''))[0]);
+            return false;
+        };
+        const take=line=>{const unit=units.shift();line.push(unit.value);if(unit.tag)update(unit.value);return unit.width;};
+        for(let number=0;number<capacities.length;number++) {
+            if(number===capacities.length-1){const line=[prefix()];while(units.length)take(line);result.push(line.join('')+close());break;}
+            while(result.length&&units.length&&units[0].width&&/^\s$/u.test(units[0].value))result[result.length-1]+=units.shift().value;
+            const line=[prefix()];let used=0;
+            const remainingCapacity=capacities.slice(number).reduce((sum,value)=>sum+value,0);
+            const remainingText=units.reduce((sum,unit)=>sum+unit.width,0);
+            const target=Math.max(1,Math.ceil(remainingText*capacities[number]/remainingCapacity));
+            while(units.length&&(!line.length||used<target))used+=take(line);
+            while(units.length&&units[0].tag&&['</C>','</B>'].includes(units[0].value))take(line);
+            while(units.length&&startsPunctuation())used+=take(line);
+            result.push(line.join('')+close());
+        }
+        return result;
+    }
+    static reflowAnnotationLines(primary,secondary) {
+        const left=primary.split(/\r\n|\n|\\n/),right=secondary.split(/\r\n|\n|\\n/),result=Array(left.length).fill('');
+        const paragraphs=lines=>{
+            const groups=[],current=[];
+            lines.forEach((line,index)=>{
+                if(line.trim()) {
+                    if(current.length&&/^\s/u.test(line))groups.push(current.splice(0));
+                    current.push([index,line]);
+                } else if(current.length) groups.push(current.splice(0));
+            });
+            if(current.length)groups.push(current);return groups;
+        };
+        const leftGroups=paragraphs(left),rightGroups=paragraphs(right);
+        if(!leftGroups.length)return result;
+        const groups=leftGroups.length===rightGroups.length
+            ?leftGroups.map((group,index)=>[group,rightGroups[index]])
+            :[[[].concat(...leftGroups),[].concat(...rightGroups)]];
+        for(const [leftGroup,rightGroup] of groups) {
+            const text=RuntimeText.secondaryText(rightGroup.map(([,line])=>line));
+            const capacities=leftGroup.map(([,line])=>Math.max(1,Array.from(line.replace(/<[^<>]*>/g,'')).filter(char=>!/\s/u.test(char)).length));
+            const reflowed=RuntimeText.reflowSecondaryParagraph(text,capacities);if(reflowed===null)return null;
+            reflowed.forEach((value,index)=>{result[leftGroup[index][0]]=value;});
+        }
+        return result;
+    }
     static annotationPlan(a,b) {
-        const left=a.split(/(\r\n|\n|\\n)/);let right=RuntimeText.visualSecondary(b).split(/\r\n|\n|\\n/);
+        const left=a.split(/(\r\n|\n|\\n)/),visible=RuntimeText.visualSecondary(b);let right=visible.split(/\r\n|\n|\\n/);
         const count=(left.length+1)/2;
-        if(count!==right.length||left.some((v,i)=>!(i%2)&&Boolean(v.trim())!==Boolean(right[i/2]?.trim()))) {
-            const payload=right.join(' '),anchor=left.findIndex((v,i)=>!(i%2)&&v.trim());
-            right=Array(count).fill('');right[Math.max(0,anchor/2)]=payload;
+        const needsReflow=count!==right.length||left.some((v,i)=>!(i%2)&&Boolean(v.trim())!==Boolean(right[i/2]?.trim()));
+        if(needsReflow||visible.includes('<')) {
+            const reflowed=RuntimeText.reflowAnnotationLines(a,visible);
+            if(reflowed!==null)right=reflowed;
+            else if(needsReflow) {
+                const payload=right.join(' '),anchor=left.findIndex((v,i)=>!(i%2)&&v.trim());
+                right=Array(count).fill('');right[Math.max(0,anchor/2)]=payload;
+            }
         }
         let text='';const layers=[];
         left.forEach((part,i)=>{

@@ -121,7 +121,7 @@ class MenuTextTests(unittest.TestCase):
         tr = MenuTranslator([entry("甲\n乙", "一二")], "zh-Hans", "ja")
         plan = tr.render("甲\n乙")
         self.assertEqual(plan["text"].replace("<R></R_>", ""), "甲\n乙")
-        self.assertEqual(plan["layers"][0]["text"], "一二")
+        self.assertEqual([layer["text"] for layer in plan["layers"]], ["一", "二"])
 
     def test_exact_description_suffix_disambiguates_item_effect_header(self):
         entries = [

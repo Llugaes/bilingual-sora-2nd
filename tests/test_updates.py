@@ -351,7 +351,7 @@ class InstallationTests(unittest.TestCase):
         self.assertIsNone(service.pending)
         self.assertIn("已安装", service.message)
 
-    def test_notify_does_not_download(self):
+    def test_updates_off_allows_manual_check_but_never_downloads(self):
         class Client:
             def latest(inner, cache):
                 return {"tag_name": "v0.1.1"}, {}
@@ -360,9 +360,21 @@ class InstallationTests(unittest.TestCase):
                 raise AssertionError("must not download")
 
         service = UpdateService(self.root, client=Client())
-        service.set_policy("notify")
-        service._check()
+        service.set_policy("off")
+        with patch("sora_bilingual.updates.update_service.threading.Thread") as thread:
+            service.tick()
+            thread.assert_not_called()
+        service._check(manual=True)
         self.assertIn("发现", service.message)
+
+    def test_legacy_notify_preference_migrates_to_off_without_installation_consent(self):
+        preferences = self.root / "generated/updates/preferences.json"
+        installer.write_json(preferences, {"policy": "notify"})
+        service = UpdateService(self.root)
+        self.assertEqual(service.policy, "off")
+        with patch("sora_bilingual.updates.update_service.threading.Thread") as thread:
+            service.tick()
+            thread.assert_not_called()
 
     def test_failure_offers_manual_download_instead_of_raw_exception(self):
         service = UpdateService(self.root)

@@ -30,14 +30,22 @@ File-format references (no bundled game data):
 
 - https://github.com/coinkillerl/FPACker — FPAC container layout.
 - https://github.com/Aureole-Suite/Ingert — #scp binary layout.
-- https://github.com/lmaple0/sora2looseload — independently verified loader;
-  the native font experiment installs its MIT-licensed `xinput1_4.dll`
-  (SHA-256 `e08a18068a482bb5d187a62023759c0e14ab69d76395b773ef0405d35e2ac8c7`).
-  Source revision `745cf90`; see the upstream repository for its MIT license.
-  The loader binary is not redistributed in this project.
+- https://github.com/lmaple0/sora2looseload — bundled MIT-licensed loose-file
+  loader `assets/sora2looseload/xinput1_4.dll` (SHA-256
+  `e08a18068a482bb5d187a62023759c0e14ab69d76395b773ef0405d35e2ac8c7`).
+  Source revision `745cf903bee976b72ad84c200a71e9137d666261`, based on upstream
+  `04e898e369e3019d5aa2cb13a7209de39c643a4a`; its full MIT text, the separate
+  Microsoft Detours MIT notice, and build provenance are in
+  `assets/sora2looseload/`.
 
 Merged FNT and DDS files contain locally extracted game font data. They are
 generated on the user's machine and excluded from Git and redistribution.
+
+`assets/font-fallback/` contains a separate two-glyph fallback derived from
+[Noto Sans CJK KR](https://github.com/notofonts/noto-cjk), under SIL OFL-1.1.
+It contains no game font data. The bundled OFL text and source, encoder, and
+output provenance are in that directory, together with the donor font's
+copyright notice.
 
 Runtime dependencies (bundled in the portable release under `runtime/<id>/`):
 

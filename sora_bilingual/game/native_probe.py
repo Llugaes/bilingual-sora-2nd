@@ -8,7 +8,8 @@ import time
 import traceback
 import sys
 import frida
-from sora_bilingual.game.native_runtime import NativeLabels
+from sora_bilingual.game.native_runtime import NativeLabels, native_report
+from sora_bilingual.game.source_language import SourceLanguageResult, detect_current_language
 from sora_bilingual.localization.native_catalog import (
     load_entries,
     load_model,
@@ -22,6 +23,7 @@ from sora_bilingual.config.native_config import (
     write_config,
     ActionPolicy,
     BackendLock,
+    apply_pending_language_defaults,
 )
 from sora_bilingual.platform.inputs import InputManager
 from sora_bilingual.game.native_loading import ModelPreparation, ConnectionHeartbeat, prepare_fresh
@@ -50,6 +52,8 @@ def run(game=None, duration=0):
     lock = BackendLock()
     native = None
     heartbeat = None
+    detected_game_language = None
+    source_language_status = "game_not_running"
     try:
         processes = [
             p
@@ -75,6 +79,8 @@ def run(game=None, duration=0):
         config = read_config()
         config.update(stop=False, replay=False)
         config.pop("capture_controller", None)
+        # Keep this user-owned setting intact.  A verified live value below is
+        # applied only to the resident model configuration.
         write_config(config)
         initial_raw = CONTROL.read_text(encoding="utf-8")
         with (ROOT / "generated" / "native-probe.jsonl").open("a", encoding="utf-8") as startup_log:
@@ -90,13 +96,47 @@ def run(game=None, duration=0):
                 )
                 + "\n"
             )
+        try:
+            report = native_report(exe)
+        except OSError, ValueError:
+            report = None
+            source_result = SourceLanguageResult(None, "unverified_exe")
+        else:
+            source_result = detect_current_language(game, pid, exe, report=report)
+        detected_game_language = source_result.language
+        source_language_status = source_result.reason
+        heartbeat.update(
+            1,
+            {
+                "running": True,
+                "pid": pid,
+                "detected_game_language": detected_game_language,
+                "source_language_status": source_language_status,
+            },
+        )
+        if detected_game_language is None:
+            heartbeat.loading("waiting_source_language")
+            return
+        # Re-read after the asynchronous source probe. A user may have changed
+        # either display language while it waited; only an untouched new-user
+        # marker permits source-derived defaults to be persisted.
+        config = read_config()
+        configured = apply_pending_language_defaults(config, detected_game_language)
+        if configured is not config:
+            write_config(configured)
+            config = configured
+        # Existing user selections are never persisted as a source-language
+        # change. The resident model alone always uses the verified source.
+        config = {**config, "game_language": detected_game_language}
         model_started = time.monotonic()
         model, signature, entries = ready_model(game, config)
         model_seconds = time.monotonic() - model_started
         applied_config = dict(config)
         # A cached locale needs no catalog load. Keep all preparation, including
         # first-time catalog compilation, away from the input/status loop.
-        preparation = ModelPreparation(lambda c: prepare_fresh(game, c), model_identity)
+        preparation = ModelPreparation(
+            lambda c: prepare_fresh(game, c, cache_only="summary"), model_identity
+        )
         releases = ReleaseWatch()
         last_release_check = 0
         update_notice = None
@@ -145,6 +185,7 @@ def run(game=None, duration=0):
                 config=config,
                 mode=mode,
                 cache_path=model_path(signature, config),
+                report=report,
             )
             log(
                 {
@@ -176,7 +217,7 @@ def run(game=None, duration=0):
                             except frida.RPCException as exc:
                                 update_notice = "文本逻辑更新未成功，继续使用当前版本：" + str(exc)
                         if "catalog" in changes:
-                            preparation.request(config)
+                            preparation.request(config, force=True)
                             heartbeat.loading("preparing")
                             log({"type": "catalog_update", "version": releases.current["version"]})
                     try:
@@ -187,6 +228,10 @@ def run(game=None, duration=0):
                     if text != raw:
                         try:
                             next_config = read_config()
+                            # User edits retain all settings, while this
+                            # resident connection remains tied to its verified
+                            # table language until the game process exits.
+                            next_config["game_language"] = detected_game_language
                             configuration_error = None
                         except (ValueError, OSError) as exc:
                             configuration_error = "配置未应用，继续使用上次有效设置：" + str(exc)
@@ -218,6 +263,9 @@ def run(game=None, duration=0):
                                 "ruby_gap",
                                 "ruby_offset_x",
                                 "line_gap",
+                                "secondary_color",
+                                "secondary_opacity",
+                                "bilingual_offset_y",
                             )
                         )
                         if reload:
@@ -262,22 +310,37 @@ def run(game=None, duration=0):
                         else:
                             heartbeat.loading("applying")
                             load_start = time.monotonic()
+                            # A fresh worker already published and SHA-checked the
+                            # packed cache.  Send that file directly so a locale
+                            # change does not re-read and JSON-transfer its model.
+                            prepared_path = (
+                                new_model.get("path") if isinstance(new_model, dict) else None
+                            )
                             try:
                                 native.load(
-                                    new_model,
+                                    None if prepared_path else new_model,
                                     {
                                         **config,
                                         "enabled": config["enabled"] and not stopping and not error,
                                     },
                                     mode,
+                                    cache_path=prepared_path,
                                 )
-                            except frida.RPCException as exc:
+                            except (frida.RPCException, OSError, ValueError) as exc:
                                 heartbeat.loading(
                                     "ready", "语言切换未成功，保留当前语言：" + str(exc)
                                 )
                                 log({"type": "locale_error", "stage": "apply", "message": str(exc)})
                             else:
-                                model = new_model
+                                if prepared_path:
+                                    # Only status metadata is retained in the resident
+                                    # process.  Translation data stays in the immutable
+                                    # cache consumed by the native transport.
+                                    model = {"coverage": new_model.get("coverage", {})}
+                                else:
+                                    # Compatibility for injected/older preparation
+                                    # loaders used by diagnostics and tests.
+                                    model = new_model
                                 applied_config = dict(config)
                                 heartbeat.loading("ready")
                                 log(
@@ -341,6 +404,8 @@ def run(game=None, duration=0):
                                 "primary": applied_config["primary"],
                                 "secondary": applied_config["secondary"],
                                 "game_language": applied_config["game_language"],
+                                "detected_game_language": detected_game_language,
+                                "source_language_status": source_language_status,
                                 "mode_request": config.get("mode_request"),
                                 "error": error,
                             },
@@ -364,6 +429,8 @@ def run(game=None, duration=0):
                                 "pid": pid,
                                 "updated_at": time.time(),
                                 "coverage": model.get("coverage", {}),
+                                "detected_game_language": detected_game_language,
+                                "source_language_status": source_language_status,
                                 "configuration_error": configuration_error,
                                 "update_notice": update_notice,
                                 "render_mode": mode,
@@ -417,7 +484,16 @@ def run(game=None, duration=0):
                     ROOT / "generated" / "native-status.json",
                 )
         write_telemetry(
-            {"running": False, "updated_at": time.time()}, ROOT / "generated" / "native-status.json"
+            {
+                "running": False,
+                "updated_at": time.time(),
+                "detected_game_language": None,
+                "source_language_status": (
+                    "game_not_running" if native is not None else source_language_status
+                ),
+                "last_detected_game_language": detected_game_language,
+            },
+            ROOT / "generated" / "native-status.json",
         )
         write_telemetry(
             {"running": False, "updated_at": time.time()}, ROOT / "generated" / "native-live.json"

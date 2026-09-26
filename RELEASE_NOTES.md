@@ -1,22 +1,34 @@
-# Bilingual Sora 2nd v0.3.11
+# Bilingual Sora 2nd v0.3.12
 
 ## 简体中文
 
-- 修复直接以双语模式进入菜单时，部分模板复制控件不应用副语言字号、间距，且无法切回单语的问题。新控件在首次排版前继承原文；已验证道具页的耀晶石标题、使用和舍弃提示。
-- 修复重要道具“利贝尔王国地图”遗漏副语言的问题。道具名称按所属资源范围匹配，不再与同名地图菜单混淆。
-- 修复 DLC 资源跨语言关联。当前游戏的 30 组 DLC 名称和说明均已对齐八种语言，不依赖手写翻译或固定语言组合。
-- 已验证直接双语进入、动态还原单语、字号缩放，以及地图和 DLC 列表。更新包含底层接入改动，当前游戏连接会保留；完整改动在游戏下次启动时自动应用。
+- 统一首次显示与热切换后的排版流程，修复图鉴左侧名称及技能、装备、道具底部详情的上下位置不一致。补充字号、混排图标、多行文字和动画状态的回归检查。
+- 改进书籍长文本换行、图鉴名称、任务记录及手册规章的副语言读取，保留正文中的数字和图标尺寸。
+- 副语言支持 RGB 颜色系数、透明度滑块及双语整体上下偏移；加入按主文进度显示副文和副文图标的处理。新配置默认采用 RGB **230 / 230 / 230、90% 透明度**。已有自定义设置继续保留。
+- 精简悬浮窗与设置界面，支持中／英／日界面语言；设置窗跟随悬浮窗移动，扩大拖动区域，增加手动重连入口。显示模式分为双语与单语言，**仅单语言模式显示切换方式整行选项**。
+- 随包提供跨语言字体补齐所需的加载器与独立后备字形。合并字库在用户本机从游戏文件生成，发行包不包含游戏字库。
+- 优化语言资源准备、日志测量缓存及持续解析开销。**双语日志仍可能在打开时出现约 700 ms 停顿并降低帧率，这不是已消除的问题。** 对流畅度敏感的玩家，推荐“单语言模式＋按住切换”。
+
+本次包含驻留底层代码与字库更新。请退出游戏后安装更新，再重新启动游戏以完整生效。安装包与便携包均可使用；升级保留个人设置。
 
 ## English
 
-- Fix copied menu controls ignoring secondary size and spacing, and failing to return to a single language when the menu opens in annotated mode. New controls inherit their source before their first layout. Verified the inventory Sepith heading and Use/Discard hints.
-- Resolve the inventory's Map of Liberl name within item resources, without confusing it with a separate map-menu label.
-- Fix cross-language DLC resource alignment. All 30 DLC names and descriptions in the supported game now align across eight languages, without handwritten translations or fixed language pairs.
-- Verified annotated entry, single-language restoration, font scaling, and the map and DLC lists. This update includes native integration changes; the current game connection remains active and the complete update applies on the next game launch.
+- Unify first-entry and hot-switch layout, fixing vertical-position differences in catalog names and skill, equipment, and item details. Extend regression coverage for font size, mixed icons, multiline text, and animated states.
+- Improve secondary-text lookup for catalog names, quest records, and handbook rules, and wrapping for long book text. Preserve native number and icon sizes.
+- Add RGB tint multipliers, an opacity slider, and a bilingual vertical offset, plus secondary reveal tied to primary progress and secondary icon handling. New configurations default to **RGB 230 / 230 / 230 with 90% opacity**. Existing custom settings are preserved.
+- Simplify the overlay and settings, with Chinese, English, and Japanese UI languages, coupled window movement, a larger drag area, and manual reconnect. Display modes are bilingual or single language; **the entire switching-method row appears only in single-language mode**.
+- Bundle the loader and independent fallback glyphs needed for cross-language font coverage. Merged fonts are generated from the user's local game files; game fonts are not redistributed.
+- Reduce resource-preparation, log-measurement, and ongoing parsing overhead. **Opening the bilingual log may still hitch for around 700 ms and reduce frame rate; this limitation remains.** For smoother play, use single-language mode with hold-to-switch.
+
+This release updates resident native code and font delivery. Exit the game before updating, then restart it for all changes to apply. Both installer and portable packages are available; upgrades preserve personal settings.
 
 ## 日本語
 
-- 双言語表示でメニューを開くと、複製された一部の項目に副言語の文字サイズ・間隔が反映されず、単言語表示にも戻せない問題を修正しました。初回配置前に元のテキストを引き継ぎます。アイテム画面のセピス見出し、「使う」「捨てる」で確認しました。
-- アイテム名「リベール王国の地図」をアイテム用リソース内で照合し、別の地図メニュー項目との混同による表示漏れを修正しました。
-- DLC リソースの言語間対応付けを修正しました。対応するゲームの全30組の DLC 名称・説明が8言語で対応し、手書きの訳文や固定の言語ペアに依存しません。
-- 双言語での初回表示、単言語への復帰、文字サイズ変更、地図・DLC 一覧を確認しました。ネイティブ接続部分の変更を含むため、現在の接続は維持し、完全な更新は次回のゲーム起動時に適用します。
+- 初回表示と表示モード切替後の配置処理を統一し、図鑑の項目名や技・装備・アイテムの説明で上下位置が異なる問題を修正しました。文字サイズ、アイコン混在、複数行、文字送りの回帰チェックも追加しました。
+- 図鑑名、依頼記録、手帳の規則における副言語の取得と、書籍の長文の折り返しを改善しました。数字やアイコンの元のサイズを維持します。
+- 副言語の RGB 係数、不透明度スライダー、二言語全体の上下位置調整を追加し、主文の表示進行に合わせた副文表示と副文アイコンにも対応しました。新規設定の初期値は **RGB 230 / 230 / 230、不透明度 90%** です。既存の個別設定は保持します。
+- 小型ウィンドウと設定画面を整理し、中国語・英語・日本語の UI、ウィンドウの連動移動、広いドラッグ領域、手動再接続を追加しました。表示モードは二言語と単一言語の二種類で、**切替方法の行全体は単一言語モードでのみ表示**します。
+- 多言語フォント補完用のローダーと独立した補助字形を同梱しました。統合フォントは利用者のゲームファイルから端末上で生成し、ゲームのフォントは再配布しません。
+- 言語リソースの準備、ログの計測キャッシュ、継続的な解析処理を軽減しました。**二言語ログを開く際の約 700 ms の停止やフレームレート低下は、現在も発生する場合があります。** 滑らかさを優先する場合は「単一言語モード＋押している間だけ切替」を推奨します。
+
+常駐コードとフォント処理の更新を含みます。ゲームを終了してから更新し、再起動してください。インストーラー版とポータブル版を用意しており、更新時も個人設定を保持します。

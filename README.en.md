@@ -24,52 +24,53 @@ From **0.3.4**, automatic updates download the small application component when 
 
 1. Download **bilingual-sora-2nd-VERSION-windows-x64.zip** from [Releases](https://github.com/Llugaes/bilingual-sora-2nd/releases/latest) and extract the entire ZIP into a writable folder.
 2. Double-click **BilingualSora2nd.exe**. Python and all runtime dependencies are included: no Python installation, CMD scripts, or first-run dependency downloads. Supports Windows 10/11 x64.
-3. Select the game's current text language on first launch. Settings open immediately; the tool automatically connects to the game or waits for it to start. It never launches the game itself.
+3. On first launch, choose the tool's interface language. The game's source language is detected after connection. The tool automatically connects to the game or waits for it to start. It never launches the game itself.
 
-The Updates page includes desktop shortcut creation, the logs/settings folder, and a user guide. Launching the EXE again opens the existing interface without starting a second backend. The interface supports English, Japanese, and Simplified Chinese.
+The Updates page links to the user guide and release notes. Download and log actions appear if an update fails. Launching the EXE again opens the existing interface without starting a second backend. The interface supports English, Japanese, and Simplified Chinese.
 
 Download the ZIP only. **bilingual-sora-2nd-update.json** is updater metadata; GitHub's Source code archives are for developers. Keep the extracted folder intact; do not move only the EXE.
 
 Upgrading from **0.2.x** requires a one-time manual migration because the old updater cannot install a bundled runtime. Exit the old tool, extract the new release into a new folder, copy **generated/native-control.json** and **generated/overlay-window.ini** (not **.venv/**, **generated/updates/**, or the old hot-reload manifest), then run the new EXE. Future portable releases automatically update both code and dependencies. Keep source checkouts separate.
 
-Choose any primary/secondary pair under Languages and mode. If you change the language in the game itself, also change Advanced: source matching. Source language identifies incoming text; primary language controls the mod's displayed text.
+Settings are grouped into Language, Text layout, Shortcuts, and Updates. Choose any primary/secondary pair under Language. In-game text language is a read-only detection status, not an editable setting. Failed connections retry automatically; the Language page also offers a manual connection button. The Mod's primary language controls displayed text without changing the game's setting.
 
 ### First-run defaults
 
 The primary language defaults to the game's text language. The secondary defaults to Japanese, or English when the game is in Japanese.
 
-These are initial preferences, not restrictions on language pairs. Existing settings survive restarts and updates unchanged. The interface supports English, Simplified Chinese, and Japanese, defaults to the system language, and switches live via **Interface language**. UI language, source matching, and display languages are independent.
+These are initial preferences, not restrictions on language pairs. Existing settings survive restarts and updates unchanged. Choose English, Simplified Chinese, or Japanese for the interface on first launch; **Interface language** changes it live or follows the system. UI language, source matching, and display languages are independent.
 
 The first load parses your local game resources and builds a cache, which can take time. Text is then rendered by native game controls; the Qt interface provides configuration and status. Use windowed or borderless mode; the settings overlay is not guaranteed to appear over exclusive fullscreen.
 
 ### Fonts for additional languages
 
-Some language pairs need an expanded game font to avoid missing characters appearing as question marks. Generate fonts from your own game installation; game fonts are not distributed here. Exit the game before running:
+Some language pairs need an expanded game font to avoid missing characters appearing as question marks. Once the tool finds the game directory, it automatically prepares fonts from your local game resources. While the game is running, files are only staged; they are safely installed after it exits and take effect after the next launch. Game fonts are not distributed here; two supplementary glyphs are bundled under the OFL.
+
+No manual action is normally needed. Use this command only to diagnose or retry a failed automatic preparation:
 
 ```powershell
 $runtime = Get-Content runtime/current.txt
-& ".\runtime\$runtime\python.exe" -m sora_bilingual.fonts.universal_fonts --game "PATH_TO_GAME"
-& ".\runtime\$runtime\python.exe" -m sora_bilingual.fonts.install_font_patch --game "PATH_TO_GAME" --loader "PATH_TO_xinput1_4.dll" --install
+& ".\runtime\$runtime\python.exe" -m sora_bilingual.fonts.install_font_patch --game "PATH_TO_GAME" --install
 ```
 
-The optional loader comes from [sora2looseload](https://github.com/lmaple0/sora2looseload). The installer accepts only the verified DLL with SHA-256 **e08a18068a482bb5d187a62023759c0e14ab69d76395b773ef0405d35e2ac8c7**. Do not bypass a mismatch; keep the existing files and report it. Other mods' files are not overwritten. Use **--update** only for an installation already recorded by this tool. Automatic software updates do not modify the game directory, loader, or generated fonts.
+The installer includes the audited [sora2looseload](https://github.com/lmaple0/sora2looseload) loader (SHA-256 **e08a18068a482bb5d187a62023759c0e14ab69d76395b773ef0405d35e2ac8c7**). A mismatch is never bypassed, and files owned by another mod are not overwritten.
 
 ## Controls and configuration
 
-Click **设置** (Settings) on the status bar to open the full panel. **× / Esc inside the panel** collapses it. **× on the status bar** hides the interface while the background service keeps running. Reopen it from the system tray or desktop shortcut.
+Click **Settings** on the status bar to open or close the panel. Drag the bar's text, empty space, handle, or the panel header to move both together; buttons retain their click actions. **× / Esc inside the panel** collapses it. **× on the status bar** hides the interface while the background service keeps running. Reopen it from the system tray or desktop shortcut.
 
 | Action | Default shortcut |
 |---|---|
 | Show / hide the interface | Ctrl + Shift + F9 |
 | Language switch for the selected mode | Ctrl + Shift + F10 |
 
-Record one keyboard or SDL controller combination under **Bindings**. The same binding follows the selected mode. Existing custom bindings migrate; F11/F12 are no longer separate simultaneously active actions. By default, bindings respond while the game is in the foreground.
+Record one keyboard or SDL controller combination under **Shortcuts**. The same binding follows the selected mode. Existing custom bindings migrate; F11/F12 are no longer separate simultaneously active actions. By default, bindings respond while the game is in the foreground.
 
-- **Hold**: primary text normally, secondary-only text while held; release or focus loss restores primary text.
-- **Toggle**: one press switches to secondary-only text, the next switches back. Holding does not repeatedly toggle.
-- **Trails annotations**: uses this game's native ruby layout for simultaneous bilingual text; the shortcut turns annotations on/off. This mode depends on the game's special rendering support.
+- **Bilingual mode**: shows both languages using the game's native annotation layout. The shortcut turns the secondary language on/off.
+- **Single-language mode**: choose **press to switch** or **hold to show secondary**. Holding does not repeatedly toggle; releasing a hold or losing focus restores primary text.
 
 Text scale, offsets, and spacing remain adjustable live and survive menu recreation. Spacing uses the engine's measured text bounds.
+The bilingual vertical offset defaults to 0; positive values move both languages down and do not affect single-language mode. Secondary color multiplies the original RGB values, while opacity multiplies the original alpha. The default is RGB 230 / 230 / 230 (each divided by 255) and 90% opacity. Adjust opacity directly with the slider below the color button. Main-language colors and icon sizes stay unchanged.
 
 While waiting for the game, the tool discovers installed resources and prepares the selected language pair in the background. First use and resource/parser changes require preparation once; open the tool before the game and let it finish. Valid caches load directly instead of transferring the full model in chunks. The cached connection path measured about 3.5–3.7 seconds in an offline helper process; game initialization is additional, and logs record actual connection timings. UI translations and initial language preferences do not invalidate the resource index.
 
@@ -86,7 +87,7 @@ For smoother play, select **Single-language mode → Hold for secondary language
 
 ## Automatic updates
 
-The **版本更新** (Updates) tab defaults to **automatically checking and installing stable releases** from this repository on startup and every six hours. You can also check immediately, choose notification-only updates, or disable checks.
+The **Updates** tab has one **Automatic updates** switch, enabled by default. It checks this repository's stable releases on startup and every six hours. Turning it off stops automatic checks and installation; manual version checks remain available. Legacy notification-only preferences become off, without enabling installation.
 
 Downloads are verified against the repository, version, file list, and SHA-256 hashes. Installation waits until the game connection ends. The interface then reloads automatically, restoring its position and expanded/hidden state. Settings and caches stay in **generated/**; bundled dependencies stay in **runtime/**. If installation is interrupted, the next shortcut launch completes it or restores the old files. Backups live under **generated/updates/backup-***.
 
@@ -124,7 +125,7 @@ Thanks to the projects and maintainers whose work makes this tool possible:
 
 - [0xDC00/scripts](https://github.com/0xDC00/scripts) and Tom (tomrock645): game text-hook call-site signatures and adapted code.
 - [FPACker](https://github.com/coinkillerl/FPACker) and [Ingert](https://github.com/Aureole-Suite/Ingert): resource-container and script-format references.
-- [sora2looseload](https://github.com/lmaple0/sora2looseload): the optional game-font loader; its DLL is not bundled.
+- [sora2looseload](https://github.com/lmaple0/sora2looseload): the bundled game-font loader.
 - [Frida](https://github.com/frida/frida): native runtime text handling; [Qt for Python / PySide6](https://doc.qt.io/qtforpython-6/): settings and status UI.
 - [pygame-ce / SDL](https://github.com/pygame-community/pygame-ce): controller input; [pefile](https://github.com/erocarrera/pefile): PE inspection; [python-lz4 / LZ4](https://github.com/python-lz4/python-lz4): font-texture compression.
 - [Inno Setup](https://jrsoftware.org/) and its [Chinese translation](https://github.com/kira-96/Inno-Setup-Chinese-Simplified-Translation): Windows installer.

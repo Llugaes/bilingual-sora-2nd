@@ -12,7 +12,7 @@ import subprocess
 import sys
 from unittest.mock import patch
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QPoint
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 from PySide6.QtNetwork import QLocalSocket
@@ -20,10 +20,33 @@ from sora_bilingual.config.native_config import read_config, write_config, Actio
 from sora_bilingual.app.native_settings import NativeSettingsWindow, update_control, ROOT
 from sora_bilingual.app.native_overlay import describe_state, JsonSnapshot, OverlayController, STYLE
 from sora_bilingual.platform.inputs import InputManager
-from sora_bilingual.app.i18n import tr
+from sora_bilingual.app.i18n import tr, current_language, set_language
+from sora_bilingual.app.presentation import with_font_status
 
 
 class OverlayStatusTests(unittest.TestCase):
+    def test_font_restart_notice_does_not_claim_connection_failed(self):
+        state = {"title": "双语同时显示", "connected": True, "detail": "设置实时生效"}
+        value = with_font_status(state, {"state": "restart-required"})
+        self.assertTrue(value["connected"])
+        self.assertEqual(value["title"], state["title"])
+        self.assertIn("退出游戏后自动安装", value["font_notice"])
+        self.assertNotIn("font_notice", state)
+        self.assertEqual(with_font_status(state, {"state": "healthy"}), state)
+
+    def test_font_conflict_keeps_connection_error_and_exposes_file_details(self):
+        state = {"title": "连接异常", "connected": False, "detail": "existing failure"}
+        value = with_font_status(state, {"state": "conflict", "detail": ["xinput1_4.dll"]})
+        self.assertEqual(value["detail"], "existing failure")
+        self.assertEqual(value["font_detail"], "xinput1_4.dll")
+        language_before = current_language()
+        try:
+            for language in ("en", "ja"):
+                set_language(language)
+                self.assertNotEqual(tr(value["font_notice"]), value["font_notice"])
+        finally:
+            set_language(language_before)
+
     def test_preparing_locale_is_connected_and_still_reports_old_language(self):
         config = read_config(Path("__missing_test_config__.json"))
         config["primary"] = "en"
@@ -81,6 +104,22 @@ class OverlayStatusTests(unittest.TestCase):
         self.assertIn("按住中", held["title"])
         self.assertNotEqual(base["color"], held["color"])
         self.assertEqual(released, base)
+
+    def test_status_colors_remain_readable_on_the_paper_surface(self):
+        config = read_config(Path("__missing_test_config__.json"))
+        error = describe_state(config, {}, {"updated_at": 100, "error": "offline"}, 100)
+        loading = describe_state(
+            config, {}, {"running": True, "updated_at": 100, "phase": "connecting"}, 100
+        )
+        connected = describe_state(
+            config,
+            {"running": True, "updated_at": 100, "enabled": True},
+            {},
+            100,
+        )
+        self.assertEqual(error["color"], "#a32b22")
+        self.assertEqual(loading["color"], "#4f6270")
+        self.assertEqual(connected["color"], "#086b68")
 
     def test_stale_live_state_cannot_claim_secondary_is_active(self):
         config = read_config(Path("__missing_test_config__.json"))
@@ -176,6 +215,157 @@ class OverlayUiTests(unittest.TestCase):
         self.assertEqual(config["sources"], ["keep"])
         self.assertFalse(config["stop"])
 
+    def test_source_language_is_read_only_status_and_secondary_color_saves_normalized_rgb(self):
+        self.assertFalse(hasattr(self.window, "game_language"))
+        self.assertEqual(self.window.detected_game_language.text(), tr("等待检测"))
+        write_config(
+            {
+                "running": True,
+                "updated_at": time.time(),
+                "detected_game_language": "ja",
+                "source_language_status": "matched",
+            },
+            self.status,
+        )
+        self.window.refresh_status()
+        self.assertIn("matched", self.window.detected_game_language.text())
+        self.assertNotEqual(self.window.detected_game_language.text(), tr("等待检测"))
+        self.window.secondary_color.set_color((0.2, 0.4, 0.6), emit=True)
+        self.assertEqual(read_config(self.control)["secondary_color"], [0.2, 0.4, 0.6])
+
+    def test_display_mode_controls_preserve_the_existing_interaction_contract(self):
+        label = self.window.display_form.labelForField(self.window.single_options)
+        self.assertTrue(self.window.bilingual_mode.isChecked())
+        self.assertTrue(self.window.single_options.isHidden())
+        self.assertTrue(label.isHidden())
+        self.window.single_mode.click()
+        self.assertFalse(self.window.single_options.isHidden())
+        self.assertFalse(label.isHidden())
+        self.assertEqual(read_config(self.control)["interaction"], "language_toggle")
+        self.window.single_hold.click()
+        self.assertEqual(read_config(self.control)["interaction"], "language_hold")
+        self.window.bilingual_mode.click()
+        self.assertTrue(self.window.single_options.isHidden())
+        self.assertTrue(label.isHidden())
+        self.assertEqual(read_config(self.control)["interaction"], "annotation")
+
+    def test_secondary_alpha_and_bilingual_offset_save_and_reset(self):
+        update_control({"secondary_opacity": 0.37}, self.control)
+        self.window.reload_control()
+        self.assertEqual(self.window.secondary_opacity.value(), 37)
+        self.window.secondary_color.set_color((0.2, 0.4, 0.6), opacity=0.45, emit=True)
+        self.assertEqual(self.window.secondary_opacity.value(), 45)
+        self.window.secondary_opacity.setValue(72)
+        self.window.bilingual_offset_y.setValue(-7)
+        control = read_config(self.control)
+        self.assertEqual(control["secondary_color"], [0.2, 0.4, 0.6])
+        self.assertEqual(control["secondary_opacity"], 0.72)
+        self.assertEqual(self.window.secondary_color.opacity(), 0.72)
+        self.assertEqual(control["bilingual_offset_y"], -7)
+        self.window._reset_layout()
+        self.assertEqual(read_config(self.control)["bilingual_offset_y"], 0)
+
+    def test_connection_state_is_grouped_with_read_only_detection(self):
+        write_config(
+            {
+                "running": True,
+                "updated_at": time.time(),
+                "detected_game_language": "ja",
+                "source_language_status": "matched",
+            },
+            self.status,
+        )
+        self.window.refresh_status()
+        self.assertEqual(self.window.connection_state.text(), tr("已连接"))
+        self.assertIn("matched", self.window.detected_game_language.text())
+
+    def test_connection_strip_stays_outside_language_scroll_and_single_modes_fit_first_view(self):
+        controller = OverlayController(
+            self.control, self.status, start_timers=False, auto_connect=False
+        )
+        try:
+            controller.expand()
+            settings = controller.panel.settings
+            settings.single_mode.click()
+            self.app.processEvents()
+            page = settings.pages[0]
+            self.assertIs(settings.connection_strip.parentWidget(), settings)
+            self.assertFalse(settings.language_page.isAncestorOf(settings.connection_strip))
+            self.assertFalse(settings.single_options.isHidden())
+            for option in (settings.single_toggle, settings.single_hold):
+                visible = option.rect().translated(option.mapTo(page.viewport(), QPoint()))
+                self.assertTrue(page.viewport().rect().contains(visible))
+        finally:
+            controller.bar.hide()
+            controller.panel.hide()
+            controller.tray.hide()
+            controller.panel.deleteLater()
+            controller.bar.deleteLater()
+            controller.deleteLater()
+            self.app.processEvents()
+
+    def test_compact_status_bar_exposes_state_and_shortcut_in_tooltips(self):
+        controller = OverlayController(
+            self.control, self.status, start_timers=False, auto_connect=False
+        )
+        try:
+            state = describe_state(
+                read_config(self.control),
+                {"running": True, "updated_at": time.time(), "enabled": True},
+                {},
+            )
+            controller.bar.present(state, "CTRL + SHIFT + F9")
+            self.assertLessEqual(controller.bar.width(), 300)
+            self.assertTrue(controller.bar.marker.accessibleName())
+            self.assertIn("CTRL + SHIFT + F9", controller.bar.status.toolTip())
+            self.assertTrue(controller.bar.open_button.accessibleName())
+            self.assertTrue(controller.bar.exit_button.accessibleName())
+        finally:
+            controller.bar.hide()
+            controller.panel.hide()
+            controller.tray.hide()
+            controller.panel.deleteLater()
+            controller.bar.deleteLater()
+            controller.deleteLater()
+            self.app.processEvents()
+
+    def test_manual_reconnect_delegates_once_and_tracks_connection_state(self):
+        class Connector:
+            error = "previous failure"
+            process = None
+
+            def __init__(self):
+                self.calls = 0
+
+            def retry(self):
+                self.calls += 1
+                return True
+
+        connector = Connector()
+        self.window._auto_connector = connector
+        self.window._update_connection_action({}, False)
+        self.assertFalse(self.window.connection_button.isHidden())
+        self.assertTrue(self.window.connection_button.isEnabled())
+        self.window.connection_button.click()
+        self.window.connection_button.click()
+        self.assertEqual(connector.calls, 1)
+        self.assertFalse(self.window.connection_button.isEnabled())
+        self.window._update_connection_action({"phase": "connecting"}, False)
+        self.assertFalse(self.window.connection_button.isHidden())
+        self.assertFalse(self.window.connection_button.isEnabled())
+        self.window._update_connection_action({"running": True, "updated_at": time.time()}, True)
+        self.assertTrue(self.window.connection_button.isHidden())
+
+    def test_fractional_spacing_survives_reload_and_an_unrelated_setting_change(self):
+        update_control({"ruby_gap": 2.35, "line_gap": 7.65}, self.control)
+        self.window.reload_control()
+        self.assertEqual(self.window.ruby_gap.value(), 2.35)
+        self.assertEqual(self.window.line_gap.value(), 7.65)
+        self.window.ruby_offset_x.setValue(3)
+        config = read_config(self.control)
+        self.assertEqual(config["ruby_gap"], 2.35)
+        self.assertEqual(config["line_gap"], 7.65)
+
     def test_fresh_connection_clears_old_launch_failure(self):
         self.window._connection_error = "旧的启动失败"
         write_config(
@@ -257,7 +447,7 @@ class OverlayUiTests(unittest.TestCase):
             self.assertTrue(controller.bar.isVisible())
             self.assertFalse(read_config(self.control)["stop"])
             original = self.control.read_bytes()
-            controller.bar.hide_button.click()
+            controller.hide_interface()
             controller.tick()
             controller.tick()
             self.assertFalse(controller.bar.isVisible())
@@ -274,7 +464,7 @@ class OverlayUiTests(unittest.TestCase):
             controller.tick()
             self.assertFalse(controller.panel.isVisible())
             self.assertTrue(controller.bar.isVisible())
-            controller.bar.hide_button.click()
+            controller.hide_interface()
             controller.tick()
             self.assertFalse(controller.bar.isVisible())
             controller.tray.contextMenu().actions()[0].trigger()
@@ -309,9 +499,71 @@ class OverlayUiTests(unittest.TestCase):
                     controller.tick()
                     self.assertFalse(controller.panel.isVisible())
                     self.assertTrue(controller.bar.isVisible())
-                controller.bar.hide_button.click()
+                controller.hide_interface()
                 controller.tick()
                 self.assertFalse(controller.bar.isVisible())
+        finally:
+            controller.bar.hide()
+            controller.panel.hide()
+            controller.tray.hide()
+            controller.panel.deleteLater()
+            controller.bar.deleteLater()
+            controller.deleteLater()
+            self.app.processEvents()
+
+    def test_settings_button_toggles_and_both_headers_drag_the_same_group(self):
+        controller = OverlayController(
+            self.control, self.status, start_timers=False, auto_connect=False
+        )
+        original = self.control.read_bytes()
+        try:
+            controller.bar.move(12, 12)
+            controller.bar.open_button.click()
+            self.app.processEvents()
+            self.assertTrue(controller.panel.isVisible())
+            for grip in (
+                controller.bar.grip,
+                controller.bar.marker,
+                controller.bar.status,
+                controller.bar,
+                controller.panel.grip,
+            ):
+                old_bar = controller.bar.pos()
+                old_panel = controller.panel.pos()
+                QTest.mousePress(grip, Qt.MouseButton.LeftButton, pos=QPoint(4, 4))
+                QTest.mouseMove(grip, QPoint(16, 12))
+                QTest.mouseRelease(grip, Qt.MouseButton.LeftButton, pos=QPoint(16, 12))
+                self.app.processEvents()
+                delta = controller.bar.pos() - old_bar
+                self.assertNotEqual(delta, QPoint())
+                self.assertEqual(controller.panel.pos() - old_panel, delta)
+                self.assertEqual(controller.preferences.value("bar_position"), controller.bar.pos())
+                controller.tick()
+                self.assertEqual(controller.panel.pos() - controller.bar.pos(), old_panel - old_bar)
+            old_bar = controller.bar.pos()
+            controller.bar.open_button.click()
+            self.assertEqual(controller.bar.pos(), old_bar)
+            self.assertFalse(controller.panel.isVisible())
+            controller.bar.open_button.click()
+            self.assertEqual(controller.bar.pos(), old_bar)
+            self.assertTrue(controller.panel.isVisible())
+            quit_events = []
+            controller.bar.quit_requested.disconnect(controller.quit)
+            controller.bar.quit_requested.connect(lambda: quit_events.append(True))
+            old_bar = controller.bar.pos()
+            QTest.mouseClick(controller.bar.exit_button, Qt.MouseButton.LeftButton)
+            self.assertEqual(quit_events, [True])
+            self.assertEqual(controller.bar.pos(), old_bar)
+            controller.move_group(QPoint(99999, 99999))
+            area = controller.bar.screen().availableGeometry()
+            self.assertTrue(area.contains(controller.bar.geometry()))
+            self.assertTrue(area.contains(controller.panel.geometry()))
+            controller.bar.open_button.click()
+            self.assertFalse(controller.panel.isVisible())
+            self.assertTrue(controller.bar.isVisible())
+            controller.bar.open_button.click()
+            self.assertTrue(controller.panel.isVisible())
+            self.assertEqual(self.control.read_bytes(), original)
         finally:
             controller.bar.hide()
             controller.panel.hide()

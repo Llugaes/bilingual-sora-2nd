@@ -89,6 +89,29 @@ def relative_file(name, internal=False):
             and parts[0] == "assets"
             and Path(name).suffix.lower() in (".ico", ".svg")
         )
+        or (
+            len(parts) == 3
+            and parts[:2] == ("assets", "font-fallback")
+            and name
+            in {
+                "assets/font-fallback/font_0.fnt",
+                "assets/font-fallback/font_0.dds",
+                "assets/font-fallback/OFL.txt",
+                "assets/font-fallback/NOTICE.md",
+                "assets/font-fallback/PROVENANCE.md",
+            }
+        )
+        or (
+            len(parts) == 3
+            and parts[:2] == ("assets", "sora2looseload")
+            and name
+            in {
+                "assets/sora2looseload/xinput1_4.dll",
+                "assets/sora2looseload/LICENSE",
+                "assets/sora2looseload/DETOURS-LICENSE.md",
+                "assets/sora2looseload/PROVENANCE.md",
+            }
+        )
     )
 
 

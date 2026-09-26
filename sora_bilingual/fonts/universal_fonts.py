@@ -25,6 +25,35 @@ from sora_bilingual.fonts.font_merge import (
 # Verified bound of the supported game's font decompression buffer, including
 # the DDS header. This is an engine contract, not a locale-specific size.
 MAX_DECODED_BYTES = 32 * 1024 * 1024
+FALLBACK_ROOT = ROOT / "assets/font-fallback"
+FALLBACK_SHA256 = {
+    "font_0.fnt": "40c0fdabd9600560164911b66e58a3c682d0e5f51ba08d4b1b7d03a332a78fd9",
+    "font_0.dds": "67506160cea1a0e5dd9631b6176e7edf9e0c6da7662525b347e3a4ec8cfde7f8",
+}
+
+
+def fallback_dependencies() -> tuple[Path, ...]:
+    """Small audited donor files which affect every generated font candidate."""
+    return tuple(FALLBACK_ROOT / name for name in (*FALLBACK_SHA256, "PROVENANCE.md"))
+
+
+def read_fallback_donor():
+    """Load the static Noto-derived donor, rejecting altered or malformed data."""
+    values = {}
+    for name, expected in FALLBACK_SHA256.items():
+        path = FALLBACK_ROOT / name
+        try:
+            data = path.read_bytes()
+        except OSError as exc:
+            raise FontFormatError(f"font fallback is missing: {path}") from exc
+        if hashlib.sha256(data).hexdigest() != expected:
+            raise FontFormatError(f"font fallback digest mismatch: {path}")
+        values[name] = data
+    image = parse_dds(values["font_0.dds"])
+    font = parse_fnt(values["font_0.fnt"], atlas_width=image.width, atlas_height=image.height)
+    if not font.codepoints:
+        raise FontFormatError("font fallback contains no glyphs")
+    return font, image
 
 
 def merge_fonts(base, donors, max_bytes=MAX_DECODED_BYTES):
@@ -115,18 +144,26 @@ def build(game, output):
     output.mkdir(parents=True, exist_ok=True)
     fonts = read_fonts(game)
     union = set().union(*(f.codepoints for f, _ in fonts.values()))
+    fallback = read_fallback_donor()
+    fallback_added = fallback[0].codepoints - union
+    donors = [*fonts.values(), *([fallback] if fallback_added else [])]
+    expected_codepoints = union | fallback_added
     manifest = {
         "version": 2,
         "locales": {l: "asset" + v.font_suffix for l, v in LOCALES.items()},
-        "glyphs": len(union),
+        "glyphs": len(expected_codepoints),
+        "fallback": {
+            "available": [f"U+{codepoint:04X}" for codepoint in sorted(fallback[0].codepoints)],
+            "added": [f"U+{codepoint:04X}" for codepoint in sorted(fallback_added)],
+        },
         "files": [],
         "atlases": [],
     }
     for prefix, base in fonts.items():
-        fnt, dds = merge_fonts(base, list(fonts.values()))
+        fnt, dds = merge_fonts(base, donors)
         image = parse_dds(dds)
         font = parse_fnt(fnt, atlas_width=image.width, atlas_height=image.height)
-        assert font.codepoints == union
+        assert font.codepoints == expected_codepoints
         by_cp = {g.codepoint: g.raw for g in font.glyphs}
         assert all(by_cp[g.codepoint] == g.raw for g in base[0].glyphs)
         # The entire original referenced texture prefix stays byte-identical.

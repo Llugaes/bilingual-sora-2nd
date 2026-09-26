@@ -32,12 +32,23 @@ POINTS = {
     "ruby_compensate": 0x587253,
     "ruby_end": 0x587349,
     "parse_text": 0x5877A0,
+    "icon_callback_clone": 0x58A7E0,
     "layout_create": 0x58FC80,
     "layout_release": 0x58FF50,
     "dialogue_popup": 0x4AE2A0,
     "dialogue_message": 0x4AE990,
     "dialogue_bubble": 0x4AEE20,
     "dialogue_builder": 0x4AD670,
+    "quest_builder": 0x422780,
+    "quest_paragraph_ready": 0x4229F5,
+    "quest_line_return": 0x422C24,
+    "log_measure": 0x362BD0,
+    "log_measure_row": 0x362D7B,
+    "log_measure_calculate": 0x362D9B,
+    "log_measure_body": 0x362D8F,
+    "log_measure_row_end": 0x362E40,
+    "font_reset": 0x5BF8F0,
+    "font_load": 0x5BF350,
 }
 
 
@@ -49,9 +60,11 @@ def native_report(exe):
             name: {"rva": rva, "bytes": pe.get_data(rva, 16).hex()} for name, rva in POINTS.items()
         }
         report["vtable"] = 0xB18490
+        report["icon_callback_vtable"] = 0xB18458
         report["text_table_global"] = 0xC60E88
         report["node_names"] = True
         report["layout_manager_global"] = 0xC60E88
+        report["font_manager_global"] = 0xC60ED0
     finally:
         pe.close()
     return report
@@ -104,17 +117,24 @@ class NativeLabels:
         config=None,
         mode="annotation",
         cache_path=None,
+        report=None,
     ):
         if self.session is not None:
             raise RuntimeError("Native experiment is already attached")
-        report = native_report(exe)
+        # source_language may already have produced this version-verified
+        # report during the short, hook-free startup probe.
+        report = native_report(exe) if report is None else dict(report)
         report["diagnostics"] = bool((config or {}).get("diagnostics", False))
         source = "\n".join(
             (ROOT / name).read_text(encoding="utf-8")
             for name in (
                 "sora_bilingual/game/scripts/runtime_text.js",
+                "sora_bilingual/game/scripts/runtime_paragraph.js",
                 "sora_bilingual/game/scripts/runtime_identity.js",
                 "sora_bilingual/game/scripts/native_hash.js",
+                "sora_bilingual/game/scripts/native_geometry.js",
+                "sora_bilingual/game/scripts/native_parser.js",
+                "sora_bilingual/game/scripts/native_measure.js",
                 "sora_bilingual/game/scripts/native_agent.js",
                 "sora_bilingual/game/scripts/native_transport.js",
             )
@@ -199,14 +219,23 @@ class NativeLabels:
                     config.get("annotation_scale", 0.9),
                     {
                         k: config[k]
-                        for k in ("ruby_scale", "ruby_gap", "ruby_offset_x", "line_gap")
+                        for k in (
+                            "ruby_scale",
+                            "ruby_gap",
+                            "ruby_offset_x",
+                            "line_gap",
+                            "secondary_color",
+                            "secondary_opacity",
+                            "bilingual_offset_y",
+                        )
                         if k in config
                     },
                 )
             except frida.RPCException, OSError, ValueError:
                 # Corrupt/unsupported cache keeps the active model intact.
                 # The existing bounded transfer is the compatibility fallback.
-                pass
+                if model is None:
+                    raise
         token = uuid.uuid4().hex
         rpc.modelbegin(token)
         try:
@@ -228,7 +257,15 @@ class NativeLabels:
                 config.get("annotation_scale", 0.9),
                 {
                     k: config[k]
-                    for k in ("ruby_scale", "ruby_gap", "ruby_offset_x", "line_gap")
+                    for k in (
+                        "ruby_scale",
+                        "ruby_gap",
+                        "ruby_offset_x",
+                        "line_gap",
+                        "secondary_color",
+                        "secondary_opacity",
+                        "bilingual_offset_y",
+                    )
                     if k in config
                 },
             )
@@ -247,6 +284,7 @@ class NativeLabels:
             (ROOT / name).read_text("utf-8")
             for name in (
                 "sora_bilingual/game/scripts/runtime_text.js",
+                "sora_bilingual/game/scripts/runtime_paragraph.js",
                 "sora_bilingual/game/scripts/runtime_identity.js",
             )
         )
@@ -257,7 +295,15 @@ class NativeLabels:
             config.get("annotation_scale", 0.9),
             {
                 k: config[k]
-                for k in ("ruby_scale", "ruby_gap", "ruby_offset_x", "line_gap")
+                for k in (
+                    "ruby_scale",
+                    "ruby_gap",
+                    "ruby_offset_x",
+                    "line_gap",
+                    "secondary_color",
+                    "secondary_opacity",
+                    "bilingual_offset_y",
+                )
                 if k in config
             },
         )

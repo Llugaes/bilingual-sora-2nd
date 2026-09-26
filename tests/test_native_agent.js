@@ -8,15 +8,18 @@ const vm = require('node:vm');
 
 const AGENT = fs.readFileSync(path.join(__dirname, '..', 'sora_bilingual/game/scripts/native_agent.js'), 'utf8');
 const RESOLVER = fs.readFileSync(path.join(__dirname, '..', 'sora_bilingual/game/scripts/runtime_text.js'), 'utf8');
+const PARAGRAPHS = fs.readFileSync(path.join(__dirname, '..', 'sora_bilingual/game/scripts/runtime_paragraph.js'), 'utf8');
 const IDENTITIES = fs.readFileSync(path.join(__dirname, '..', 'sora_bilingual/game/scripts/runtime_identity.js'), 'utf8');
 
-function makeRuntime(rubyCase = null) {
+function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = false) {
     const hooks = new Map();
     const messages = [];
     const allocations = [];
     let threadId = 1;
     let duringSetter=null;
     const scriptReads=[];
+    const memoryCost={scalarReads:0,blockReads:0,scalarWrites:0,blockWrites:0,textReads:0};
+    const measureScopes={pushes:[],pops:[]};
 
     class Pointer {
         constructor(address) { this.address = address; }
@@ -25,16 +28,27 @@ function makeRuntime(rubyCase = null) {
         isNull() { return false; }
         toString() { return `0x${this.address.toString(16)}`; }
         toInt32() {return this.address|0;}
-        readByteArray(size) { return new Uint8Array(size).buffer; }
+        readByteArray(size) {
+            const bytes=new Uint8Array(size);
+            if(this.address===0x10001500)bytes.set([0x48,0x8b,0x9c,0x24,0xc0,0,0,0].slice(0,size));
+            return bytes.buffer;
+        }
+        writeByteArray(){}
     }
 
     class TextPointer extends Pointer {
         constructor(label) { super(label.address + 0x9000); this.label = label; }
-        readUtf8String() { return this.label.owned.text; }
+        readUtf8String() { memoryCost.textReads++;return this.label.owned.text; }
     }
 
     class FieldPointer extends Pointer {
         constructor(label, offset) { super(label.address + offset); this.label = label; this.offset = offset; }
+        readByteArray(size) {
+            const data=new ArrayBuffer(size),view=new DataView(data);
+            for(const [offset,value] of [[0x2e8,this.label.flags],[0x304,this.label.fontSize]])
+                if(offset>=this.offset&&offset+4<=this.offset+size)view.setUint32(offset-this.offset,value,true);
+            return data;
+        }
         readPointer() {
             if(this.offset===0x680)return this.label.glyphManager;
             if(this.offset===0x88)return this.label.name ? allocate(this.label.name) : nullPointer;
@@ -48,8 +62,11 @@ function makeRuntime(rubyCase = null) {
             if (this.offset === 0x304) return this.label.fontSize;
             if (this.offset === 0x330) return this.label.glyphs;
             if (this.offset === 0x334) return this.label.total;
+            if (this.offset === 0x668) return this.label.logLines||0;
+            if (this.offset === 0x41c) return this.label.revealUnits || 0;
             throw Error(`unexpected numeric field ${this.offset}`);
         }
+        readS32(){if(this.offset===0x36c)return 0;if(this.offset===0x374)return this.label.logBottom||0;return this.readU32()|0;}
         readFloat() {if(this.offset===0x378)return this.label.progress;if(this.offset===0x2fc)return -12;throw Error('unexpected float field');}
         writeFloat(value) {if(this.offset===0x378){this.label.progress=value;return;}throw Error('unexpected float field');}
         writeU32(value) {if(this.offset===0x2e8){this.label.flags=value;return;}throw Error('unexpected integer field');}
@@ -86,9 +103,21 @@ function makeRuntime(rubyCase = null) {
     class ScratchPointer extends Pointer {
         constructor(address,values=new Map(),offset=0) {super(address);this.values=values;this.offset=offset;}
         add(n){return new ScratchPointer(this.address+n,this.values,this.offset+n);}
-        readFloat(){return this.values.get(this.offset)??0;}
-        writeFloat(v){this.values.set(this.offset,v);}
-        readPointer(){return this.values.get(this.offset)??nullPointer;}
+        readFloat(){memoryCost.scalarReads++;return this.values.get(this.offset)??0;}
+        writeFloat(v){memoryCost.scalarWrites++;this.values.set(this.offset,v);}
+        readPointer(){memoryCost.scalarReads++;return this.values.get(this.offset)??nullPointer;}
+        readByteArray(size){
+            memoryCost.blockReads++;
+            const view=new DataView(new ArrayBuffer(size));
+            for(let i=0;i+4<=size;i+=4){const at=this.offset+i,value=this.values.get(at)??0;if(at===0xc0)view.setUint32(i,value,true);else view.setFloat32(i,value,true);}
+            return view.buffer;
+        }
+        writeByteArray(bytes){
+            memoryCost.blockWrites++;
+            const view=new DataView(Uint8Array.from(new Uint8Array(bytes)).buffer);
+            for(let i=0;i+4<=view.byteLength;i+=4)this.values.set(this.offset+i,view.getFloat32(i,true));
+        }
+        writePointer(v){this.values.set(this.offset,v);}
         readU8(){return this.values.get(this.offset)??0;}
         writeU8(v){this.values.set(this.offset,v);}
         writeS32(v){this.values.set(this.offset,v);}
@@ -108,7 +137,9 @@ function makeRuntime(rubyCase = null) {
         toString() { return '0x0'; },
     };
     const REPORT = {
+        diagnostics,
         node_names:true,
+        icon_callback_vtable:0xb18458,
         vtable: 0x500,
         native: {
             set_text: {rva: 0x100, bytes: '00000000000000000000000000000000'},
@@ -129,8 +160,19 @@ function makeRuntime(rubyCase = null) {
             ruby_compensate:{rva:0xb00,bytes:'00000000000000000000000000000000'},
             ruby_end:{rva:0xc00,bytes:'00000000000000000000000000000000'},
             parse_text:{rva:0xd00,bytes:'00000000000000000000000000000000'},
+            icon_callback_clone:{rva:0xd10,bytes:'00000000000000000000000000000000'},
             dialogue_popup:{rva:0xe00,bytes:'00000000000000000000000000000000'},
             dialogue_builder:{rva:0xf00,bytes:'00000000000000000000000000000000'},
+            quest_builder:{rva:0x1100,bytes:'00000000000000000000000000000000'},
+            quest_paragraph_ready:{rva:0x1200,bytes:'00000000000000000000000000000000'},
+            quest_line_return:{rva:0x1300,bytes:'00000000000000000000000000000000'},
+            log_measure:{rva:0x1400,bytes:'00000000000000000000000000000000'},
+            log_measure_row:{rva:0x1500,bytes:'488b9c24c00000000000000000000000'},
+            log_measure_calculate:{rva:0x1600,bytes:'00000000000000000000000000000000'},
+            log_measure_body:{rva:0x1680,bytes:'00000000000000000000000000000000'},
+            log_measure_row_end:{rva:0x1700,bytes:'00000000000000000000000000000000'},
+            font_reset:{rva:0x1800,bytes:'00000000000000000000000000000000'},
+            font_load:{rva:0x1900,bytes:'00000000000000000000000000000000'},
         },
     };
 
@@ -175,7 +217,13 @@ function makeRuntime(rubyCase = null) {
         }
     }
 
+    // This contract harness intentionally exercises internal re-entry guards.
+    // Real Frida suppresses nested hooks: cold/hot measurement must also pass
+    // check_native_reentry.py, which runs production callbacks in real Frida.
     function NativeFunction(address) {
+        if(address.equals(base.add(REPORT.native.icon_callback_clone.rva)))return (source,target)=>{
+            target.writePointer(source.readPointer());target.add(8).writePointer(source.add(8).readPointer());return target;
+        };
         if(address.equals(base.add(REPORT.native.reset_text.rva)))return label=>{
             label.resetCount++;label.cursor=0;label.parserText=label.owned;
             label.glyphs=0;label.progress=0;label.dirty[0x688]=1;
@@ -194,15 +242,30 @@ function makeRuntime(rubyCase = null) {
     const sandbox = {
         REPORT,
         Process: {
+            arch:'x64',pageSize:4096,
             getModuleByName(name) {
                 assert.equal(name, 'sora_2nd.exe');
                 return {base};
             },
             getCurrentThreadId() { return threadId; },
         },
-        Memory: {allocUtf8String: allocate},
+        Memory: {allocUtf8String: allocate,alloc:()=>new Pointer(0x11000000),protect:()=>true,
+            patchCode:(p,n,fn)=>fn(p)},
+        X86Writer:class {
+            constructor(p,{pc}){this.pc=pc;this.offset=0;}
+            putNop(){this.offset++;}
+            putXorRegReg(){this.offset+=2;}
+            putMovRegRegOffsetPtr(){} putCmpRegI32(){} putJccShortLabel(){} putLabel(){}
+            putJmpAddress(target){
+                // Scalar policy tests model the gate; its emitted machine code
+                // is independently executed by check_native_log_measure.py.
+                if(this.pc.equals(base.add(0x1500)))hooks.set(String(this.pc),hooks.get(String(target.add(2))));
+                this.offset+=5;
+            }
+            flush(){} dispose(){}
+        },
         NativeFunction,
-        Interceptor: {attach(address, callback) { hooks.set(String(address), callback); }},
+        Interceptor: {attach(address, callback) { hooks.set(String(address),typeof callback==='function'?{onEnter:callback}:callback); },flush(){}},
         send(message) { messages.push(message); },
         rpc: {exports: {}},
         Uint8Array,
@@ -214,14 +277,73 @@ function makeRuntime(rubyCase = null) {
         String,
         ptr:v=>new Pointer(v),
     };
+    if(measureBackend)sandbox.createNativeMeasure=callbacks=>({
+        onEnter:callbacks.onEnter,onLeave:callbacks.onLeave,
+        push(thread,label,owned,factor){const token=measureScopes.pushes.length+1;measureScopes.pushes.push({thread,label:String(label),text:owned.readUtf8String(),factor,token});return token;},
+        pop(thread,token){measureScopes.pops.push({thread,token});},
+        status(){return {pushes:measureScopes.pushes.length,pops:measureScopes.pops.length};}
+    });
     const context=vm.createContext(sandbox);
-    vm.runInContext(RESOLVER+'\n'+IDENTITIES+'\n'+AGENT, context, {filename: 'native_agent.js'});
+    vm.runInContext(RESOLVER+'\n'+PARAGRAPHS+'\n'+IDENTITIES+'\n'+AGENT, context, {filename: 'native_agent.js'});
 
     return {
         api: sandbox.rpc.exports,
         messages,
         allocations,
         scriptReads,
+        memoryCost,
+        measureScopes,
+        fontReload(load=false){invoke(base.add(load?0x1900:0x1800),[])();},
+        logMeasure(records,{mode=0,fontSize=29,flags=1,metric=72,textKeyHash=0,mismatch=false,planMismatch=false,width=900,descriptorHeight}={}) {
+            const owner=new ScratchPointer(0x410000),stack=new ScratchPointer(0x420000);
+            owner.values.set(0x1d4,mode);
+            const name=new LabelPointer(0x430000,'',0,fontSize),body=new LabelPointer(0x440000,'',0,fontSize);
+            name.name='name';body.name='text';name.flags=body.flags=flags;
+            body.textKeyHash=textKeyHash;
+            const window=new ScratchPointer(0x450000);window.add(0x2d8).writeS32(width);
+            const begin=hooks.get(String(base.add(0x1400))),rowHook=hooks.get(String(base.add(0x1500))),end=hooks.get(String(base.add(0x1700)));
+            const call={};begin?.onEnter.call(call,[owner]);
+            const result={setters:0,cleanup:0,heights:[],widths:[],ids:[]},vmContext=context;
+            for(let i=0;i<records.length;i++) {
+                const record=new ScratchPointer(0x460000),descriptor=new ScratchPointer(0x470000);
+                record.add(0x20).writePointer(allocate(records[i][0]));record.add(8).writePointer(allocate(records[i][1]));
+                descriptor.writeS32(i+1);
+                stack.add(0xc0).writePointer(record);stack.add(0xc8).writePointer(descriptor);
+                const context={r13:owner,rsi:name,rdi:body,r14:window,rsp:stack,rip:base.add(0x1500)};
+                rowHook?.onEnter.call({context});
+                context.rbx=record;
+                context.rip=base.add([0x1500,0x1700,0x1600,0x1680][context.rax.toInt32()]);
+                if(context.rip.equals(base.add(0x1500))||context.rip.equals(base.add(0x1680))) {
+                    const inputs=[[name,record.add(0x20).readPointer()],[body,record.add(8).readPointer()]];
+                    for(const [p,input] of context.rip.equals(base.add(0x1680))?inputs.slice(1):inputs) {
+                        const args=[p,input],leave=invoke(base.add(0x100),args);
+                        copyIntoLabel(p,args[1]);invoke(base.add(0x190),[p])();leave();result.setters++;
+                        p.logLines=input.readUtf8String()?input.readUtf8String().split(/\n|\\n/).length:0;
+                        p.logBottom=metric+i;
+                    }
+                    if(mismatch)body.owned.text='Changed after preview';
+                    if(planMismatch)vm.runInContext('labels.get("'+String(body)+'").plan={...labels.get("'+String(body)+'").plan,layers:[{text:"different secondary"}]};',vmContext);
+                }
+                if(!context.rip.equals(base.add(0x1700))) {
+                    context.rip=base.add(0x1600);
+                    hooks.get(String(base.add(0x1600)))?.onEnter.call({context});
+                    if(!context.rip.equals(base.add(0x1700))) {
+                        const nh=name.total?name.logLines*33:0,bh=body.total?body.logBottom+body.logLines:0;
+                        descriptor.add(0x14).writeS32(width);
+                        descriptor.add(0x18).writeFloat(mode===1?148:bh+nh+37+(nh===0?-3:0)+5);
+                    }
+                }
+                if(descriptorHeight!==undefined)descriptor.add(0x18).writeFloat(descriptorHeight);
+                end?.onEnter.call({context});
+                result.heights.push(descriptor.add(0x18).readFloat());result.ids.push(descriptor.readS32());
+                result.widths.push(descriptor.add(0x14).readS32());
+            }
+            // The native destructor tail must run even for every cache hit.
+            result.cleanup=records.length;
+            begin?.onLeave.call(call);
+            assert.equal(sandbox.rpc.exports.status().failed,false,JSON.stringify(sandbox.rpc.exports.status()));
+            return result;
+        },
         dialogueSet(label,text,data,functionName,values) {
             const machine=new ScratchPointer(0x34000000),object=new ScratchPointer(0x35000000),stack=new ScratchPointer(0x36000000);
             object.values.set(0,new RegionPointer(data));machine.values.set(8,object);
@@ -252,17 +374,36 @@ function makeRuntime(rubyCase = null) {
             parser.add(0x1ab).writeU8(measurement?1:0);
             const context={r15:label,rbx:parser};
             hooks.get(String(base.add(0xb00))).onEnter.call({context});
-            if(!parser.add(0x1a7).readU8())parser.add(4).writeFloat(112);
+            if(!parser.add(0x1a7).readU8()) {
+                parser.add(4).writeFloat(112);
+                parser.add(0x1a7).writeU8(1);
+            }
             hooks.get(String(base.add(0xc00))).onEnter.call({context});
             return {y:parser.add(4).readFloat(),flag:parser.add(0x1a7).readU8()};
+        },
+        rubyAllowed(label,measurement=false) {
+            const parser=new ScratchPointer(0x770000),context={r15:label,rbx:parser};
+            parser.add(0x1ab).writeU8(measurement?1:0);
+            hooks.get(String(base.add(0x650))).onEnter.call({context});
+            // 0x586f49: flag 8 suppresses the annotation body entirely.
+            const allowed=!(label.flags&8);
+            hooks.get(String(base.add(0xc00))).onEnter.call({context});
+            return allowed;
         },
         auxiliary(label,index=0,geometry={}) {
             const row=sandbox.rpc.exports.snapshot().find(v=>v.original===label.originalForTest||v.displayed===label.text());
             const layer=row.layers[index];
             const parser=new ScratchPointer(0x700000);
+            if(geometry.iconCallback){
+                const callback=new ScratchPointer(0x710000);
+                callback.writePointer(base.add(REPORT.icon_callback_vtable));callback.add(8).writePointer(label);
+                parser.add(0x240).writePointer(callback);
+            }
             parser.writeFloat(20);parser.add(4).writeFloat(geometry.origin??100);
             parser.values.set(8,label.add(0x318).readPointer().add(layer.offset));
             const frame=new ScratchPointer(0x800000);
+            parser.add(0x1c).writeS32(geometry.unitStart??0);
+            frame.add(0x22c).writeS32(geometry.primaryUnits??0);
             frame.add(0x17c).writeS32(0);frame.add(0x184).writeS32(geometry.bottom??18);
             for(const off of [0x3c8,0x3cc,0x3d0,0x3d4])frame.add(off).writeS32(0x7fffffff);
             const machine={r15:label,rbx:parser,rbp:frame};
@@ -288,6 +429,8 @@ function makeRuntime(rubyCase = null) {
                 child.add(0x1a5).writeU8(1);ph.onEnter.call(parseCall,[label,child]);
                 results.push({text:args[1].readUtf8String(),count:args[2].toInt32(),
                     x:child.readFloat(),y:child.add(4).readFloat(),scale:child.add(0x158).readFloat(),
+                    iconCallback:!child.add(0x240).readPointer().isNull(),
+                    iconCallbackOwned:child.add(0x240).readPointer().equals?.(child.add(0x208))??false,
                     nestedRubyDisabled:child.add(0x1a5).readU8()});
                 ph.onLeave.call(parseCall);
             }
@@ -319,6 +462,18 @@ function makeRuntime(rubyCase = null) {
             for(let i=0;i<label.glyphs;i++) {const q=a.add(i*8).readPointer();out.push([0x38,0x3c,8,0x1c].map(o=>q.add(o).readFloat()));}
             lease();return out;
         },
+        glyphColors(label,values) {
+            const a=label.glyphManager.add(0x20).readPointer();
+            if(values)values.forEach((v,i)=>v.forEach((c,j)=>a.add(i*8).readPointer().add(0x98+j*4).writeFloat(c)));
+            return Array.from({length:label.glyphs},(_,i)=>[0,1,2,3].map(j=>a.add(i*8).readPointer().add(0x98+j*4).readFloat()));
+        },
+        finishLayout(label) {
+            hooks.get(String(base.add(REPORT.native.layout_ready.rva))).onEnter.call({context:{rsi:label}});
+        },
+        glyphGeometry(label) {
+            const a=label.glyphManager.add(0x20).readPointer();
+            return Array.from({length:label.glyphs},(_,i)=>[0x38,0x3c,8,0x1c].map(o=>a.add(i*8).readPointer().add(o).readFloat()));
+        },
         capturedRuby(label,quads,primaryEnd,measurement=false) {
             this.capturedRubyRuns(label,quads,[[0,primaryEnd,quads.length]],measurement);
         },
@@ -348,11 +503,57 @@ function makeRuntime(rubyCase = null) {
             });
         },
         newline(label,bottom) {
-            const call={context:{r13:label,r12:new Pointer(bottom)}};
+            const call={context:{r13:label,rsi:new ScratchPointer(0x700000),r12:new Pointer(bottom)}};
             hooks.get(String(base.add(REPORT.native.newline_prepare.rva))).onEnter.call(call);
             return call.context.r12.address;
         },
         label(address, text, glyphs, fontSize) { return new LabelPointer(address, text, glyphs, fontSize); },
+        questBegin(currentThread=1) {
+            threadId=currentThread;
+            const call={};hooks.get(String(base.add(REPORT.native.quest_builder.rva))).onEnter.call(call);
+            return call;
+        },
+        questParagraph(source,currentThread=1) {
+            threadId=currentThread;
+            const rbp={add(offset) {assert.equal(offset,0x760);return allocate(source);}};
+            hooks.get(String(base.add(REPORT.native.quest_paragraph_ready.rva))).onEnter.call({context:{rbp}});
+        },
+        questLine(label,text,currentThread=1,returnAddress=base.add(REPORT.native.quest_line_return.rva)) {
+            threadId=currentThread;
+            const buffer=allocate(text),args=[label,buffer],call={returnAddress};
+            const hook=hooks.get(String(base.add(REPORT.native.set_text.rva)));
+            hook.onEnter.call(call,args);copyIntoLabel(label,args[1]);hook.onLeave.call(call);
+            return buffer;
+        },
+        questEnd(call,currentThread=1) {
+            threadId=currentThread;hooks.get(String(base.add(REPORT.native.quest_builder.rva))).onLeave.call(call);
+        },
+        laneCount(label) {
+            return vm.runInContext('labels.get('+JSON.stringify(String(label))+')?.glyphLanes?.length ?? 0',context);
+        },
+        repeatOwnedRubyParse(label,rounds,primaryStart=1) {
+            const parser=new ScratchPointer(0xd10000),frame=new ScratchPointer(0xd20000),context={r15:label,rbx:parser,rbp:frame};
+            parser.writeFloat(100);parser.add(4).writeFloat(80);
+            frame.add(0x3c8).writeS32(0);frame.add(0x3d0).writeS32(50);
+            const begin=hooks.get(String(base.add(REPORT.native.ruby_begin.rva))),init=hooks.get(String(base.add(REPORT.native.ruby_context_init.rva))),
+                compensate=hooks.get(String(base.add(REPORT.native.ruby_compensate.rva))),end=hooks.get(String(base.add(REPORT.native.ruby_end.rva)));
+            for(let i=0;i<rounds;i++) {
+                label.glyphs=primaryStart;begin.onEnter.call({context});
+                label.glyphs=primaryStart+2;
+                const target=new ScratchPointer(0xd30000);target.add(0x158).writeFloat(.375);target.add(0x15c).writeFloat(.375);
+                const call={returnAddress:base.add(REPORT.native.ruby_place_return.rva),context},args=[target,allocate(''),new Pointer(1)];
+                init.onEnter.call(call,args);init.onLeave.call(call);
+                label.glyphs=primaryStart+3;compensate.onEnter.call({context});end.onEnter.call({context});
+            }
+        },
+        setGlyphQuads(label,quads) {
+            const array=new ScratchPointer(0xd40000),manager=new ScratchPointer(0xd50000);manager.values.set(0x20,array);label.glyphManager=manager;label.glyphs=quads.length;
+            quads.forEach(([x,y,w,h,kind=0],i)=>{
+                const q=new ScratchPointer(0xd60000+i*0x100);
+                for(const [o,v] of [[0x38,x],[0x3c,y],[8,w],[0x1c,h],[0xc0,kind]])q.values.set(o,v);
+                array.values.set(i*8,q);
+            });
+        },
         externalSet(label, text, currentThread=1) {
             threadId=currentThread;
             const buffer = allocate(text);
@@ -378,7 +579,10 @@ function makeRuntime(rubyCase = null) {
         update(label, currentThread = 1) {
             threadId = currentThread;
             const leave=invoke(base.add(REPORT.native.update.rva), [label]);
-            if(label.dirty[0x689]) {label.reflows++;label.dirty[0x689]=0;}
+            if(label.dirty[0x689]) {
+                invoke(base.add(0x190),[label])();
+                label.reflows++;label.dirty[0x689]=0;
+            }
             if((label.flags&4)&&!(label.flags&0x10)&&label.dirty[0x688]) {
                 const count=Math.min(label.total,Math.floor(label.progress));
                 if(label.parserText===label.owned&&count>label.cursor){label.glyphs+=count-label.cursor;label.cursor=count;}
@@ -663,7 +867,7 @@ test('mixed chapter and difficulty keep native size, advance and following basel
     const label=runtime.label(0x4620,source);runtime.update(label);
     assert.equal(label.text(),'<R>第２章“大地翻腾”</R２章「荒ぶる大地」>　　　　 ＜Nightmare＞');
     assert.deepEqual(runtime.compensate(label),{y:100,flag:0});
-    assert.deepEqual(runtime.compensate(label,true),{y:100,flag:0});
+    assert.deepEqual(runtime.compensate(label,true),{y:112,flag:1});
     assert.equal(runtime.parseOrigin(label),100);
     runtime.api.disable();runtime.update(label);assert.equal(label.text(),source);
 });
@@ -691,15 +895,59 @@ test('geometry-only changes remeasure unchanged annotated text once, leaving pla
     const r=makeRuntime(),label=r.label(0x4680,'Text'),plain=r.label(0x4690,'4');
     r.api.load({pairs:{Text:['Text','Texte']},plain_pairs:{Text:['Text','Texte']}},'annotation',true,.86);
     r.update(label);r.update(plain);
-    const text=label.text(),copies=label.copyCount;
+    const text=label.text(),copies=label.copyCount,reflows=label.reflows;
     r.api.style(.86,{ruby_scale:.7,ruby_gap:2,line_gap:5});
     r.update(label);r.update(plain);
     assert.equal(label.text(),text);assert.equal(label.copyCount,copies);
-    assert.equal(label.reflows,1);assert.equal(plain.reflows,0);
-    r.update(label);assert.equal(label.reflows,1);
+    assert.equal(label.reflows,reflows+1);assert.equal(plain.reflows,0);
+    r.update(label);assert.equal(label.reflows,reflows+1);
 });
 
-test('mixed party rows retain native baselines, line advances and level geometry',()=>{
+test('every hot text refresh gets one formal measurement after the nested setter',()=>{
+    const pairs=[['Text','Texte'],['回复','回復'],['我方','味方'],['恢复HP','HP回復'],
+        ['Description','説明'],['<C3>Formatted</C>','<C3>装飾</C>']];
+    const entries=Object.fromEntries(pairs.map(p=>[p[0],p]));
+    const model={pairs:entries,plain_pairs:entries};
+    const sources=['Text','<C3>回复</C>/<I299>我方 恢复HP\nDescription','<C3>Formatted</C>'];
+    for(const flags of [0,8,12,72,4,20])for(const source of sources) {
+        const r=makeRuntime(),p=r.label(0xb330,'');p.flags=flags;
+        r.api.load(model,'primary',true,.85);r.externalSet(p,source);
+        p.progress=p.total/2;
+        const fraction=p.progress/p.total;
+        for(const mode of ['annotation','primary','annotation']) {
+            const before=p.reflows;
+            r.api.select(mode,true);r.update(p);
+            assert.equal(p.reflows,before+1,`missing formal measure: ${flags}/${source}/${mode}`);
+            assert.equal(p.flags,flags,'pause and permission flags must be restored');
+            if(flags&4)assert.equal(p.progress/p.total,fraction,'refresh retains reveal fraction');
+            r.update(p);r.update(p);
+            assert.equal(p.reflows,before+1,'stable frames must not repeat measurement');
+            assert.equal(r.api.status().failed,false,r.api.status().failureReason);
+        }
+    }
+});
+
+test('small and late-bound native sizes retain bilingual text without stopping other labels',()=>{
+    for(const size of [0,1,8,11,257,0xffffffff]) {
+        const r=makeRuntime(),source='魔獣',pairs={[source]:['Monster','魔獣']};
+        r.api.load({pairs,plain_pairs:pairs},'annotation',true,.8);
+        const p=r.label(0x4691,source,0,size),other=r.label(0x4692,source,0,32);
+        r.update(p);r.update(other);
+        assert.equal(p.text(),'<R>Monster</R魔獣>');
+        assert.match(other.text(),/^<s26>/);
+        assert.equal(r.api.status().failed,false);
+        assert.deepEqual([...r.api.status().nativeSizeFallbacks],[size]);
+        r.capturedRubyRuns(p,[[20,40,10,10],[20,18,6,6]],[[0,1,2]]);
+        const scaled=r.glyphLayout(p);
+        assert.equal(scaled[0][2],8);assert.ok(Math.abs(scaled[1][2]-4.8)<.00001);
+        r.api.select('primary',true);r.update(p);assert.equal(p.text(),'Monster');
+        r.api.select('annotation',true);r.update(p);assert.match(p.text(),/<R>/);
+        p.fontSize=24;r.update(p);assert.match(p.text(),/^<s19>/);
+        r.api.disable();r.update(p);assert.equal(p.text(),source);
+    }
+});
+
+test('mixed party rows scale owned text while retaining native advances and level geometry',()=>{
     const r=makeRuntime(),source=' ·Estelle    Lv.39\n ·Olivier    Lv.39';
     const pairs={Estelle:['Estelle','エステル'],Olivier:['Olivier','オリビエ']};
     r.api.load({pairs,plain_pairs:pairs},'annotation',true,.8,{ruby_gap:2,line_gap:12});
@@ -712,21 +960,47 @@ test('mixed party rows retain native baselines, line advances and level geometry
         [20,76,26,26],[20,64,14,14],[130,76,26,26]];
     r.capturedRubyRuns(p,input,[[0,1,2],[3,4,5]]);
     const output=r.glyphLayout(p);
-    for(const i of [0,2,3,5])assert.deepEqual(output[i],input[i]);
+    for(const i of [2,5])assert.deepEqual(output[i],input[i]);
+    for(const i of [0,3]) {
+        assert.ok(Math.abs(output[i][3]-input[i][3]*.8)<.001,'owned main text follows configured scale');
+        assert.ok(Math.abs(output[i][1]+output[i][3]/2-input[i][1]-input[i][3]/2)<1e-5,'retain original float32 bottom');
+    }
     for(const [main,secondary] of [[0,1],[3,4]])
-        assert.equal(output[main][1]-13-(output[secondary][1]+7),2);
+        assert.ok(Math.abs(output[main][1]-output[main][3]/2-(output[secondary][1]+output[secondary][3]/2)-2)<.001);
+    assert.deepEqual(r.glyphLayout(p),output,'cached mixed rows must not shrink repeatedly');
     r.api.select('primary',true);r.update(p);
     assert.deepEqual(r.glyphLayout(p),output,'stale ruby ranges cannot move plain glyphs');
     assert.equal(p.text(),source);assert.equal(r.parseOrigin(p),112);
 });
 
-test('native first measurement reserves the same ruby height as a main-font refresh',()=>{
+test('mixed formatted text scales around native icons without shrinking counters or accumulating',()=>{
+    for(const scale of [.7,.8,1]) {
+        const r=makeRuntime(),a='<C2>Name<I7>Text</C>\n42',b='<C2>Nom<I7>Texte</C>\n42';
+        r.api.load({pairs:{[a]:[a,b]},plain_pairs:{[a]:[a,b]}},'annotation',true,scale,{ruby_gap:2});
+        const p=r.label(0x4622,a,0,40);r.update(p);
+        const input=[[20,12,20,20],[20,40,40,40],[70,40,40,40,1],[120,40,40,40],[20,90,40,40]];
+        r.auxiliary(p,0,{glyphQuads:input,secondaryCount:1});
+        p.glyphs=4;r.newline(p,60);p.glyphs=5;
+        assert.equal(r.api.status().failed,false,r.api.status().failureReason);
+        // The following plain line belongs to the same native glyph array,
+        // but is not part of the translated primary line.
+        const output=r.glyphLayout(p);
+        assert.deepEqual(output[2],input[2].slice(0,4),'native icon retains size and position');
+        assert.deepEqual(output[4],input[4],'following plain counter retains size and position');
+        assert.equal(output[1][2],40*scale);
+        assert.equal(output[3][2],40*scale);
+        assert.deepEqual(r.glyphLayout(p),output);
+        assert.equal(r.api.status().failed,false);
+    }
+});
+
+test('ruby-enabled native measurement retains its ruby-height reserve',()=>{
     const r=makeRuntime(),label=r.label(0x4681,'输入');
     r.api.configure({'输入':'<R>输入</R入力>'},true,.86);r.update(label);
     // Captured native trace: ordinary initial SetText runs parser hooks; a
     // nested setter from Update measures natively without those callbacks.
     // Suppression in the first path incorrectly dropped 12 layout units.
-    assert.deepEqual(r.compensate(label,true),{y:112,flag:0});
+    assert.deepEqual(r.compensate(label,true),{y:112,flag:1});
     assert.deepEqual(r.compensate(label,false),{y:100,flag:0});
 });
 
@@ -773,6 +1047,31 @@ test('horizontal offset moves only new drawing, retaining list clamp and origina
     assert.equal(result.primaryX,20);assert.equal(result.primaryY,100);
     assert.equal(result.results[1].x,27);
     runtime.api.disable();runtime.update(label);assert.equal(label.text(),source);
+});
+
+test('secondary icon parser owns a cloned icon callback only for its drawing pass',()=>{
+    const runtime=makeRuntime(),source='<I289>物理攻击',secondary='<I289>物理攻撃';
+    runtime.api.load({pairs:{[source]:[source,secondary]},plain_pairs:{[source]:[source,secondary]}},'annotation',true,.85);
+    const label=runtime.label(0x4398,source,0,32);runtime.update(label);
+    const result=runtime.auxiliary(label,0,{iconCallback:true});
+    assert.equal(result.results[0].iconCallback,false,'measuring must not draw icons');
+    assert.equal(result.results[1].iconCallback,true,'drawing must receive the native icon callback');
+    assert.equal(result.results[1].iconCallbackOwned,true,'the child must own its callback storage, not borrow parent lifetime');
+    const without=runtime.auxiliary(label);
+    assert.equal(without.results[1].iconCallback,false,'a measuring parent cannot acquire drawing callbacks');
+    assert.equal(runtime.api.status().failed,false);
+});
+
+test('logic reload rejects native instrumentation before executing any supplied code',()=>{
+    const r=makeRuntime(),p=r.label(0x9210,'原文');
+    r.api.load({pairs:{'原文':['原文','訳文']},plain_pairs:{'原文':['原文','訳文']}},'secondary',true,1);r.update(p);
+    for(const source of [
+        'Interceptor.attach(ptr(123), {});',
+        'new NativeFunction(ptr(123), "void", []);',
+        'Memory.allocUtf8String("test");',
+        'globalThis.nativeProbe = Process.getCurrentThreadId();',
+    ])assert.throws(()=>r.api.reloadlogic(source),/Resident instrumentation cannot be hot-loaded/);
+    r.update(p);assert.equal(p.text(),'訳文');assert.equal(r.api.status().failed,false);
 });
 
 test('newline breathing room applies only while this mod owns an annotated label', () => {
@@ -853,7 +1152,7 @@ test('mode change during a native setter is applied on the next update rather th
 });
 
 test('ruby annotation scale prefixes an absolute native size and disable restores raw text', () => {
-    const runtime = makeRuntime();
+    const runtime = makeRuntime(null,true);
     const label = runtime.label(0x4050, 'raw ruby', 7, 29);
     runtime.externalSet(label, 'raw ruby');
     runtime.api.configure({'raw ruby': '<R>base</Rannotation>'}, true, 0.9);
@@ -865,6 +1164,17 @@ test('ruby annotation scale prefixes an absolute native size and disable restore
     runtime.api.disable();
     runtime.update(label);
     assert.equal(label.text(), 'raw ruby');
+});
+
+test('bulk history updates do not stream per-label text when diagnostics are disabled',()=>{
+    for(const diagnostics of [false,true]) {
+        const r=makeRuntime(null,diagnostics);
+        r.api.configure({source:'<R>Primary</RSecondary>'},true,.8);
+        for(let i=0;i<400;i++)r.update(r.label(0x8000+i*0x10000,'source'));
+        assert.equal(r.api.status().writes,400);
+        assert.equal(r.messages.filter(v=>v.type==='native_text').length,diagnostics?400:0);
+        assert.equal(r.api.status().failed,false);
+    }
 });
 
 test('null RPC scale uses the native default and does not add a size tag', () => {
@@ -928,6 +1238,128 @@ test('original native ruby in single-language mode never gets mod geometry',()=>
     assert.equal(sample.scale,.375);assert.equal(sample.y,0);
 });
 
+test('native reading in the secondary does not exempt a whole page from main scaling',()=>{
+    const r=makeRuntime(),a='门的接缝不好。\n门外很安静。',b='戸の<R>建付</Rたてつけ>が悪い。\n外は静かだ。';
+    r.api.load({pairs:{[a]:[a,b]},plain_pairs:{[a]:[a,b]}},'annotation',true,.85);
+    const p=r.label(0xb100,a,0,32);r.update(p);
+    assert.ok(p.text().startsWith('<s27>'), 'secondary reading must not suppress configured main scale');
+    assert.equal(r.api.snapshot().find(v=>v.original===a).layers.length,2);
+    r.api.select('primary',true);r.update(p);assert.equal(p.text(),a);
+});
+
+test('catalog labels permit only owned annotations inside native ruby-disabled controls',()=>{
+    const r=makeRuntime(),p=r.label(0xb200,'调查');p.flags=8;
+    r.api.load({pairs:{'调查':['调查','調査']},plain_pairs:{'调查':['调查','調査']}},'annotation',true,.85);
+    r.update(p);assert.equal(r.rubyAllowed(p),true);assert.equal(p.flags,8);
+    assert.equal(r.rubyAllowed(p,true),false,'cold measurement must retain native primary-only height');
+    r.api.select('primary',true);r.update(p);assert.equal(r.rubyAllowed(p),false);assert.equal(p.flags,8);
+    const native=r.label(0xb300,'<R>字</Rじ>');native.flags=8;r.update(native);
+    assert.equal(r.rubyAllowed(native),false);assert.equal(native.flags,8);
+});
+
+test('late animated flags rebuild the secondary lane without waiting for a mode change',()=>{
+    const r=makeRuntime(),p=r.label(0xb310,'');
+    r.api.load({pairs:{ABCD:['ABCD','甲乙丙丁']},plain_pairs:{ABCD:['ABCD','甲乙丙丁']}},'annotation',true,.85);
+    r.externalSet(p,'ABCD');
+    assert.equal(r.api.snapshot()[0].presentation,'ruby');
+    p.flags=4;r.update(p);
+    assert.equal(r.api.snapshot()[0].presentation,'layered');
+    const writes=r.api.status().writes;
+    r.update(p);assert.equal(r.api.status().writes,writes,'stable animation flags must not rebuild every frame');
+    p.flags|=0x10;r.update(p);
+    assert.equal(r.api.status().writes,writes,'pause flags must not invalidate the dialogue');
+});
+
+test('late catalog flags remeasure once just as switching into bilingual mode does',()=>{
+    const r=makeRuntime(),p=r.label(0xb320,'');
+    r.api.load({pairs:{Title:['Title','題名']},plain_pairs:{Title:['Title','題名']}},'annotation',true,.85);
+    r.externalSet(p,'Title');
+    const reflows=p.reflows;
+    p.flags=8;r.update(p);
+    assert.equal(p.reflows,reflows+1);
+    assert.equal(r.rubyAllowed(p),true);assert.equal(p.flags,8);
+    r.update(p);assert.equal(p.reflows,reflows+1,'final native flags must be cached after repair');
+});
+
+test('secondary tint multiplies original RGB once and preserves primary colors and alpha',()=>{
+    const r=makeRuntime(),p=r.label(0xb400,'字');
+    r.api.load({pairs:{'字':['字','Letter']},plain_pairs:{'字':['字','Letter']}},'annotation',true,1,{secondary_color:[.9,.8,.7],secondary_opacity:1});
+    r.update(p);r.capturedRuby(p,[[10,30,20,20],[10,5,10,10],[20,5,10,10]],1);
+    const original=[[.2,.4,.6,.8],[1,.8,.2,.7],[0,0,0,.4]];
+    r.glyphColors(p,original);r.glyphLayout(p);
+    const expected=[original[0],[.9,.64,.14,.7],original[2]];
+    for(let n=0;n<3;n++){r.glyphLayout(p);r.glyphColors(p).forEach((v,i)=>v.forEach((c,j)=>assert.ok(Math.abs(c-expected[i][j])<1e-6)));}
+});
+
+test('animated secondary follows its own main line without changing the native reveal clock',()=>{
+    const r=makeRuntime(),p=r.label(0xb500,'ABCD');p.flags=4;
+    r.api.load({pairs:{ABCD:['ABCD','甲乙丙丁']},plain_pairs:{ABCD:['ABCD','甲乙丙丁']}},'annotation',true,1,{secondary_opacity:1});
+    r.update(p);
+    assert.equal(r.api.snapshot()[0].presentation,'layered','secondary must exist before the final main character');
+    r.auxiliary(p,0,{unitStart:7,primaryUnits:4,secondaryCount:4,glyphQuads:[
+        [5,5,10,10],[15,5,10,10],[25,5,10,10],[35,5,10,10],[5,30,10,20]
+    ]});
+    r.glyphColors(p,Array.from({length:5},()=>[1,1,1,.6]));
+    p.progress=123;const total=p.total;
+    for(const [units,expected] of [[7,[0,0,0,0]],[8,[.6,0,0,0]],[9,[.6,.6,0,0]],[11,[.6,.6,.6,.6]],[11,[.6,.6,.6,.6]]]) {
+        p.revealUnits=units;r.glyphLayout(p);
+        r.glyphColors(p).forEach((v,i)=>assert.ok(Math.abs(v[3]-[...expected,.6][i])<1e-6));
+        assert.equal(p.progress,123);assert.equal(p.total,total);
+    }
+});
+
+test('long log lanes keep native-memory boundary calls linear with a small per-glyph budget',()=>{
+    const r=makeRuntime(),p=r.label(0xb450,'对白');
+    r.api.load({pairs:{'对白':['对白','Dialogue']},plain_pairs:{'对白':['对白','Dialogue']}},'annotation',true,.85,{secondary_color:[.9,.9,.9]});
+    r.update(p);
+    const primary=Array.from({length:80},(_,i)=>[i*18,40,18,24]);
+    const secondary=Array.from({length:80},(_,i)=>[i*10,10,10,12]);
+    r.capturedRuby(p,[...primary,...secondary],80);
+    Object.keys(r.memoryCost).forEach(k=>r.memoryCost[k]=0);
+    r.finishLayout(p);
+    assert.equal(r.api.status().failed,false,r.api.status().failureReason);
+    assert.ok(r.memoryCost.scalarReads+r.memoryCost.blockReads<=160*3+8,JSON.stringify(r.memoryCost));
+    const reads=r.memoryCost.scalarReads+r.memoryCost.blockReads;
+    r.finishLayout(p);
+    assert.ok(r.memoryCost.scalarReads+r.memoryCost.blockReads-reads<=2,'an unchanged layout must not scan glyph memory again');
+});
+
+test('secondary opacity includes icons and composes with per-line reveal without fading primary text',()=>{
+    const r=makeRuntime(),p=r.label(0xb580,'AB');p.flags=4;
+    r.api.load({pairs:{AB:['AB','字<I2>']},plain_pairs:{AB:['AB','字<I2>']}},'annotation',true,1,
+        {secondary_color:[1,1,1],secondary_opacity:.5});
+    r.update(p);
+    r.auxiliary(p,0,{unitStart:2,primaryUnits:2,secondaryCount:2,glyphQuads:[
+        [5,5,10,10],[15,5,10,10,1],[5,30,10,20]
+    ]});
+    r.glyphColors(p,[[.2,.4,.6,.8],[.8,.6,.4,.6],[1,1,1,.9]]);
+    for(const [units,alpha] of [[2,[0,0,.9]],[3,[.4,0,.9]],[4,[.4,.3,.9]],[4,[.4,.3,.9]]]) {
+        p.revealUnits=units;r.glyphLayout(p);
+        r.glyphColors(p).forEach((v,i)=>assert.ok(Math.abs(v[3]-alpha[i])<1e-6));
+    }
+});
+
+test('bilingual group offset moves both languages once, survives rebuilds and leaves single language untouched',()=>{
+    const r=makeRuntime(),p=r.label(0xb590,'字');
+    r.api.load({pairs:{'字':['字','Letter']},plain_pairs:{'字':['字','Letter']}},'annotation',true,1,
+        {ruby_gap:2,bilingual_offset_y:7});
+    r.update(p);
+    const input=[[10,30,20,20],[10,5,10,10],[20,5,10,10,1]];
+    r.capturedRuby(p,input,1);
+    const expected=r.glyphLayout(p);
+    assert.equal(expected[0][1],37);
+    assert.equal(expected[1][1],20);
+    assert.equal(expected[2][1],20);
+    for(let i=0;i<4;i++)assert.deepEqual(r.glyphLayout(p),expected);
+    r.capturedRuby(p,input,1);assert.deepEqual(r.glyphLayout(p),expected);
+    r.api.select('primary',true);r.update(p);r.setGlyphQuads(p,[[10,30,20,20]]);
+    assert.deepEqual(r.glyphLayout(p),[[10,30,20,20]]);
+    r.api.select('annotation',true);r.api.style(1,{ruby_gap:2,bilingual_offset_y:-4});r.update(p);
+    r.capturedRuby(p,input,1);
+    const shifted=r.glyphLayout(p);
+    assert.equal(shifted[0][1],26);assert.equal(shifted[1][1],9);assert.equal(shifted[2][1],9);
+});
+
 test('subtitles and ordinary dialogue both annotate above without appended paragraphs',()=>{
     const runtime=makeRuntime(),a='甲\n乙',b='一\n二';
     runtime.api.load({pairs:{[a]:[a,b]},plain_pairs:{[a]:[a,b]}},'annotation',true,.9);
@@ -944,7 +1376,7 @@ test('subtitles and ordinary dialogue both annotate above without appended parag
     runtime.api.disable();runtime.update(subtitle);assert.equal(subtitle.text(),a);
 });
 
-test('fixed dialogue speaker retains its baseline without moving body, menus or original ruby',()=>{
+test('ordinary text keeps native origin while speakers retain the scoped collision correction',()=>{
     const r=makeRuntime(),root=r.label(0xa100,'');r.markSubtitle(root);
     r.api.load({pairs:{Name:['Name','Nom']},plain_pairs:{Name:['Name','Nom']}},'annotation',true,1);
     for(const [node,dialogue,expected] of [['name_text',true,100],['prev_name_text',true,100],['text',true,112],['name_text',false,112]]) {
@@ -1020,4 +1452,209 @@ test('native dialogue carries exact VM identity through its builder without reta
     runtime.api.load({...model,...make('承知。')},'annotation',true,1);
     runtime.dialogueSet(label,'好。',data,'Talk',[1,3221226000]);assert.match(label.text(),/承知。/);
     assert.equal(runtime.scriptReads.filter(n=>n===data.length).length,hashes,'exact complete global pairs do not rehash the script');
+});
+
+
+test('quest paragraphs require the verified builder frame and preserve provenance across language modes',()=>{
+    const r=makeRuntime(),source='★根据哈恩队长所说，\n　目击者似乎是在卡鲁迪亚隧道\n　入口的尼克斯。';
+    const target='★ハーン隊長の話によると、\n　カルデア隧道の入口にいる\n　ニクスという人が目撃者のようだ。';
+    const pairs={[source]:[source,target]},lines=source.split('\n'),targetLines=target.split('\n');
+    r.api.load({pairs,plain_pairs:pairs},'annotation',true,.9);
+    const frame=r.questBegin(7);r.questParagraph(source+'\n',7);
+    const labels=lines.map((line,index)=>{
+        const label=r.label(0xc100+index*0x100,'');r.questLine(label,line,7);return label;
+    });
+    r.questEnd(frame,7);
+    labels.forEach((label,index)=>assert.match(label.text(),new RegExp(targetLines[index])));
+    const copy=r.cloneLabel(labels[1],0xc500);
+    assert.equal(copy.text(),labels[1].text(),'copy constructor keeps the exact paragraph provenance');
+    r.api.select('primary',true);for(const label of [...labels,copy])r.update(label);
+    assert.deepEqual(labels.map(label=>label.text()),lines);
+    assert.equal(copy.text(),lines[1]);
+    r.api.select('secondary',true);for(const label of [...labels,copy])r.update(label);
+    assert.deepEqual(labels.map(label=>label.text()),targetLines);
+    assert.equal(copy.text(),targetLines[1]);
+    r.api.select('annotation',true);for(const label of labels)r.update(label);
+    labels.forEach((label,index)=>assert.match(label.text(),new RegExp(targetLines[index])));
+
+    const outside=r.label(0xc700,'');r.externalSet(outside,lines[0]);
+    assert.equal(outside.text(),lines[0],'the identical isolated line is never a paragraph match');
+    assert.equal(r.api.status().failed,false);
+});
+
+test('quest paragraph context rejects wrong caller ordering thread and exited builder frames',()=>{
+    const r=makeRuntime(),source='甲甲\n乙乙',target='一一\n二二',pairs={[source]:[source,target]};
+    r.api.load({pairs,plain_pairs:pairs},'secondary',true,1);
+    const frame=r.questBegin(11);r.questParagraph(source,11);
+    const wrongCaller=r.label(0xc801,'');r.questLine(wrongCaller,'甲甲',11,null);
+    assert.equal(wrongCaller.text(),'甲甲');
+    const first=r.label(0xc802,'');r.questLine(first,'甲甲',11);
+    assert.equal(first.text(),'一一','a rejected caller does not advance the verified frame');
+    const wrongOrder=r.label(0xc803,'');r.questLine(wrongOrder,'甲甲',11);
+    assert.equal(wrongOrder.text(),'甲甲');
+    const afterMismatch=r.label(0xc804,'');r.questLine(afterMismatch,'乙乙',11);
+    assert.equal(afterMismatch.text(),'乙乙','mismatched order clears paragraph context');
+    r.questEnd(frame,11);
+
+    const threadFrame=r.questBegin(12);r.questParagraph(source,12);
+    const foreign=r.label(0xc805,'');r.questLine(foreign,'甲甲',13);
+    assert.equal(foreign.text(),'甲甲');
+    const local=r.label(0xc806,'');r.questLine(local,'甲甲',12);
+    assert.equal(local.text(),'一一');r.questEnd(threadFrame,12);
+
+    const exited=r.questBegin(14);r.questParagraph(source,14);r.questEnd(exited,14);
+    const late=r.label(0xc807,'');r.questLine(late,'甲甲',14);
+    assert.equal(late.text(),'甲甲','no stale frame survives builder exit');
+    assert.equal(r.api.status().failed,false);
+});
+
+test('quest paragraphs reflow non-primary language slots before per-line rendering',()=>{
+    const r=makeRuntime(),source='原文甲甲\n原文乙乙';
+    const primary='第一行较长的主语言\n第二行继续内容\n第三行结束';
+    const secondary='Secondary first line\nSecondary second line\nSecondary third line';
+    const pairs={[source]:[primary,secondary]},lines=source.split('\n');
+    const {RuntimeText}=require('../sora_bilingual/game/scripts/runtime_text.js');
+    const expectedPrimary=RuntimeText.reflowAnnotationLines(source,primary),expectedSecondary=RuntimeText.reflowAnnotationLines(source,secondary);
+    r.api.load({pairs,plain_pairs:pairs},'primary',true,1);
+    const frame=r.questBegin(15);r.questParagraph(source,15);
+    const labels=lines.map((line,index)=>{const label=r.label(0xc900+index*0x100,'');r.questLine(label,line,15);return label;});r.questEnd(frame,15);
+    assert.deepEqual(labels.map(label=>label.text()),expectedPrimary);
+    r.api.select('secondary',true);for(const label of labels)r.update(label);
+    assert.deepEqual(labels.map(label=>label.text()),expectedSecondary);
+    r.api.select('annotation',true);for(const label of labels)r.update(label);
+    assert.ok(labels.every(label=>label.text()!==label.owned.text||label.text().includes('<R>')));
+    assert.equal(r.api.status().failed,false);
+});
+
+test('log parsing validates owned text once per callback, without repeated full UTF-8 reads',()=>{
+    const r=makeRuntime(),p=r.label(0xc980,'');
+    r.api.load({pairs:{Token:['Token','訳']},plain_pairs:{Token:['Token','訳']}},'annotation',true,.85);
+    r.externalSet(p,'前缀：Token');
+    const before=r.memoryCost.textReads;
+    r.repeatOwnedRubyParse(p,100,1);
+    assert.ok(r.memoryCost.textReads-before<=400,'repeated owned checks must share the same callback-local result');
+    assert.equal(r.api.status().failed,false);
+});
+
+test('repeated native parser rebuilds replace an offset owned ruby lane without touching tail glyphs',()=>{
+    const r=makeRuntime(),source='前缀：Token\n42',pairs={Token:['Token','訳']};
+    r.api.load({pairs,plain_pairs:pairs},'annotation',true,.8,{secondary_color:[.5,.5,.5],secondary_opacity:1});
+    const label=r.label(0xca00,'');r.externalSet(label,source);
+    r.repeatOwnedRubyParse(label,100,1);
+    assert.equal(r.laneCount(label),1,'a new parser pass at the same nonzero primary offset replaces prior lanes');
+    const quads=[[10,20,20,20],[35,20,20,20],[55,20,20,20],[45,5,14,14],[85,20,20,20],[105,20,16,16,1]];
+    r.setGlyphQuads(label,quads);r.glyphColors(label,quads.map(()=>[.2,.4,.6,.8]));
+    r.finishLayout(label);const geometry=r.glyphGeometry(label),colors=r.glyphColors(label);
+    // The untranslated prefix preserves native parser advances, while owned
+    // glyphs are scaled post-layout. The annotation is placed once from its
+    // scaled primary edge; stale lanes would repeat the transform.
+    assert.equal(geometry[1][2],16);assert.equal(geometry[2][2],16);
+    for(const [actual,expected] of geometry[3].map((value,index)=>[value,[30.6,5.4,11.2,11.2][index]]))
+        assert.ok(Math.abs(actual-expected)<1e-6);
+    r.finishLayout(label);assert.deepEqual(r.glyphGeometry(label),geometry,'a completed parser pass cannot reuse stale lane geometry');
+    assert.deepEqual(geometry[4],quads[4].slice(0,4),'untranslated trailing number stays native');
+    assert.deepEqual(geometry[5],quads[5].slice(0,4),'native icon stays native');
+    assert.deepEqual(colors[0],[.2,.4,.6,.8]);
+    colors[3].forEach((v,i)=>assert.ok(Math.abs(v-[.1,.2,.3,.8][i])<1e-6));
+    assert.deepEqual(colors[4],[.2,.4,.6,.8]);assert.deepEqual(colors[5],[.2,.4,.6,.8]);
+    assert.equal(r.api.status().failed,false,r.api.status().failureReason);
+});
+
+test('log measurement skips unused fixed heights and reuses only matching descriptors',()=>{
+    const r=makeRuntime(),pairs={'话':['话','words'],'名字':['名字','name']};
+    r.api.load({pairs,plain_pairs:pairs},'annotation',true,.85);
+    const records=[['名字','话'],['',''],['名字','话\\n第二行']];
+    const fixed=r.logMeasure(records,{mode:1});
+    assert.equal(fixed.setters,0);assert.deepEqual(fixed.heights,[148,148,148]);assert.equal(fixed.cleanup,3);
+    const cold=r.logMeasure(records),warm=r.logMeasure(records,{metric:999});
+    assert.equal(cold.setters,5);assert.equal(warm.setters,0,JSON.stringify(r.api.status().logMeasureStats));
+    assert.deepEqual(warm.heights,cold.heights);assert.deepEqual(warm.ids,[1,2,3]);assert.equal(warm.cleanup,3);
+    assert.equal(r.logMeasure(records,{fontSize:32}).setters,5);
+    assert.equal(r.logMeasure(records,{flags:9}).setters,5);
+    r.api.style(.8,{ruby_scale:.8});assert.equal(r.logMeasure(records).setters,5);
+    const changed={'话':['话','different words'],'名字':['名字','name']};
+    r.api.load({pairs:changed,plain_pairs:changed},'annotation',true,.85);
+    assert.equal(r.logMeasure(records).setters,2,'changed resolved bodies must be measured while unchanged names remain reusable');
+    assert.equal(r.logMeasure(records,{mode:2}).setters,6,'unknown modes must retain native path');
+});
+
+test('log descriptor cache preserves current width, resolved identity and resource generations',()=>{
+    const r=makeRuntime(),pair=target=>({pairs:{same:['same',target]},plain_pairs:{same:['same',target]}});
+    r.api.load({pairs:{},plain_pairs:{},keyed:{TXT_A:{source:'same',model:pair('first')},TXT_B:{source:'same',model:pair('second')}}},'annotation',true,.85);
+    r.keyTable(101,'TXT_A','same');r.keyTable(102,'TXT_B','same');
+    const records=[['','same']];
+    assert.equal(r.logMeasure(records,{textKeyHash:101}).setters,2);
+    assert.equal(r.logMeasure(records,{textKeyHash:102}).setters,1,'different body output still measures; the unchanged name may be reused');
+    const warm=r.logMeasure(records,{textKeyHash:101,width:1200});
+    assert.equal(warm.setters,0);assert.deepEqual(warm.widths,[1200],'window width is always read from the current native template');
+    r.fontReload();assert.equal(r.logMeasure(records,{textKeyHash:101}).setters,2);
+    r.fontReload(true);assert.equal(r.logMeasure(records,{textKeyHash:101}).setters,2);
+    r.api.style(.84,{});
+    assert.equal(r.logMeasure(records,{textKeyHash:101,mismatch:true}).setters,2);
+    assert.equal(r.logMeasure(records,{textKeyHash:101}).setters,1,'unconfirmed body preview is never admitted');
+    assert.equal(r.logMeasure(records,{textKeyHash:101}).setters,0);
+    r.api.style(.83,{});
+    r.logMeasure(records,{textKeyHash:101,planMismatch:true});
+    assert.equal(r.logMeasure(records,{textKeyHash:101}).setters,1,'matching wanted bytes cannot hide a different layer payload');
+    r.api.disable();assert.equal(r.logMeasure(records,{mode:1}).setters,2);
+});
+
+test('log descriptor cache has bounded size and keeps native fallback for invalid metrics',()=>{
+    const r=makeRuntime();r.api.load({pairs:{},plain_pairs:{}},'annotation',true,.85);
+    for(const metric of [NaN,Infinity,-1,70000]) {
+        r.fontReload();
+        r.logMeasure([['','invalid']],{descriptorHeight:metric});
+        assert.equal(r.api.status().logHeightCacheSize,0);
+    }
+    const records=Array.from({length:4100},(_,i)=>['','history-'+i]);
+    assert.equal(r.logMeasure(records).setters,4100);
+    assert.equal(r.api.status().logHeightCacheSize,4096);
+    assert.equal(r.logMeasure([records.at(-1)]).setters,0);
+});
+
+test('log measurement retains device-dependent icon callbacks on every open',()=>{
+    const r=makeRuntime();r.api.load({pairs:{},plain_pairs:{}},'annotation',true,.85);
+    const records=[['name','Press <I12>']];
+    assert.equal(r.logMeasure(records).setters,2);
+    assert.equal(r.logMeasure(records).setters,2);
+    assert.equal(r.api.status().logHeightCacheSize,0);
+});
+
+test('log heights survive display-only changes and return to a previously measured language',()=>{
+    const r=makeRuntime(),pairs={'话':['话','words'],'名字':['名字','name']};
+    r.api.load({pairs,plain_pairs:pairs},'annotation',true,.85,{ruby_scale:.9,line_gap:6});
+    const records=[['名字','话']];
+    const first=r.logMeasure(records);assert.equal(first.setters,2);
+    r.api.style(.85,{ruby_scale:.9,line_gap:6,secondary_opacity:.4,secondary_color:[.4,.5,.6],bilingual_offset_y:-2});
+    assert.equal(r.logMeasure(records).setters,0,'tint and group offset do not change measured heights');
+    r.api.select('primary',true);assert.equal(r.logMeasure(records).setters,2);
+    r.api.select('annotation',true);const restored=r.logMeasure(records);
+    assert.equal(restored.setters,0,'restoring the same resolved text reuses its validated metrics');
+    assert.deepEqual(restored.heights,first.heights);
+    r.api.style(.85,{ruby_scale:.8,line_gap:6});
+    assert.equal(r.logMeasure(records).setters,2,'ruby size changes the parser metrics');
+    r.api.style(.85,{ruby_scale:.9,line_gap:7});
+    assert.equal(r.logMeasure(records).setters,2,'line spacing changes the parser metrics');
+    r.api.style(.85,{ruby_scale:.9,line_gap:6});
+    assert.equal(r.logMeasure(records).setters,0);
+    r.fontReload();assert.equal(r.logMeasure(records).setters,2,'resource reload still invalidates all descriptors');
+});
+
+test('native ruby measurement scope only surrounds owned simple log template measurements',()=>{
+    const r=makeRuntime(null,false,true),pairs={'言':['言','Words'],'人':['人','Name']};
+    r.api.load({pairs,plain_pairs:pairs},'annotation',true,.85,{ruby_scale:.9});
+    r.logMeasure([['人','言']]);
+    assert.equal(r.measureScopes.pushes.length,2);
+    assert.ok(r.measureScopes.pushes.every(scope=>scope.text.includes('<R>')&&scope.factor===.9));
+    assert.deepEqual(r.measureScopes.pops,r.measureScopes.pushes.map(({thread,token})=>({thread,token})));
+    const before=r.measureScopes.pushes.length;
+    r.logMeasure([['人','言']]); // cached descriptors never enter the measurement path
+    r.logMeasure([['人','言']],{flags:4}); // typewriter takes the independent layer path
+    r.logMeasure([['','前缀 言 Lv.3']]); // mixed/unowned advances stay on the original hooks
+    r.logMeasure([['人','言 <I12>']]); // device-dependent icon rows never acquire this scope
+    r.api.select('primary',true);r.logMeasure([['人','言']]);
+    r.api.select('annotation',true);
+    r.inlinedSet(r.label(0xdb0000,''),'言'); // the shared measuring entry outside MessageLog
+    assert.equal(r.measureScopes.pushes.length,before);
+    assert.equal(r.api.status().failed,false);
 });

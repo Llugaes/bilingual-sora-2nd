@@ -19,4 +19,4 @@ if __name__ == "__main__":
     from sora_bilingual.localization.model_wire import prepare_wire
 
     prepare_wire(path, model)
-    write_config({"path": str(path)}, args.result)
+    write_config({"path": str(path), "coverage": model.get("coverage", {})}, args.result)

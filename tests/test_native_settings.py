@@ -2,7 +2,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from sora_bilingual.app.native_settings import read_control, update_control, valid_keyboard_keys
 
@@ -26,34 +26,70 @@ class NativeSettingsTests(unittest.TestCase):
             result = update_control({"interaction": "language_hold"}, path)
             self.assertEqual(result["switch_binding"]["gamepad"], {"buttons": [1]})
 
-    def test_first_run_saves_selected_pair_and_preserves_it_on_relaunch(self):
+    def test_first_run_saves_only_ui_language_and_never_asks_source_language(self):
         from sora_bilingual.app.native_settings import configure_first_run, QDialog
-        from sora_bilingual.config.locales import LOCALES
 
-        for source in LOCALES:
-            with (
-                tempfile.TemporaryDirectory() as temp,
-                patch("sora_bilingual.app.native_settings.QInputDialog") as dialog_type,
-            ):
-                path = Path(temp) / "control.json"
-                path.write_text('{"enabled": false}', encoding="utf-8")
-                dialog = dialog_type.return_value
-                dialog.exec.return_value = QDialog.DialogCode.Accepted
-                secondary = "en" if source == "ja" else "ja"
-                dialog.textValue.return_value = (
-                    f"{LOCALES[source].name} → {LOCALES[secondary].name}"
-                )
-                self.assertTrue(configure_first_run(path))
-                config = read_control(path)
-                self.assertEqual(config["primary"], source)
-                self.assertEqual(config["game_language"], source)
-                self.assertEqual(config["secondary"], secondary)
-                self.assertFalse(config["enabled"])
-                update_control({"primary": "de", "secondary": "fr"}, path)
-                saved = path.read_bytes()
-                self.assertTrue(configure_first_run(path))
-                self.assertEqual(path.read_bytes(), saved)
-                dialog.exec.assert_called_once()
+        with (
+            tempfile.TemporaryDirectory() as temp,
+            patch("sora_bilingual.app.native_settings.QInputDialog") as dialog_type,
+        ):
+            path = Path(temp) / "control.json"
+            ui_dialog = MagicMock()
+            dialog_type.return_value = ui_dialog
+            ui_dialog.exec.return_value = QDialog.DialogCode.Accepted
+            ui_dialog.textValue.return_value = "English"
+            self.assertTrue(configure_first_run(path))
+            self.assertEqual(read_control(path)["ui_language"], "en")
+            self.assertTrue(
+                json.loads(path.read_text(encoding="utf-8"))["language_defaults_pending"]
+            )
+            dialog_type.assert_called_once()
+            saved = path.read_bytes()
+            self.assertTrue(configure_first_run(path))
+            self.assertEqual(path.read_bytes(), saved)
+            dialog_type.assert_called_once()
+
+    def test_pending_defaults_survive_unrelated_save_and_clear_on_real_language_change(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "control.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "primary": "zh-Hans",
+                        "secondary": "ja",
+                        "game_language": "zh-Hans",
+                        "language_defaults_pending": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            update_control({"line_gap": 7}, path)
+            self.assertTrue(
+                json.loads(path.read_text(encoding="utf-8"))["language_defaults_pending"]
+            )
+            # Settings forms can include both combo values for a style save;
+            # equal values must not be treated as an explicit language choice.
+            update_control({"primary": "zh-Hans", "secondary": "ja", "ruby_gap": 2}, path)
+            self.assertTrue(
+                json.loads(path.read_text(encoding="utf-8"))["language_defaults_pending"]
+            )
+            update_control({"primary": "en"}, path)
+            self.assertNotIn(
+                "language_defaults_pending", json.loads(path.read_text(encoding="utf-8"))
+            )
+
+    def test_existing_empty_control_is_not_marked_as_a_new_user(self):
+        from sora_bilingual.app.native_settings import configure_first_run
+
+        with (
+            tempfile.TemporaryDirectory() as temp,
+            patch("sora_bilingual.app.native_settings.QInputDialog") as dialog_type,
+        ):
+            path = Path(temp) / "control.json"
+            path.write_text("{}", encoding="utf-8")
+            self.assertTrue(configure_first_run(path))
+            self.assertEqual(path.read_text(encoding="utf-8"), "{}")
+            dialog_type.assert_not_called()
 
     def test_first_run_cancel_does_not_create_or_rewrite_configuration(self):
         from sora_bilingual.app.native_settings import configure_first_run, QDialog
@@ -68,10 +104,10 @@ class NativeSettingsTests(unittest.TestCase):
             self.assertFalse(path.exists())
             path.write_text('{"enabled": false}', encoding="utf-8")
             saved = path.read_bytes()
-            self.assertFalse(configure_first_run(path))
+            self.assertTrue(configure_first_run(path))
             self.assertEqual(path.read_bytes(), saved)
 
-    def test_existing_partial_language_config_is_not_reset_or_prompted(self):
+    def test_existing_explicit_ui_language_is_not_reset_or_prompted(self):
         from sora_bilingual.app.native_settings import configure_first_run
 
         with (
@@ -79,7 +115,7 @@ class NativeSettingsTests(unittest.TestCase):
             patch("sora_bilingual.app.native_settings.QInputDialog") as dialog_type,
         ):
             path = Path(temp) / "control.json"
-            path.write_text('{"primary": "en"}', encoding="utf-8")
+            path.write_text('{"ui_language": "en"}', encoding="utf-8")
             saved = path.read_bytes()
             self.assertTrue(configure_first_run(path))
             self.assertEqual(path.read_bytes(), saved)

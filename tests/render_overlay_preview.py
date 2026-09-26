@@ -24,7 +24,7 @@ with tempfile.TemporaryDirectory() as tmp:
     control = Path(tmp) / "control.json"
     status = Path(tmp) / "status.json"
     write_config(DEFAULTS, control)
-    controller = OverlayController(control, status, start_timers=False)
+    controller = OverlayController(control, status, start_timers=False, auto_connect=False)
     controller.expand()
     controller.panel.settings._status_timer.stop()
     controller.panel.settings._capture_timer.stop()
@@ -41,13 +41,22 @@ with tempfile.TemporaryDirectory() as tmp:
     held = describe_state(
         config, {**live, "hold_active": True, "render_mode": "secondary"}, {}, 100
     )
-    controller.panel.settings._set_combo(controller.panel.settings.interaction, "language_hold")
+    controller.panel.settings._set_interaction("language_hold")
     controller.panel.present(released)
     controller.panel.settings.backend_label.setText("离线界面演示 · 未启动或连接游戏")
-    for index, name in enumerate(("mode", "layout", "bindings", "updates")):
-        controller.panel.settings.tabs.setCurrentIndex(index)
+    for language in ("zh-Hans", "en", "ja"):
+        controller.panel.settings.ui_language.setCurrentIndex(
+            controller.panel.settings.ui_language.findData(language)
+        )
+        for index, name in enumerate(("language", "text-layout", "shortcuts", "updates")):
+            controller.panel.settings.tabs.setCurrentIndex(index)
+            app.processEvents()
+            controller.panel.grab().save(str(output / f"overlay-{language}-{name}-preview.png"))
+        controller.panel.settings.tabs.setCurrentIndex(0)
+        language_page = controller.panel.settings.pages[0]
+        language_page.ensureWidgetVisible(controller.panel.settings.secondary_opacity)
         app.processEvents()
-        controller.panel.grab().save(str(output / f"overlay-{name}-preview.png"))
+        controller.panel.grab().save(str(output / f"overlay-{language}-opacity-preview.png"))
     controller.bar.present(released, "Ctrl + Shift + F9")
     controller.bar.adjustSize()
     controller.bar.show()

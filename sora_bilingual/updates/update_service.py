@@ -8,7 +8,7 @@ from sora_bilingual.updates.github_updates import GitHubClient, version_tuple
 from sora_bilingual.updates.update_installer import install, UpdateBusy, RuntimeRequired, write_json
 
 INTERVAL = 6 * 3600
-POLICIES = {"automatic", "notify", "off"}
+POLICIES = {"automatic", "off"}
 
 
 class UpdateService:
@@ -19,10 +19,14 @@ class UpdateService:
         self.directory = self.root / "generated/updates"
         self.preferences = self.directory / "preferences.json"
         self.policy = self._read(self.preferences).get("policy", "automatic")
+        # The old notify-only choice never authorized installation. Migrate it
+        # to off rather than silently enabling updates when simplifying the UI.
+        if self.policy == "notify":
+            self.policy = "off"
         if self.policy not in POLICIES:
             self.policy = "automatic"
         self.client = client or GitHubClient(self.distribution["repository"])
-        self.message = "等待检查更新"
+        self.message = "等待检查更新" if self.policy == "automatic" else "自动更新已关闭"
         self.available = None
         self.pending = None
         self.component_update = False
@@ -55,6 +59,8 @@ class UpdateService:
         self.policy = value
         write_json(self.preferences, {"policy": value})
         self.next_check = 0
+        if not self.busy:
+            self.message = "等待检查更新" if value == "automatic" else "自动更新已关闭"
 
     def tick(self, manual=False):
         if self.busy or (not manual and (self.policy == "off" or self.clock() < self.next_check)):
@@ -132,7 +138,7 @@ class UpdateService:
         self.available = release["tag_name"]
         self.release = release
         if self.policy != "automatic":
-            self.message = f"发现 {self.available}；选择自动安装后生效"
+            self.message = f"发现 {self.available}；开启自动更新即可安装"
             return
         if not (self.root / "installed-manifest.json").is_file():
             self.message = f"发现 {self.available}；开发目录不会被覆盖，请使用发行包"

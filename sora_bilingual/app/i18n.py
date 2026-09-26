@@ -4,7 +4,7 @@ import locale
 from functools import lru_cache
 
 UI_LANGUAGES = {
-    "auto": "System / 跟随系统 / システム",
+    "auto": "跟随系统",
     "zh-Hans": "简体中文",
     "en": "English",
     "ja": "日本語",
@@ -13,9 +13,32 @@ _language = "zh-Hans"
 
 # Chinese source messages are stable UI keys. Do not put game text in this catalog.
 _ROWS = """
+跟随系统|Follow system|システムに従う
+语言|Language|言語
+文字排版|Text layout|文字レイアウト
+更新|Updates|更新
+选择界面语言|Choose interface language|画面言語を選択
+初始语言设置|Initial language setup|初期言語設定
+选择游戏当前的文本语言|Choose the game's current text language|ゲームの現在の表示言語を選択
+默认副语言|Default secondary language|既定の副言語
+继续|Continue|続ける
+退出|Exit|終了
+语言与显示设置|Language and display|言語と表示
+快捷操作|Quick actions|クイック操作
+更新与维护|Updates and maintenance|更新とメンテナンス
+显示设置|Display settings|表示設定
+文字与排版|Text and layout|文字とレイアウト
+快捷键|Shortcuts|ショートカット
+实时生效|Applies immediately|即時反映
+修改自动保存|Changes save automatically|変更は自動保存されます
+界面语言与 Mod 显示语言独立保存。|The interface locale is saved separately from the mod display languages.|画面言語は Mod の表示言語とは別に保存されます。
+当前连接中的快捷键和排版会立即应用。|Shortcuts and layout apply to the current connection immediately.|ショートカットとレイアウトは現在の接続にすぐ反映されます。
+更新会在游戏连接结束后安装。|Updates install after the game connection ends.|更新はゲーム接続の終了後にインストールされます。
 界面语言|Interface language|画面の言語
 主语言|Primary language|主言語
 副语言|Secondary language|副言語
+连接状态|Connection status|接続状態
+检测到的游戏内文字语言|Detected in-game text language|検出されたゲーム内の表示言語
 简中|Simplified Chinese|簡体字中国語
 繁中|Traditional Chinese|繁体字中国語
 日文|Japanese|日本語
@@ -25,6 +48,65 @@ _ROWS = """
 德文|German|ドイツ語
 西文|Spanish|スペイン語
 设置|Settings|設定
+游戏内文字语言|In-game text language|ゲーム内の表示言語
+游戏内文字语言须与游戏设置一致，用于识别原文。|Match the game's text language so the mod can identify the source text.|原文を識別するため、ゲーム内の表示言語と一致させてください。
+游戏内文字语言（自动检测）|In-game text language (detected)|ゲーム内の表示言語（自動検出）
+由后端检测游戏内文字语言；检测完成前会显示等待状态。|The backend detects the in-game text language. It remains waiting until detection completes.|ゲーム内の表示言語はバックエンドが検出します。完了まで待機中と表示されます。
+等待检测|Waiting for detection|検出待ち
+由后端检测，无法在设置中编辑。|Detected by the backend and cannot be edited here.|バックエンドが検出するため、ここでは編集できません。
+后端已检测到游戏内文字语言。|The backend detected the in-game text language.|バックエンドがゲーム内の表示言語を検出しました。
+等待后端检测游戏内文字语言。|Waiting for the backend to detect the in-game text language.|バックエンドによるゲーム内の表示言語の検出を待機中です。
+检测状态：|Detection status: |検出状態：
+状态：|Status: |状態：
+语言组合：|Language pair: |言語の組み合わせ：
+快捷键：|Shortcut: |ショートカット：
+打开或关闭设置。|Open or close settings. |設定を開閉します。
+连接游戏|Connect game|ゲームに接続
+重新连接|Reconnect|再接続
+正在连接…|Connecting…|接続中…
+正在重新连接…|Reconnecting…|再接続中…
+连接器准备中…|Connector preparing…|接続機能を準備中…
+自动连接器正在准备，请稍候…|The auto-connector is preparing. Please wait…|自動接続機能を準備中です。お待ちください…
+已请求重新连接，正在检查游戏状态…|Reconnect requested; checking the game state…|再接続を要求しました。ゲームの状態を確認中です…
+重新连接请求失败：|Reconnect request failed: |再接続要求に失敗しました：
+连接器已关闭|Connector closed|接続機能は停止しました
+自动连接器已关闭，无法请求重新连接。|The auto-connector is closed and cannot accept a reconnect request.|自動接続機能は停止しており、再接続を要求できません。
+手动连接游戏|Connect game manually|ゲームに手動接続
+请求自动连接器立即重新检查，不会启动游戏或替换现有连接。|Ask the auto-connector to check immediately. It does not start the game or replace an existing connection.|自動接続機能に即時の再確認を要求します。ゲームを起動せず、既存の接続も置き換えません。
+可打开设置后手动重新连接。|Open settings to reconnect manually.|設定を開いて手動で再接続できます。
+副语言颜色|Secondary text color|副言語の色
+副语言颜色与透明度|Secondary text color and opacity|副言語の色と不透明度
+副语言透明度|Secondary text opacity|副言語の不透明度
+选择副语言颜色|Choose secondary text color|副言語の色を選択
+打开颜色选择器，保存副语言 RGB 颜色。|Open the color picker and save the secondary text RGB color.|カラーピッカーを開き、副言語の RGB 色を保存します。
+打开颜色选择器，保存副语言 RGB 颜色和透明度。|Open the color picker and save secondary text RGB color and opacity.|カラーピッカーを開き、副言語の RGB 色と不透明度を保存します。
+拖动滑块，实时保存副语言透明度。|Drag the slider to save secondary text opacity immediately.|スライダーをドラッグすると、副言語の不透明度がすぐに保存されます。
+主、副语言只改变 Mod 显示，不修改游戏设置。|Primary and secondary languages affect the mod only, not the game's settings.|主言語と副言語は Mod の表示にのみ適用され、ゲーム設定は変更しません。
+主语言字号|Primary text scale|主言語の文字倍率
+副语言字号|Secondary text scale|副言語の文字倍率
+副语言上方间距|Secondary text gap|副言語との間隔
+副语言左右偏移|Secondary horizontal offset|副言語の左右位置
+双语文本上下偏移（正值向下）|Bilingual vertical offset (+ moves down)|二言語テキストの上下オフセット（＋で下へ）
+多行间距|Extra line spacing|行間の追加幅
+以游戏原生注音字号为基准|Relative to the game's native ruby text size|ゲーム本来のルビサイズが基準です
+负数向左，正数向右|Negative moves left; positive moves right|負の値は左、正の値は右へ移動
+修改实时生效。字号为比例，间距沿用游戏布局单位。|Changes apply immediately. Sizes are ratios; spacing uses game layout units.|変更は即時反映されます。文字サイズは倍率、間隔はゲームのレイアウト単位です。
+重试语言切换|Retry language change|言語の切り替えを再試行
+切换语言|Switch language|言語切り替え
+操作|Action|操作
+清除手柄绑定|Clear controller shortcut|コントローラーの登録を解除
+按下组合键保存；Esc 取消。|Press the shortcut to save. Esc cancels.|キーを押して保存。Esc でキャンセル。
+先松开所有按键，再按住组合，全部松开后保存。|Release all controls, hold your combination, then release to save.|すべてのボタンを離してから組み合わせを押し、離すと保存されます。
+拖动顶部，一起移动状态条和设置|Drag to move the status bar and settings together|ドラッグしてステータスバーと設定を一緒に移動
+修改自动保存  ·  Esc 收起设置|Changes save automatically · Esc closes settings|変更は自動保存 · Esc で設定を閉じる
+自动更新|Automatic updates|自動更新
+自动更新已关闭|Automatic updates are off|自動更新はオフです
+自动下载稳定版，退出游戏后安装。设置会保留。|Download stable updates automatically and install after the game exits. Your settings are kept.|安定版を自動ダウンロードし、ゲーム終了後に適用します。設定は保持されます。
+检查更新|Check for updates|更新を確認
+查看更新日志|Open update logs|更新ログを開く
+使用说明|User guide|使い方
+发行说明|Release notes|リリースノート
+；开启自动更新即可安装|; enable automatic updates to install|。自動更新をオンにするとインストールされます
 语言与模式|Languages and mode|言語とモード
 字号与位置|Size and position|文字サイズと位置
 按键绑定|Bindings|キー割り当て
@@ -41,12 +123,15 @@ Sora 双语控制台|Sora bilingual controls|Sora 二言語コントロール
 × / Esc 关闭设置，保留状态条  ·  拖动顶部移动|× / Esc closes settings · Drag the header to move|× / Esc で設定を閉じる · 上部をドラッグして移動
 启用双语 Mod|Enable mod|Mod を有効にする
 显示模式|Display mode|表示モード
+双语模式|Bilingual mode|二言語モード
+单语言模式|Single-language mode|単言語モード
+单语言切换方式|Single-language switching|単言語の切替方法
 同时显示双语|Bilingual annotations (Trails)|二言語注釈（軌跡）
 按一下切换语言|Toggle primary / secondary|押すたびに言語を切り替え
 按住显示副语言|Hold for secondary language|押している間だけ副言語
 立即切换到所选模式|Apply selected mode|選択したモードを適用
 高级：原文识别|Advanced: source matching|詳細：原文の照合
-识别源语言（与游戏设置一致）|Source language (match game settings)|照合元言語（ゲーム設定と一致）
+游戏原文语言（匹配用）|Game text language (matching)|ゲーム原文の言語（照合用）
 主文字号比例|Primary text scale|本文の倍率
 副字相对原生注音比例|Annotation scale relative to native ruby|副言語の倍率（元のルビ基準）
 副字向上偏移 / 间距|Annotation upward offset / gap|副言語の上方向オフセット・間隔
@@ -92,7 +177,24 @@ Sora 双语控制台|Sora bilingual controls|Sora 二言語コントロール
 手动显示|Manual display|手動表示
 双语|Bilingual|二言語
 连接异常|Connection error|接続エラー
+正在准备多语言字体，当前连接继续运行|Preparing multilingual fonts; connection remains active|多言語フォントを準備中。接続は継続します
+字体已准备，等待安全安装|Fonts prepared; waiting to install safely|フォント準備完了。安全にインストールできるまで待機中
+字体待安装：退出游戏后自动安装，下次启动生效|Fonts pending: installed after game exit, active next launch|フォントはゲーム終了後に自動インストールされ、次回起動時に有効になります
+字体安装遇到已有 MOD 文件，请查看详情|Font installation conflicts with existing mod files; see details|既存の MOD ファイルと競合しています。詳細をご確認ください
+字体准备或安装失败，请查看详情|Font preparation or installation failed; see details|フォントの準備またはインストールに失敗しました。詳細をご確認ください
+多语言字体已就绪|Multilingual fonts ready|多言語フォントの準備完了
+多语言字体已安装|Multilingual fonts installed|多言語フォントをインストールしました
+正在从本机游戏资源准备多语言字体|Preparing multilingual fonts from local game resources|ローカルのゲームデータから多言語フォントを準備中
+字体已准备；请退出并重启游戏后生效|Fonts prepared; exit and restart the game to apply|フォント準備完了。ゲームを終了して再起動すると有効になります
+字体安装与已有 MOD 文件冲突|Font installation conflicts with existing mod files|フォントのインストールが既存の MOD ファイルと競合しています
+字体准备失败|Font preparation failed|フォントの準備に失敗しました
+字体安装失败|Font installation failed|フォントのインストールに失敗しました
 正在连接游戏|Connecting to game|ゲームに接続中
+已连接|Connected|接続済み
+正在连接已有游戏进程，请稍候。|Connecting to the existing game process. Please wait.|起動済みのゲームに接続しています。お待ちください。
+已连接到游戏，设置会实时同步。|Connected to the game; settings synchronize live.|ゲームに接続済みです。設定は即時同期されます。
+连接未完成；可使用下方按钮重新连接。|Connection did not complete; use the button below to reconnect.|接続を完了できませんでした。下のボタンで再接続できます。
+等待已有游戏进程；可离线调整设置。|Waiting for an existing game process; settings can be edited offline.|起動済みのゲームを待機中です。設定はオフラインでも変更できます。
 正在准备语言索引…|Preparing language index…|言語索引を準備中…
 正在同步|Synchronizing|同期中
 未连接游戏|Game not connected|ゲーム未接続
@@ -177,9 +279,9 @@ MESSAGES.update(
             "en": "One binding follows the selected mode: hold, toggle, or Trails annotations.\nKeyboard: press your shortcut; Esc cancels.\nController: start neutral, hold the combination, then release all to save.",
             "ja": "同じ割り当てが選択中のモードに従います。\nキーボード：組み合わせを押して登録。Esc でキャンセル。\nコントローラー：すべて離した状態から組み合わせを押し、離すと保存します。",
         },
-        "这是游戏输出文本的来源，仅在更改游戏自身语言后调整。\n主语言决定 Mod 显示的正文；切换主语言无需改此项。": {
-            "en": "Match the game's own text language. Change this only after changing the game's settings.\nPrimary language controls the mod's output independently.",
-            "ja": "ゲーム自体の表示言語に合わせます。ゲーム側の言語を変えた場合だけ変更してください。\nMod の主言語とは独立した設定です。",
+        "这是游戏输出文本的来源；请在标题画面更改游戏语言后再调整。\n主语言只决定 Mod 显示的正文，不会修改游戏设置。": {
+            "en": "Match the game's own text language. Update this only after changing the language on the title screen.\nPrimary language controls the mod's output and never changes the game setting.",
+            "ja": "ゲーム自体の表示言語に合わせます。タイトル画面でゲーム言語を変更した後にだけ更新してください。\n主言語は Mod の本文表示だけを決め、ゲーム設定は変更しません。",
         },
         "修改自动保存并热应用。偏移和行距采用游戏布局单位。\n原文自带注音、强调点的位置保持不变；只调整新增的副语言层。\n副语言默认与主文字左缘对齐，所有对话与过场字幕共用上方注解布局。": {
             "en": "Changes save and apply live. Offsets use game layout units.\nOriginal ruby and emphasis stay in place; only the added annotation layer moves.\nAnnotations align with the primary text's left edge, including dialogue and cutscenes.",

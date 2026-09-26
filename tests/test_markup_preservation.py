@@ -31,11 +31,12 @@ class MarkupPreservationTests(unittest.TestCase):
             assembled_dialogue(Called(None, 3, (("int", 5), ("int", 99), ("string", "甲"))))
         )
 
-    def test_trailing_secondary_blank_is_not_a_translation_of_a_primary_sentence(self):
+    def test_trailing_secondary_blank_reflows_complete_secondary_without_loss(self):
         plan = translator("甲\n乙", "一二\n").render("甲\n乙")
         self.assertEqual(plan["kind"], "layered")
         self.assertEqual(plan["text"].replace("<R></R_>", ""), "甲\n乙")
-        self.assertEqual(plan["layers"][0]["text"].strip(), "一二")
+        self.assertEqual([layer["text"] for layer in plan["layers"]], ["一", "二"])
+        self.assertEqual("".join(layer["text"] for layer in plan["layers"]), "一二")
 
     def test_all_verified_dialogue_commands_assemble_complete_blocks(self):
         for command in (0, 6, 7, 19):
@@ -109,7 +110,7 @@ class MarkupPreservationTests(unittest.TestCase):
     def test_subtitle_colour_stack_does_not_leak_across_languages(self):
         plan = translator("<C2>甲", "<C3>一").render("<C2>甲", "bilingual")
         self.assertEqual(plan["text"], "<R></R_><C2>甲")
-        self.assertEqual(plan["layers"][0]["text"], "<C3>一")
+        self.assertEqual(plan["layers"][0]["text"], "<C3>一</C>")
 
     def test_composite_cutscene_is_not_interleaved(self):
         tr = MenuTranslator(
@@ -156,7 +157,7 @@ class MarkupPreservationTests(unittest.TestCase):
         b = "一二三"
         plan = translator(a, b).render(a)
         self.assertEqual(plan["text"].replace("<R></R_>", ""), a)
-        self.assertEqual([v["text"] for v in plan["layers"]], [b])
+        self.assertEqual([v["text"] for v in plan["layers"]], ["一二", "三"])
 
     def test_trailing_newline_and_blank_primary_never_drop_secondary(self):
         for a, b in [("甲\n", "一\n二"), ("甲\n\n乙", "一\n二\n三"), ("\n甲\n\n", "一\n二")]:

@@ -1,3 +1,4 @@
+import json
 import unittest
 import tempfile, time, threading
 from pathlib import Path
@@ -7,7 +8,7 @@ from sora_bilingual.app.auto_connect import ConnectionPolicy
 
 
 class AutoConnectTests(unittest.TestCase):
-    def test_prewarms_before_game_and_waits_for_cache_before_connecting(self):
+    def test_prewarms_only_last_confirmed_source_and_does_not_delay_new_process(self):
         from sora_bilingual.app.auto_connect import AutoConnector
 
         games, builds, launches = [], [], []
@@ -48,27 +49,35 @@ class AutoConnectTests(unittest.TestCase):
                 ),
             ),
         ):
-            auto = AutoConnector(Path(tmp) / "status.json")
+            status = Path(tmp) / "status.json"
+            status.write_text(
+                json.dumps(
+                    {
+                        "running": False,
+                        "source_language_status": "game_not_running",
+                        "last_detected_game_language": "zh-Hans",
+                    }
+                ),
+                "utf-8",
+            )
+            auto = AutoConnector(status)
             try:
                 self.assertTrue(entered.wait(2))
                 self.assertEqual(launches, [])
                 games.append(SimpleNamespace(pid=42, name="sora_2nd.exe"))
-                auto.wake.set()
-                time.sleep(0.04)
-                self.assertEqual(launches, [])
-                release.set()
                 end = time.monotonic() + 2
                 while not launches and time.monotonic() < end:
                     auto.wake.set()
                     time.sleep(0.01)
                 self.assertEqual(len(launches), 1)
                 self.assertEqual(len(builds), 1)
+                self.assertEqual(builds[0][1]["game_language"], "zh-Hans")
             finally:
                 release.set()
                 auto.close()
             # A new UI session uses the disk cache and can connect immediately.
             entered.clear()
-            auto = AutoConnector(Path(tmp) / "status.json")
+            auto = AutoConnector(status)
             try:
                 end = time.monotonic() + 2
                 while len(launches) < 2 and time.monotonic() < end:
@@ -126,6 +135,46 @@ class AutoConnectTests(unittest.TestCase):
             finally:
                 auto.close()
 
+    def test_table_unready_retries_same_game_identity_with_backoff(self):
+        from sora_bilingual.app.auto_connect import AutoConnector
+
+        games = [SimpleNamespace(pid=42, name="sora_2nd.exe")]
+        launched = []
+
+        def launch(*args, **kwargs):
+            launched.append(args)
+            # The first probe exits after table_unready; the retried backend
+            # remains live.  Both represent the exact same process identity.
+            code = 0 if len(launched) == 1 else None
+            return SimpleNamespace(poll=lambda: code, returncode=code)
+
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch("sora_bilingual.app.auto_connect.ROOT", Path(tmp)),
+            patch(
+                "sora_bilingual.app.auto_connect.frida.get_local_device",
+                return_value=SimpleNamespace(enumerate_processes=lambda: list(games)),
+            ),
+            patch("sora_bilingual.platform.win32.process_identity", return_value=123),
+            patch("sora_bilingual.platform.win32.process_path", side_effect=OSError),
+            patch("sora_bilingual.game.install.find_game", return_value=None),
+            patch("sora_bilingual.app.auto_connect.subprocess.Popen", side_effect=launch),
+        ):
+            status = Path(tmp) / "status.json"
+            status.write_text(
+                json.dumps({"running": False, "source_language_status": "table_unready"}),
+                "utf-8",
+            )
+            auto = AutoConnector(status)
+            try:
+                end = time.monotonic() + 3
+                while len(launched) < 2 and time.monotonic() < end:
+                    auto.wake.set()
+                    time.sleep(0.02)
+                self.assertEqual(len(launched), 2)
+            finally:
+                auto.close()
+
     def test_wait_connect_once_and_reconnect_after_game_restart(self):
         p = ConnectionPolicy()
         self.assertIsNone(p.choose(set(), False))
@@ -139,3 +188,10 @@ class AutoConnectTests(unittest.TestCase):
         self.assertIsNone(p.choose({(42, 1)}, True))
         self.assertIsNone(p.choose({(42, 1), (43, 1)}, False))
         self.assertEqual(p.choose({(42, 1)}, False), (42, 1))
+
+    def test_retry_rearms_only_the_current_game_identity(self):
+        p = ConnectionPolicy()
+        current = {(42, 1)}
+        self.assertEqual(p.choose(current, False), (42, 1))
+        p.retry(current)
+        self.assertEqual(p.choose(current, False), (42, 1))

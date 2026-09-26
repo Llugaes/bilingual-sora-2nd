@@ -27,12 +27,14 @@ def check(game, output, config_path):
     # Production resolver constructors and production transport decoder. There
     # are no game hooks, native memory writes or references to game processes.
     source = "\n".join(
-        (SCRIPTS / n).read_text("utf-8") for n in ("runtime_text.js", "runtime_identity.js")
+        (SCRIPTS / n).read_text("utf-8")
+        for n in ("runtime_text.js", "runtime_identity.js", "runtime_paragraph.js")
     )
     source += """\nlet current=null;
 rpc.exports={load(model){
     const r=new RuntimeText(model),s=new ScriptIdentities(model.script_identities),t=new TableIdentities(model.table_identities);
-    current={model,r,s,t};return true;
+    const p=new RuntimeParagraphs(model,RuntimeText);
+    current={model,r,s,t,p};return true;
 },check(){return {pairs:Object.keys(current.model.pairs).length, names:current.r.translate('　·艾丝蒂尔　　　Lv.39\\n　·克萝赛　　　Lv.38\\n　·雪拉扎德　　　Lv.39\\n　·奥利维尔　　　Lv.39','annotation')};}};
 """
     source += (SCRIPTS / "native_transport.js").read_text("utf-8")

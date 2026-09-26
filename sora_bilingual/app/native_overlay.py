@@ -8,7 +8,7 @@ from pathlib import Path
 import sys
 import time
 
-from PySide6.QtCore import Qt, QTimer, QObject, Signal, QPoint, QSettings
+from PySide6.QtCore import Qt, QEvent, QTimer, QObject, Signal, QPoint, QSettings
 from PySide6.QtGui import QAction, QColor, QIcon, QPainter, QPixmap
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import (
@@ -20,8 +20,6 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QSystemTrayIcon,
     QMenu,
-    QScrollArea,
-    QFrame,
 )
 
 from sora_bilingual.platform.inputs import InputManager
@@ -34,35 +32,12 @@ from sora_bilingual.app.native_settings import (
     ROOT,
 )
 from sora_bilingual.platform.win32 import foreground_rect
-from sora_bilingual.app.presentation import describe_state
+from sora_bilingual.app.presentation import describe_state, with_font_status
 from sora_bilingual.app.i18n import set_language, tr
-from sora_bilingual.app.ui_widgets import QLabel, QPushButton, retranslate
+from sora_bilingual.app.ui_widgets import NATIVE_THEME, QLabel, QPushButton, retranslate
 
-STYLE = """
-QWidget { background:#141e29; color:#e9edf1; font-size:13px; }
-QWidget#bar, QWidget#panel { border:1px solid #466073; border-radius:12px; }
-QLabel { background:transparent; border:none; }
-QLabel#brand { color:#91acbe; font-size:11px; letter-spacing:2px; }
-QLabel#title { font-size:20px; font-weight:600; }
-QLabel#detail { color:#a9b9c8; font-size:12px; }
-QLabel#status { font-size:14px; font-weight:600; }
-QPushButton { background:#223547; border:1px solid #3a5266; border-radius:6px; padding:8px 12px; }
-QPushButton:hover { background:#304b60; border-color:#73b9c8; }
-QPushButton:focus { border-color:#83daca; }
-QPushButton:disabled { color:#718496; }
-QComboBox, QDoubleSpinBox { background:#1c2c3a; border:1px solid #3a5266; border-radius:5px; padding:6px; min-height:20px; }
-QComboBox QAbstractItemView { background:#213343; selection-background-color:#3c657a; }
-QTabWidget::pane { border:1px solid #314959; border-radius:8px; }
-QTabBar::tab { background:#192735; color:#a9b9c8; padding:12px 22px; margin:0 4px 8px 0; border-radius:5px; }
-QTabBar::tab:selected { background:#315466; color:#e4fffa; }
-QCheckBox { spacing:10px; padding:8px 0; }
-QCheckBox::indicator { width:17px; height:17px; border:1px solid #648196; border-radius:4px; background:#203343; }
-QCheckBox::indicator:checked { background:#6dcabb; border-color:#a6f4d8; }
-QSlider::groove:horizontal { background:#263c4b; height:5px; border-radius:2px; }
-QSlider::sub-page:horizontal { background:#63b8ab; border-radius:2px; }
-QSlider::handle:horizontal { background:#b6eee2; width:14px; margin:-5px 0; border-radius:7px; }
-QScrollArea { border:none; }
-"""
+# Kept as a public alias because preview and regression tests import STYLE.
+STYLE = NATIVE_THEME
 
 
 class JsonSnapshot:
@@ -88,6 +63,7 @@ class JsonSnapshot:
 
 
 class DragHandle(QLabel):
+    dragged = Signal(QPoint)
     moved = Signal()
 
     def mousePressEvent(self, event):
@@ -97,16 +73,51 @@ class DragHandle(QLabel):
 
     def mouseMoveEvent(self, event):
         if event.buttons() & Qt.MouseButton.LeftButton and hasattr(self, "_drag"):
-            self.window().move(event.globalPosition().toPoint() - self._drag)
+            target = event.globalPosition().toPoint() - self._drag
+            self.dragged.emit(target - self.window().pos())
             event.accept()
 
     def mouseReleaseEvent(self, event):
+        if hasattr(self, "_drag"):
+            del self._drag
         self.moved.emit()
+
+
+class DragSurface(QObject):
+    """Make passive parts of a compact overlay header move its window."""
+
+    dragged = Signal(QPoint)
+    moved = Signal()
+
+    def __init__(self, window, surfaces):
+        super().__init__(window)
+        self._window = window
+        for surface in surfaces:
+            surface.installEventFilter(self)
+
+    def eventFilter(self, watched, event):
+        if event.type() == QEvent.Type.MouseButtonPress:
+            if event.button() == Qt.MouseButton.LeftButton:
+                self._drag = event.globalPosition().toPoint() - self._window.pos()
+                event.accept()
+                return True
+        elif event.type() == QEvent.Type.MouseMove:
+            if event.buttons() & Qt.MouseButton.LeftButton and hasattr(self, "_drag"):
+                target = event.globalPosition().toPoint() - self._drag
+                self.dragged.emit(target - self._window.pos())
+                event.accept()
+                return True
+        elif event.type() == QEvent.Type.MouseButtonRelease and hasattr(self, "_drag"):
+            del self._drag
+            self.moved.emit()
+            event.accept()
+            return True
+        return super().eventFilter(watched, event)
 
 
 class StatusBar(QWidget):
     expand = Signal()
-    hide_requested = Signal()
+    quit_requested = Signal()
 
     def __init__(self):
         super().__init__(
@@ -119,43 +130,54 @@ class StatusBar(QWidget):
         self.setObjectName("bar")
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         row = QHBoxLayout(self)
-        row.setContentsMargins(12, 10, 10, 10)
-        self.grip = DragHandle("≡")
+        row.setContentsMargins(8, 6, 8, 6)
+        row.setSpacing(6)
+        self.grip = DragHandle("::")
         self.grip.setToolTip("拖动状态条")
+        self.grip.setAccessibleName("拖动状态条")
         row.addWidget(self.grip)
-        column = QVBoxLayout()
-        column.setSpacing(3)
+        self.marker = QLabel("○")
+        self.marker.setObjectName("statusMarker")
+        self.marker.setFixedWidth(14)
+        self.marker.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        row.addWidget(self.marker)
         self.status = QLabel()
         self.status.setObjectName("status")
-        self.detail = QLabel()
-        self.detail.setObjectName("detail")
-        column.addWidget(self.status)
-        column.addWidget(self.detail)
-        row.addLayout(column, 1)
+        row.addWidget(self.status, 1)
         self.open_button = QPushButton("设置")
+        self.open_button.setAccessibleName("打开或关闭设置")
+        self.open_button.setToolTip("打开或关闭设置。快捷键显示在状态提示中。")
         self.open_button.clicked.connect(self.expand)
         row.addWidget(self.open_button)
-        self.hide_button = QPushButton("×")
-        self.hide_button.setFixedWidth(32)
-        self.hide_button.setToolTip("隐藏界面，后台继续运行；可从托盘或快捷键打开")
-        self.hide_button.clicked.connect(self.hide_requested)
-        row.addWidget(self.hide_button)
-        self.setFixedWidth(430)
+        self.exit_button = QPushButton("退出")
+        self.exit_button.setAccessibleName("退出界面程序")
+        self.exit_button.setToolTip("退出界面程序，保留双语连接。")
+        self.exit_button.clicked.connect(self.quit_requested)
+        row.addWidget(self.exit_button)
+        self.setFixedWidth(300)
+        # The status text and spare bar surface are easier to target than the
+        # compact grip. Buttons are intentionally excluded so their actions
+        # remain reliable click targets.
+        self.drag_surface = DragSurface(self, (self, self.marker, self.status))
 
     def closeEvent(self, event):
         event.ignore()
-        self.hide_requested.emit()
+        self.quit_requested.emit()
 
     def present(self, state, hint):
-        self.status.setText("●  " + state["title"])
-        self.status.setStyleSheet("color:" + state["color"])
-        self.detail.setText(state["pair"] + "  ·  " + hint)
-        self.setFixedWidth(
-            min(
-                max(430, self.layout().sizeHint().width()),
-                self.screen().availableGeometry().width() - 24,
-            )
-        )
+        detail = state.get("font_notice") or state["detail"]
+        if not state.get("connected"):
+            detail += " · " + tr("可打开设置后手动重新连接。")
+        marker_name = tr("状态：") + tr(state["title"])
+        marker_hint = marker_name + "。" + tr(detail)
+        self.marker.setText(state.get("marker", "●"))
+        self.marker.setStyleSheet("color:" + state["color"])
+        self.marker.setAccessibleName(marker_name)
+        self.marker.setToolTip(marker_hint)
+        self.status.setText(state.get("short_pair", state["pair"]))
+        self.status.setAccessibleName(tr("语言组合：") + tr(state["pair"]))
+        self.status.setToolTip(tr(detail) + " · " + tr("快捷键：") + hint)
+        self.open_button.setToolTip(tr("打开或关闭设置。") + tr("快捷键：") + hint)
 
 
 class OverlayPanel(QWidget):
@@ -174,40 +196,37 @@ class OverlayPanel(QWidget):
         outer.setContentsMargins(20, 18, 20, 16)
         outer.setSpacing(12)
         header = QHBoxLayout()
-        brand = DragHandle("S O R A   /   B I L I N G U A L")
-        brand.setObjectName("brand")
-        header.addWidget(brand, 1)
+        self.grip = DragHandle("S O R A   /   B I L I N G U A L")
+        self.grip.setObjectName("brand")
+        self.grip.setToolTip("拖动顶部，一起移动状态条和设置")
+        header.addWidget(self.grip, 1)
         self.hide_button = QPushButton("×")
         self.hide_button.setFixedWidth(32)
         self.hide_button.setToolTip("关闭设置，保留小状态条")
         self.hide_button.clicked.connect(self.collapse)
         header.addWidget(self.hide_button)
         outer.addLayout(header)
-        self.title = QLabel("双语控制台")
-        self.title.setObjectName("title")
-        outer.addWidget(self.title)
         self.detail = QLabel()
         self.detail.setWordWrap(True)
         self.detail.setObjectName("detail")
         outer.addWidget(self.detail)
         self.settings = NativeSettingsWindow(control, status)
-        self.scroll = QScrollArea()
-        self.scroll.setFrameShape(QFrame.Shape.NoFrame)
-        self.scroll.setWidgetResizable(True)
-        self.scroll.setWidget(self.settings)
-        self.scroll.setMinimumHeight(200)
-        outer.addWidget(self.scroll, 1)
+        self.settings.status_footer.hide()
+        outer.addWidget(self.settings, 1)
         self.setMinimumWidth(620)
-        self.resize(620, 650)
+        self.resize(620, 580)
         self.settings.layout().setContentsMargins(0, 0, 0, 0)
-        footer = QLabel("× / Esc 关闭设置，保留状态条  ·  拖动顶部移动")
+        footer = QLabel("修改自动保存  ·  Esc 收起设置")
         footer.setObjectName("detail")
         outer.addWidget(footer)
 
     def present(self, state):
-        self.title.setText(state["title"])
-        self.title.setStyleSheet("color:" + state["color"])
-        self.detail.setText(state["pair"] + "   /   " + state["detail"])
+        detail = state["detail"]
+        if state.get("font_notice"):
+            detail += "\n" + state["font_notice"]
+            if state.get("font_detail"):
+                detail += "\n" + state["font_detail"]
+        self.detail.setText(detail)
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_Escape and not self.settings.capturing:
@@ -223,9 +242,9 @@ class OverlayPanel(QWidget):
 
 def app_icon():
     pixmap = QPixmap(64, 64)
-    pixmap.fill(QColor("#152737"))
+    pixmap.fill(QColor("#f2e7d1"))
     painter = QPainter(pixmap)
-    painter.setPen(QColor("#83decc"))
+    painter.setPen(QColor("#176b6b"))
     font = painter.font()
     font.setPixelSize(30)
     font.setBold(True)
@@ -256,10 +275,15 @@ class OverlayController(QObject):
         self.bar = StatusBar()
         self.panel = OverlayPanel(control, status)
         self._interface_hidden = False
-        self.bar.expand.connect(self.expand)
+        self.bar.expand.connect(self.toggle_settings)
         self.panel.collapse.connect(self.collapse)
-        self.bar.hide_requested.connect(self.hide_interface)
+        self.bar.quit_requested.connect(self.quit)
         self.bar.grip.moved.connect(self.save_position)
+        self.panel.grip.moved.connect(self.save_position)
+        self.bar.drag_surface.moved.connect(self.save_position)
+        self.bar.grip.dragged.connect(self.move_group)
+        self.panel.grip.dragged.connect(self.move_group)
+        self.bar.drag_surface.dragged.connect(self.move_group)
         self.config = read_control(control)
         self.hotkey = InputManager({"hotkey": self.config["overlay_binding"]})
         self.panel.settings.settings_changed.connect(self.reload)
@@ -330,6 +354,35 @@ class OverlayController(QObject):
     def save_position(self):
         self.preferences.setValue("bar_position", self.bar.pos())
 
+    def move_group(self, delta):
+        bounds = self.bar.geometry()
+        if self.panel.isVisible():
+            bounds = bounds.united(self.panel.geometry())
+        target = bounds.topLeft() + delta
+        screen = QApplication.screenAt(target) or self.bar.screen()
+        area = screen.availableGeometry()
+        x = max(area.left(), min(target.x(), area.right() - bounds.width() + 1))
+        y = max(area.top(), min(target.y(), area.bottom() - bounds.height() + 1))
+        delta = QPoint(x, y) - bounds.topLeft()
+        self.bar.move(self.bar.pos() + delta)
+        self.panel.move(self.panel.pos() + delta)
+
+    def toggle_settings(self):
+        if self.panel.isVisible():
+            self.collapse()
+        else:
+            self.expand()
+
+    def position_panel(self):
+        area = self.bar.screen().availableGeometry()
+        self.panel.resize(620, min(580, area.height() - self.bar.height() - 24))
+        width = max(self.panel.width(), self.bar.width())
+        height = self.panel.height() + self.bar.height() + 8
+        x = max(area.left(), min(self.bar.x(), area.right() - width + 1))
+        y = max(area.top(), min(self.bar.y(), area.bottom() - height + 1))
+        self.bar.move(x, y)
+        self.panel.move(x, y + self.bar.height() + 8)
+
     def expand(self):
         self._interface_hidden = False
         if self.panel.isVisible():
@@ -337,14 +390,7 @@ class OverlayController(QObject):
             self.panel.activateWindow()
             return
         self.panel.settings.reload_control()
-        area = self.bar.screen().availableGeometry()
-        self.panel.resize(620, min(650, area.height() - 16))
-        x = max(area.left(), min(self.bar.x(), area.right() - self.panel.width()))
-        y = max(
-            area.top(),
-            min(self.bar.y() + self.bar.height() + 8, area.bottom() - self.panel.height()),
-        )
-        self.panel.move(x, y)
+        self.position_panel()
         self.panel.show()
         self.panel.raise_()
         self.panel.activateWindow()
@@ -446,6 +492,8 @@ class OverlayController(QObject):
         ):
             state["title"] = "自动连接异常" if auto.error else "等待游戏 · 自动连接"
             state["detail"] = auto.message
+        if auto:
+            state = with_font_status(state, getattr(auto, "font_status", {}))
         self._last_state = state
         now = time.time()
         source = (
@@ -459,6 +507,8 @@ class OverlayController(QObject):
         hint = " + ".join(self.config["overlay_binding"].get("keyboard", [])) or "点击设置展开"
         self.bar.present(state, hint)
         self.panel.present(state)
+        if self.panel.isVisible():
+            self.position_panel()
         # Only the explicit hide action owns bar visibility. Closing settings
         # can leave focus on another window; that must not hide the bar too.
         wanted = not self._interface_hidden
@@ -551,7 +601,10 @@ def main():
             client.disconnectFromServer()
 
         client.readyRead.connect(message)
-        client.disconnected.connect(lambda: (clients.remove(client), client.deleteLater()))
+        client.disconnected.connect(lambda: clients.remove(client) if client in clients else None)
+        # Bind the QObject slot directly so Qt disconnects it during shutdown;
+        # a Python lambda can outlive the socket while the UI hands off.
+        client.disconnected.connect(client.deleteLater)
         message()
 
     server.newConnection.connect(connected)

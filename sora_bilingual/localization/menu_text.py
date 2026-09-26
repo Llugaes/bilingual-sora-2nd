@@ -14,6 +14,186 @@ FORMAT = re.compile(r"%(?:\d+\$)?[-+0 #]*(?:\d+)?(?:\.\d+)?[dius]")
 SEPARATORS = re.compile(
     r"(\r\n|\n|\\n|[【】「」：:／/]| - |[ \u3000]{2,}|^[ \u3000]*[·・][ \u3000]*)"
 )
+LINE_BREAK = re.compile(r"\r\n|\n|\\n")
+LINE_START_PUNCTUATION = frozenset("、。！？）】》〉」』〕］｝")
+
+
+def _latin_word_character(value):
+    return (
+        "A" <= value <= "Z"
+        or "a" <= value <= "z"
+        or "0" <= value <= "9"
+        or "\u00c0" <= value <= "\u024f"
+    )
+
+
+def _secondary_text(lines):
+    """Join wrapped source lines while retaining word boundaries in Latin text."""
+    result = []
+    for line in lines:
+        if (
+            result
+            and result[-1]
+            and line
+            and _latin_word_character(result[-1][-1])
+            and _latin_word_character(line[0])
+        ):
+            result.append(" ")
+        result.append(line)
+    return "".join(result)
+
+
+def _secondary_units(text):
+    result = []
+    at = 0
+    while at < len(text):
+        if text.startswith("<R>", at):
+            close = text.find("</R", at + 3)
+            if close < 0:
+                return None
+            end = text.find(">", close)
+            if end < 0:
+                return None
+            value = text[at : end + 1]
+            base = text[at + 3 : close]
+            result.append((value, sum(not char.isspace() for char in base), False))
+            at = end + 1
+            continue
+        if text[at] == "<":
+            tag = re.match(r"<[^<>]*>", text[at:])
+            if not tag or not re.fullmatch(r"</?[Cc][0-9a-fA-F]*>|</?B>|<[sS]\d+>|<I\d+>", tag[0]):
+                return None
+            result.append((tag[0], 0, True))
+            at += len(tag[0])
+            continue
+        end = at + 1
+        if _latin_word_character(text[at]):
+            while end < len(text) and _latin_word_character(text[end]):
+                end += 1
+            while (
+                end + 1 < len(text) and text[end] in "'’‐-" and _latin_word_character(text[end + 1])
+            ):
+                end += 2
+                while end < len(text) and _latin_word_character(text[end]):
+                    end += 1
+        value = text[at:end]
+        result.append((value, sum(not char.isspace() for char in value), False))
+        at = end
+    return result
+
+
+def _reflow_secondary_paragraph(text, capacities):
+    units = _secondary_units(text)
+    if units is None:
+        return None
+    result = []
+    state = {"colours": [], "bold": False, "size": ""}
+
+    def update(tag):
+        if re.fullmatch(r"<[Cc][0-9a-fA-F]*>", tag):
+            state["colours"].append(tag)
+        elif tag == "</C>":
+            if state["colours"]:
+                state["colours"].pop()
+        elif tag == "<B>":
+            state["bold"] = True
+        elif tag == "</B>":
+            state["bold"] = False
+        elif re.fullmatch(r"<[sS]\d+>", tag):
+            state["size"] = tag
+
+    def prefix():
+        return "".join(state["colours"]) + ("<B>" if state["bold"] else "") + state["size"]
+
+    def close():
+        return ("</B>" if state["bold"] else "") + "</C>" * len(state["colours"])
+
+    def starts_punctuation():
+        for value, width, _ in units:
+            if width:
+                return value[0] in LINE_START_PUNCTUATION
+        return False
+
+    def append(line):
+        value, width, tag = units.pop(0)
+        line.append(value)
+        if tag:
+            update(value)
+        return width
+
+    for number, capacity in enumerate(capacities):
+        if number == len(capacities) - 1:
+            line = [prefix()]
+            while units:
+                append(line)
+            result.append("".join(line) + close())
+            break
+        while result and units and units[0][1] and units[0][0].isspace():
+            result[-1] += units.pop(0)[0]
+        line = [prefix()]
+        used = 0
+        remaining_capacity = sum(capacities[number:])
+        remaining_text = sum(width for _, width, _ in units)
+        target = max(1, -(-remaining_text * capacity // remaining_capacity))
+        while units and (not line or used < target):
+            used += append(line)
+        while units and units[0][2] and units[0][0] in ("</C>", "</B>"):
+            append(line)
+        while units and starts_punctuation():
+            used += append(line)
+        result.append("".join(line) + close())
+    return result
+
+
+def reflow_annotation_lines(primary, secondary):
+    """Return secondary payload lines aligned to primary lines with safe display markup.
+
+    Localized book pages often retain different physical wraps. Paragraphs are
+    paired by blank-line boundaries, then their secondary text is repartitioned
+    across the available primary lines. Dialogue controls in the primary are
+    zero-width. Ruby is atomic, and active color/bold/size context is closed
+    and reopened for each independent annotation payload. Unknown or malformed
+    tags return ``None`` so callers retain their conservative fallback.
+    """
+    left = LINE_BREAK.split(primary)
+    right = LINE_BREAK.split(secondary)
+    result = [""] * len(left)
+
+    def paragraphs(lines):
+        groups, current = [], []
+        for index, line in enumerate(lines):
+            if line.strip():
+                if current and line[0].isspace():
+                    groups.append(current)
+                    current = []
+                current.append((index, line))
+            elif current:
+                groups.append(current)
+                current = []
+        if current:
+            groups.append(current)
+        return groups
+
+    left_groups = paragraphs(left)
+    right_groups = paragraphs(right)
+    if not left_groups:
+        return result
+    if len(left_groups) == len(right_groups):
+        groups = zip(left_groups, right_groups)
+    else:
+        groups = [(sum(left_groups, []), sum(right_groups, []))]
+    for left_group, right_group in groups:
+        text = _secondary_text([line for _, line in right_group])
+        capacities = [
+            max(1, sum(not char.isspace() for char in re.sub(r"<[^<>]*>", "", line)))
+            for _, line in left_group
+        ]
+        reflowed = _reflow_secondary_paragraph(text, capacities)
+        if reflowed is None:
+            return None
+        for (index, _), value in zip(left_group, reflowed):
+            result[index] = value
+    return result
 
 
 def complete_pair(texts, primary, secondary):
@@ -49,17 +229,23 @@ def annotation_plan(primary, secondary):
     rendered by a bare game parser without that adapter.
     """
     lines = re.split(r"(\r\n|\n|\\n)", primary)
-    right = re.split(r"\r\n|\n|\\n", visual_secondary(secondary))
+    visible = visual_secondary(secondary)
+    right = re.split(r"\r\n|\n|\\n", visible)
     left_count = (len(lines) + 1) // 2
-    if left_count != len(right) or any(
+    needs_reflow = left_count != len(right) or any(
         bool(a.strip()) != bool(b.strip()) for a, b in zip(lines[::2], right)
-    ):
-        # There is no semantic line alignment in the localisation keys.
-        # Keep the complete secondary paragraph in one annotation lane.
-        payload = " ".join(right)
-        right = [""] * left_count
-        anchor = next((i for i, line in enumerate(lines[::2]) if line.strip()), 0)
-        right[anchor] = payload
+    )
+    if needs_reflow or "<" in visible:
+        reflowed = reflow_annotation_lines(primary, visible)
+        if reflowed is not None:
+            right = reflowed
+        elif needs_reflow:
+            # Markup can carry state across lines, so do not repartition it.
+            # Keep the complete secondary paragraph in one annotation lane.
+            payload = " ".join(right)
+            right = [""] * left_count
+            anchor = next((i for i, line in enumerate(lines[::2]) if line.strip()), 0)
+            right[anchor] = payload
     out = ""
     layers = []
     for i, part in enumerate(lines):

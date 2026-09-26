@@ -86,8 +86,10 @@ def main():
             print(json.dumps(result), flush=True)
         finally:
             log = control.with_name("overlay-error.log")
+            error_text = ""
             if log.exists():
-                print(log.read_text("utf-8", errors="replace")[-2500:], flush=True)
+                error_text = log.read_text("utf-8", errors="replace")
+                print(error_text[-2500:], flush=True)
             request("quit")
             try:
                 first.wait(timeout=5)
@@ -95,6 +97,7 @@ def main():
                 first.terminate()
                 first.wait(timeout=5)
             time.sleep(0.2)
+            assert "Traceback" not in error_text, "UI handoff raised an exception"
 
 
 if __name__ == "__main__":

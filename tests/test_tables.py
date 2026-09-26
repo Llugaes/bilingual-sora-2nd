@@ -124,6 +124,21 @@ def tips_table(language):
     return bytes(payload)
 
 
+def note_history_table(rows):
+    start, row_size = 88, 8
+    payload = bytearray(start + row_size * len(rows))
+    struct.pack_into(
+        "<4sI64sIIII", payload, 0, b"#TBL", 1, b"NoteMainHistory", 0, start, row_size, len(rows)
+    )
+    cursor = len(payload)
+    for number, text in enumerate(rows):
+        encoded = text.encode() + b"\0"
+        struct.pack_into("<Q", payload, start + number * row_size, cursor)
+        payload.extend(encoded)
+        cursor += len(encoded)
+    return bytes(payload)
+
+
 def dlc_table(dlc_id, name, description, item_ids=(0x0BAA,), quantities=(1,), pool_prefix=b""):
     if len(item_ids) != len(quantities):
         raise ValueError("DLC item ids and quantities must have equal length")
@@ -151,7 +166,7 @@ def dlc_table(dlc_id, name, description, item_ids=(0x0BAA,), quantities=(1,), po
     return bytes(payload)
 
 
-def write_game(root, missing_en=False):
+def write_game(root, missing_en=False, history=False):
     folder = root / "pac" / "steam"
     folder.mkdir(parents=True)
     for language, archive in ARCHIVES.items():
@@ -179,6 +194,21 @@ def write_game(root, missing_en=False):
         entries.append((f"table_{language}/t_skill.tbl", bytes(unknown)))
         entries.append((f"table_{language}/t_help.tbl", help_table(f"{language} help")))
         entries.append((f"table_{language}/t_tips.tbl", tips_table(language)))
+        if history:
+            rows = [f"{language} history {number}" for number in range(3)]
+            if language == "zh-Hans":
+                rows = [
+                    "【游击士协会规章·基本三原则】",
+                    "第一条“基本理念”",
+                    " 游击士应跨越国家藩篱，",
+                ]
+            elif language == "ja":
+                rows = [
+                    "【遊撃士協会規約・基本三項目】",
+                    "第一項『基本理念』",
+                    " 遊撃士は、国家の枠組みを越えて",
+                ]
+            entries.append((f"table_{language}/t_notemenu.tbl", note_history_table(rows)))
         (folder / archive).write_bytes(fpac(entries))
 
 
@@ -277,6 +307,35 @@ class TableTests(unittest.TestCase):
         self.assertEqual(len(tips), 2)  # the unique title/body record survives
         self.assertTrue(
             any(row["path"] == "table/t_tips.tbl" for row in audit["ambiguous_duplicate_groups"])
+        )
+
+    def test_ordered_note_history_uses_its_stable_row_resource_identity(self):
+        with tempfile.TemporaryDirectory() as temp:
+            write_game(Path(temp), history=True)
+            entries, audit = build_table_entries(temp)
+
+        history = {
+            entry["key"]: entry["texts"]
+            for entry in entries
+            if entry["key"].startswith("table/t_notemenu.tbl/row:")
+        }
+        self.assertEqual(len(history), 3)
+        self.assertEqual(
+            history["table/t_notemenu.tbl/row:0/body"]["zh-Hans"],
+            "【游击士协会规章·基本三原则】",
+        )
+        self.assertEqual(
+            history["table/t_notemenu.tbl/row:0/body"]["ja"],
+            "【遊撃士協会規約・基本三項目】",
+        )
+        self.assertEqual(
+            history["table/t_notemenu.tbl/row:2/body"]["ja"],
+            " 遊撃士は、国家の枠組みを越えて",
+        )
+        self.assertFalse(
+            any(
+                row["path"] == "table/t_notemenu.tbl" for row in audit["ambiguous_duplicate_groups"]
+            )
         )
 
 

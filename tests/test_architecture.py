@@ -13,12 +13,22 @@ ALLOWED = {
     "fonts": {"fonts", "localization", "game", "config"},
     "game": {"game", "localization", "platform", "config", "updates"},
     "updates": {"updates", "config"},
-    "app": {"app", "game", "localization", "platform", "config", "updates"},
+    "app": {"app", "game", "localization", "platform", "config", "updates", "fonts"},
     "legacy": {"legacy", "platform"},
 }
 
 
 class ArchitectureTests(unittest.TestCase):
+    def test_hot_reload_sources_do_not_install_native_instrumentation(self):
+        from sora_bilingual.updates.tool_updates import GROUPS
+
+        for name in GROUPS["logic"]:
+            self.assertNotRegex(
+                (ROOT / name).read_text("utf-8"),
+                r"\b(?:Interceptor|NativeFunction|NativeCallback|Memory|Process|Stalker|CModule)\b",
+                name,
+            )
+
     def test_resident_and_ui_files_have_reload_owners(self):
         from sora_bilingual.updates.tool_updates import GROUPS
 

@@ -35,7 +35,13 @@ def prepare_fresh(game, config, *, cache_only=False):
             raise RuntimeError(
                 process.stderr.decode("utf-8", errors="replace")[-1500:] or "索引准备进程失败"
             )
-        path = json.loads(result.read_text("utf-8"))["path"]
+        prepared = json.loads(result.read_text("utf-8"))
+        path = prepared["path"]
+        if cache_only == "summary":
+            # The worker has already validated and packed this model.  The
+            # resident process needs only a cache address and status metadata;
+            # parsing the full model here used to duplicate a 100+ MiB read.
+            return {"path": path, "coverage": prepared.get("coverage", {})}
         if cache_only:
             return path
         model = read_model(path)
@@ -52,10 +58,31 @@ class ModelPreparation:
         self.identity = identity
         self.desired = None
         self.active = False
+        self.active_identity = None
+        self.active_generation = None
         self.results = Queue()
         self.generation = 0
 
-    def request(self, config):
+    def request(self, config, *, force=False):
+        """Queue a locale build, retaining an equivalent in-flight result.
+
+        A catalog/code update passes ``force=True`` because its model cache may
+        have changed under the same language tuple.  Ordinary control writes
+        (including mode changes) must not discard a matching compiler result.
+        """
+        requested = self.identity(config)
+        if (
+            not force
+            and self.active
+            and self.active_identity == requested
+            and self.generation == self.active_generation
+        ):
+            # Keep only a result that has not been invalidated. In particular,
+            # a later ordinary control write cannot undo a forced code reload.
+            self.desired = deepcopy(config)
+            return
+        if not force and self.desired is not None and self.identity(self.desired) == requested:
+            return
         self.generation += 1
         self.desired = deepcopy(config)
         self._start()
@@ -66,6 +93,8 @@ class ModelPreparation:
         config = deepcopy(self.desired)
         self.active = True
         generation = self.generation
+        self.active_identity = self.identity(config)
+        self.active_generation = generation
 
         def build():
             try:
@@ -81,6 +110,8 @@ class ModelPreparation:
         except Empty:
             return None
         self.active = False
+        self.active_identity = None
+        self.active_generation = None
         if generation != self.generation:
             self._start()
             return None

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bilingual-sora-2nd"
-version = "0.3.11"
+version = "0.3.12"
 description = "Native bilingual text and learning annotations for Trails in the Sky 2nd"
 readme = "README.md"
 requires-python = ">=3.14,<3.15"

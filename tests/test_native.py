@@ -67,3 +67,18 @@ class NativeDictionaryTests(unittest.TestCase):
         self.assertEqual(result["回复药"], "<R>回复药</Rティアの薬>")
         self.assertNotIn("药", result)
         self.assertNotIn("一二", result)
+
+    def test_missing_worker_cache_never_commits_a_null_model(self):
+        from sora_bilingual.game.native_runtime import NativeLabels
+
+        calls = []
+        native = NativeLabels(lambda _: None)
+        native.script = SimpleNamespace(
+            exports_sync=SimpleNamespace(modelbegin=lambda *_: calls.append("begin"))
+        )
+        with patch(
+            "sora_bilingual.localization.model_wire.prepare_wire", side_effect=ValueError("missing")
+        ):
+            with self.assertRaises(ValueError):
+                native.load(None, {"enabled": True}, "annotation", cache_path="missing.json")
+        self.assertEqual(calls, [])

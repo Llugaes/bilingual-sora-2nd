@@ -221,7 +221,7 @@ def record_identity(data, at, kind, schema, text_floor):
     return "sha256:" + hashlib.sha256(row + extra).hexdigest()
 
 
-def read_section(data, section, schema, text_floor):
+def read_section(data, section, schema, text_floor, *, stable_row_identity=False):
     kind, start, size, count = section
     if size != schema.size:
         raise FormatError("section stride mismatch: " + kind)
@@ -248,6 +248,12 @@ def read_section(data, section, schema, text_floor):
             if value:
                 fields[name] = value
         identity = record_identity(data, at, kind, schema, text_floor)
+        # This section is an ordered history document: each 8-byte record is
+        # only a localized string pointer, so after address masking no payload
+        # remains to distinguish its rows. The row number is its resource ID
+        # and is stable across the locale archives.
+        if stable_row_identity:
+            identity = f"row:{i}"
         result.setdefault(identity, []).append(fields)
     return result
 
@@ -321,7 +327,13 @@ def build_menu_entries(game_dir):
                         else:
                             floor = max(s + z * c for _, s, z, c in headers[l])
                             parsed[l] = read_section(
-                                data, matching[occurrence], schema_for(path, kind), floor
+                                data,
+                                matching[occurrence],
+                                schema_for(path, kind),
+                                floor,
+                                stable_row_identity=(
+                                    path == "table/t_notemenu.tbl" and kind == "NoteMainHistory"
+                                ),
                             )
                     except FormatError as exc:
                         audit["diagnostics"].append(
