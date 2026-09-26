@@ -10,6 +10,8 @@ A native bilingual text mod for the PC version of **Trails in the Sky the 2nd**.
 
 Currently supports Steam build **25386012**, executable **1.03.2**. The tool checks the game build before installing hooks; it does not force hooks into unsupported versions or rewrite the original PAC/EXE files. This is an early project with offline regression tests and partial in-game validation. Full-game coverage, layout across all languages, and controller compatibility still need in-game feedback.
 
+**Recommended for everyday play: single-language display with hold-to-show secondary.** Read the primary language normally, hold your shortcut to compare, then release to return. Simultaneous bilingual text remains available, but opening the dialogue log can hitch and its frame rate can be lower; see the limitations below. This recommendation does not reset existing settings.
+
 ## Installation
 
 **Recommended installer:** Download `bilingual-sora-2nd-VERSION-windows-x64-setup.exe` from [Releases](https://github.com/Llugaes/bilingual-sora-2nd/releases/latest). The English/Japanese/Chinese wizard installs for the current user without administrator rights, adds a Start menu entry and an optional desktop shortcut, and bundles all dependencies for offline installation. Uninstall through Windows Installed apps; settings are retained. Exit the tool from its tray menu and end its game connection before reinstalling or uninstalling. Setup never force-closes the game.
@@ -72,6 +74,15 @@ Text scale, offsets, and spacing remain adjustable live and survive menu recreat
 While waiting for the game, the tool discovers installed resources and prepares the selected language pair in the background. First use and resource/parser changes require preparation once; open the tool before the game and let it finish. Valid caches load directly instead of transferring the full model in chunks. The cached connection path measured about 3.5–3.7 seconds in an offline helper process; game initialization is additional, and logs record actual connection timings. UI translations and initial language preferences do not invalidate the resource index.
 
 Menus, items, skills, NPC conversations, dialogue history, active voices and cutscene subtitles all use small annotations above the primary text, aligned with its left edge. No second-language paragraph is appended to the body. Original ruby and emphasis marks retain their positions; the secondary language uses a separate annotation layer. Text baked into images or videos is outside the supported scope. Uncertain matches keep the original text rather than guessing a translation.
+
+## Recommended usage and known limitations
+
+For smoother play, select **Single-language mode → Hold for secondary language** (**Hold** in older versions), then bind a convenient keyboard or controller combination. Read the primary language normally, hold to switch to the secondary, and release to return. This avoids continuously laying out both languages together and is the recommended everyday setup. Switching can still trigger a brief layout update; zero latency is not guaranteed.
+
+- **Bilingual dialogue-log performance remains an unresolved limitation.** Opening the log can cause a noticeable hitch, and its frame rate can be lower than in single-language mode. In-game feedback has reported opening pauses of around **700 ms**, including on repeated opens. Results vary with history size, language pair, and hardware. Caching and native optimizations reduce some costs but do not guarantee a hitch-free log; the issue should not be considered fixed. Use the single-language hold setup above if it affects your play.
+- **The cost includes layout and parsing, not just font drawing.** Bilingual text uses the game's native annotation layout. The log processes historical text in bulk and repeatedly parses some controls while displayed. Changing secondary color or opacity does not remove that work.
+- **Preparing a language pair can take time.** First connection, an uncached pair, or changed game resources require local resource processing. Start the tool early and allow preparation to finish. This is separate from the dialogue-log opening hitch.
+- **Coverage and available space have limits.** Uncertain matches keep the original text; text embedded in images or videos is not processed. Bilingual text does not enlarge the game's fixed text boxes, so long text or large fonts may be crowded. Reduce text size or use single-language mode. The full game and every language pair have not been exhaustively verified.
 
 ## Automatic updates
 
