@@ -124,11 +124,49 @@ def tips_table(language):
     return bytes(payload)
 
 
+def dlc_table(dlc_id, name, description, item_ids=(0x0BAA,), quantities=(1,), pool_prefix=b""):
+    if len(item_ids) != len(quantities):
+        raise ValueError("DLC item ids and quantities must have equal length")
+    start, row_size = 88, 64
+    payload = bytearray(start + row_size)
+    struct.pack_into("<4sI64sIIII", payload, 0, b"#TBL", 1, b"DLCTableData", 0, start, row_size, 1)
+    struct.pack_into("<II", payload, start, dlc_id, dlc_id)
+    payload.extend(pool_prefix)
+    cursor = len(payload)
+    for offset, values in ((8, item_ids), (24, quantities)):
+        struct.pack_into("<QQ", payload, start + offset, cursor, len(values))
+        payload.extend(struct.pack(f"<{len(values)}I", *values))
+        cursor += 4 * len(values)
+    encoded_name = name.encode() + b"\0"
+    encoded_description = description.encode() + b"\0"
+    struct.pack_into(
+        "<QQQ",
+        payload,
+        start + 40,
+        cursor,
+        cursor + len(encoded_name),
+        cursor + len(encoded_name) + len(encoded_description),
+    )
+    payload.extend(encoded_name + encoded_description + b"\0")
+    return bytes(payload)
+
+
 def write_game(root, missing_en=False):
     folder = root / "pac" / "steam"
     folder.mkdir(parents=True)
     for language, archive in ARCHIVES.items():
         entries = [(f"table_{language}/t_text.tbl", text_table([("MENU_OK", f"{language} OK")]))]
+        entries.append(
+            (
+                f"table_{language}/t_dlc.tbl",
+                dlc_table(
+                    9001,
+                    f"{language} DLC name",
+                    f"{language} DLC description",
+                    pool_prefix=language.encode() * 3,
+                ),
+            )
+        )
         if not (missing_en and language == "en"):
             entries.append(
                 (
@@ -188,9 +226,43 @@ class TableTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             write_game(Path(temp), missing_en=True)
             entries, _audit = build_table_entries(temp)
-        item = next(entry for entry in entries if entry["key"].endswith("/name"))
+        item = next(
+            entry
+            for entry in entries
+            if entry["key"].startswith("table/t_item.tbl/") and entry["key"].endswith("/name")
+        )
         self.assertNotIn("en", item["texts"])
         self.assertIn("zh-Hant", item["texts"])
+
+    def test_dlc_payload_identity_aligns_all_languages_despite_localized_string_offsets(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            write_game(root)
+            entries, _audit = build_table_entries(root)
+        dlc_entries = [entry for entry in entries if entry["key"].startswith("table/t_dlc.tbl/")]
+        self.assertEqual(len(dlc_entries), 2)
+        for entry in dlc_entries:
+            self.assertEqual(set(entry["texts"]), set(LANGUAGES))
+        self.assertEqual(
+            next(entry for entry in dlc_entries if entry["key"].endswith("/name"))["texts"],
+            {language: f"{language} DLC name" for language in LANGUAGES},
+        )
+
+    def test_dlc_identity_retains_item_payload_not_its_addresses(self):
+        schema = SCHEMAS["DLCTableData"]
+        first = dlc_table(9001, "short", "short", (10, 20), (1, 2))
+        moved_addresses = dlc_table(
+            9001,
+            "a much longer localized name",
+            "description",
+            (10, 20),
+            (1, 2),
+            b"preceding translated pool data\0",
+        )
+        changed_payload = dlc_table(9001, "short", "short", (10, 21), (1, 2))
+        identity = lambda data: record_identity(data, 88, "DLCTableData", schema, 152)
+        self.assertEqual(identity(first), identity(moved_addresses))
+        self.assertNotEqual(identity(first), identity(changed_payload))
 
     def test_missing_archive_is_explicit(self):
         with tempfile.TemporaryDirectory() as temp:

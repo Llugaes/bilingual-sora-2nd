@@ -198,8 +198,14 @@ class MenuTranslator:
             for scope, prefix in [
                 ("support", "table/t_support_ability.tbl/"),
                 ("overdrive", "table/t_condition_info.tbl/OverDriveEffect/"),
+                ("item_name", "table/t_item.tbl/"),
             ]:
-                selected = [e for e in entries if e.get("key", "").startswith(prefix)]
+                selected = [
+                    e
+                    for e in entries
+                    if e.get("key", "").startswith(prefix)
+                    and (scope != "item_name" or e["key"].endswith("/name"))
+                ]
                 if selected:
                     self.scoped[scope] = MenuTranslator(
                         selected, primary, secondary, source_language, True

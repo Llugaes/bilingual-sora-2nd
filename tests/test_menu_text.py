@@ -7,6 +7,22 @@ def entry(sc, ja, en=None):
 
 
 class MenuTextTests(unittest.TestCase):
+    def test_item_name_scope_resolves_only_unambiguous_inventory_records(self):
+        item = {
+            "key": "table/t_item.tbl/id/name",
+            "texts": {"fr": "Carte", "en": "Map", "de": "Landkarte"},
+        }
+        menu = {
+            "key": "table/t_text.tbl/TXT_MAP",
+            "texts": {"fr": "Carte", "en": "World map", "de": "Weltkarte"},
+        }
+        tr = MenuTranslator([item, menu], "en", "de", "fr")
+        self.assertEqual(tr.translate("Carte", "secondary"), "Carte")
+        self.assertEqual(tr.scoped["item_name"].translate("Carte", "secondary"), "Landkarte")
+        duplicate = {"key": "table/t_item.tbl/other/name", "texts": menu["texts"]}
+        tr = MenuTranslator([item, menu, duplicate], "en", "de", "fr")
+        self.assertEqual(tr.scoped["item_name"].translate("Carte", "secondary"), "Carte")
+
     def test_complete_display_records_survive_unpaired_script_fragments(self):
         for role in ("dialogue", "speaker"):
             authoritative = {

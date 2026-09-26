@@ -30,7 +30,7 @@ SCHEMAS = {
     # are masked for identity, but are not emitted as translatable fields.
     "ActiveVoiceTableData": spec(128, [("body", 112)], [8, 24, 40, 48, 64, 80, 96]),
     "ChapterParam": spec(88, [("title", 24), ("heading", 32), ("ending", 40)], [16, 48, 64, 80]),
-    "DLCTableData": spec(64, [("name", 40), ("description", 48)], [56]),
+    "DLCTableData": spec(64, [("name", 40), ("description", 48)], [8, 24, 56]),
     "EventGroupData": spec(16, [("title", 8)]),
     "EventSubGroupData": spec(16, [("title", 8)]),
     "LookPointTableData": spec(64, [("label", 16)], [8, 24]),
@@ -204,6 +204,18 @@ def record_identity(data, at, kind, schema, text_floor):
             if count > 4096 or (count and not text_floor <= pointer <= len(data) - count * 2):
                 raise FormatError("navigation condition array outside pool")
             extra += struct.pack("<Q", count) + data[pointer : pointer + count * 2]
+    if kind == "DLCTableData":
+        # The two item/count arrays are stable DLC payload data. Their
+        # addresses move when a localized name or description changes, so
+        # retain their contents while excluding only the addresses themselves.
+        for pointer_at, count_at in ((8, 16), (24, 32)):
+            pointer, count = (
+                struct.unpack_from("<Q", row, pointer_at)[0],
+                struct.unpack_from("<Q", row, count_at)[0],
+            )
+            if count > 4096 or (count and not text_floor <= pointer <= len(data) - count * 4):
+                raise FormatError("DLC item array outside pool")
+            extra += struct.pack("<Q", count) + data[pointer : pointer + count * 4]
     for offset in schema.pointers:
         row[offset : offset + 8] = b"\0" * 8
     return "sha256:" + hashlib.sha256(row + extra).hexdigest()

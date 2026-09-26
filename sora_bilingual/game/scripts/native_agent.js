@@ -93,6 +93,7 @@ function translationKey(row) {
         }
         if(subtitle&&names[0]==='text')row.surface='subtitle';
         row.dialogueSpeaker=subtitle&&['name_text','prev_name_text'].includes(names[0]);
+        if(names[0]==='name'&&names.includes('item_template'))row.scope='item_name';
         if(names[0]==='name' && names.includes('skill_template')) {
             if(names.includes('ability_list')||names.includes('temp_ability_list'))row.scope='support';
             if(names.includes('overdrive_list')||names.includes('temp_overdrive_list'))row.scope='overdrive';
@@ -274,6 +275,27 @@ function observeNativeText(p) {
         row.epoch=renderEpoch;captureMetadata(row);
     }finally{leaveLabel(lease);}
 }
+function adoptCopiedLabel(p,source) {
+    // The native copy constructor clones a template's owned UTF-8 buffer,
+    // bypassing SetText. Carry provenance, not a reverse-parsed translation,
+    // before its first measure/draw. Never share mutable lane/parser state.
+    const original=labels.get(String(source));
+    if(!original||!isLabel(p)||!isLabel(source))return;
+    const current=readText(p);
+    if(current!==original.displayed||readText(source)!==current)return;
+    const lease=enterLabel(p);if(!lease)return;
+    try {
+        const row=remember(p,original.original);
+        row.displayed=current;
+        for(const key of ['scriptIdentity','scriptPointer','tableIdentity'])row[key]=original[key];
+        const renderEpoch=epoch,wanted=wantedText(row);
+        if(wanted!==current){copyOwnedText(row,wanted);immediateWrites++;}
+        row.epoch=renderEpoch;captureMetadata(row);
+    }finally{leaveLabel(lease);}
+}
+if(REPORT.native.copy_label_ready) Interceptor.attach(base.add(REPORT.native.copy_label_ready.rva),{
+    onEnter(){try{adoptCopiedLabel(this.context.rdi,this.context.rbx);}catch(e){fail(e);}}
+});
 // Several native callers inline SetText's buffer copy (including save-party
 // details), then call this common measuring entry. Resolve before it measures
 // and draws; polling Update afterwards loses to the next inlined write.

@@ -114,6 +114,7 @@ function makeRuntime(rubyCase = null) {
             set_text: {rva: 0x100, bytes: '00000000000000000000000000000000'},
             reset_text: {rva: 0x180, bytes: '00000000000000000000000000000000'},
             measure_text: {rva: 0x190, bytes: '00000000000000000000000000000000'},
+            copy_label_ready: {rva: 0x198, bytes: '00000000000000000000000000000000'},
             line_ruby_origin: {rva: 0x195, bytes: '00000000000000000000000000000000'},
             destroy: {rva: 0x200, bytes: '00000000000000000000000000000000'},
             update: {rva: 0x300, bytes: '00000000000000000000000000000000'},
@@ -365,6 +366,15 @@ function makeRuntime(rubyCase = null) {
             invoke(base.add(0x190),[label])();
             return label.text(); // Native measurement consumes this immediately.
         },
+        cloneLabel(source,address) {
+            // Native copy constructor copies owned UTF-8, then measures before
+            // the first Update; it never goes through SetText.
+            const target=new LabelPointer(address,source.text(),0,source.fontSize);
+            target.flags=source.flags;target.textKeyHash=source.textKeyHash;
+            hooks.get(String(base.add(0x198)))?.onEnter.call({context:{rdi:target,rbx:source}});
+            invoke(base.add(0x190),[target])();
+            return target;
+        },
         update(label, currentThread = 1) {
             threadId = currentThread;
             const leave=invoke(base.add(REPORT.native.update.rva), [label]);
@@ -382,6 +392,41 @@ function makeRuntime(rubyCase = null) {
         destroy(label) { invoke(base.add(REPORT.native.destroy.rva), [label]); },
     };
 }
+
+test('cloned annotated templates inherit the raw source before their first measurement',()=>{
+    const r=makeRuntime();
+    r.api.load({pairs:{Source:['Primary','Secondary']},plain_pairs:{Source:['Primary','Secondary']}},'annotation',true,.8,{ruby_scale:.6});
+    const template=r.label(0x3910,'Source',0,24);r.externalSet(template,'Source');
+    const copy=r.cloneLabel(template,0x3920);
+    const row=r.api.snapshot().at(-1);
+    assert.equal(row.original,'Source');assert.equal(row.presentation,'ruby');
+    assert.equal(copy.text(),template.text());
+    r.api.select('primary',true);r.update(copy);
+    assert.equal(copy.text(),'Primary');
+    r.api.select('annotation',true);r.update(copy);
+    assert.equal(copy.text(),template.text());
+    // Source templates can remain hidden with an older mode/style. Re-render
+    // their new instance using the CURRENT style, never reverse-parse ruby.
+    r.api.style(.9,{ruby_scale:.5});
+    const another=r.cloneLabel(template,0x3930);
+    assert.match(another.text(),/^<s22>/);
+    assert.equal(r.api.snapshot().at(-1).original,'Source');
+    r.api.select('primary',true);
+    const primaryCopy=r.cloneLabel(template,0x3940);
+    assert.equal(primaryCopy.text(),'Primary');
+    assert.equal(r.api.status().failed,false);
+});
+
+test('copying native ruby or an untracked template does not invent a reversible source',()=>{
+    const r=makeRuntime();r.api.load({pairs:{}},'annotation',true,.8);
+    const original='<R>native</Rreading>';
+    const untracked=r.label(0x3950,original);
+    assert.equal(r.cloneLabel(untracked,0x3960).text(),original);
+    r.externalSet(untracked,original);
+    const tracked=r.cloneLabel(untracked,0x3970);
+    r.api.select('primary',true);r.update(tracked);
+    assert.equal(tracked.text(),original);assert.equal(r.api.status().failed,false);
+});
 
 test('external setter refreshes source and native setter copies its buffer', () => {
     const runtime = makeRuntime();
@@ -524,6 +569,16 @@ test('support list ancestry selects its own translation of a repeated name', () 
     assert.equal(label.text(),'<R>反击</R反撃>');
     const other=runtime.label(0x4340,'反击');runtime.update(other);
     assert.equal(other.text(),'反击');
+});
+
+test('inventory name ownership disambiguates a copied item name without translating other surfaces',()=>{
+    const r=makeRuntime(),label=r.label(0x4341,'Map');label.name='name';
+    label.parent=r.label(0x4342,'');label.parent.name='item_template';
+    r.api.load({pairs:{},plain_pairs:{},scoped:{item_name:{pairs:{Map:['Map','Carte']},plain_pairs:{Map:['Map','Carte']}}}},'annotation',true,1);
+    r.externalSet(label,'Map');assert.equal(label.text(),'<R>Map</RCarte>');
+    const other=r.label(0x4343,'Map');r.externalSet(other,'Map');assert.equal(other.text(),'Map');
+    r.api.select('secondary',true);r.update(label);assert.equal(label.text(),'Carte');
+    assert.equal(r.api.status().failed,false);
 });
 
 test('ruby measurement and drawing share scale without a second parser gap adjustment', () => {

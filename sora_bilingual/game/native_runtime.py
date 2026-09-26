@@ -14,6 +14,7 @@ POINTS = {
     "set_text": 0x588A40,
     "reset_text": 0x585320,
     "measure_text": 0x588710,
+    "copy_label_ready": 0x583E6A,
     "line_ruby_origin": 0x588570,
     "update": 0x584CA0,
     "layout_ready": 0x584CF4,

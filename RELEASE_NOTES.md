@@ -1,35 +1,22 @@
-# Bilingual Sora 2nd v0.3.10
+# Bilingual Sora 2nd v0.3.11
 
 ## 简体中文
 
-- 统一普通注音与独立注解的间距计算。副语言按实际绘制字形的边缘定位，涵盖对话、姓名、跳过按钮和带颜色的底部说明；按钮图标不参与文字间距计算，原文注音和强调点保留原位置。
-- 修复只调整主字号才刷新、切换设置页后位置不一致的问题。只修改副语言间距或字号也会重新排版。
-- 固定对话框中的姓名保留原生基线，避免新增注解把姓名向正文挤压。
-- 补上绕过普通文本设置接口的读档角色名单。姓名旁的等级、章节旁的难度以及游玩时间保留原有布局，无需按姓名或语言写特例。
-- 修复暂停中的长对话在单语／双语切换后消失的问题；重排时保留文本显示进度。
-- 已在游戏内测量对话、姓名、隐藏界面和两个跳过按钮的间距，并验证读档姓名与设置页重建。缓存就绪后的本次真实游戏连接耗时为 3.81 秒，不含首次缓存准备；实际耗时取决于机器和游戏初始化。
-- 已知限制：固定高度的窄标题条可能容不下当前字号和新增注解。统一间距不会扩大背景或自动缩小用户字号；不同控件的缩放与字形留白仍可能造成视觉差异。
+- 修复直接以双语模式进入菜单时，部分模板复制控件不应用副语言字号、间距，且无法切回单语的问题。新控件在首次排版前继承原文；已验证道具页的耀晶石标题、使用和舍弃提示。
+- 修复重要道具“利贝尔王国地图”遗漏副语言的问题。道具名称按所属资源范围匹配，不再与同名地图菜单混淆。
+- 修复 DLC 资源跨语言关联。当前游戏的 30 组 DLC 名称和说明均已对齐八种语言，不依赖手写翻译或固定语言组合。
+- 已验证直接双语进入、动态还原单语、字号缩放，以及地图和 DLC 列表。更新包含底层接入改动，当前游戏连接会保留；完整改动在游戏下次启动时自动应用。
 
 ## English
 
-- Use one glyph-bound spacing calculation for native ruby and separate annotations, including dialogue, speaker names, skip controls and colored footers. Exclude button icons from text bounds and preserve original ruby and emphasis positions.
-- Reflow on secondary-size or gap changes as well as main-size changes. Keep initial layout and recreated settings pages consistent.
-- Retain the native speaker-name baseline in fixed dialogue boxes.
-- Catch save-party text written outside the regular setter. Preserve levels, difficulty labels and playtime without language- or name-specific rules.
-- Keep paused dialogue visible when switching between single-language and annotated modes, retaining reveal progress during reflow.
-- Verified live gaps in dialogue, names, Hide UI and both skip controls, plus save-party names and settings-page recreation. One real-game connection with a prepared cache took 3.81 seconds; first-time cache preparation is excluded and timing varies by system and game initialization.
-- Known limitation: fixed-height narrow headings may not fit the selected sizes plus annotations. Unified spacing does not enlarge backgrounds or automatically shrink saved font sizes. Widget scaling and glyph padding can still affect perceived spacing.
+- Fix copied menu controls ignoring secondary size and spacing, and failing to return to a single language when the menu opens in annotated mode. New controls inherit their source before their first layout. Verified the inventory Sepith heading and Use/Discard hints.
+- Resolve the inventory's Map of Liberl name within item resources, without confusing it with a separate map-menu label.
+- Fix cross-language DLC resource alignment. All 30 DLC names and descriptions in the supported game now align across eight languages, without handwritten translations or fixed language pairs.
+- Verified annotated entry, single-language restoration, font scaling, and the map and DLC lists. This update includes native integration changes; the current game connection remains active and the complete update applies on the next game launch.
 
 ## 日本語
 
-- 会話、名前、スキップ操作、色付きフッターの注釈間隔を、実際に描画する文字の境界から共通計算します。ボタンアイコンは計算から除外し、元のルビ・強調点の位置を維持します。
-- 主言語の文字サイズだけでなく、副言語サイズや間隔の変更でも再配置します。設定ページの初回表示と再作成後の配置を統一しました。
-- 固定会話ウィンドウの話者名を元のベースラインに維持します。
-- 通常のテキスト設定処理を通らないセーブ情報のキャラクター名にも対応。レベル、難易度、プレイ時間の配置を維持し、特定の名前や言語に依存しません。
-- 一時停止中の長い会話で、単言語／注釈表示を切り替えると本文が消える問題を修正。再配置時も表示進行度を維持します。
-- 実機で会話・名前・UI非表示・両スキップ操作の間隔、セーブ情報の名前、設定ページの再作成を確認しました。キャッシュ準備済みの実ゲーム接続は今回 3.81 秒でした。初回キャッシュ作成を含まず、環境やゲームの初期化によって変わります。
-- 既知の制限：高さが固定された細い見出しには、設定した文字サイズと注釈が収まらない場合があります。背景の拡張や文字サイズの自動縮小は行いません。ウィジェットの倍率と文字の余白によって見た目の間隔に差が残る場合があります。
-
-## Downloads
-
-New users: `bilingual-sora-2nd-0.3.10-windows-x64-setup.exe` or `bilingual-sora-2nd-0.3.10-windows-x64.zip`. App/runtime ZIPs and the JSON manifest are updater components. Existing installations retain settings and reuse unchanged dependencies. Native-hook updates apply after the current game connection ends; no game restart is forced.
+- 双言語表示でメニューを開くと、複製された一部の項目に副言語の文字サイズ・間隔が反映されず、単言語表示にも戻せない問題を修正しました。初回配置前に元のテキストを引き継ぎます。アイテム画面のセピス見出し、「使う」「捨てる」で確認しました。
+- アイテム名「リベール王国の地図」をアイテム用リソース内で照合し、別の地図メニュー項目との混同による表示漏れを修正しました。
+- DLC リソースの言語間対応付けを修正しました。対応するゲームの全30組の DLC 名称・説明が8言語で対応し、手書きの訳文や固定の言語ペアに依存しません。
+- 双言語での初回表示、単言語への復帰、文字サイズ変更、地図・DLC 一覧を確認しました。ネイティブ接続部分の変更を含むため、現在の接続は維持し、完全な更新は次回のゲーム起動時に適用します。
