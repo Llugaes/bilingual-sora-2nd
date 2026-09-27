@@ -7,6 +7,31 @@ const {RuntimeParagraphs}=require('../sora_bilingual/game/scripts/runtime_paragr
 
 const model=pairs=>({pairs,plain_pairs:pairs,numeric:[],raw_numeric:[]});
 
+test('changed emotion headers retain complete body annotations and real ambiguity stays plain',()=>{
+    const body='<K>绯小姐也是，过得好吗？',target='<K>フェイさんこそ元気だった？';
+    const source='<#E_0#M_4#B_0>'+body;
+    const plan=new RuntimeText(model({[body]:[body,target]})).render(source,'annotation');
+    assert.equal(plan.kind,'layered');
+    assert.equal(plan.text.replace(/<R><\/R_>/g,''),source);
+    assert.deepEqual(plan.layers.map(layer=>layer.text),['フェイさんこそ元気だった？']);
+    const conflict='<K>啊，绯小姐！',live='<#E_E#M_4#B_0>'+conflict;
+    const tr=new RuntimeText({...model({}),ambiguous_display:[conflict],
+        raw_numeric:[['<#E_E#M_4#B_0><K>啊，([^<>]+)！',['<#E_E#M_4#B_0><K>啊，%s！','<#E_E#M_4#B_0><K>Oh! %s!']]]});
+    assert.deepEqual(tr.render(live,'annotation'),{text:live,layers:[],kind:'plain'});
+});
+
+test('icon-only lines never consume translated words assigned to following text lines',()=>{
+    for(const decoration of ['<c930><I300>','<C1><I300></C>','──','42']) {
+        const source=decoration+'\n甲\n乙',target=decoration+'\n一\n二';
+        const plan=new RuntimeText(model({[source]:[source,target]})).render(source,'annotation');
+        if(decoration.includes('<')) {
+            assert.equal(plan.text.replace(/<R><\/R_>/g,''),source);
+            assert.deepEqual(plan.layers.map(layer=>layer.primary),['甲','乙'],decoration);
+            assert.deepEqual(plan.layers.map(layer=>layer.text.replace(/<[^<>]*>/g,'')),['一','二'],decoration);
+        } else assert.equal(plan.text,decoration+'\n<R>甲</R一>\n<R>乙</R二>');
+    }
+});
+
 test('paragraph lookup accepts only an exact multiline record at full-buffer line boundaries',()=>{
     const source='前置\n★根据哈恩队长所说，\n　目击者似乎是在卡鲁迪亚隧道\n　入口的尼克斯。\n尾部\n';
     const block='★根据哈恩队长所说，\n　目击者似乎是在卡鲁迪亚隧道\n　入口的尼克斯。';

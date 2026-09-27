@@ -7,9 +7,11 @@ class RuntimeText {
         this.model = model;
         this.numeric = (model.numeric || []).map(([pattern, pair]) => [new RegExp('^(?:'+pattern+')$'), pair]);
         this.rawNumeric = (model.raw_numeric || []).map(([pattern,pair])=>[new RegExp('^(?:'+pattern+')$'),pair]);
+        this.detailNumeric = (model.detail_numeric || []).map(([pattern,pair])=>[new RegExp('^(?:'+pattern+')$'),pair]);
         this.scoped = Object.fromEntries(Object.entries(model.scoped || {}).map(([k,v])=>[k,new RuntimeText(v)]));
         this.details = model.details ? new RuntimeText(model.details) : null;
         this.detailSources = new Set(model.detail_sources || []);
+        this.ambiguousDisplay = new Set(model.ambiguous_display || []);
         this.cache = new Map();
         this.planCache = new Map();
         this.keyed = Object.fromEntries(Object.entries(model.keyed || {}).map(([k,v])=>[k,{source:v.source,tr:new RuntimeText(v.model)}]));
@@ -19,6 +21,14 @@ class RuntimeText {
     }
     pair(source) {
         if (Object.hasOwn(this.model.plain_pairs,source)) return this.model.plain_pairs[source];
+        let authoritative=null;
+        for(const [pattern,pair] of this.detailNumeric) {
+            const m=pattern.exec(source);if(!m||m[0]!==source)continue;
+            const rendered=pair.map(target=>{let i=1;return RuntimeText.renderFormat(target,()=>m[i++]);});
+            if(authoritative&&JSON.stringify(authoritative)!==JSON.stringify(rendered))return null;
+            authoritative=rendered;
+        }
+        if(authoritative)return authoritative;
         let found=null;
         for(const [pattern,pair] of this.numeric) {
             const m=pattern.exec(source);
@@ -129,7 +139,12 @@ class RuntimeText {
         };
         const take=line=>{const unit=units.shift();line.push(unit.value);if(unit.tag)update(unit.value);return unit.width;};
         for(let number=0;number<capacities.length;number++) {
-            if(number===capacities.length-1){const line=[prefix()];while(units.length)take(line);result.push(line.join('')+close());break;}
+            if(!capacities[number]) {
+                // No annotation can attach to an icon/control-only line.
+                const line=[prefix()];while(units.length&&units[0].tag)take(line);
+                result.push(line.join('')+close());continue;
+            }
+            if(!capacities.slice(number+1).some(Boolean)){const line=[prefix()];while(units.length)take(line);result.push(line.join('')+close());continue;}
             while(result.length&&units.length&&units[0].width&&/^\s$/u.test(units[0].value))result[result.length-1]+=units.shift().value;
             const line=[prefix()];let used=0;
             const remainingCapacity=capacities.slice(number).reduce((sum,value)=>sum+value,0);
@@ -161,7 +176,7 @@ class RuntimeText {
             :[[[].concat(...leftGroups),[].concat(...rightGroups)]];
         for(const [leftGroup,rightGroup] of groups) {
             const text=RuntimeText.secondaryText(rightGroup.map(([,line])=>line));
-            const capacities=leftGroup.map(([,line])=>Math.max(1,Array.from(line.replace(/<[^<>]*>/g,'')).filter(char=>!/\s/u.test(char)).length));
+            const capacities=leftGroup.map(([,line])=>Array.from(line.replace(/<[^<>]*>/g,'')).filter(char=>!/\s/u.test(char)).length);
             const reflowed=RuntimeText.reflowSecondaryParagraph(text,capacities);if(reflowed===null)return null;
             reflowed.forEach((value,index)=>{result[leftGroup[index][0]]=value;});
         }
@@ -199,12 +214,14 @@ class RuntimeText {
         const ck=mode+'\x00'+key+'\x00'+scope+'\x00'+source;
         if(this.planCache.has(ck))return this.planCache.get(ck);
         const a=this.translate(source,'primary',key,scope),b=this.translate(source,'secondary',key,scope);
-        if(mode==='annotation'&&!RuntimeText.needsAnnotation(a,b)) {
+        if(mode==='annotation'&&(!RuntimeText.needsAnnotation(a,b)||
+                (a===source&&b===source&&this.ambiguousDisplay.has(source.replace(/^(?:<#[^<>]*>)+/,''))))) {
             const result={text:a,layers:[],kind:'plain'};
             if(this.planCache.size>=20000)this.planCache.clear();this.planCache.set(ck,result);return result;
         }
         let result;
         const known=this.rawPair(source)!==null||
+            this.rawPair(source.replace(/^(?:<#[^<>]*>)+/,''))!==null||
             (Object.hasOwn(this.keyed,key)&&this.keyed[key].source===source);
         const prefix=(a.match(/^(?:<#[^<>]*>)*/)||[''])[0],body=a.slice(prefix.length),visibleB=RuntimeText.visualSecondary(b);
         if(mode==='annotation'&&known&&prefix&&!/[<>]/.test(body+visibleB)&&
@@ -263,8 +280,11 @@ class RuntimeText {
             for(let at=source.indexOf('\n');at>=0;at=source.indexOf('\n',at+1))
                 if(this.detailSources.has(source.slice(at+1)))return this.details.translate(source,mode);
         }
+        if(this.ambiguousDisplay.has(source)||this.ambiguousDisplay.has(source.replace(/^(?:<#[^<>]*>)+/,'')))return source;
         const pair=this.rawPair(source);
         if(pair&&(mode==='primary'||mode==='secondary'))return pair[mode==='primary'?0:1];
+        const controls=/^(?:<#[^<>]*>)+/.exec(source);
+        if(controls)return controls[0]+this.translate(source.slice(controls[0].length),mode);
         if(source.includes('<R>')) {
             const parts=source.split(/(<#[^<>]*>|\r\n|\n|\\n)/);
             return parts.length>1?parts.map((t,i)=>i%2?t:this.translate(t,mode)).join(''):source;

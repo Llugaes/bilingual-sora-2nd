@@ -323,6 +323,107 @@ def full_entries():
 
 
 class ItemHelpCompositionTests(unittest.TestCase):
+    def test_native_percent_recovery_order_and_direct_labels_stay_detail_scoped(self):
+        formats = {
+            "ja": "%s回復",
+            "en": "Recover %s ",
+            "zh-Hans": "回复%s",
+            "zh-Hant": "回復%s",
+            "ko": "%s 회복",
+            "fr": "Soin %s ",
+            "de": "Regeneriert %s ",
+            "es": "Recuperación %s ",
+        }
+        percents = {
+            l: "%d％"
+            if l in ("ja", "zh-Hans", "zh-Hant", "ko")
+            else "%d %%"
+            if l == "fr"
+            else "%d%%"
+            for l in LANGUAGES
+        }
+        direct = {
+            "ja": "デバフ解除",
+            "en": "Remove Debuff",
+            "zh-Hans": "解除减益",
+            "zh-Hant": "解除減益",
+            "ko": "상태 이상 회복",
+            "fr": "Retire malus",
+            "de": "Schwächung entfernen",
+            "es": "Elimina debilitamiento",
+        }
+        prefixes = {
+            "SELF": dict(
+                zip(
+                    LANGUAGES,
+                    (
+                        "自己",
+                        "(Self)",
+                        "自身",
+                        "自身",
+                        "자신 ",
+                        "(Soi-même)",
+                        "(Selbst)",
+                        "(Usuario) ",
+                    ),
+                )
+            ),
+            "FRIEND": dict(
+                zip(
+                    LANGUAGES,
+                    ("仲間", "Ally", "伙伴", "夥伴", "동료 ", "Allié", "Verbündeter", "Aliado"),
+                )
+            ),
+        }
+        values = [
+            row(RECOVERY, texts=RECOVERY_TEXT),
+            row(RECOVERY.removesuffix("/name") + "/stat", texts=RECOVERY_STAT),
+            row(RECOVERY.removesuffix("/name") + "/format", texts=formats),
+            row("table/t_text.tbl/TXT_ITEM_HELP_PERSENT", texts=percents),
+            row("table/t_text.tbl/TXT_ITEM_HELP_DEBUFF_CANCEL", texts=direct),
+            row(SKILL_DESCRIPTION, texts=SKILL_DESCRIPTION_TEXT),
+        ]
+        values.extend(
+            row("table/t_text.tbl/TXT_ITEM_HELP_" + name, texts=texts)
+            for name, texts in prefixes.items()
+        )
+
+        def effect(language, prefix):
+            amount = percents[language].replace("%d", "30").replace("%%", "%")
+            phrase = formats[language].replace("%s", amount)
+            stat = (prefixes[prefix][language] if prefix else "") + RECOVERY_STAT[language]
+            return (
+                stat + (" " if language == "ko" else "") + phrase
+                if language in ("ja", "zh-Hans", "zh-Hant", "ko")
+                else phrase + stat
+            )
+
+        for source_language in LANGUAGES:
+            for target in LANGUAGES:
+                tr = MenuTranslator(values, target, "ja", source_language)
+                for prefix in ("", "SELF", "FRIEND"):
+                    source = (
+                        "<c698>"
+                        + effect(source_language, prefix)
+                        + "</C><c698>／</C><c698>"
+                        + direct[source_language]
+                        + "</C>\n<C0>"
+                        + SKILL_DESCRIPTION_TEXT[source_language]
+                    )
+                    expected = (
+                        "<c698>"
+                        + effect(target, prefix)
+                        + "</C><c698>／</C><c698>"
+                        + direct[target]
+                        + "</C>\n<C0>"
+                        + SKILL_DESCRIPTION_TEXT[target]
+                    )
+                    self.assertEqual(
+                        tr.translate(source, "primary"), expected, (source_language, target, prefix)
+                    )
+        tr = MenuTranslator(values, "en", "ja", "zh-Hans")
+        self.assertEqual(tr.translate("HP回复30％", "primary"), "HP回复30％")
+
     def test_adjacent_range_and_formatted_effect_use_each_target_locale(self):
         tr = MenuTranslator(entries(), "en", "ja", "zh-Hans")
         source = "<I299><C3>我方·圆L</C><c698>回复HP小</C>\n<C0><C9>说明。"

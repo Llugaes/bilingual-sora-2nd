@@ -9,6 +9,7 @@ import argparse
 import gc
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -19,10 +20,12 @@ sys.path.insert(0, str(ROOT))
 from sora_bilingual.config.locales import LANGUAGES
 from sora_bilingual.config.native_config import read_config
 from sora_bilingual.localization.native_catalog import load_entries, load_model, model_path
+from sora_bilingual.localization.menu_text import ITEM_HELP_PERCENT_RECOVERY, display_text
 import test_itemhelp_composition as keys
 
 NOTE = "script/scena/mp3010_01.dat/LP_Capel/called/131/assembled_dialogue"
 KEY_HINT = "script/scena/mp3010_01.dat/LP_Capel/called/133/assembled_dialogue"
+WATER_DESCRIPTION = "table/t_skill.tbl/sha256:8155e2b8257dd080eaef7b50a6a059e1ccd842882cbbabf06cf9f3eea8e67bd9/description"
 RUNNER = r"""
 const fs=require('fs'),{RuntimeText}=require('./sora_bilingual/game/scripts/runtime_text.js');
 const {ScriptIdentities}=require('./sora_bilingual/game/scripts/runtime_identity.js');
@@ -47,7 +50,7 @@ for(const c of data.cases) for(const mode of ['primary','secondary']) {
  const verdict=actual===expected?'exact':
   !words(actual)&&!words(expected)?'nonlinguistic_decoration':
   padding(actual)===padding(expected)?'line_padding_only':'failed';
- const row={name:c.name,mode,pass:verdict!=='failed',verdict,
+ const row={name:c.name,mode,pass:verdict!=='failed',verdict,...(c.expectation?{expectation:c.expectation}:{}),
   ...(verdict==='failed'?{actual,expected}:{})};
  if(verdict==='failed'&&c.name.startsWith('panel:')) {
   // A separate result: copied log text may lack this resource identity.
@@ -61,6 +64,25 @@ for(const c of data.cases) for(const mode of ['primary','secondary']) {
   row.context_pass=values.length>0&&values.every(value=>value===expected);
  }
  rows.push(row);
+}
+// Translation-only checks miss a renderer that drops a known display body
+// after its dynamic emotion header changed. Check the owned payload itself.
+const visible=t=>t.replace(/<[^<>]*>/g,'').replace(/\s/g,'');
+for(const c of data.cases) {
+ if(!c.name.startsWith('reported_log_slot_')&&!c.annotation_terms)continue;
+ const plan=runtime.render(c.source,'annotation');
+ const payload=plan.layers.map(layer=>layer.text).join('')+
+  [...plan.text.matchAll(/<R>[\s\S]*?<\/R([^<>]*)>/g)].map(m=>m[1]==='_'?'':m[1]).join('');
+ const needed=!model.same_language&&!c.expectation&&RuntimeText.needsAnnotation(c.primary,c.secondary);
+ let pass=needed?plan.kind!=='plain':plan.kind==='plain'&&plan.text===c.primary;
+ if(needed&&c.name.startsWith('reported_log_slot_'))pass&&=visible(payload)===visible(c.secondary);
+ if(needed&&c.annotation_terms)for(const [a,b] of c.annotation_terms)
+  if(visible(a)!==visible(b))pass&&=visible(payload).includes(visible(b));
+ const verdict=!pass?'failed':c.expectation?'preserve_ambiguous_complete_display':
+  model.same_language?'same_language_plain':needed?'owned_secondary_payload':'no_distinct_annotation_required';
+ rows.push({name:c.name,mode:'annotation',pass,verdict,
+  kind:plan.kind,layers:plan.layers.length,...(c.expectation?{expectation:c.expectation}:{}),
+  ...(pass?{}:{actual:plan,expected:c.secondary})});
 }
 process.stdout.write(JSON.stringify(rows));
 """
@@ -97,7 +119,81 @@ def cases(catalog, language, panel_keys=()):
         ),
     }
     result.update({"panel:" + key: text(key) for key in panel_keys})
+    for number, head in ((6, "<#E_E#M_4#B_0>"), (8, "<#E_0#M_4#B_0>"), (10, "<#E_8#M_4#B_0>")):
+        key = f"script/scena/mp3010_01.dat/TK_FEY/called/{number}/assembled_dialogue"
+        result[f"reported_log_slot_{898 + (number - 6) // 2}"] = head + display_text(text(key))
+    header = text(
+        "table/t_itemhelp.tbl/SkillTextArrayData/sha256:0ff0b8e463a2230e063ea3156b3ff047d345a821bf25275d0f5f3585d9f256ca/format"
+    )
+    area = text(keys.RANGE) + modifier("RANGE_LL")
+    effect = native_recovery(catalog, language, ITEM_HELP_PERCENT_RECOVERY[0], 30)
+    # The resource description begins with <C9>; preserve it after <C0>.
+    result["reported_full_water_recovery_detail"] = (
+        f"<C3></C>{header}<I300><C3>{area}</C>】<c698>{effect}</C><c698>／</C><c698>{modifier('DEBUFF_CANCEL')}</C>\n<C0>{text(WATER_DESCRIPTION)}"
+    )
     return result
+
+
+def native_recovery(catalog, language, base, amount, prefix=""):
+    """Expected native order, independent of generated runtime patterns."""
+    stat, form = catalog[base + "/stat"][language], catalog[base + "/format"][language]
+    if prefix:
+        stat = catalog["table/t_text.tbl/TXT_ITEM_HELP_" + prefix][language] + stat
+    value = catalog["table/t_text.tbl/TXT_ITEM_HELP_" + ("ALL" if amount == 100 else "PERSENT")][
+        language
+    ]
+    phrase = form.replace("%s", value.replace("%d", str(amount)).replace("%%", "%"))
+    return (
+        stat + (" " if language == "ko" else "") + phrase
+        if language in ("ja", "zh-Hans", "zh-Hant", "ko")
+        else phrase + stat
+    )
+
+
+def item_help_family_cases(catalog, language):
+    """Resource probes and proven native inputs are different coverage scopes."""
+    result, excluded = {}, []
+    suffix = "\n<C0>" + catalog[WATER_DESCRIPTION][language]
+    for key, texts in catalog.items():
+        if not key.startswith("table/t_text.tbl/TXT_ITEM_HELP_"):
+            continue
+        missing = [l for l in LANGUAGES if not texts.get(l, "").strip()]
+        if missing:
+            excluded.append({"key": key, "reason": "missing_or_blank_locale", "locales": missing})
+        elif key.rsplit("_", 1)[-1] in ("SELF", "FRIEND", "PERSENT"):
+            excluded.append(
+                {
+                    "key": key,
+                    "reason": "constructor_component_verified_in_recovery_not_independent_effect",
+                    "native_rva": "0x34cf9f/0x34d45b; 0x34d08d/0x34d15b",
+                }
+            )
+        elif key.endswith("_LINK"):
+            excluded.append(
+                {
+                    "key": key,
+                    "reason": "multi_stat_constructor_component_grouping_not_yet_verified",
+                    "native_rva": "0x34cfcf/0x34d48b",
+                }
+            )
+        elif any("%" in t for t in texts.values()):
+            excluded.append({"key": key, "reason": "format_requires_separate_argument_contract"})
+        elif not any(any(c.isalpha() for c in t) for t in texts.values()):
+            excluded.append(
+                {"key": key, "reason": "nonlinguistic_constructor_or_decoration_not_effect"}
+            )
+        else:
+            result["item_help_component_probe:" + key] = (
+                "<c698>" + texts[language] + "</C>" + suffix
+            )
+    for base in ITEM_HELP_PERCENT_RECOVERY:
+        for prefix in ("", "SELF", "FRIEND"):
+            for amount in (0, 1, 30, 99, 100, 150):
+                effect = native_recovery(catalog, language, base, amount, prefix)
+                result[f"item_help_recovery:{base}:{prefix}:{amount}"] = (
+                    "<c698>" + effect + "</C>" + suffix
+                )
+    return result, excluded
 
 
 def main():
@@ -109,6 +205,11 @@ def main():
     parser.add_argument("--output", type=Path, default=ROOT / "generated/reported-texts-check.json")
     parser.add_argument(
         "--panel-audit", type=Path, help="replay every verified key from audit_static_panels"
+    )
+    parser.add_argument(
+        "--item-help-audit",
+        action="store_true",
+        help="replay every direct item-help text and verified recovery constructor",
     )
     args = parser.parse_args()
     if args.game_dir is None:
@@ -127,6 +228,11 @@ def main():
         cases(catalog, args.source, panel_keys),
         cases(catalog, args.secondary, panel_keys),
     )
+    family_excluded = []
+    if args.item_help_audit:
+        family, family_excluded = item_help_family_cases(catalog, args.source)
+        source.update(family)
+        secondary.update(item_help_family_cases(catalog, args.secondary)[0])
     config = {
         **read_config(),
         "game_language": args.source,
@@ -141,8 +247,17 @@ def main():
         "secondary": args.secondary,
         "entries": len(entries),
         "panel_cases": len(panel_keys),
+        "item_help_family_raw_fields": sum(
+            key.startswith("table/t_text.tbl/TXT_ITEM_HELP_") for key in catalog
+        )
+        if args.item_help_audit
+        else None,
+        "item_help_scope": "component probes test isolated resource lookup, not proof of independent native display; recovery cases use verified single-stat order, prefixes, and percent/all branches; LINK multi-stat aggregation is not covered",
+        "item_help_family_excluded": family_excluded,
         "targets": [],
         "all_passed": True,
+        "all_reported_inputs_passed": True,
+        "all_verified_recovery_passed": True,
         "context_scope": "compiled resource identity only; availability in live controls/logs is not proven",
         "all_resolvable_with_compiled_context": True,
     }
@@ -155,14 +270,54 @@ def main():
         del model
         gc.collect()
         primary = cases(catalog, target, panel_keys)
+        if args.item_help_audit:
+            primary.update(item_help_family_cases(catalog, target)[0])
+        # Slot 898 has two complete script identities with different Western
+        # dialogue. With no script identity on copied log text, preserve it.
+        body = display_text(source["reported_log_slot_898"])
+        conflicts = [
+            {
+                "key": e["key"],
+                "primary": display_text(e["texts"][target]),
+                "secondary": display_text(e["texts"][args.secondary]),
+            }
+            for e in entries
+            if e.get("display_role") == "dialogue"
+            and display_text(e["texts"].get(args.source, "")) == body
+            and e["texts"].get(target)
+            and e["texts"].get(args.secondary)
+        ]
+        ambiguous_log = len({(c["primary"], c["secondary"]) for c in conflicts}) > 1
         data = {
             "model": str(model_path(signature, config)),
             "cases": [
                 {
                     "name": name,
                     "source": value,
-                    "primary": primary[name],
-                    "secondary": secondary[name],
+                    "primary": value
+                    if ambiguous_log and name == "reported_log_slot_898"
+                    else primary[name],
+                    "secondary": value
+                    if ambiguous_log and name == "reported_log_slot_898"
+                    else secondary[name],
+                    **(
+                        {"expectation": "preserve_ambiguous_complete_display"}
+                        if ambiguous_log and name == "reported_log_slot_898"
+                        else {}
+                    ),
+                    **(
+                        {
+                            "annotation_terms": list(
+                                zip(
+                                    re.findall(r"<c698>([^<>]+)</C>", primary[name]),
+                                    re.findall(r"<c698>([^<>]+)</C>", secondary[name]),
+                                )
+                            )
+                        }
+                        if name == "reported_full_water_recovery_detail"
+                        or name.startswith("item_help_recovery:")
+                        else {}
+                    ),
                 }
                 for name, value in source.items()
             ],
@@ -178,6 +333,12 @@ def main():
         )
         rows = json.loads(result.stdout)
         passed = all(row["pass"] for row in rows)
+        reported_passed = all(
+            row["pass"] for row in rows if not row["name"].startswith("item_help_")
+        )
+        recovery_passed = all(
+            row["pass"] for row in rows if row["name"].startswith("item_help_recovery:")
+        )
         with_context = all(row["pass"] or row.get("context_pass", False) for row in rows)
         report["targets"].append(
             {
@@ -186,10 +347,15 @@ def main():
                 "coverage": coverage,
                 "rows": rows,
                 "all_passed": passed,
+                "all_reported_inputs_passed": reported_passed,
+                "all_verified_recovery_passed": recovery_passed,
+                "ambiguous_log_898_records": conflicts if ambiguous_log else [],
                 "all_resolvable_with_compiled_context": with_context,
             }
         )
         report["all_passed"] &= passed
+        report["all_reported_inputs_passed"] &= reported_passed
+        report["all_verified_recovery_passed"] &= recovery_passed
         report["all_resolvable_with_compiled_context"] &= with_context
         args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
         print(target, "PASS" if passed else "FAIL", flush=True)

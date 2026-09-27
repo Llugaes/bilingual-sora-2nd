@@ -7,6 +7,68 @@ def entry(sc, ja, en=None):
 
 
 class MenuTextTests(unittest.TestCase):
+    def test_verified_name_authority_clears_conflicting_speaker_guard(self):
+        records = [
+            {"display_role": "speaker", **entry("绯", "フェイ", "Fey")},
+            {"display_role": "speaker", **entry("绯", "フェイ", "Voice_Fey")},
+            {"key": "table/t_name.tbl/verified/name", **entry("绯", "フェイ", "Fey")},
+        ]
+        tr = MenuTranslator(records, "en", "ja")
+        self.assertEqual(tr.translate("绯", "primary"), "Fey")
+        self.assertNotIn("绯", tr.runtime_model()["ambiguous_display"])
+
+    def test_conflicting_complete_dialogue_cannot_fall_back_to_freeform_format(self):
+        body = "<K>啊，绯小姐！"
+        entries = [
+            {"display_role": "dialogue", **entry(body, "<K>Fey!")},
+            {"display_role": "dialogue", **entry(body, "<K>Oh! Fey!")},
+            entry("<K>啊，%s！", "<K>Oh! %s!"),
+            entry("<#E_E#M_4#B_0><K>啊，%s！", "<#E_E#M_4#B_0><K>Oh! %s!"),
+            entry("绯小姐", "Fey"),
+        ]
+        tr = MenuTranslator(entries, "zh-Hans", "ja")
+        source = "<#E_E#M_4#B_0>" + body
+        for mode in ("primary", "secondary", "annotation"):
+            self.assertEqual(tr.translate(source, mode), source)
+        self.assertEqual(tr.render(source), {"text": source, "layers": [], "kind": "plain"})
+
+    def test_changed_dialogue_emotion_prefix_keeps_whole_body_lookup(self):
+        for source, target in (
+            ("<K>绯小姐也是，过得好吗？", "<K>フェイさんこそ元気だった？"),
+            ("哈哈，这边还是\n忙得不可开交噢。", "はは、こっちは\n相変わらず忙しいよ。"),
+        ):
+            full = {
+                "display_role": "dialogue",
+                **entry("<#E_4#M_4#B_0>" + source, "<#E_4#M_4#B_0>" + target),
+            }
+            fragment = {"texts": {"zh-Hans": source}}
+            tr = MenuTranslator([full, fragment], "zh-Hans", "ja")
+            live = "<#E_8#M_4#B_0>" + source
+            self.assertEqual(tr.translate(live, "secondary"), "<#E_8#M_4#B_0>" + target)
+            self.assertEqual(tr.translate(live, "primary"), live)
+            plan = tr.render(live)
+            self.assertNotEqual(plan["kind"], "plain")
+            if source.startswith("<K>"):
+                self.assertEqual(
+                    [layer["text"] for layer in plan["layers"]], [target.removeprefix("<K>")]
+                )
+            conflict = {"display_role": "dialogue", **entry(source, "異なる訳。")}
+            self.assertEqual(
+                MenuTranslator([full, fragment, conflict], "zh-Hans", "ja").translate(
+                    live, "secondary"
+                ),
+                live,
+            )
+
+    def test_icon_only_line_keeps_each_following_annotation_payload(self):
+        source = "<c930><I300>\n甲\n乙"
+        target = "<c930><I300>\n一\n二"
+        plan = MenuTranslator([entry(source, target)], "zh-Hans", "ja").render(source)
+        self.assertEqual([layer["primary"] for layer in plan["layers"]], ["甲", "乙"])
+        self.assertEqual(
+            [layer["text"] for layer in plan["layers"]], ["<c930>一</C>", "<c930>二</C>"]
+        )
+
     def test_complete_dialogue_padding_differences_do_not_block_translation(self):
         source = "<C1>　　　起降坪管制塔　　　\n 《利贝尔飞行船公社》"
         a = {

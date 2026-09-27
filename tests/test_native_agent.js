@@ -1779,6 +1779,81 @@ test('log descriptor cache preserves current width, resolved identity and resour
     r.api.disable();assert.equal(r.logMeasure(records,{mode:1}).setters,2);
 });
 
+test('layered log rebuilds after a decorative prefix do not accumulate scaling or tint',()=>{
+    const r=makeRuntime(),source='<c930>──\n钥匙在城里。\n──',target='<c930>──\n鍵は市中に。\n──';
+    const pairs={[source]:[source,target]};
+    r.api.load({pairs,plain_pairs:pairs},'annotation',true,.85,
+        {secondary_color:[.9,.9,.9],secondary_opacity:.9});
+    const label=r.label(0xcb00,'');label.flags=65;r.externalSet(label,source);
+    // The first owned anchor follows already-emitted decoration. Its base
+    // measurement callback is the layered lane entry; glyph count is nonzero.
+    const quads=[[100,10,200,2],[45,30,14,14],[50,50,20,20]];
+    let expected;
+    for(let frame=0;frame<100;frame++) {
+        label.glyphs=1;
+        r.auxiliary(label,0,{glyphQuads:quads,secondaryCount:2});
+        r.newline(label,100);
+        r.glyphColors(label,quads.map(()=>[1,.5,0,1]));
+        r.finishLayout(label);
+        const actual={geometry:r.glyphGeometry(label),colors:r.glyphColors(label)};
+        expected??=actual;
+        assert.deepEqual(actual,expected,'fresh native glyphs must receive each correction once');
+        assert.equal(r.laneCount(label),1,'each native rebuild must replace the prior layered lane');
+        r.finishLayout(label);
+        assert.deepEqual(r.glyphGeometry(label),expected.geometry,'same-pass revisit must be idempotent');
+    }
+    assert.equal(r.api.status().failed,false,r.api.status().failureReason);
+});
+
+test('multiple layered lines retain only the current parse after decoration, icons or counters',()=>{
+    for(const prefix of ['──','<I300>','42']) {
+        const r=makeRuntime(),source='<c930>'+prefix+'\n甲\n乙',target='<c930>'+prefix+'\n一\n二';
+        const pairs={[source]:[source,target]};
+        r.api.load({pairs,plain_pairs:pairs},'annotation',true,.85,
+            {secondary_color:[.8,.7,.6],secondary_opacity:.9,bilingual_offset_y:2});
+        const label=r.label(0xcc00,'');label.flags=65;r.externalSet(label,source);
+        const quads=[[100,10,200,2,1],[40,30,14,14],[60,30,14,14],[50,50,20,20],
+            [40,70,14,14],[60,70,14,14],[50,90,20,20]];
+        let expected;
+        for(let frame=0;frame<50;frame++) {
+            label.glyphs=1;r.auxiliary(label,0,{glyphQuads:quads,secondaryCount:3});
+            label.glyphs=4;r.newline(label,100);
+            r.auxiliary(label,1,{glyphQuads:quads,secondaryCount:6});r.newline(label,140);
+            r.glyphColors(label,quads.map(()=>[1,.5,0,1]));r.finishLayout(label);
+            const actual={geometry:r.glyphGeometry(label),colors:r.glyphColors(label)};
+            expected??=actual;
+            assert.deepEqual(actual,expected,prefix+': repeated parse geometry and colors');
+            assert.equal(r.laneCount(label),2,'multiple lines in one pass must survive');
+            assert.deepEqual(actual.geometry[0],[100,12,200,2],'unowned prefix only receives explicit group offset');
+        }
+        assert.equal(r.api.status().failed,false,r.api.status().failureReason);
+    }
+});
+
+test('animated layered rebuilds keep scale stable while reveal progress changes',()=>{
+    const r=makeRuntime(),source='<c930>──\nAB',target='<c930>──\n甲乙';
+    const pairs={[source]:[source,target]};
+    r.api.load({pairs,plain_pairs:pairs},'annotation',true,.85,{secondary_opacity:.9});
+    const label=r.label(0xcd00,'');label.flags=4;r.externalSet(label,source);
+    const quads=[[100,10,200,2],[40,30,14,14],[60,30,14,14],[50,50,20,20]];
+    const expected=new Map();
+    for(let frame=0;frame<60;frame++) {
+        label.glyphs=1;
+        r.auxiliary(label,0,{glyphQuads:quads,secondaryCount:3,unitStart:1,primaryUnits:2});
+        r.newline(label,100);label.revealUnits=1+frame%3;
+        r.glyphColors(label,quads.map(()=>[1,.5,0,1]));r.finishLayout(label);
+        const actual={geometry:r.glyphGeometry(label),colors:r.glyphColors(label)};
+        if(!expected.has(label.revealUnits))expected.set(label.revealUnits,actual);
+        assert.deepEqual(actual,expected.get(label.revealUnits),'progress may change alpha, never accumulate scale');
+        assert.equal(r.laneCount(label),1);
+        assert.ok(Math.abs(actual.geometry[1][2]-11.9)<1e-5);
+        assert.equal(actual.geometry[3][2],17);
+    }
+    assert.equal(expected.get(1).colors[1][3],0);
+    assert.ok(expected.get(3).colors[1][3]>.89);
+    assert.equal(r.api.status().failed,false,r.api.status().failureReason);
+});
+
 test('log descriptor cache has bounded size and keeps native fallback for invalid metrics',()=>{
     const r=makeRuntime();r.api.load({pairs:{},plain_pairs:{}},'annotation',true,.85);
     for(const metric of [NaN,Infinity,-1,70000]) {

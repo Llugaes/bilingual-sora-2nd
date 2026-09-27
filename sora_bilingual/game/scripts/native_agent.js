@@ -486,11 +486,12 @@ function beginAnnotationLane(p,parser,phase,row=ownedRow(p)) {
     const layer=auxiliaryLayer(p,parser,row);
     if(!layer&&row?.plan.kind!=='ruby')return;
     const count=p.add(0x330).readU32(),key=String(parser);
-    // A new parse may start with untranslated text/icons, so its first owned
-    // run need not start at glyph zero. Rewinding the same parser to an
-    // already seen run discards the previous parse and its geometry/colors.
-    // Otherwise flag-0x40 log labels accumulate one more lane every frame.
-    if(phase==='open') {
+    // A new parse may start after untranslated text or decoration. Plain
+    // ruby enters at its opening tag; a layered anchor is identifiable only
+    // at its closing tag's base-measure callback. Both entries must retire
+    // the previous parse when the glyph cursor rewinds. Otherwise a layered
+    // log row with a nonzero prefix retains one more scaling pass per frame.
+    if(phase==='open'||(phase==='primary'&&layer)) {
         const previous=row.glyphLanes?.findLast(lane=>lane.parser===key);
         if(previous&&count<=previous.primaryStart) {
             row.glyphLanes=[];row.laneCount=-1;row.laneUnits=-1;

@@ -136,12 +136,20 @@ def _reflow_secondary_paragraph(text, capacities):
         return width
 
     for number, capacity in enumerate(capacities):
-        if number == len(capacities) - 1:
+        if not capacity:
+            # A pure icon/control line has no annotation anchor. Carry its
+            # style state forward without spending a translated character.
+            line = [prefix()]
+            while units and units[0][2]:
+                append(line)
+            result.append("".join(line) + close())
+            continue
+        if not any(capacities[number + 1 :]):
             line = [prefix()]
             while units:
                 append(line)
             result.append("".join(line) + close())
-            break
+            continue
         while result and units and units[0][1] and units[0][0].isspace():
             result[-1] += units.pop(0)[0]
         line = [prefix()]
@@ -199,7 +207,7 @@ def reflow_annotation_lines(primary, secondary):
     for left_group, right_group in groups:
         text = _secondary_text([line for _, line in right_group])
         capacities = [
-            max(1, sum(not char.isspace() for char in re.sub(r"<[^<>]*>", "", line)))
+            sum(not char.isspace() for char in re.sub(r"<[^<>]*>", "", line))
             for _, line in left_group
         ]
         reflowed = _reflow_secondary_paragraph(text, capacities)
@@ -409,6 +417,56 @@ ITEM_HELP_GRADE_NAMES = {
 }
 
 
+# SkillEffectHelpData IDs 123/125 are the HP/EP percentage recovery records.
+# Native builder 0x34d016..0x34d1de composes stat + format + percentage;
+# 0x34d347..0x34d4c0 puts stat last for the Western locale group.
+ITEM_HELP_PERCENT_RECOVERY = (
+    "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:cc311d9666993ad7471edb97a4292bd44de5cac259718aab39db45a6008a99a8",
+    "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:9792ad85797c0b1a6ea1d3a7efb83d51b75a2d47d37d762623d852392fa0595e",
+)
+
+
+def item_help_recovery_entries(entries):
+    """Verified numeric/all-value recovery templates, for anchored details only."""
+    named = {e["key"]: e["texts"] for e in entries if "key" in e}
+    result = []
+    for base in ITEM_HELP_PERCENT_RECOVERY:
+        stats, formats = named.get(base + "/stat", {}), named.get(base + "/format", {})
+        # The first stat may carry SELF/FRIEND (0x34cf9f, 0x34d45b).
+        # LINK belongs to the multi-stat aggregation loop, not a prefix.
+        for prefix in ("", "SELF", "FRIEND"):
+            prefixes = named.get("table/t_text.tbl/TXT_ITEM_HELP_" + prefix, {})
+            for modifier in ("PERSENT", "ALL"):
+                values = named.get("table/t_text.tbl/TXT_ITEM_HELP_" + modifier, {})
+                combined = {}
+                for language, form in formats.items():
+                    stat, value = stats.get(language), values.get(language)
+                    if (
+                        not stat
+                        or not value
+                        or form.count("%s") != 1
+                        or "%" in form.replace("%s", "")
+                        or (prefix and not prefixes.get(language))
+                    ):
+                        continue
+                    stat = prefixes.get(language, "") + stat
+                    phrase = form.replace("%s", value)
+                    combined[language] = (
+                        stat + (" " if language == "ko" else "") + phrase
+                        if language in ("ja", "zh-Hans", "zh-Hant", "ko")
+                        else phrase + stat
+                    )
+                if combined:
+                    result.append(
+                        {
+                            "key": base + "/native_recovery/" + prefix + "/" + modifier,
+                            "texts": combined,
+                            "detail_authority": True,
+                        }
+                    )
+    return result
+
+
 def item_help_components(entries):
     """Index the resource-defined combinations built by the item-help UI.
 
@@ -474,7 +532,17 @@ def item_help_detail_entries(entries):
         if key.removeprefix("table/t_text.tbl/TXT_ITEM_HELP_")
         in {"MOSTSMALL", "SMALL", "MIDDLE", "LARGE", "MOSTLARGE"}
     ]
+    # Constructor formats and punctuation are not independently translated
+    # effects. Their argument/order contracts must be generated explicitly.
     result = [
+        e
+        for e in entries
+        if e.get("key", "").startswith("table/t_text.tbl/TXT_ITEM_HELP_")
+        and all("%" not in t for t in e["texts"].values())
+        and any(any(c.isalpha() for c in plain(t)) for t in e["texts"].values())
+    ]
+    result += item_help_recovery_entries(entries)
+    result += [
         {
             "key": "table/t_itemhelp.tbl/generated/magnitude/" + key.rsplit("/", 1)[-1],
             "texts": texts,
@@ -628,6 +696,7 @@ class MenuTranslator:
         # Complete, structurally aligned display records are stronger evidence
         # than an unpaired bytecode fragment. Missing fragments are not a second
         # translation. Actual conflicting translations remain quarantined.
+        self.ambiguous_display = set()
         for source, pairs in display_candidates.items():
             if len(pairs) == 1 and candidates[source] - {None} == pairs:
                 candidates[source] = pairs
@@ -642,6 +711,8 @@ class MenuTranslator:
                 }
                 if len(normalized_pairs) == 1:
                     candidates[source] = {min(pairs, key=lambda pair: (sum(map(len, pair)), pair))}
+                else:
+                    self.ambiguous_display.add(source)
         # Name/status records are the display-name authority. Script voice
         # identifiers can reuse the same source while omitting a locale (or
         # retaining its Japanese identifier in the English slot). Only exact
@@ -660,12 +731,14 @@ class MenuTranslator:
         for source, pairs in names.items():
             if len(pairs) == 1 and None not in pairs:
                 candidates[source] = pairs
+                self.ambiguous_display.discard(source)
         # Resource-generated fragments are valid only in the already-anchored
         # detail model. Prefer their spacing over a colliding standalone stat
         # record when native colour tags split the original name template.
         for source, pairs in detail_authority.items():
             if len(pairs) == 1:
                 candidates[source] = pairs
+                self.ambiguous_display.discard(source)
         self.pairs = {
             s: next(iter(p)) for s, p in candidates.items() if len(p) == 1 and None not in p
         }
@@ -678,6 +751,7 @@ class MenuTranslator:
         self.plain_pairs = normalized
         self.numeric = []
         self.raw_numeric = []
+        self.detail_numeric = []
         for source, pair, is_raw in [(s, p, False) for s, p in normalized.items()] + [
             (s, p, True) for s, p in self.pairs.items() if "<" in s
         ]:
@@ -710,9 +784,10 @@ class MenuTranslator:
                 )
                 at = m.end()
             chunks.append(re.escape(source[at:].replace("%%", "%")))
-            (self.raw_numeric if is_raw else self.numeric).append(
-                (re.compile("".join(chunks)), pair)
-            )
+            rule = (re.compile("".join(chunks)), pair)
+            (self.raw_numeric if is_raw else self.numeric).append(rule)
+            if not is_raw and source in detail_authority and "s" not in kinds:
+                self.detail_numeric.append(rule)
 
     def raw_pair(self, source):
         if source in self.pairs:
@@ -734,6 +809,15 @@ class MenuTranslator:
     def pair(self, source):
         if source in self.plain_pairs:
             return self.plain_pairs[source]
+        # An audited detail constructor is more precise than a free-form %s
+        # name/format that can also consume the whole numeric effect phrase.
+        authoritative = set()
+        for pattern, pair in self.detail_numeric:
+            m = pattern.fullmatch(source)
+            if m:
+                authoritative.add(tuple(_render_format(t, iter(m.groups())) for t in pair))
+        if authoritative:
+            return next(iter(authoritative)) if len(authoritative) == 1 else None
         matches = set()
         for pattern, pair in self.numeric:
             m = pattern.fullmatch(source)
@@ -785,9 +869,18 @@ class MenuTranslator:
             for at, c in enumerate(source):
                 if c == "\n" and source[at + 1 :] in self.detail_sources:
                     return self.details.translate(source, mode)
+        # A real complete-dialogue conflict must not re-enter via a generic
+        # printf template or smaller fragments after its exact pair was denied.
+        if source in self.ambiguous_display or display_text(source) in self.ambiguous_display:
+            return source
         pair = self.raw_pair(source)
         if pair and mode in ("primary", "secondary"):
             return pair[0 if mode == "primary" else 1]
+        controls = re.match(r"^(?:<#[^<>]*>)+", source)
+        if controls:
+            # Live emotion state can differ from the script's literal header.
+            # Resolve the complete display body before splitting its lines.
+            return controls[0] + self.translate(source[controls.end() :], mode)
         if "<R>" in source:
             # Dialogue constructors prepend speaker/emotion controls and join
             # catalogued lines. Keep ruby atomic while resolving those lines.
@@ -813,9 +906,12 @@ class MenuTranslator:
             mode = "primary"
         a = self.translate(source, "primary")
         b = self.translate(source, "secondary")
-        if mode == "annotation" and not needs_annotation(a, b):
+        if mode == "annotation" and (
+            not needs_annotation(a, b)
+            or (a == b == source and display_text(source) in self.ambiguous_display)
+        ):
             return {"text": a, "layers": [], "kind": "plain"}
-        known = self.raw_pair(source) is not None
+        known = self.raw_pair(source) is not None or self.raw_pair(display_text(source)) is not None
         if mode == "annotation" and known:
             prefix = re.match(r"^(?:<#[^<>]*>)*", a)[0]
             body = a[len(prefix) :]
@@ -896,7 +992,9 @@ class MenuTranslator:
             "plain_pairs": self.plain_pairs,
             "numeric": [(pattern.pattern, pair) for pattern, pair in self.numeric],
             "raw_numeric": [(pattern.pattern, pair) for pattern, pair in self.raw_numeric],
+            "detail_numeric": [(pattern.pattern, pair) for pattern, pair in self.detail_numeric],
             "same_language": self.same_language,
+            "ambiguous_display": sorted(self.ambiguous_display),
             "keyed": keyed,
             "detail_sources": sorted(self.detail_sources),
             "details": self.details.runtime_model() if self.details else None,

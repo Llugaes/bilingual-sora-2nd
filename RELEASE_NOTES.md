@@ -2,6 +2,8 @@
 
 ## 简体中文
 
+- 修正带分隔线等前缀的日志在反复排版时主副文字持续缩小；补齐带动态表情控制头的完整对白匹配，防止先拆行而遗漏副文。纯图标行不再消耗下一行的译文。
+- 补充详情内 HP／EP 百分比回复、全部回复与直接效果标签的资源组合，保留各语言的词序；如“HP回复30％／解除减益”。
 - 修正字号钩子误入公共格式出口造成的副语言反复缩小，保留强调字号与副语言的比例。扩展几何范围尺寸、效果程度、彩色分段及道具类型的详情匹配。
 - 补充全屏说明的多段文本提取，覆盖“游击士协会招牌”等由颜色标记、字符串与换行组成的说明；不能确认的动态控制流仍保留原文。
 - 支持连续窗口标记，补齐“第三把钥匙”等居中提示；修正地图跳转点、调查点、名称、状态和提示表的跨语言资源身份。增加未经过滤的原始资源清单，保留动态和歧义项，不将入库数量当作实机覆盖率。
@@ -17,6 +19,8 @@
 
 ## English
 
+- Fix cumulative text shrinking when log rows with decorative prefixes rebuild. Match complete dialogue bodies before splitting lines when live expression controls differ, and keep icon-only lines from consuming the next line's translation.
+- Add detail-scoped HP/EP percentage and full-recovery combinations plus direct effect labels, preserving each locale's word order.
 - Isolate the font-size hook from the shared formatting exit to stop repeated secondary-text shrinking at color changes, preserving the scale during native emphasis. Extend detail matching for geometric range sizes, effect grades, colored fragments, and item categories.
 - Extract multipart full-screen notes, including the Bracer Guild signboard note, assembled from color tags, strings, and line breaks. Unverified dynamic control streams retain their source text.
 - Handle repeated window controls in centered hints and correct resource identities in map destinations, interaction labels, names, status, and tips. Inventory raw resources before filtering and retain unresolved dynamic or ambiguous entries; catalog totals are not in-game coverage claims.
@@ -32,6 +36,8 @@ This release updates resident native code and font delivery. Exit the game befor
 
 ## 日本語
 
+- 区切り線などを含む履歴の再描画で主文・副文が縮み続ける問題を修正しました。実行時の表情指定が異なる会話も、行を分割する前に本文全体を照合します。アイコンだけの行が次行の訳文を消費する問題も修正しました。
+- HP／EP の割合回復・全回復と直接表示される効果名の照合を追加し、各言語の語順を維持します。
 - 文字サイズのフックを共通の書式処理から分離し、色変更のたびに副言語が縮小される問題を修正しました。強調時の比率を維持し、範囲サイズ、効果の程度、色で分割された文言、アイテム種別の説明照合を拡張しました。
 - 「遊撃士協会の看板」など、色指定・文字列・改行を組み合わせた全画面の説明文を抽出します。確認できない動的な制御列は原文を保持します。
 - 連続する表示制御を含む中央揃えのヒントに対応し、移動先・調査地点・名前・ステータス・ヒントの言語間リソース識別を修正しました。抽出前の全リソースを監査し、動的な文や曖昧な項目を明示します。登録件数を実機での表示確認済み件数とは扱いません。
