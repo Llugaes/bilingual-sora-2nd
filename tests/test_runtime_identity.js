@@ -57,6 +57,51 @@ test('canonical record identity survives a source-script reload without duplicat
     assert.equal(active.lookup({...identity,source:'伪造。'},'旧源。'),null);
 });
 
+test('history marker identity preserves physical calls and only narrows with proven metadata',()=>{
+    const a='script/a.dat/Talk/called/7/assembled_dialogue';
+    const b='script/b.dat/Talk/called/9/assembled_dialogue';
+    const pairModel={
+        history_markers:{
+            101:[
+                ['zh-Hans','<#E_0>同一正文。','甲',a,3],
+                ['ja','<#E_4>同一正文。','甲',a,4],
+            ],
+            102:[['zh-Hans','动态正文。',null,a,3]],
+            103:[
+                ['zh-Hans','冲突。',null,a,3],
+                ['zh-Hans','冲突。','甲',b,8],
+            ],
+            65536:[['zh-Hans','宽标记。',null,a,3]],
+            11:[['zh-Hans','小标记。',null,a,3]],
+            12:[['zh-Hans','十二。',null,a,3]],
+        },
+        record_pairs:{[a]:0,[b]:1},
+        record_pair_values:[['主。','副。'],['错误主。','错误副。']],
+    };
+    const ids=new ScriptIdentities(pairModel);
+    const shared=ids.historyMarkerIdentity(101,'甲','<#E[99]>同一正文。');
+    assert.equal(shared.callId,7,'stable canonical call remains the strict-dialogue key');
+    assert.equal(shared.recordKey,a);
+    assert.equal(shared.source,'<#E[99]>同一正文。','the actual runtime expression head is retained');
+    assert.deepEqual(shared.sourceLocales,['ja','zh-Hans']);
+    assert.deepEqual(shared.sourceCallIds,{ja:4,'zh-Hans':3});
+    assert.equal(Object.hasOwn(shared,'sourceLocale'),false,'an unknown old locale is not guessed');
+    assert.deepEqual(ids.lookup(shared,shared.source).model.pairs[shared.source],['<#E[99]>主。','<#E[99]>副。']);
+    assert.equal(ids.historyMarkerIdentity(101,'乙','<#E_1>同一正文。'),null,'known speaker remains exact');
+    assert.equal(ids.historyMarkerIdentity(101,'甲','<#E_1><K4>同一正文。'),null,'body controls remain identity-bearing');
+    assert.equal(ids.historyMarkerIdentity(101,'甲','<#E_1>不同正文。'),null);
+
+    const dynamic=ids.historyMarkerIdentity(102,'尤莉亚上尉','动态正文。');
+    assert.equal(dynamic.recordKey,a,'missing static speaker metadata is not a qualification filter');
+    assert.equal(dynamic.sourceLocale,'zh-Hans');
+    assert.equal(ids.historyMarkerIdentity(103,'甲','冲突。'),null,'different physical calls never merge');
+    assert.equal(ids.historyMarkerIdentity(103,'乙','冲突。').recordKey,a,'speaker can exclude a proven mismatch');
+    assert.equal(ids.historyMarkerIdentity(65536,'任意','宽标记。').recordKey,a,'the persisted marker is a u32');
+    assert.equal(ids.historyMarkerIdentity(11,'任意','小标记。').recordKey,a,'an operand equal to opcode 11 remains data');
+    assert.equal(ids.historyMarkerIdentity(12,'任意','十二。').recordKey,a,'an operand equal to opcode 12 remains data');
+    for(const marker of [0,-1,0xffff,0x100000000,1.5])assert.equal(ids.historyMarkerIdentity(marker,'甲','同一正文。'),null);
+});
+
 test('canonical records preserve a runtime expression head but reject body controls or text changes',()=>{
     const bytes=Buffer.alloc(64,12),hash=scriptSha256(bytes),key='script/a.dat/Talk/called/8/assembled_dialogue';
     const site={pc:36,group:5,command:0},manifest={h:[{

@@ -1,12 +1,18 @@
 import hashlib
+import binascii
 import struct
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 from sora_bilingual.localization.runtime_identity import (
+    _compile_history_markers,
     _dedupe_call_entries,
+    _history_marker,
     compile_script_identities,
     script_signature,
 )
+from sora_bilingual.localization.resources import Called
+from sora_bilingual.config.locales import LANGUAGES
 
 
 class FakeArchive:
@@ -24,6 +30,146 @@ class FakeArchive:
 
 
 class RuntimeIdentityTests(unittest.TestCase):
+    def test_history_marker_compiler_keeps_operator_12_and_dynamic_speakers(self):
+        static = Called(
+            None,
+            3,
+            (("int", 5), ("int", 0), ("int", 1), ("int", 11), ("int", 101), ("string", "同一。")),
+        )
+        dynamic = Called(
+            None,
+            3,
+            (
+                ("int", 5),
+                ("int", 0),
+                ("var", None),
+                ("int", 12),
+                ("int", 102),
+                ("string", "动态。"),
+            ),
+        )
+        self.assertEqual(_history_marker(static), 101)
+        self.assertEqual(_history_marker(dynamic), 102)
+        for speaker in (11, 12):
+            self.assertEqual(
+                _history_marker(
+                    Called(
+                        None,
+                        3,
+                        (
+                            ("int", 5),
+                            ("int", 0),
+                            ("int", speaker),
+                            ("int", 11),
+                            ("int", 33620),
+                            ("string", "同一。"),
+                        ),
+                    )
+                ),
+                33620,
+            )
+        for operand in (11, 12):
+            self.assertEqual(
+                _history_marker(
+                    Called(
+                        None,
+                        3,
+                        (
+                            ("int", 5),
+                            ("int", 6),
+                            ("int", 1),
+                            ("int", 14),
+                            ("int", 15),
+                            ("int", 11),
+                            ("int", operand),
+                            ("string", "同一。"),
+                        ),
+                    )
+                ),
+                operand,
+            )
+        self.assertEqual(
+            _history_marker(
+                Called(
+                    None,
+                    3,
+                    (
+                        ("int", 5),
+                        ("int", 19),
+                        ("int", 1),
+                        ("int", 11),
+                        ("int", 0x10000),
+                        ("string", "同一。"),
+                    ),
+                )
+            ),
+            0x10000,
+        )
+        self.assertIsNone(
+            _history_marker(
+                Called(
+                    None,
+                    3,
+                    (
+                        ("int", 5),
+                        ("int", 7),
+                        ("int", 1),
+                        ("int", 11),
+                        ("int", 33620),
+                        ("string", "同一。"),
+                    ),
+                )
+            )
+        )
+        self.assertIsNone(
+            _history_marker(
+                Called(
+                    None,
+                    3,
+                    (
+                        ("int", 5),
+                        ("int", 0),
+                        ("int", 1),
+                        ("int", 17),
+                        ("int", 11),
+                        ("int", 11),
+                        ("int", 33620),
+                        ("string", "后缀。"),
+                    ),
+                )
+            )
+        )
+        self.assertIsNone(
+            _history_marker(Called(None, 3, (("int", 5), ("int", 0), ("int", 11), ("int", 0))))
+        )
+        entries = []
+        for called, text in enumerate(("同一。", "动态。")):
+            entries.append(
+                {
+                    "key": f"script/scena/test.dat/Talk/called/{called}/assembled_dialogue",
+                    "texts": {locale: text for locale in LANGUAGES},
+                    "display_role": "dialogue",
+                }
+            )
+        script = SimpleNamespace(functions={"Talk": SimpleNamespace(called=(static, dynamic))})
+        with (
+            patch("sora_bilingual.localization.runtime_identity.FpacArchive", FakeArchive),
+            patch(
+                "sora_bilingual.localization.runtime_identity._logical_script_entries",
+                return_value={"script/scena/test.dat": "unused"},
+            ),
+            patch("sora_bilingual.localization.runtime_identity.parse_scp", return_value=script),
+            patch(
+                "sora_bilingual.localization.speaker_context.read_speaker_names",
+                return_value={1: "甲"},
+            ),
+        ):
+            result = _compile_history_markers("unused", entries)
+        self.assertEqual(len(result["101"]), len(LANGUAGES))
+        self.assertTrue(all(row[2] == "甲" for row in result["101"]))
+        self.assertEqual(len(result["102"]), len(LANGUAGES))
+        self.assertTrue(all(row[2] is None for row in result["102"]))
+
     def test_identical_script_bytes_with_conflicting_localizations_are_quarantined(self):
         _, entries = self.fixture()
         entries += [
@@ -59,6 +205,7 @@ class RuntimeIdentityTests(unittest.TestCase):
         data[192:201] = bytes((36, 5, 0, 2, 36, 5, 0, 2, 13))
         struct.pack_into("<II", data, 40, 2, 64)
         struct.pack_into("<I", data, 52, 0xC0000000 + 220)
+        struct.pack_into("<I", data, 48, ~binascii.crc32(b"Talk") & 0xFFFFFFFF)
         data[220:225] = b"Talk\0"
         for i, offset in enumerate((256, 280)):
             struct.pack_into("<IHHI", data, 64 + i * 12, 0xFFFFFFFF, 3, 4, 88 + i * 40)

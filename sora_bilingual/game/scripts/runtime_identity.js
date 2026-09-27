@@ -42,6 +42,7 @@ class ScriptIdentities {
         this.scripts=model?.scripts||{};this.manifest=model?.manifest||{};this.cache=new Map();
         this.sourceLanguage=model?.source_language||null;
         this.recordPairs=model?.record_pairs||{};this.recordPairValues=model?.record_pair_values||[];
+        this.historyMarkers=model?.history_markers||{};
         this.callPatterns=new WeakMap();
         this.pointers=model?.pointers||{};this.pointerModels=model?.pointer_models||{};this.pointerCache=new Map();
     }
@@ -70,6 +71,40 @@ class ScriptIdentities {
             }catch(e){/* Heap copies and unrelated resources have no script identity. */}
         }
         return result;
+    }
+    historyMarkerIdentity(marker,speaker,source) {
+        if(!Number.isInteger(marker)||marker<0||marker>0xffffffff||marker===0||marker===0xffff||typeof speaker!=='string'||typeof source!=='string')return null;
+        const rows=this.historyMarkers[String(marker)];
+        if(!Array.isArray(rows))return null;
+        const byKey=new Map();
+        for(const row of rows) {
+            if(!Array.isArray(row)||row.length!==5)continue;
+            const [locale,expected,expectedSpeaker,key,called]=row;
+            if(typeof locale!=='string'||typeof expected!=='string'||
+                    expectedSpeaker!==null&&typeof expectedSpeaker!=='string'||
+                    typeof key!=='string'||!Number.isInteger(called)||called<0||
+                    expressionBody(expected)!==expressionBody(source)||
+                    expectedSpeaker!==null&&expectedSpeaker!==speaker)continue;
+            if(!byKey.has(key))byKey.set(key,[]);
+            byKey.get(key).push({locale,called});
+        }
+        if(byKey.size!==1)return null;
+        const [recordKey,matches]=byKey.entries().next().value;
+        const canonical=/\/called\/(\d+)\/assembled_dialogue$/.exec(recordKey);
+        if(!canonical)return null;
+        const sourceCallIds={},sourceLocales=[];
+        for(const match of matches) {
+            if(Object.hasOwn(sourceCallIds,match.locale)&&sourceCallIds[match.locale]!==match.called)return null;
+            if(!Object.hasOwn(sourceCallIds,match.locale))sourceLocales.push(match.locale);
+            sourceCallIds[match.locale]=match.called;
+        }
+        sourceLocales.sort();
+        if(!sourceLocales.length)return null;
+        const identity={
+            callId:Number(canonical[1]),recordKey,source,sourceLocales,sourceCallIds,historyMarker:marker,
+        };
+        if(sourceLocales.length===1)identity.sourceLocale=sourceLocales[0];
+        return identity;
     }
     recordLookup(identity,key,source) {
         if(typeof identity.source!=='string'||source!==identity.source||

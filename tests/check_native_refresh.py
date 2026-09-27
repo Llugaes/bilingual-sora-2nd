@@ -20,10 +20,16 @@ DESTINATION = ROOT / "generated/diagnostic-094-native-refresh.json"
 
 
 def update_callback_source() -> str:
+    restore_start = AGENT_SOURCE.index("function restoreLogProjection(")
+    restore_end = AGENT_SOURCE.index("\nfunction newLogContributions(", restore_start)
     start = AGENT_SOURCE.index(
         "Interceptor.attach(base.add(REPORT.native.update.rva), {onEnter(args) {"
     )
-    return AGENT_SOURCE[start : AGENT_SOURCE.index("\nrpc.exports = {", start)]
+    return (
+        AGENT_SOURCE[restore_start:restore_end]
+        + "\n"
+        + AGENT_SOURCE[start : AGENT_SOURCE.index("\nrpc.exports = {", start)]
+    )
 
 
 def script_source() -> str:

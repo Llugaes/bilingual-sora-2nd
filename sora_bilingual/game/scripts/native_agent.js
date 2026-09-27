@@ -30,6 +30,7 @@ const dialogueFrames=new Map();
 const logOrigins=typeof LogIdentities==='function'?new LogIdentities():null;
 const logWriteFrames=new Map(),logPresentFrames=new Map();
 const logBuildFrames=new Map(),logRows=new Map(),logControllers=new Map();
+const logTextGroups=new Map();
 const logOriginStats={commits:0,withIdentity:0,matched:0,rejected:0,resets:0};
 const questFrames=new Map();
 const logMeasureFrames=new Map(),logHeightCache=new Map(),logNameCache=new Map();
@@ -541,6 +542,7 @@ if(REPORT.native.layout_ready) Interceptor.attach(base.add(REPORT.native.layout_
     onEnter(){try{
         const p=this.context.rsi;
         if(labels.get(String(p))?.glyphLanes?.length)finishAnnotationLanes(ownedRow(p));
+        offsetLogProjection(p);
     }catch(e){fail(e);}}
 });
 // Align owned annotations with the measured primary run's left edge.
@@ -562,6 +564,20 @@ function inheritAuxiliaryIcons(child,parent,label) {
     child.add(0x240).writePointer(copy);
 }
 const rubyContextCallbacks={
+    absoluteFactor(row,factor) {
+        if(!row||!REPORT.font_manager_global)return factor;
+        // S/s replaces the scale with requested pixels / this label's font
+        // base. R starts with ruby pixels / font-0 base instead. Convert the
+        // actual initial ruby scale to a ratio against the label's normal
+        // size before restoring it after an absolute size command.
+        const label=row.pointer,manager=base.add(REPORT.font_manager_global).readPointer();
+        const index=label.add(0x300).readU32(),count=manager.add(0x10).readU32();
+        if(index>=count||count>1024)throw Error('Invalid annotation font index');
+        const font=manager.add(8).readPointer().add(index*8).readPointer();
+        const fontSize=font.add(0x28).readU32(),labelSize=row.renderSize||label.add(0x304).readU32();
+        if(!(fontSize>0&&fontSize<=4096&&labelSize>0&&labelSize<=4096))throw Error('Invalid annotation font metrics');
+        return factor*fontSize/labelSize;
+    },
     onEnter(args) {
         this.target = null;
         this.placement=this.returnAddress.equals(base.add(REPORT.native.ruby_place_return.rva));
@@ -573,6 +589,7 @@ const rubyContextCallbacks={
             // Reuse only within this callback: the next native entry must
             // validate ownership again, including same-buffer text changes.
             const row=ownedRow(p);
+            this.owner=row;
             if(this.baseMeasurement)beginAnnotationLane(p,this.context.rbx,'primary',row);
             if(this.placement)beginAnnotationLane(p,this.context.rbx,'start',row);
             const layer=auxiliaryLayer(p,this.context.rbx,row);
@@ -639,7 +656,8 @@ const rubyContextCallbacks={
             }
             if(this.layer) {
                 const factor=this.target.add(0x15c).readFloat();
-                const auxiliary={factor,placement:this.placement,allowReadings:!!this.metrics||this.placement};
+                const auxiliary={factor,sizeFactor:rubyContextCallbacks.absoluteFactor(this.owner,factor),
+                    placement:this.placement,allowReadings:!!this.metrics||this.placement};
                 if(this.metrics&&!this.placement) {
                     Object.assign(auxiliary,{metrics:this.metrics,metricRole:'secondary',readingDepth:0,measureOnly:true});
                     this.target.add(0x1a9).writeU8(0);this.target.add(0x1ab).writeU8(1);
@@ -661,6 +679,8 @@ const rubyContextCallbacks={
                 // S/s commands it contains, and for a deeper native reading.
                 const auxiliary={factor:this.target.add(0x15c).readFloat(),placement:this.placement,
                     allowReadings:this.inherited.allowReadings??this.placement};
+                auxiliary.sizeFactor=this.inherited.metricRole==='primary'?1:
+                    rubyContextCallbacks.absoluteFactor(this.owner,auxiliary.factor);
                 if(this.inherited.metrics) {
                     Object.assign(auxiliary,{metrics:this.inherited.metrics,metricRole:this.inherited.metricRole,
                         readingDepth:this.inherited.readingDepth+1,measureOnly:true});
@@ -679,7 +699,8 @@ const rubyContextCallbacks={
             // scale fields to an absolute label size. Keep this owned ruby
             // context available to the verified command tail so it can retain
             // the native ruby baseline as well as the user's ruby_scale.
-            if(nativeParser)nativeParser.trackScale(this.target,this.target.add(0x15c).readFloat());
+            if(nativeParser)nativeParser.trackScale(this.target,
+                rubyContextCallbacks.absoluteFactor(this.owner,this.target.add(0x15c).readFloat()));
             if (this.placement) {
                 const shifted=this.baseLeft+rubyOffsetX;
                 this.target.writeFloat(this.clampLeft?Math.max(0,shifted):shifted);
@@ -824,6 +845,8 @@ if(REPORT.native.newline_prepare) Interceptor.attach(base.add(REPORT.native.newl
     }
 });
 Interceptor.attach(base.add(REPORT.native.destroy.rva), {onEnter(args) {
+    const group=logTextGroups.get(String(args[0]));
+    if(group){group.retired=true;logTextGroups.delete(String(group.name));logTextGroups.delete(String(group.body));}
     if (labels.delete(String(args[0]))) destroyed++;
 }});
 // Carry provenance only along the verified native dialogue call stack and
@@ -898,7 +921,56 @@ function logStamp(record) {
     return Array.from(new Uint8Array(record.readByteArray(0x188))).map(v=>v.toString(16).padStart(2,'0')).join('');
 }
 function resetLogOrigins() {
-    logOrigins?.reset();logWriteFrames.clear();logPresentFrames.clear();logBuildFrames.clear();logRows.clear();logControllers.clear();logOriginStats.resets++;
+    logOrigins?.reset();logWriteFrames.clear();logPresentFrames.clear();logBuildFrames.clear();logRows.clear();logControllers.clear();logTextGroups.clear();logOriginStats.resets++;
+}
+function rememberLogTextGroup(controller) {
+    const name=controller.add(0x10).readPointer(),body=controller.add(0x18).readPointer();
+    for(const p of [name,body]) {
+        const previous=logTextGroups.get(String(p));
+        if(previous){previous.retired=true;logTextGroups.delete(String(previous.name));logTextGroups.delete(String(previous.body));}
+    }
+    if(controller.add(0x88).readU32()!==0||name.isNull()||body.isNull()||!isLabel(name)||!isLabel(body))return;
+    const frame=controller.add(8).readPointer(),parent=body.add(0x80).readPointer();
+    if(frame.isNull()||parent.isNull()||!name.add(0x80).readPointer().equals(parent)||
+            !frame.add(0x80).readPointer().equals(parent))return;
+    // 0x360130 writes the row rectangle's height. 0x589130 maps its nine
+    // native anchors to top offsets; +f4 is the node's local Y position.
+    // Bound the shared translation by native measured bottoms, without a
+    // second glyph traversal or any frame/child-position mutation.
+    const height=frame.add(0x2dc).readFloat(),anchor=frame.add(0x2e0).readU32();
+    const topFactors=[0,0,-1,-1,-.5,-.5,0,-1,-.5];
+    if(!(height>0&&height<=65536)||anchor>=topFactors.length)return;
+    const bottom=frame.add(0xf4).readFloat()+height*(1+topFactors[anchor]);
+    const ends=[name,body].filter(p=>p.add(0x334).readU32()>0)
+        .map(p=>p.add(0xf4).readFloat()+p.add(0x374).readS32());
+    if(!ends.length||![bottom,...ends].every(Number.isFinite))return;
+    const room=bottom-Math.max(...ends)-4;
+    const group={name,body,parent,room,retired:false};
+    logTextGroups.set(String(name),group);logTextGroups.set(String(body),group);
+}
+function offsetLogProjection(p) {
+    const lease=labelCallbacks.get(String(p)),group=logTextGroups.get(String(p));
+    if(!lease||lease.depth!==1||lease.projection||!group||group.retired||!enabled||failed||
+            !['annotation','bilingual'].includes(renderMode))return;
+    if(![group.name,group.body].some(label=>{
+        const row=labels.get(String(label));
+        return row?.epoch===epoch&&['ruby','layered'].includes(row.plan?.kind);
+    }))return;
+    const delta=Math.max(0,Math.min(8,group.room-Math.max(0,bilingualOffsetY)));
+    if(!delta)return;
+    // Update projects glyphs through label+08 after layout_ready. Temporarily
+    // translate that matrix, then restore it on Update return: unchanged
+    // frames, repeated parses and controller reuse never accumulate offsets.
+    const offsets=[0x38,0x3c,0x40],axis=[0x18,0x1c,0x20];
+    const original=offsets.map(off=>p.add(off).readFloat()),direction=axis.map(off=>group.parent.add(off).readFloat());
+    if(![...original,...direction].every(Number.isFinite))return;
+    lease.projection={p,offsets,original};
+    offsets.forEach((off,i)=>p.add(off).writeFloat(original[i]+direction[i]*delta));
+}
+function restoreLogProjection(lease) {
+    const saved=lease?.projection;if(!saved)return;
+    saved.offsets.forEach((off,i)=>saved.p.add(off).writeFloat(saved.original[i]));
+    lease.projection=null;
 }
 function newLogContributions() {
     const owner=logOwner();
@@ -915,22 +987,33 @@ function captureLogPart(frame,slot,input) {
         const entry=logOrigins.entries.get(slot),stamp=logStamp(record);
         const speaker=record.add(4).readUtf8String();
         if(RuntimeText.byteLength(speaker)>=0x60)throw Error('Invalid log speaker');
-        frame.parts.push({slot,entry,stamp,speaker,text:input.readUtf8String()});
+        frame.parts.push({slot,entry,stamp,speaker,marker:record.readU32(),text:input.readUtf8String()});
     }catch(_){frame.invalid=true;}
 }
 function logContributionsIdentity(frame,source) {
     const owner=logOwner();
     if(!frame||frame.invalid||!owner||frame.owner!==String(owner)||frame.epoch!==logOrigins.epoch||!frame.parts.length)return null;
     if(frame.parts.map(v=>v.text).join('')!==source)return null;
-    let identity=null,key=null;
+    let identity=null,key=null,missing=false;
     for(const part of frame.parts) {
         const entry=logOrigins.entries.get(part.slot);
-        if(!entry||entry!==part.entry||entry.stamp!==logStamp(owner.add(0x1604ec+part.slot*0x18c)))return null;
+        const stamp=logStamp(owner.add(0x1604ec+part.slot*0x18c));
+        if(entry!==part.entry||part.stamp!==stamp||entry&&entry.stamp!==stamp)return null;
+        if(!entry){missing=true;continue;}
         const current=entry.origin.identity,currentKey=JSON.stringify(current);
         if(key!==null&&key!==currentKey)return null;
         identity=current;key=currentKey;
     }
-    return identity;
+    if(!missing)return identity;
+    // The native writer persists the script's message marker at record+0.
+    // Reconstruct a physical call ID only through the compiled marker index;
+    // equal source/target strings never merge independent calls. Every split
+    // record still belongs to the same owner, generation and intact payload.
+    const first=frame.parts[0];
+    if(frame.parts.some(part=>part.marker!==first.marker||part.speaker!==first.speaker))return null;
+    const restored=scriptIdentities?.historyMarkerIdentity?.(first.marker,first.speaker,source);
+    if(identity&&(!restored||restored.recordKey!==identity.recordKey))return null;
+    return restored||null;
 }
 function logContributionsSpeaker(frame,source) {
     const owner=logOwner();
@@ -956,7 +1039,7 @@ function rememberLogController(frame) {
         if(!logControllers.has(key)&&logControllers.size>=4096){logOriginStats.rejected++;return;}
         logControllers.set(key,{controller,body,slot,owner:parts.owner,epoch:parts.epoch,
             source:parts.parts.map(part=>part.text).join(''),
-            parts:parts.parts.map(part=>({slot:part.slot,text:part.text,speaker:part.speaker,
+            parts:parts.parts.map(part=>({slot:part.slot,text:part.text,speaker:part.speaker,marker:part.marker,
                 stamp:part.stamp,entry:part.entry}))});
     }catch(_){logOriginStats.rejected++;}
 }
@@ -1072,7 +1155,11 @@ if(logOrigins&&REPORT.native.log_record_bind)Interceptor.attach(base.add(REPORT.
     },
     onLeave(){
         const stack=logPresentFrames.get(this.thread);
-        if(stack?.at(-1)===this.frame){rememberLogController(this.frame);stack.pop();}else resetLogOrigins();
+        if(stack?.at(-1)===this.frame){
+            rememberLogController(this.frame);
+            try{rememberLogTextGroup(this.frame.controller);}catch(e){fail(e);}
+            stack.pop();
+        }else resetLogOrigins();
         if(!stack?.length)logPresentFrames.delete(this.thread);
     }
 });
@@ -1450,6 +1537,7 @@ Interceptor.attach(base.add(REPORT.native.update.rva), {onEnter(args) {
     } catch(e) {fail(e);}
 },onLeave(){
     try {
+        restoreLogProjection(this.lease);
         if(this.pausedReveal){const p=this.pausedReveal;p.add(0x2e8).writeU32(p.add(0x2e8).readU32()|0x10);}
     }
     catch(e){fail(e);}finally{leaveLabel(this.lease);}

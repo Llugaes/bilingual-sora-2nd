@@ -42,6 +42,8 @@ py -3.14 -m venv .venv
 | python tests/check_quest_dialogue.py --game-dir GAME_DIR | 从原始脚本与任务表审计毛婆婆完整任务；独立枚举来源／主文／副文组合，并逐条列出旧日志缺失调用身份后的真实歧义，不连接游戏 |
 | python tests/check_native_log_activation.py --exe GAME_EXE | 在自建隐藏宿主中执行原生日志 controller 激活函数，验证复用记录时正文与身份恢复；不附加游戏，GAME_EXE 为已安装游戏的可执行文件 |
 | python tests/check_native_nested_ruby.py --exe GAME_EXE | 在自建隐藏宿主中执行磁盘 EXE 的原始 ruby initializer，并通过生产 parser／measurement／compensate bridge 验证嵌套注音缩放、只测量不绘制、bounds、flags 恢复与 Frida 重入抑制边界；不附加或启动游戏 |
+| python tests/check_native_size_metrics.py --exe GAME_EXE | 在自建隐藏宿主中执行磁盘 EXE 的 S/s 后置字号算术，提取当前 `rubyContextCallbacks.absoluteFactor` 并经生产 parser 的 `set`、`applySize` 与 `sizeOnEnter` gate 验证相对主文倍率；不附加或启动游戏 |
+| python tests/check_native_log_inset.py --exe GAME_EXE | 在自建隐藏宿主中执行磁盘 EXE 的九种日志锚点函数与投影乘法，提取生产 log inset 回调，验证临时矩阵位移、恢复和非累加；不附加或启动游戏 |
 
 矩阵可用 `--slice 0/8 --output generated/language-matrix-0.json` 分片运行，完整检查须汇总所有分片。同原文异译的情况要与成功翻译分开统计，不能以“保留原文”或两套实现输出一致作为翻译通过。资源齐全、模型可编译也不能证明游戏控件已经传入正确身份；新增原生接入与实际排版仍需实机验证。
 

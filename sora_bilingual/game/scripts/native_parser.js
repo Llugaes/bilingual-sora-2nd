@@ -28,7 +28,7 @@ function createNativeParser(contexts,onError) {
     const scaleLookup=new NativeCallback(parser=>{
         try {
             bridgeCalls++;
-            const key=String(parser),value=contexts.get(key)?.factor??scaleFallbacks.get(key)?.factor;
+            const key=String(parser),scope=contexts.get(key),value=scope?.sizeFactor??scope?.factor??scaleFallbacks.get(key)?.factor;
             return Number.isFinite(value)&&value>0&&value<=8?value:0;
         }catch(error){onError(error);return 0;}
     },'double',['pointer']);
@@ -325,7 +325,7 @@ void parser_snapshot(uint64_t *out) {
             if(generation>=Number.MAX_SAFE_INTEGER)throw Error('Parser generation exhausted');
             const serial=++generation;
             contexts.set(String(parser),{...value,generation:serial});
-            const factor=Number(value.factor);
+            const factor=Number(value.sizeFactor??value.factor);
             if(!Number.isFinite(factor)||factor<=0||factor>8)throw Error('Invalid auxiliary scale');
             const flags=((value.allowReadings??value.placement)?1:0)|(value.measureOnly?2:0);
             register(parser,serial,flags,factor);

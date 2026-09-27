@@ -148,15 +148,16 @@ rpc.exports={run(){
     // A full registry falls back to the complete JS map, never drops text.
     const payload=[];
     for(let i=0;i<1025;i++) {
-        const p=Memory.alloc(0x300);payload.push(p);listener.set(p,{factor:.45,placement:!!(i%2)});
+        const p=Memory.alloc(0x300);payload.push(p);listener.set(p,{factor:.45,sizeFactor:.6,placement:!!(i%2)});
     }
     check(listener.status().fallback&&listener.status().overflows===1,'registry did not fall back on overflow');
     sizeEnd(payload[0],1.5);check(listener.applySize(payload[0]),'overflow lost an existing size record');
-    check(payload[0].add(0x15c).readU32()===productBits(1.5,.45),'overflow changed emphasized ruby ratio');
+    check(payload[0].add(0x15c).readU32()===productBits(1.5,.6),'overflow changed absolute-size ruby ratio');
+    check(contexts.get(String(payload[0])).factor===.45,'absolute-size registration changed nested reading scale');
     // payload[1024] was never admitted to a C slot. Its S5 factor must come
     // from the complete JS context map after the registry has overflowed.
     sizeEnd(payload[1024],1.5);check(listener.applySize(payload[1024]),'overflow lost a new auxiliary S5 factor');
-    check(payload[1024].add(0x15c).readU32()===productBits(1.5,.45),'new overflow auxiliary S5 ratio changed');
+    check(payload[1024].add(0x15c).readU32()===productBits(1.5,.6),'new overflow auxiliary S5 ratio changed');
     // A newly-created simple ruby has no auxiliary JS row at all. It must
     // register only on the overflow bridge and be retired by its parser leave.
     const overflowSimple=Memory.alloc(0x300);listener.trackScale(overflowSimple,.4);sizeEnd(overflowSimple,1.5);

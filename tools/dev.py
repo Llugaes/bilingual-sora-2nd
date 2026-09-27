@@ -39,6 +39,8 @@ def main():
             run(sys.executable, "-X", "utf8", "tests/check_native_geometry.py")
             run(sys.executable, "-X", "utf8", "tests/check_native_parser.py")
             run(sys.executable, "-X", "utf8", "tests/check_native_size_hook.py")
+            run(sys.executable, "-X", "utf8", "tests/check_native_size_metrics.py")
+            run(sys.executable, "-X", "utf8", "tests/check_native_log_inset.py")
             run(sys.executable, "-X", "utf8", "tests/check_native_measure.py")
             run(sys.executable, "-X", "utf8", "tests/check_native_nested_ruby.py")
             run(sys.executable, "-X", "utf8", "tests/check_native_reentry.py")

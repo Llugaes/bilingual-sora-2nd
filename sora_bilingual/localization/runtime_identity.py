@@ -20,7 +20,9 @@ from sora_bilingual.localization.resources import (
     _value,
     Called,
     assembled_dialogue,
+    parse_scp,
 )
+from sora_bilingual.config.locales import LANGUAGES
 from sora_bilingual.localization.menu_text import MenuTranslator, complete_pair, needs_annotation
 
 
@@ -100,6 +102,119 @@ def _record_candidate(entries, language):
         if key is not None and source is not None:
             candidates.add((key, source))
     return next(iter(candidates)) if len(candidates) == 1 else None
+
+
+def _history_marker(call):
+    """Return the last static marker written by the common dialogue builder.
+
+    Native 0x4ad844 sends operators 11 and 12 through the same operand branch;
+    0x4add28 writes the following integer through the handler's marker output.
+    The three handlers that later call log_write consume group, command and
+    speaker before the builder sees args[3:].  Builder operations 11/12 and
+    17/18/21/23 consume one following operand; every other integer operation
+    is one slot wide.  Zero and 0xffff are native sentinel values, not
+    recoverable identities.  The writer persists the result as an unsigned
+    dword, so no narrower upper bound is imposed here.
+    """
+    if (
+        call.kind != 3
+        or len(call.args) < 3
+        or call.args[0] != ("int", 5)
+        or call.args[1] not in (("int", 0), ("int", 6), ("int", 19))
+        or call.args[2][0] == "string"
+    ):
+        return None
+    marker = None
+    index = 3
+    while index < len(call.args):
+        kind, value = call.args[index]
+        if kind == "string":
+            index += 1
+            continue
+        if kind != "int":
+            return None
+        if value in (11, 12):
+            if index + 1 >= len(call.args) or call.args[index + 1][0] != "int":
+                return None
+            marker = int(call.args[index + 1][1])
+            index += 2
+            continue
+        if value in (17, 18, 21, 23):
+            # These width-two operations interpolate runtime data.  A static
+            # resource suffix is not the complete string written to history.
+            return None
+        index += 1
+    if marker is None:
+        return None
+    marker &= 0xFFFFFFFF
+    return marker if marker not in (0, 0xFFFF) else None
+
+
+def _history_marker_catalog_records(entries):
+    candidates = defaultdict(set)
+    for entry in entries:
+        record_key = _stable_dialogue_record(entry)
+        if record_key is None or entry.get("display_role") != "dialogue":
+            continue
+        prefix, tail = record_key.rsplit("/called/", 1)
+        canonical = int(tail.split("/", 1)[0])
+        path, function = prefix.split(".dat/", 1)
+        path += ".dat"
+        for locale, source in entry.get("texts", {}).items():
+            called = _source_called_id(entry, locale, canonical)
+            if called is not None:
+                candidates[locale, path, function, called].add((record_key, source))
+    # Conflicting catalog rows cannot acquire authority merely because a log
+    # marker happens to match one of them.
+    return {
+        physical: next(iter(values)) for physical, values in candidates.items() if len(values) == 1
+    }
+
+
+def _compile_history_markers(game, entries):
+    """Compile exact old-log provenance across every installed source locale."""
+    from sora_bilingual.localization.speaker_context import read_speaker_names
+
+    catalog = _history_marker_catalog_records(entries)
+    buckets = defaultdict(set)
+    names = {}
+    for locale in LANGUAGES:
+        archive = FpacArchive(Path(game) / "pac/steam" / _ARCHIVES[locale])
+        try:
+            for path, archive_path in sorted(_logical_script_entries(archive).items()):
+                if not path.endswith(".dat"):
+                    continue
+                script = parse_scp(archive.read(archive_path))
+                for function_name, function in script.functions.items():
+                    for called, call in enumerate(function.called):
+                        source = assembled_dialogue(call)
+                        if source is None:
+                            continue
+                        marker = _history_marker(call)
+                        if marker is None:
+                            continue
+                        candidate = catalog.get((locale, path, function_name, called))
+                        if candidate is None or candidate[1] != source:
+                            continue
+                        speaker_id = None
+                        if (
+                            len(call.args) >= 3
+                            and call.args[0] == ("int", 5)
+                            and call.args[1] in (("int", 0), ("int", 6), ("int", 19))
+                            and call.args[2][0] == "int"
+                        ):
+                            speaker_id = int(call.args[2][1])
+                        if speaker_id is not None and locale not in names:
+                            names[locale] = read_speaker_names(game, locale)
+                        speaker = names.get(locale, {}).get(speaker_id)
+                        record_key = candidate[0]
+                        buckets[str(marker)].add((locale, source, speaker, record_key, called))
+        finally:
+            archive.close()
+    return {
+        marker: [list(row) for row in sorted(rows, key=repr)]
+        for marker, rows in sorted(buckets.items(), key=lambda item: int(item[0]))
+    }
 
 
 def _script_call_sites(data, start, names):
@@ -521,6 +636,7 @@ def compile_script_identities(game, entries, primary, secondary, language, *, re
             "scripts": result,
             "manifest": dict(manifest),
             "source_language": language,
+            "history_markers": _compile_history_markers(game, entries),
             "record_pairs": {
                 key: record_pair_indexes[pair] for key, pair in resolved_record_pairs.items()
             },

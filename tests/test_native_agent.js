@@ -18,6 +18,7 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
     let threadId = 1;
     let duringSetter=null;
     let logOwnerPointer=null;
+    let fontManagerPointer=null;
     const scriptReads=[];
     const memoryCost={scalarReads:0,blockReads:0,scalarWrites:0,blockWrites:0,textReads:0};
     const measureScopes={pushes:[],pops:[]};
@@ -26,7 +27,7 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
         constructor(address) { this.address = address; }
         add(offset) { return new Pointer(this.address + offset); }
         sub(other) {return new Pointer(this.address-other.address);}
-        readPointer(){if(this.address===0x10002000)return logOwnerPointer;throw Error('unexpected global pointer');}
+        readPointer(){if(this.address===0x10002000)return logOwnerPointer;if(this.address===0x10003000)return fontManagerPointer;throw Error('unexpected global pointer');}
         equals(other) { return this.address === other.address; }
         isNull() { return false; }
         toString() { return `0x${this.address.toString(16)}`; }
@@ -60,6 +61,7 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
             return this.label.owned ? new TextPointer(this.label) : nullPointer;
         }
         readU32() {
+            if (this.offset === 0x300) return this.label.fontIndex||0;
             if (this.offset === 0x2e8) return this.label.flags;
             if (this.offset === 0x2ec) return this.label.textKeyHash || 0;
             if (this.offset === 0x304) return this.label.fontSize;
@@ -70,8 +72,8 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
             throw Error(`unexpected numeric field ${this.offset}`);
         }
         readS32(){if(this.offset===0x36c)return 0;if(this.offset===0x374)return this.label.logBottom||0;return this.readU32()|0;}
-        readFloat() {if(this.offset===0x378)return this.label.progress;if(this.offset===0x2fc)return -12;throw Error('unexpected float field');}
-        writeFloat(value) {if(this.offset===0x378){this.label.progress=value;return;}throw Error('unexpected float field');}
+        readFloat() {if(this.label.matrix.has(this.offset))return this.label.matrix.get(this.offset);if(this.offset===0x378)return this.label.progress;if(this.offset===0x2fc)return -12;throw Error('unexpected float field');}
+        writeFloat(value) {if(this.label.matrix.has(this.offset)){this.label.matrix.set(this.offset,value);return;}if(this.offset===0x378){this.label.progress=value;return;}throw Error('unexpected float field');}
         writeU32(value) {if(this.offset===0x2e8){this.label.flags=value;return;}throw Error('unexpected integer field');}
         writeU8(value) {
             if (![0x688,0x689].includes(this.offset)) throw Error('unexpected dirty flag');
@@ -87,6 +89,7 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
             this.glyphs = glyphs;
             this.fontSize = fontSize;
             this.flags = 1;
+            this.matrix=new Map([[0x18,0],[0x1c,1],[0x20,0],[0x38,0],[0x3c,0],[0x40,0],[0xf4,0]]);
             this.copyCount = 0;
             this.dirty={};
             this.reflows=0;
@@ -408,9 +411,10 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
             return buffer;
         },
         logWrite(text,slot){writeLog(allocate(text),slot);},
-        logRestore(text,slot,speaker){
+        logRestore(text,slot,speaker,marker=0){
             const at=0x1604ec+slot*0x18c;
             logOwnerPointer.data.fill(0,at,at+0x18c);
+            logOwnerPointer.data.writeUInt32LE(marker,at);
             logOwnerPointer.data.write(speaker,at+4,0x60,'utf8');
             logOwnerPointer.data.write(text,at+0x64,0x124,'utf8');
         },
@@ -422,8 +426,20 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
             const args=[label,allocate(text)],leave=invoke(base.add(0x100),args,base.add(0xf60));
             copyIntoLabel(label,args[1]);leave();leaveFrame();
         },
-        logShow(label,slot,text,slots=[slot]){
+        logShow(label,slot,text,slots=[slot],nodes=null){
             const controller=new ScratchPointer(0x480000);controller.add(0x18).writePointer(label);controller.add(0x38).writeS32(slot);
+            if(nodes){
+                const parent=new ScratchPointer(0x480100),frame=new ScratchPointer(0x480200);
+                parent.add(0x1c).writeFloat(1);
+                frame.add(0x80).writePointer(parent);frame.add(0x2dc).writeFloat(nodes.height);
+                frame.add(0x2e0).writeS32(nodes.anchor||0);frame.add(0xf4).writeFloat(nodes.frameY||0);
+                controller.add(8).writePointer(frame);controller.add(0x10).writePointer(nodes.name);
+                controller.add(0x88).writeS32(nodes.mode||0);
+                nodes.name.parent=label.parent=parent;
+                nodes.name.matrix.set(0xf4,9);label.matrix.set(0xf4,nodes.bodyY??48);
+                nodes.name.matrix.set(0x3c,409);label.matrix.set(0x3c,400+(nodes.bodyY??48));
+                nodes.name.logBottom=nodes.nameBottom??28;label.logBottom=nodes.bodyBottom;
+            }
             const leaveFrame=invoke(base.add(0xf50),[controller,new Pointer(slot)]);
             for(const piece of slots){
                 const input=logOwnerPointer.add(0x160550+piece*0x18c);
@@ -543,7 +559,14 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
                 reservedTop:parser.add(0x1bc).readS32(),reservedBottom:parser.add(0x1c4).readS32(),
                 bounds:[0x3c8,0x3cc,0x3d0,0x3d4].map(v=>frame.add(v).readS32())};
         },
-        layerSizeContext(label,index=0,{primaryScale=1,absoluteSize=1.5,nativeScale=.375}={}) {
+        layerSizeContext(label,index=0,{primaryScale=1,absoluteSize=1.5,nativeScale=.375,fontBase=null}={}) {
+            if(fontBase!==null) {
+                REPORT.font_manager_global=0x3000;
+                fontManagerPointer=new ScratchPointer(0x723000);
+                const fonts=new ScratchPointer(0x724000),font=new ScratchPointer(0x725000);
+                fontManagerPointer.add(8).writePointer(fonts);fontManagerPointer.add(0x10).writeS32(1);
+                fonts.writePointer(font);font.add(0x28).writeS32(fontBase);
+            }
             const row=sandbox.rpc.exports.snapshot().find(v=>v.original===label.originalForTest||v.displayed===label.text());
             const layer=row.layers[index],parser=new ScratchPointer(0x720000),target=new ScratchPointer(0x721000);
             parser.values.set(8,label.add(0x318).readPointer().add(layer.offset));
@@ -552,9 +575,10 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
             const initializer=hooks.get(String(base.add(0x600))),call={returnAddress:base.add(0x800),context:{r15:label,rbx:parser,rbp:new ScratchPointer(0x722000)}};
             initializer.onEnter.call(call,[target,allocate('_'),new Pointer(1)]);
             initializer.onLeave.call(call);
-            const factor=vm.runInContext('auxiliaryContexts.get('+JSON.stringify(String(target))+')?.factor',context);
-            return {layer:layer.text,factor,initial:target.add(0x15c).readFloat(),
-                emphasized:absoluteSize*factor,primary:absoluteSize};
+            const scope=vm.runInContext('auxiliaryContexts.get('+JSON.stringify(String(target))+')',context);
+            const factor=scope?.factor,sizeFactor=scope?.sizeFactor??factor;
+            return {layer:layer.text,factor,sizeFactor,initial:target.add(0x15c).readFloat(),
+                emphasized:absoluteSize*sizeFactor,primary:absoluteSize};
         },
         nestedRubyScale(label,index=0,{nativeScale=.375,emphasizedScale=null,primaryScale=25/29}={}) {
             const row=sandbox.rpc.exports.snapshot().find(v=>v.original===label.originalForTest||v.displayed===label.text());
@@ -738,6 +762,14 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
         },
         duringSetter(callback){duringSetter=callback;},
         beginUpdate(label,currentThread=1){threadId=currentThread;return invoke(base.add(REPORT.native.update.rva),[label]);},
+        projectedUpdate(label){
+            const leave=invoke(base.add(REPORT.native.update.rva),[label]);
+            hooks.get(String(base.add(0x380))).onEnter.call({context:{rsi:label}});
+            const y=label.add(0x3c).readFloat();
+            // A repeated layout callback in one Update must not add again.
+            hooks.get(String(base.add(0x380))).onEnter.call({context:{rsi:label}});
+            assert.equal(label.add(0x3c).readFloat(),y);leave();return y;
+        },
         destroy(label) { invoke(base.add(REPORT.native.destroy.rva), [label]); },
     };
 }
@@ -1887,6 +1919,21 @@ test('history captures IDs before a later language introduces a translation conf
     assert.equal(r.api.status().failed,false);
 });
 
+test('absolute size commands use a relative ruby ratio when label and font sizes differ',()=>{
+    const primary='<#E_0#M_0#B_0><S5>Ｙｅｓ　Ｓｉｒ！',secondary='<#E_0#M_0#B_0><S5>イエス・サー！';
+    for(const fontBase of [32,48,64])for(const labelSize of [26,32]) {
+        const runtime=makeRuntime(),label=runtime.label(0x4676,primary,0,labelSize);
+        runtime.api.load({pairs:{[primary]:[primary,secondary]}},'annotation',true,.85,{ruby_scale:.8});
+        runtime.externalSet(label,primary);
+        const result=runtime.layerSizeContext(label,0,{fontBase,nativeScale:18/fontBase,
+            primaryScale:labelSize/fontBase,absoluteSize:48/fontBase});
+        assert.ok(Math.abs(result.initial-18/fontBase*.8)<1e-6,'ordinary native reading scale stays unchanged');
+        assert.ok(Math.abs(result.factor-result.initial)<1e-6,'nested readings still inherit the actual parent scale');
+        assert.ok(Math.abs(result.emphasized/result.initial-48/labelSize)<1e-6,
+            `font=${fontBase}, label=${labelSize}: S5 must amplify secondary by the same factor as primary`);
+    }
+});
+
 test('native readings reserve a plus a-prime above every owned line including the first',()=>{
     const a='<R>刺激</R香辛料>是首行。\n再来<R>刺激</R香辛料>。',b='<R>刺激</Rスパイス>だ。\nまた<R>刺激</Rスパイス>。';
     for(const measuring of [false,true]) {
@@ -1979,6 +2026,92 @@ test('history activation validates the full unknown-record stamp even when text 
     r.api.select('secondary',true);r.logMutateRecord(7,0,1);r.logActivate(controller);
     assert.equal(row.text(),source,'same text and speaker cannot hide an unknown record stamp change');
     r.logShow(row,7,source);assert.equal(row.text(),target,'native rebind accepts the current unknown record');
+    assert.equal(r.api.status().failed,false);
+});
+
+test('bilingual log projects names and bodies downward together without mutating native positions',()=>{
+    const r=makeRuntime(),name=r.label(0xabd1,'姓名'),body=r.label(0xabd2,'');
+    const pairs={'姓名':['姓名','Name'],'正文':['正文','Body']};
+    r.api.load({pairs,plain_pairs:pairs},'annotation',true,1);
+    r.externalSet(name,'姓名');r.logRestore('正文',7,'姓名');
+    r.logShow(body,7,'正文',[7],{name,height:150,bodyBottom:70});
+    assert.equal(r.api.status().failed,false,JSON.stringify(r.api.status()));
+    for(let frame=0;frame<3;frame++) {
+        assert.equal(r.projectedUpdate(name),417);assert.equal(r.projectedUpdate(body),456);
+        assert.equal(name.add(0x3c).readFloat(),409);assert.equal(body.add(0x3c).readFloat(),448);
+        assert.equal(name.add(0xf4).readFloat(),9);assert.equal(body.add(0xf4).readFloat(),48);
+    }
+    for(const mode of ['primary','secondary']) {
+        r.api.select(mode,true);
+        assert.equal(r.projectedUpdate(name),409);assert.equal(r.projectedUpdate(body),448);
+    }
+    r.api.select('annotation',true);
+    assert.equal(r.projectedUpdate(name),417);assert.equal(r.projectedUpdate(body),456);
+    r.destroy(body);assert.equal(r.projectedUpdate(name),409,'destroyed sibling retires the whole group');
+    assert.equal(r.api.status().failed,false);
+});
+
+test('log inset uses one bottom-limited delta, including untranslated bodies and empty names',()=>{
+    for(const emptyName of [false,true])for(const height of [130,124,118]) {
+        const r=makeRuntime(),name=r.label(0xabe1,emptyName?'':'姓名'),body=r.label(0xabe2,'');
+        const pairs=emptyName?{'正文':['正文','Body']}:{'姓名':['姓名','Name']};
+        r.api.load({pairs,plain_pairs:pairs},'annotation',true,1);r.externalSet(name,emptyName?'':'姓名');r.logRestore('正文',7,'姓名');
+        r.logShow(body,7,'正文',[7],{name,height,bodyBottom:70});
+        const delta=Math.max(0,Math.min(8,height-48-70-4));
+        assert.equal(r.projectedUpdate(name),409+delta);
+        assert.equal(r.projectedUpdate(body),448+delta);
+        assert.ok(48+70+delta<=Math.max(height-4,48+70),'do not spend nonexistent bottom space');
+        r.logShow(body,7,'正文',[7],{name,height:200,bodyBottom:70,mode:1});
+        assert.equal(r.projectedUpdate(name),409);assert.equal(r.projectedUpdate(body),448,'active voice is not the dialogue log');
+        assert.equal(r.api.status().failed,false);
+    }
+});
+
+test('restored history uses persisted message IDs before same-text conflict fallback',()=>{
+    const source='啊……',speaker='艾丝蒂尔';
+    const keys=[36,151].map(id=>`script/scena/test.dat/Talk/called/${id}/assembled_dialogue`);
+    const model={pairs:{},plain_pairs:{},script_identities:{
+        record_pairs:{[keys[0]]:0,[keys[1]]:1},
+        record_pair_values:[[source,'First reaction.'],[source,'Another reaction.']],
+        history_markers:{1001:[['zh-Hans',source,speaker,keys[0],36]],1002:[['zh-Hans',source,speaker,keys[1],151]]}
+    }};
+    const r=makeRuntime();r.api.load(model,'annotation',true,1);
+    const first=r.label(0xabe0,''),second=r.label(0xabf0,'');
+    r.logRestore(source,7,speaker,1001);r.logRestore(source,8,speaker,1002);
+    r.logShow(first,7,source);r.logShow(second,8,source);
+    assert.equal(first.text(),'<R>'+source+'</RFirst reaction.>');
+    assert.equal(second.text(),'<R>'+source+'</RAnother reaction.>');
+    // No builder callback or current scene supplied these old records' IDs.
+    r.api.select('secondary',true);r.update(first);r.update(second);
+    assert.equal(first.text(),'First reaction.');assert.equal(second.text(),'Another reaction.');
+    assert.deepEqual(r.logMeasure([[speaker,source,7],[speaker,source,8]]).bodies,
+        ['First reaction.','Another reaction.'],'hidden row measurement restores the same independent IDs');
+    r.api.select('primary',true);r.update(first);
+    r.api.select('secondary',true);r.logActivate(r.logShow(first,7,source));
+    assert.equal(first.text(),'First reaction.','reopening keeps the same physical record');
+    r.logRestore(source,7,speaker,9999);r.logShow(first,7,source);
+    assert.equal(first.text(),source,'an unknown ID cannot borrow a same-text translation');
+    assert.equal(r.logMeasure([[speaker,source,7]]).bodies[0],source,
+        'a prior measured translation cannot override the newly persisted marker');
+    r.logRestore(source,7,'另一角色',1001);r.logShow(first,7,source);
+    assert.equal(first.text(),source,'known speaker metadata still validates the physical call');
+    assert.equal(r.api.status().failed,false);
+});
+
+test('restored multi-part history requires one marker and intact bytes for every contribution',()=>{
+    const source='第一行\n第二行',key='script/scena/test.dat/Talk/called/4/assembled_dialogue';
+    const r=makeRuntime();r.api.load({pairs:{},plain_pairs:{},script_identities:{
+        record_pairs:{[key]:0},record_pair_values:[[source,'Complete message.']],
+        history_markers:{700:[['zh-Hans',source,null,key,4]]}
+    }},'secondary',true,1);
+    const row=r.label(0xabf8,'');
+    r.logRestore('第一行\n',7,'动态角色',700);r.logRestore('第二行',8,'动态角色',700);
+    r.logShow(row,7,source,[7,8]);assert.equal(row.text(),'Complete message.');
+    assert.equal(r.logMeasure([['动态角色',source,8,[7,8]]]).bodies[0],'Complete message.');
+    r.logRestore('第二行',8,'动态角色',701);r.logShow(row,7,source,[7,8]);
+    assert.equal(row.text(),source,'different physical markers cannot be concatenated into one call');
+    r.logRestore('第二行',8,'动态角色',700);r.logShow(row,7,source+'changed',[7,8]);
+    assert.equal(row.text(),source+'changed','full source must match the persisted parts');
     assert.equal(r.api.status().failed,false);
 });
 
