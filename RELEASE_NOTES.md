@@ -4,6 +4,7 @@
 
 - 修正字号钩子误入公共格式出口造成的副语言反复缩小，保留强调字号与副语言的比例。扩展几何范围尺寸、效果程度、彩色分段及道具类型的详情匹配。
 - 补充全屏说明的多段文本提取，覆盖“游击士协会招牌”等由颜色标记、字符串与换行组成的说明；不能确认的动态控制流仍保留原文。
+- 支持连续窗口标记，补齐“第三把钥匙”等居中提示；修正地图跳转点、调查点、名称、状态和提示表的跨语言资源身份。增加未经过滤的原始资源清单，保留动态和歧义项，不将入库数量当作实机覆盖率。
 - 对话日志继承新记录写入时的对白来源，区分原文相同、译文不同的剧情分支；旧记录无法确认来源时继续保留原文。增加八语资源缺项、歧义与目标文本检查。
 - 统一首次显示与热切换后的排版流程，修复图鉴左侧名称及技能、装备、道具底部详情的上下位置不一致。补充字号、混排图标、多行文字和动画状态的回归检查。
 - 改进书籍长文本换行、图鉴名称、任务记录及手册规章的副语言读取，保留正文中的数字和图标尺寸。
@@ -18,6 +19,7 @@
 
 - Isolate the font-size hook from the shared formatting exit to stop repeated secondary-text shrinking at color changes, preserving the scale during native emphasis. Extend detail matching for geometric range sizes, effect grades, colored fragments, and item categories.
 - Extract multipart full-screen notes, including the Bracer Guild signboard note, assembled from color tags, strings, and line breaks. Unverified dynamic control streams retain their source text.
+- Handle repeated window controls in centered hints and correct resource identities in map destinations, interaction labels, names, status, and tips. Inventory raw resources before filtering and retain unresolved dynamic or ambiguous entries; catalog totals are not in-game coverage claims.
 - Retain dialogue provenance when new log records are written to distinguish identical source lines with different translations. Older records without a verified origin keep their source text. Add checks for missing locales, ambiguity, and target text across eight languages.
 - Unify first-entry and hot-switch layout, fixing vertical-position differences in catalog names and skill, equipment, and item details. Extend regression coverage for font size, mixed icons, multiline text, and animated states.
 - Improve secondary-text lookup for catalog names, quest records, and handbook rules, and wrapping for long book text. Preserve native number and icon sizes.
@@ -32,6 +34,7 @@ This release updates resident native code and font delivery. Exit the game befor
 
 - 文字サイズのフックを共通の書式処理から分離し、色変更のたびに副言語が縮小される問題を修正しました。強調時の比率を維持し、範囲サイズ、効果の程度、色で分割された文言、アイテム種別の説明照合を拡張しました。
 - 「遊撃士協会の看板」など、色指定・文字列・改行を組み合わせた全画面の説明文を抽出します。確認できない動的な制御列は原文を保持します。
+- 連続する表示制御を含む中央揃えのヒントに対応し、移動先・調査地点・名前・ステータス・ヒントの言語間リソース識別を修正しました。抽出前の全リソースを監査し、動的な文や曖昧な項目を明示します。登録件数を実機での表示確認済み件数とは扱いません。
 - 新しい会話履歴には元の会話の識別情報を引き継ぎ、原文が同じで訳文が異なる台詞を区別します。出典を確認できない既存の履歴は原文を保持します。8言語の欠落・曖昧さ・表示対象テキストの検証を追加しました。
 - 初回表示と表示モード切替後の配置処理を統一し、図鑑の項目名や技・装備・アイテムの説明で上下位置が異なる問題を修正しました。文字サイズ、アイコン混在、複数行、文字送りの回帰チェックも追加しました。
 - 図鑑名、依頼記録、手帳の規則における副言語の取得と、書籍の長文の折り返しを改善しました。数字やアイコンの元のサイズを維持します。

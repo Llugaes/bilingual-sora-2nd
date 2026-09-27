@@ -290,6 +290,20 @@ def display_text(text):
     return re.sub(r"^(?:<#[^<>]*>)+", "", text)
 
 
+def _without_line_padding(text):
+    """Compare full display records without their line-edge alignment spaces.
+
+    Keep every interior word boundary, line break, punctuation mark and tag.
+    This is an ambiguity check, never a rewrite of the chosen display text.
+    """
+    result = []
+    for line in text.split("\n"):
+        line = re.sub(r"^((?:<[^<>]*>)*)([ \t\u3000]+)", r"\1", line)
+        line = re.sub(r"[ \t\u3000]+(?=(?:<[^<>]*>)*$)", "", line)
+        result.append(line)
+    return "\n".join(result)
+
+
 def ruby(primary, secondary):
     if not primary or not secondary:
         return primary
@@ -617,6 +631,17 @@ class MenuTranslator:
         for source, pairs in display_candidates.items():
             if len(pairs) == 1 and candidates[source] - {None} == pairs:
                 candidates[source] = pairs
+            elif len(pairs) > 1:
+                # Airport signs reuse the same source paragraph with only
+                # localized centering spaces changed between map instances.
+                # Those are not different translations. Pick one complete
+                # original pair deterministically; never remove its padding.
+                complete = candidates[source] - {None}
+                normalized_pairs = {
+                    tuple(_without_line_padding(value) for value in pair) for pair in complete
+                }
+                if len(normalized_pairs) == 1:
+                    candidates[source] = {min(pairs, key=lambda pair: (sum(map(len, pair)), pair))}
         # Name/status records are the display-name authority. Script voice
         # identifiers can reuse the same source while omitting a locale (or
         # retaining its Japanese identifier in the English slot). Only exact

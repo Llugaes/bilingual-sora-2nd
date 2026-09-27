@@ -33,6 +33,8 @@ py -3.14 -m venv .venv
 | python tests/check_all_models.py | 编译全部 64 种主副语言模型，需设置 SORA_GAME_DIR |
 | python tests/check_reported_texts.py | 用全目录模型和正式 JS 解析器回放全屏说明、技能范围与效果、道具详情；默认简中来源、八种主语言、日文副语言，可用 --source / --secondary 更换 |
 | python -m tools.audit_static_panels --game GAME_DIR --catalog generated/catalog.json --output generated/static-panels-check.json | 从八语言原始资源扫描全屏说明，区分静态可提取、动态排除、配对缺项和目录差异；GAME_DIR 替换为游戏目录 |
+| python -m tools.audit_resource_inventory --game GAME_DIR --catalog generated/catalog.json --output generated/resource-inventory.json | 枚举八语全部原始脚本与表，逐项记录目录覆盖、拒绝参数、未识别 schema 和身份冲突；另写小型 summary.json |
+| python tests/check_reported_texts.py --game-dir GAME_DIR --panel-audit generated/static-panels-check.json --output generated/panel-runtime.json | 全部静态面板的正式 JS 回放；全局失败保持失败，编译资源身份的结果单独记录，不能作为实机身份已传入的证明 |
 
 矩阵可用 `--slice 0/8 --output generated/language-matrix-0.json` 分片运行，完整检查须汇总所有分片。同原文异译的情况要与成功翻译分开统计，不能以“保留原文”或两套实现输出一致作为翻译通过。资源齐全、模型可编译也不能证明游戏控件已经传入正确身份；新增原生接入与实际排版仍需实机验证。
 

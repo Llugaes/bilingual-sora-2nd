@@ -119,18 +119,70 @@ class Called:
         The full ordered call sequence, command, speaker and voice identifiers
         still have to match. No dynamic argument or non-newline opcode is erased.
         """
+        if self.kind == 3 and self.args[:2] == (("int", 5), ("int", 8)):
+            panel = static_panel_parts(self)
+            if panel is None:
+                return self.shape()
+            return self.target, self.kind, self.args[:3], panel[1], "static-dialogue"
         if assembled_dialogue(self) is None:
             return self.shape()
         first = next(i for i, (kind, _) in enumerate(self.args) if kind == "string")
-        return self.target, self.kind, self.args[:first], "static-dialogue"
+        controls = tuple(
+            arg for arg in self.args[first:] if arg[0] != "string" and arg != ("int", 10)
+        )
+        return self.target, self.kind, self.args[:first], controls, "static-dialogue"
+
+
+PANEL_FLAGS = frozenset((7, 8, 9, 13, 14, 15, 16, 19, 20, 22, 24, 26, 28))
+
+
+def static_panel_parts(call: Called) -> tuple[str, tuple] | None:
+    """Decode command 8's verified static text and non-text control stream.
+
+    Native builder 0x4ad670 appends strings/newlines, consumes voice IDs for
+    11/12. Command 8's handler 0x4aee20 delegates window flags to 0x4affd0.
+    Those controls may repeat
+    anywhere; their number is not a fixed text-argument offset. Interpolations
+    17/18/21/23 and unknown operations remain rejected, including before the
+    first literal. Keep controls in the alignment signature, not just text.
+    """
+    if (
+        call.kind != 3
+        or len(call.args) < 4
+        or call.args[:2] != (("int", 5), ("int", 8))
+        or call.args[2][0] != "int"
+    ):
+        return None
+    parts, controls = [], []
+    saw_string = False
+    i = 3
+    while i < len(call.args):
+        kind, value = call.args[i]
+        if kind == "string":
+            parts.append(str(value))
+            saw_string = True
+        elif kind == "int" and value == 10:
+            parts.append("\n")
+        elif kind == "int" and value in PANEL_FLAGS:
+            controls.append((value,))
+        elif kind == "int" and value in (11, 12):
+            if i + 1 >= len(call.args) or call.args[i + 1][0] != "int":
+                return None
+            i += 1
+            controls.append((value, call.args[i][1]))
+        else:
+            return None
+        i += 1
+    return ("".join(parts), tuple(controls)) if saw_string else None
 
 
 def assembled_dialogue(call: Called) -> str | None:
     """Join only the verified static talk/cinematic argument grammar.
 
     System group 5 commands 0/6/7/19 use literal strings and integer 10 for a
-    newline after the first text argument. Command 8 uses the same body grammar
-    after its verified window/style prefix. Other operations after
+    newline after the first text argument. Verified talk callbacks also admit
+    non-text tail flags; command 7 retains the narrower grammar. Command 8 decodes
+    its verified non-text control stream. Other operations after
     text begins may contain dynamic substitutions; they are not fabricated.
     """
     if call.kind != 3 or len(call.args) < 3 or call.args[0] != ("int", 5):
@@ -139,20 +191,15 @@ def assembled_dialogue(call: Called) -> str | None:
     if command in (("int", 0), ("int", 6), ("int", 7), ("int", 19)):
         first = next((i for i, (kind, _) in enumerate(call.args) if kind == "string"), None)
     elif command == ("int", 8):
-        # Only the window argument and these observed single style controls
-        # may precede a static panel. Longer integer runs are not opaque
-        # metadata: e.g. 17,itemId inserts localized item names before the
-        # first literal string. Extracting only that suffix would lose text.
-        first = next((i for i, (kind, _) in enumerate(call.args) if kind == "string"), None)
-        if (
-            first not in (3, 4)
-            or call.args[2][0] != "int"
-            or (first == 4 and call.args[3] not in tuple(("int", n) for n in (13, 16, 26, 28)))
-        ):
-            return None
+        panel = static_panel_parts(call)
+        return panel[0] if panel else None
     else:
         return None
     if first is None:
+        return None
+    if any(kind != "int" for kind, _ in call.args[3:first]):
+        # Args[2] is the speaker/window; later variables belong to the builder.
+        # Their runtime values may emit text or controls before the first literal.
         return None
     parts = []
     for kind, value in call.args[first:]:
@@ -160,6 +207,14 @@ def assembled_dialogue(call: Called) -> str | None:
             parts.append(str(value))
         elif (kind, value) == ("int", 10):
             parts.append("\n")
+        elif (
+            command in (("int", 0), ("int", 6), ("int", 19))
+            and kind == "int"
+            and value in (7, 8, 9, 13, 14, 15, 16, 19, 20, 22, 24, 25, 26, 28)
+        ):
+            # 0x4b02d0 (talk) / 0x4b0140 (message) only set window flags
+            # or return the unchanged argument index for these operations.
+            continue
         else:
             return None
     return "".join(parts)

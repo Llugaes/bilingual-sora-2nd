@@ -33,8 +33,9 @@ SCHEMAS = {
     "DLCTableData": spec(64, [("name", 40), ("description", 48)], [8, 24, 56]),
     "EventGroupData": spec(16, [("title", 8)]),
     "EventSubGroupData": spec(16, [("title", 8)]),
-    "LookPointTableData": spec(64, [("label", 16)], [8, 24]),
+    "LookPointTableData": spec(64, [("label", 16)], [0, 8, 24, 32, 48]),
     "MapJumpAreaData": spec(56, [("name", 8)], [16, 40, 48]),
+    "MapJumpSpotData": spec(152, [("name", 16)], [32, 56, 88, 104, 112, 128, 144]),
     "ShopInfo": spec(72, [("name", 8)], [24]),
     "FishInfo": spec(224, [("description", 208)], [8]),
     "AttrData": spec(24, [("name", 16)]),
@@ -76,7 +77,7 @@ SCHEMAS = {
     "HelpController": spec(16, [("label", 8)]),
     "HelpOverlayIcon": spec(40, [("label", 8)]),
     "RealTimeHelpTableData": spec(24, [("label", 8)]),
-    "TipsTableData": spec(56, [("title", 40), ("body", 48)], [8, 16, 24]),
+    "TipsTableData": spec(56, [("title", 40), ("body", 48)], [8, 24]),
     "NoteMainCategory": spec(24, [("title", 8), ("page", 16)]),
     "NoteMainPartnerInfo": spec(24, [("name", 0)], [8]),
     "NoteMainAffiliation": spec(16, [("title", 0)]),
@@ -124,7 +125,7 @@ SCHEMAS = {
     "ViewerCharaSelectList": spec(24, [("title", 8), ("description", 16)]),
     "ViewerCharaEquipList": spec(24, [("title", 8)]),
     "ViewerShotList": spec(16, [("title", 8)]),
-    "ViewerMapData": spec(80, [("name", 16)], [8, 40, 56]),
+    "ViewerMapData": spec(80, [("name", 16)], [8, 24, 40, 56]),
     "ViewerEnvList": spec(16, [("title", 8)]),
     "ViewerBGMList": spec(24, [("title", 8)]),
     "ViewerCharaList": spec(64, [("name", 24)], [8, 16, 40, 48]),
@@ -138,6 +139,18 @@ SCHEMAS = {
     "ViewerEyeLineList": spec(24, [("name", 8)], [16]),
     "ViewerNeckDirList": spec(24, [("name", 8)]),
     "ViewerMotionList": spec(40, [("name", 8)], [16, 24, 32]),
+}
+
+
+# Non-display payloads distinguish records whose scalar IDs repeat. Each array
+# is (pointer offset, count offset, count format); all elements here are uint16.
+# Tips +16 is a uint32 count followed by packed scalar metadata, not a pointer.
+_RESOURCE_IDENTITY_FIELDS = {
+    "LookPointTableData": ((0, 8, 24), ((32, 40, "Q"), (48, 56, "Q"))),
+    "ViewerMapData": ((8, 40, 56), ((24, 32, "Q"),)),
+    "NameTableData": ((16, 24, 32, 48, 64, 80, 88, 96), ()),
+    "StatusParam": ((0,), ()),
+    "TipsTableData": ((24,), ((8, 16, "I"),)),
 }
 
 
@@ -176,6 +189,38 @@ def schema_for(path, kind):
 def record_identity(data, at, kind, schema, text_floor):
     row = bytearray(data[at : at + schema.size])
     extra = b""
+    if kind in _RESOURCE_IDENTITY_FIELDS:
+        strings, arrays = _RESOURCE_IDENTITY_FIELDS[kind]
+        for offset in strings:
+            pointer = struct.unpack_from("<Q", row, offset)[0]
+            if not text_floor <= pointer < len(data):
+                raise FormatError(f"{kind} resource outside pool")
+            end = data.find(b"\0", pointer)
+            if end < 0:
+                raise FormatError(f"unterminated {kind} resource")
+            extra += struct.pack("<QQ", offset, end - pointer) + data[pointer:end]
+        for offset, count_at, count_format in arrays:
+            pointer = struct.unpack_from("<Q", row, offset)[0]
+            count = struct.unpack_from("<" + count_format, row, count_at)[0]
+            if count > 4096 or (count and not text_floor <= pointer <= len(data) - count * 2):
+                raise FormatError(f"{kind} array outside pool")
+            extra += struct.pack("<QQ", offset, count) + data[pointer : pointer + count * 2]
+    if kind == "MapJumpSpotData":
+        # Spot IDs repeat across conditional destinations. Keep resources and
+        # condition payloads, whose addresses move with localized name lengths.
+        for offset in (32, 56, 88, 104, 144):
+            pointer = struct.unpack_from("<Q", row, offset)[0]
+            if not text_floor <= pointer < len(data):
+                raise FormatError("map jump resource outside pool")
+            end = data.find(b"\0", pointer)
+            if end < 0:
+                raise FormatError("unterminated map jump resource")
+            extra += struct.pack("<QQ", offset, end - pointer) + data[pointer:end]
+        for offset in (112, 128):
+            pointer, count = struct.unpack_from("<QQ", row, offset)
+            if count > 4096 or (count and not text_floor <= pointer <= len(data) - count * 2):
+                raise FormatError("map jump condition array outside pool")
+            extra += struct.pack("<QQ", offset, count) + data[pointer : pointer + count * 2]
     if kind == "ActiveVoiceTableData":
         # Pointers move with translated string lengths. Keep the pointed-to
         # speaker/condition/voice arrays and resource strings, not addresses.

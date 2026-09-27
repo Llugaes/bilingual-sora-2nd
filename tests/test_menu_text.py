@@ -7,6 +7,30 @@ def entry(sc, ja, en=None):
 
 
 class MenuTextTests(unittest.TestCase):
+    def test_complete_dialogue_padding_differences_do_not_block_translation(self):
+        source = "<C1>　　　起降坪管制塔　　　\n 《利贝尔飞行船公社》"
+        a = {
+            "display_role": "dialogue",
+            **entry(source, "<C1>　　　発着場管制塔　　　\n 《リベール飛行船公社》"),
+        }
+        b = {
+            "display_role": "dialogue",
+            **entry(source, "<C1>　　　発着場管制塔　　　\n《リベール飛行船公社》 "),
+        }
+        tr = MenuTranslator([a, b], "zh-Hans", "ja")
+        self.assertEqual(tr.translate(source, "primary"), source)
+        self.assertIn(tr.translate(source, "secondary"), (a["texts"]["ja"], b["texts"]["ja"]))
+        conflict = {"display_role": "dialogue", **entry(source, "<C1>関係者以外立入禁止")}
+        self.assertEqual(
+            MenuTranslator([a, b, conflict], "zh-Hans", "ja").translate(source, "secondary"), source
+        )
+        # Interior word boundaries and actual wording are never normalized.
+        x = {"display_role": "dialogue", **entry("提示", "a part")}
+        y = {"display_role": "dialogue", **entry("提示", "apart")}
+        self.assertEqual(
+            MenuTranslator([x, y], "zh-Hans", "ja").translate("提示", "secondary"), "提示"
+        )
+
     def test_item_name_scope_resolves_only_unambiguous_inventory_records(self):
         item = {
             "key": "table/t_item.tbl/id/name",

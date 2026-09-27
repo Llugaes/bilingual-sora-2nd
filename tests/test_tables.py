@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from sora_bilingual.localization.resources import LANGUAGES
+from sora_bilingual.localization.resources import FormatError, LANGUAGES
 from sora_bilingual.localization.tables import build_table_entries
 from sora_bilingual.localization.menu_tables import SCHEMAS, record_identity
 
@@ -18,6 +18,47 @@ ARCHIVES = {
     "de": "table_de.pac",
     "es": "table_es.pac",
 }
+
+
+class MapJumpIdentityTests(unittest.TestCase):
+    def record(self, padding=0, label="Town", resource="mp1000", condition=9):
+        data = bytearray(152 + padding)
+        struct.pack_into("<I", data, 0, 1)
+        for offset, value in (
+            (16, label),
+            (32, resource),
+            (56, "entry"),
+            (88, ""),
+            (104, "flag"),
+            (144, ""),
+        ):
+            struct.pack_into("<Q", data, offset, len(data))
+            data.extend(value.encode("utf-8") + b"\0")
+        for offset, values in ((112, [condition]), (128, [])):
+            struct.pack_into("<QQ", data, offset, len(data), len(values))
+            data.extend(b"".join(v.to_bytes(2, "little") for v in values))
+        return data
+
+    def identity(self, data):
+        return record_identity(data, 0, "MapJumpSpotData", SCHEMAS["MapJumpSpotData"], 152)
+
+    def test_localized_name_and_pool_addresses_do_not_change_identity(self):
+        self.assertEqual(
+            self.identity(self.record()), self.identity(self.record(31, "城镇的本地化名称"))
+        )
+
+    def test_same_id_with_different_resource_or_condition_stays_distinct(self):
+        original = self.identity(self.record())
+        self.assertNotEqual(original, self.identity(self.record(resource="mp1001")))
+        self.assertNotEqual(original, self.identity(self.record(condition=10)))
+
+    def test_invalid_resource_and_condition_pointers_are_rejected(self):
+        for offset, value in ((32, 151), (112, 1), (120, 4097)):
+            with self.subTest(offset=offset):
+                data = self.record()
+                struct.pack_into("<Q", data, offset, value)
+                with self.assertRaises(FormatError):
+                    self.identity(data)
 
 
 class ActiveVoiceIdentityTests(unittest.TestCase):
@@ -45,6 +86,78 @@ class ActiveVoiceIdentityTests(unittest.TestCase):
         self.assertEqual(base, identity(self.record(padding=31)))
         for change in ({"voice": 101}, {"speaker": 4}, {"condition": 10}):
             self.assertNotEqual(base, identity(self.record(**change)))
+
+
+class ResourceIdentityTests(unittest.TestCase):
+    # Contracts verified against every record in the eight installed archives.
+    layouts = {
+        "LookPointTableData": (64, (0, 8, 24), ((32, 40), (48, 56)), (16,)),
+        "ViewerMapData": (80, (8, 40, 56), ((24, 32),), (16,)),
+        "NameTableData": (104, (16, 24, 32, 48, 64, 80, 88, 96), (), (8,)),
+        "StatusParam": (424, (0,), (), (408,)),
+        "TipsTableData": (56, (24,), ((8, 16),), (40, 48)),
+    }
+
+    def record(self, kind, padding=0, text="Label", resource="resource", condition=9):
+        size, strings, arrays, fields = self.layouts[kind]
+        data = bytearray(size + padding)
+        for offset in fields + strings:
+            value = text if offset in fields else resource
+            struct.pack_into("<Q", data, offset, len(data))
+            data.extend(value.encode("utf-8") + b"\0")
+        for offset, count_at in arrays:
+            struct.pack_into("<Q", data, offset, len(data))
+            struct.pack_into("<I" if kind == "TipsTableData" else "<Q", data, count_at, 1)
+            data.extend(condition.to_bytes(2, "little"))
+        if kind == "TipsTableData":
+            struct.pack_into("<I", data, 20, 0x4650)  # Packed scalar after the u32 count.
+        return data
+
+    def identity(self, kind, data):
+        return record_identity(data, 0, kind, SCHEMAS[kind], self.layouts[kind][0])
+
+    def test_localized_text_and_pool_addresses_preserve_all_five_identities(self):
+        for kind in self.layouts:
+            with self.subTest(kind=kind):
+                self.assertEqual(
+                    self.identity(kind, self.record(kind)),
+                    self.identity(kind, self.record(kind, padding=31, text="本地化名称")),
+                )
+
+    def test_same_scalar_id_with_different_resource_stays_distinct(self):
+        for kind in self.layouts:
+            with self.subTest(kind=kind):
+                self.assertNotEqual(
+                    self.identity(kind, self.record(kind)),
+                    self.identity(kind, self.record(kind, resource="other_resource")),
+                )
+
+    def test_conditions_and_tip_packed_scalar_stay_in_identity(self):
+        for kind in ("LookPointTableData", "ViewerMapData", "TipsTableData"):
+            with self.subTest(kind=kind):
+                self.assertNotEqual(
+                    self.identity(kind, self.record(kind)),
+                    self.identity(kind, self.record(kind, condition=10)),
+                )
+        data = self.record("TipsTableData")
+        original = self.identity("TipsTableData", data)
+        struct.pack_into("<I", data, 20, 0x4651)
+        self.assertNotEqual(original, self.identity("TipsTableData", data))
+
+    def test_invalid_resource_array_pointer_and_count_are_rejected(self):
+        for kind, offset, value, width in (
+            ("LookPointTableData", 0, 63, 8),
+            ("LookPointTableData", 32, 1, 8),
+            ("ViewerMapData", 32, 4097, 8),
+            ("NameTableData", 16, 103, 8),
+            ("StatusParam", 0, 423, 8),
+            ("TipsTableData", 16, 4097, 4),
+        ):
+            with self.subTest(kind=kind, offset=offset):
+                data = self.record(kind)
+                struct.pack_into("<Q" if width == 8 else "<I", data, offset, value)
+                with self.assertRaises(FormatError):
+                    self.identity(kind, data)
 
 
 def fpac(entries):
@@ -118,6 +231,10 @@ def tips_table(language):
         body = f"{language} body {row}"
         at = start + row * row_size
         struct.pack_into("<I", payload, at, marker)
+        struct.pack_into("<Q", payload, at + 8, cursor)
+        struct.pack_into("<Q", payload, at + 24, cursor)
+        payload.extend(b"\0")  # Empty condition array and resource string.
+        cursor += 1
         struct.pack_into("<QQ", payload, at + 40, cursor, cursor + len(title.encode()) + 1)
         payload.extend(title.encode() + b"\0" + body.encode() + b"\0")
         cursor += len(title.encode()) + len(body.encode()) + 2

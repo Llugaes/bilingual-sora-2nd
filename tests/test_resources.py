@@ -114,6 +114,31 @@ def write_game(
 
 
 class ResourcesTests(unittest.TestCase):
+    def test_command8_consecutive_style_controls_preserve_complete_panel(self):
+        # Real LP_Capel/called/133: centered orange key hint follows the
+        # signboard note, but has two style controls before its first string.
+        call = resources.Called(
+            None,
+            3,
+            tuple(("int", n) for n in (5, 8, 65535, 16, 26))
+            + (
+                ("string", "<c930>"),
+                ("string", "\u3000"),
+                ("int", 10),
+                ("string", "\u3000\u3000────────────────────\u3000\u3000"),
+                ("int", 10),
+                ("string", "\u3000\u3000\u3000第三把钥匙再次回到城市里。\u3000\u3000"),
+                ("int", 10),
+                ("string", "\u3000\u3000抬头仰望“尖帽子的三兄弟”吧。\u3000"),
+            ),
+        )
+        self.assertEqual(
+            resources.assembled_dialogue(call),
+            "<c930>\u3000\n\u3000\u3000────────────────────\u3000\u3000\n"
+            "\u3000\u3000\u3000第三把钥匙再次回到城市里。\u3000\u3000\n"
+            "\u3000\u3000抬头仰望“尖帽子的三兄弟”吧。\u3000",
+        )
+
     def test_command8_literal_rich_text_assembles_but_dynamic_tail_is_rejected(self):
         actual = resources.Called(
             None,
@@ -171,7 +196,7 @@ class ResourcesTests(unittest.TestCase):
         )
         self.assertIsNone(
             resources.assembled_dialogue(
-                replace(colour_at_arg3, args=colour_at_arg3.args + (("int", 22),))
+                replace(colour_at_arg3, args=colour_at_arg3.args + (("int", 17),))
             )
         )
         for dynamic_prefix in (("var", None), ("call", None)):
@@ -200,6 +225,59 @@ class ResourcesTests(unittest.TestCase):
                 None, 3, tuple(("int", n) for n in (5, 8, 65535, style)) + (("string", "Text"),)
             )
             self.assertEqual(resources.assembled_dialogue(call), "Text")
+
+    def test_command8_window_controls_and_voice_do_not_become_display_text(self):
+        # Native message builder 0x4ad670 and command-8 callback 0x4affd0 consume
+        # voice IDs and window flags without appending to the text buffer.
+        for prefix in ((26, 22), (16, 26, 22), (22, 16, 28), (19, 13), (11, 30138, 19, 13)):
+            with self.subTest(prefix=prefix):
+                call = resources.Called(
+                    None,
+                    3,
+                    tuple(("int", n) for n in (5, 8, 65535, *prefix))
+                    + (("string", "First"), ("int", 10), ("string", "Second"), ("int", 16)),
+                )
+                self.assertEqual(resources.assembled_dialogue(call), "First\nSecond")
+        # A known non-text opcode does not license skipping arbitrary ints,
+        # an unresolved operand, or an item/number interpolation.
+        for suffix in (
+            (("int", 11),),
+            (("int", 11), ("var", None)),
+            (("int", 17), ("int", 500)),
+            (("int", 99),),
+        ):
+            call = resources.Called(
+                None,
+                3,
+                tuple(("int", n) for n in (5, 8, 65535, 16)) + (("string", "Text"),) + suffix,
+            )
+            self.assertIsNone(resources.assembled_dialogue(call))
+
+    def test_talk_static_tail_flags_do_not_discard_complete_dialogue(self):
+        # Actual command-0 tails use 25; command-6 tails use 14/15. Both
+        # handlers call 0x4ad670 and callbacks only set flags for these codes.
+        for command, flags in ((0, (25,)), (6, (14, 15)), (19, (25,))):
+            call = resources.Called(
+                None,
+                3,
+                tuple(("int", n) for n in (5, command, 134, 11, 29815))
+                + (("string", "First"),)
+                + tuple(("int", n) for n in flags)
+                + (("int", 10), ("string", "Second")),
+            )
+            with self.subTest(command=command):
+                self.assertEqual(resources.assembled_dialogue(call), "First\nSecond")
+
+    def test_talk_dynamic_text_prefix_is_not_mistaken_for_speaker_metadata(self):
+        for command, prefix in ((0, ()), (6, (("int", 11), ("int", 40603)))):
+            args = (("int", 5), ("int", command), ("int", 4))
+            call = resources.Called(None, 3, args + prefix + (("var", None), ("string", "suffix")))
+            self.assertIsNone(resources.assembled_dialogue(call))
+        # The actual speaker slot is not part of the text argument stream.
+        call = resources.Called(
+            None, 3, (("int", 5), ("int", 0), ("var", None), ("string", "text"))
+        )
+        self.assertEqual(resources.assembled_dialogue(call), "text")
 
     def test_dynamic_item_prefix_cannot_poison_neighbouring_static_reward_alignment(self):
         # Real pattern in mp6010_01: JA item names occur before the first

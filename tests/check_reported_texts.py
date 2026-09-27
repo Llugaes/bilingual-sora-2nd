@@ -22,29 +22,60 @@ from sora_bilingual.localization.native_catalog import load_entries, load_model,
 import test_itemhelp_composition as keys
 
 NOTE = "script/scena/mp3010_01.dat/LP_Capel/called/131/assembled_dialogue"
-RUNNER = """
+KEY_HINT = "script/scena/mp3010_01.dat/LP_Capel/called/133/assembled_dialogue"
+RUNNER = r"""
 const fs=require('fs'),{RuntimeText}=require('./sora_bilingual/game/scripts/runtime_text.js');
+const {ScriptIdentities}=require('./sora_bilingual/game/scripts/runtime_identity.js');
 const data=JSON.parse(fs.readFileSync(0,'utf8'));
-const runtime=new RuntimeText(JSON.parse(fs.readFileSync(data.model,'utf8')));
+const model=JSON.parse(fs.readFileSync(data.model,'utf8')),runtime=new RuntimeText(model);
+const identities=new ScriptIdentities(model.script_identities),contexts=new Map();
+for(const [signature,bucket] of Object.entries(model.script_identities?.scripts||{}))
+ for(const script of bucket) for(const path of script.paths)
+  for(const [functionName,fn] of Object.entries(script.functions))
+   for(const [argumentsToken,call] of Object.entries(fn.calls)) for(const record of call.records) {
+    const key=path+'/'+functionName+'/called/'+record+'/assembled_dialogue';
+    if(!contexts.has(key))contexts.set(key,[]);
+    contexts.get(key).push({signature,sha256:script.sha256,functionName,argumentsToken});
+   }
 const rows=[];
+const padding=t=>t.split('\n').map(line=>line
+ .replace(/^((?:<[^<>]*>)*)([ \t\u3000]+)/,'$1')
+ .replace(/[ \t\u3000]+(?=(?:<[^<>]*>)*$)/,'')).join('\n');
+const words=t=>/[\p{L}\p{N}]/u.test(t.replace(/<[^<>]*>/g,''));
 for(const c of data.cases) for(const mode of ['primary','secondary']) {
  const actual=runtime.translate(c.source,mode),expected=c[mode];
- rows.push({name:c.name,mode,pass:actual===expected,
-  ...(actual===expected?{}:{actual,expected})});
+ const verdict=actual===expected?'exact':
+  !words(actual)&&!words(expected)?'nonlinguistic_decoration':
+  padding(actual)===padding(expected)?'line_padding_only':'failed';
+ const row={name:c.name,mode,pass:verdict!=='failed',verdict,
+  ...(verdict==='failed'?{actual,expected}:{})};
+ if(verdict==='failed'&&c.name.startsWith('panel:')) {
+  // A separate result: copied log text may lack this resource identity.
+  // Never turn a global miss into a pass based on offline context availability.
+  const candidates=contexts.get(c.name.slice(6))||[];
+  const values=candidates.map(id=>{
+   const selected=identities.lookup(id);
+   return selected?new RuntimeText(selected.model).translate(c.source,mode):null;
+  });
+  row.context_candidates=values.length;
+  row.context_pass=values.length>0&&values.every(value=>value===expected);
+ }
+ rows.push(row);
 }
 process.stdout.write(JSON.stringify(rows));
 """
 
 
-def cases(catalog, language):
+def cases(catalog, language, panel_keys=()):
     def text(key):
         return catalog[key][language]
 
     def modifier(name):
         return text("table/t_text.tbl/TXT_ITEM_HELP_" + name)
 
-    return {
+    result = {
         "full_screen_note": text(NOTE),
+        "centered_key_hint_with_repeated_controls": text(KEY_HINT),
         "static_reward_after_dynamic_items": text(
             "script/scena/mp6010_01.dat/EV_00_06_00/called/93/assembled_dialogue"
         ),
@@ -65,6 +96,8 @@ def cases(catalog, language):
             f"{text(keys.ITEM_DESCRIPTION)}"
         ),
     }
+    result.update({"panel:" + key: text(key) for key in panel_keys})
+    return result
 
 
 def main():
@@ -74,12 +107,26 @@ def main():
     parser.add_argument("--secondary", choices=LANGUAGES, default="ja")
     parser.add_argument("--targets", nargs="+", choices=LANGUAGES, default=LANGUAGES)
     parser.add_argument("--output", type=Path, default=ROOT / "generated/reported-texts-check.json")
+    parser.add_argument(
+        "--panel-audit", type=Path, help="replay every verified key from audit_static_panels"
+    )
     args = parser.parse_args()
     if args.game_dir is None:
         parser.error("provide --game-dir or SORA_GAME_DIR")
     entries, signature = load_entries(args.game_dir)
     catalog = {entry["key"]: entry["texts"] for entry in entries}
-    source, secondary = cases(catalog, args.source), cases(catalog, args.secondary)
+    panel_keys = ()
+    if args.panel_audit:
+        panel_report = json.loads(args.panel_audit.read_text(encoding="utf-8"))
+        if panel_report.get("source_language") != args.source:
+            parser.error("panel audit source does not match --source")
+        panel_keys = panel_report["verified_keys"]
+        if not panel_keys:
+            parser.error("panel audit contains no verified keys")
+    source, secondary = (
+        cases(catalog, args.source, panel_keys),
+        cases(catalog, args.secondary, panel_keys),
+    )
     config = {
         **read_config(),
         "game_language": args.source,
@@ -93,8 +140,11 @@ def main():
         "source": args.source,
         "secondary": args.secondary,
         "entries": len(entries),
+        "panel_cases": len(panel_keys),
         "targets": [],
         "all_passed": True,
+        "context_scope": "compiled resource identity only; availability in live controls/logs is not proven",
+        "all_resolvable_with_compiled_context": True,
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     for target in args.targets:
@@ -104,7 +154,7 @@ def main():
         coverage = model.get("coverage")
         del model
         gc.collect()
-        primary = cases(catalog, target)
+        primary = cases(catalog, target, panel_keys)
         data = {
             "model": str(model_path(signature, config)),
             "cases": [
@@ -128,6 +178,7 @@ def main():
         )
         rows = json.loads(result.stdout)
         passed = all(row["pass"] for row in rows)
+        with_context = all(row["pass"] or row.get("context_pass", False) for row in rows)
         report["targets"].append(
             {
                 "target": target,
@@ -135,9 +186,11 @@ def main():
                 "coverage": coverage,
                 "rows": rows,
                 "all_passed": passed,
+                "all_resolvable_with_compiled_context": with_context,
             }
         )
         report["all_passed"] &= passed
+        report["all_resolvable_with_compiled_context"] &= with_context
         args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
         print(target, "PASS" if passed else "FAIL", flush=True)
     if not report["all_passed"]:
