@@ -230,6 +230,48 @@ def fixture():
 
 
 class ItemHelpAggregateTests(unittest.TestCase):
+    def test_status_labels_accept_only_resource_proven_plus_variants(self):
+        entries, metadata, groups = fixture()
+        help_titles = {
+            "zh-Hans": [
+                {"row": i, "title": value}
+                for i, value in enumerate(
+                    ("命中率＋", "必杀率＋", "回避率＋", "魔法回避率＋", "命 中率＋", "未知＋")
+                )
+            ],
+            "ja": [{"row": 29, "title": "魔法回避率＋"}],
+        }
+        grammar = compile_item_help_grammar(
+            entries, "zh-Hans", metadata, groups, help_titles=help_titles
+        )
+        for source, english, japanese in (
+            ("命中率＋", "ACC+", "命中率+"),
+            ("必杀率＋", "CRT+", "必殺率+"),
+            ("回避率＋", "EVA+", "回避率+"),
+            ("魔法回避率＋", "AEV+", "魔法回避率+"),
+        ):
+            tr = MenuTranslator(entries + grammar["status_entries"], "en", "ja", "zh-Hans")
+            self.assertEqual(tr.translate(source, "primary"), english)
+            self.assertEqual(tr.translate(source, "secondary"), japanese)
+            self.assertEqual(tr.render(source)["kind"], "ruby")
+        self.assertEqual(tr.translate("命 中率＋", "primary"), "命 中率＋")
+        self.assertEqual(tr.translate("未知＋", "primary"), "未知＋")
+        # A HelpIconList glyph variant must not give unchanged English input
+        # two different target pairs (ASCII + vs fullwidth +).
+        reverse = MenuTranslator(entries + grammar["status_entries"], "zh-Hans", "ja", "en")
+        self.assertEqual(reverse.translate("AEV+", "primary"), "魔法回避率+")
+        conflicted = MenuTranslator(
+            entries
+            + grammar["status_entries"]
+            + [
+                {"texts": {"zh-Hans": "命中率＋", "en": "Different", "ja": "別"}},
+            ],
+            "en",
+            "ja",
+            "zh-Hans",
+        )
+        self.assertEqual(conflicted.translate("命中率＋", "primary"), "命中率＋")
+
     def test_skill_raw_slots_use_table_record_offset_not_object_relative_offset(self):
         # The PAC row starts a verified five-slot sequence at +0x30.  The
         # normalizer's object-relative +0x3c is inside that first raw tuple,
@@ -296,6 +338,25 @@ class ItemHelpAggregateTests(unittest.TestCase):
         grammar = compile_item_help_grammar(entries, "zh-Hans", changed, groups)
         sources = {row["texts"]["zh-Hans"] for row in grammar["detail_entries"]}
         self.assertNotIn("混乱･中毒%d％", sources)
+
+    def test_literal_turn_prefix_survives_a_trailing_unrelated_effect(self):
+        entries, metadata, groups = fixture()
+        # The installed Quick/STR/SPD skill has a fourth effect (ID 126).
+        # That trailing slot must not invalidate the preceding three-slot group.
+        # Use the fixture's known, unrelated HP absorb effect for this boundary.
+        groups = [group + ((210, 100, 0, 0),) if group[0][0] == 46 else group for group in groups]
+        grammar = compile_item_help_grammar(entries, "zh-Hans", metadata, groups)
+        detail = {row["texts"]["zh-Hans"]: row["texts"] for row in grammar["detail_entries"]}
+        self.assertEqual(detail["加速／%d回合STR･SPD↑"]["en"], "Quick, STR/SPD↑ (%d turns)")
+
+        # An unrelated effect between the prefix and the two stats breaks it.
+        groups = [
+            (group[0], group[-1], *group[1:-1]) if group[0][0] == 46 else group for group in groups
+        ]
+        grammar = compile_item_help_grammar(entries, "zh-Hans", metadata, groups)
+        self.assertFalse(
+            any(row["texts"]["zh-Hans"].startswith("加速／") for row in grammar["detail_entries"])
+        )
 
     def test_pair_build_does_not_require_unrelated_locale_text(self):
         entries, metadata, groups = fixture()
@@ -491,6 +552,19 @@ class ItemHelpAggregateTests(unittest.TestCase):
     def test_element_title_uses_only_the_raw_category_icon_contract(self):
         entries, metadata, groups = fixture()
         number = {"key": "table/t_text.tbl/TXT_HUD_ITEM_NUM", "texts": texts(("×%d", "x%d", "×%d"))}
+        entries.append({"key": "script/numeric-literal", "texts": texts(("2", "two", "２"))})
+        entries.append(
+            {
+                "key": "table/t_item.tbl/impede/description",
+                "texts": texts(
+                    (
+                        "<c698>攻击时有45％概率造成解除驱动",
+                        "<c698>Cancel Arts (45% chance)",
+                        "<c698>駆動解除45％",
+                    )
+                ),
+            }
+        )
         templates = (
             ("地属性", "地属性", "Earth Element"),
             ("水属性", "水属性", "Water Element"),
@@ -564,6 +638,21 @@ class ItemHelpAggregateTests(unittest.TestCase):
         self.assertEqual(plan["kind"], "layered")
         self.assertIn("Mirage Element", plan["text"])
         self.assertIn("幻属性", "".join(layer["text"] for layer in plan["layers"]))
+        # The real UI submits the header AND description, not an isolated title.
+        # Exercise both the anchored detail path and an unrecognised suffix.
+        for attribute, (zh, ja, en) in enumerate(templates, start=1):
+            for suffix, expected_suffix in (
+                ("<c698>攻击时有45％概率造成解除驱动", "<c698>Cancel Arts (45% chance)"),
+                ("UNKNOWN", "UNKNOWN"),
+            ):
+                full = f"<S32>{zh}【 属性值：<I{41 + attribute}>×2 】\n" + suffix
+                expected = f"<S32>{en} [Elemental Value: <I{41 + attribute}>x2]\n" + expected_suffix
+                with self.subTest(attribute=attribute, suffix=suffix):
+                    self.assertEqual(translator.translate(full, "primary"), expected)
+                    rendered = translator.render(full, "annotation")
+                    self.assertEqual(rendered["kind"], "layered")
+                    self.assertIn(en, rendered["text"])
+                    self.assertIn(ja, "".join(layer["text"] for layer in rendered["layers"]))
 
     def test_menu_translator_keeps_typed_aggregates_inside_anchored_details(self):
         entries, metadata, groups = fixture()

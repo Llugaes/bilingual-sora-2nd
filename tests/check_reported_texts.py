@@ -20,6 +20,7 @@ sys.path.insert(0, str(ROOT))
 from sora_bilingual.config.locales import LANGUAGES
 from sora_bilingual.config.native_config import read_config
 from sora_bilingual.localization.native_catalog import load_entries, load_model, model_path
+from sora_bilingual.localization.item_help_composition import read_item_help_contract
 from sora_bilingual.localization.menu_text import ITEM_HELP_PERCENT_RECOVERY, display_text
 import test_itemhelp_composition as keys
 from test_itemhelp_aggregates import EFFECTS, STATUS
@@ -240,6 +241,54 @@ def item_help_family_cases(catalog, language):
     return result, excluded
 
 
+def element_detail_cases(catalog, language, titles, source_language):
+    """Raw seven-category/icon contract at the full-label parser boundary.
+
+    Besides the reported Mirage + Impede 2 combination, the same full suffix
+    is a composition probe for the other headers, not a claim that those
+    seven combinations are all actual items in the game.
+    """
+    descriptions = catalog[
+        "table/t_item.tbl/sha256:2543b7aa5647d9daba9cf6df98b1e28e6470ced375b16b4df78f4a02c677652d/description"
+    ]
+    # This composite parser retains the source colour envelope. Verify the
+    # translated literal while preserving its native open/close commands.
+    assert all(re.fullmatch(r"<c698>[^<>]*(?:</C>)?", text) for text in descriptions.values())
+    description = "<c698>" + re.sub(r"<[^<>]*>", "", descriptions[language])
+    if descriptions[source_language].endswith("</C>"):
+        description += "</C>"
+    number = catalog["table/t_text.tbl/TXT_HUD_ITEM_NUM"][language] % 2
+    result = {}
+    for title in titles:
+        header = catalog[title["description_key"]][language] % (f"<I{title['icon']}>" + number)
+        for kind, suffix in (
+            ("alone", ""),
+            ("anchored", "\n<C0>" + description),
+            ("unknown", "\nUNKNOWN"),
+        ):
+            result[f"reported_element_{title['attribute']}_{kind}"] = "<S32>" + header + suffix
+    return result
+
+
+def status_label_cases(catalog, language, help_titles=None):
+    result = {}
+    for identity, (record_id, *_) in STATUS.items():
+        form = catalog[f"table/t_itemhelp.tbl/SkillItemStatusData/{identity}/format"][language]
+        fragment = form.replace("%d", "")
+        if help_titles is not None:
+            assert fragment.endswith("+")
+            pattern = re.compile(
+                re.escape(fragment[:-1].rstrip(" \t\u3000")) + r"[ \t\u3000]*[+＋]"
+            )
+            found = {
+                row["title"] for row in help_titles[language] if pattern.fullmatch(row["title"])
+            }
+            assert len(found) == 1, (language, record_id, found)
+            fragment = found.pop()
+        result[f"reported_help_status_{record_id}"] = fragment
+    return result
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--game-dir", default=os.environ.get("SORA_GAME_DIR"), type=Path)
@@ -260,6 +309,9 @@ def main():
         parser.error("provide --game-dir or SORA_GAME_DIR")
     entries, signature = load_entries(args.game_dir)
     catalog = {entry["key"]: entry["texts"] for entry in entries}
+    _, _, title_audit = read_item_help_contract(args.game_dir)
+    titles = title_audit["_element_titles"]
+    assert len(titles) == 7
     panel_keys = ()
     if args.panel_audit:
         panel_report = json.loads(args.panel_audit.read_text(encoding="utf-8"))
@@ -272,6 +324,10 @@ def main():
         cases(catalog, args.source, panel_keys),
         cases(catalog, args.secondary, panel_keys),
     )
+    source.update(element_detail_cases(catalog, args.source, titles, args.source))
+    secondary.update(element_detail_cases(catalog, args.secondary, titles, args.source))
+    source.update(status_label_cases(catalog, args.source, title_audit["_help_titles"]))
+    secondary.update(status_label_cases(catalog, args.secondary))
     family_excluded = []
     if args.item_help_audit:
         family, family_excluded = item_help_family_cases(catalog, args.source)
@@ -290,6 +346,7 @@ def main():
         "source": args.source,
         "secondary": args.secondary,
         "entries": len(entries),
+        "raw_element_title_records": titles,
         "panel_cases": len(panel_keys),
         "item_help_family_raw_fields": sum(
             key.startswith("table/t_text.tbl/TXT_ITEM_HELP_") for key in catalog
@@ -315,6 +372,8 @@ def main():
         del model
         gc.collect()
         primary = cases(catalog, target, panel_keys)
+        primary.update(element_detail_cases(catalog, target, titles, args.source))
+        primary.update(status_label_cases(catalog, target))
         if args.item_help_audit:
             primary.update(item_help_family_cases(catalog, target)[0])
         # Slot 898 has two complete script identities with different Western
@@ -364,6 +423,15 @@ def main():
                         if name == "reported_full_water_recovery_detail"
                         or name.startswith("item_help_recovery:")
                         or (name.startswith("reported_aggregate_") and "<c698>" in value)
+                        else {}
+                    ),
+                    **(
+                        {
+                            "annotation_terms": [
+                                (primary[name].split("\n")[0], secondary[name].split("\n")[0])
+                            ]
+                        }
+                        if name.startswith(("reported_element_", "reported_help_status_"))
                         else {}
                     ),
                 }

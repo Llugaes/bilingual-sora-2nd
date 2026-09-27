@@ -9,6 +9,8 @@ class RuntimeText {
         this.numeric = (model.numeric || []).filter(([pattern])=>!shadowed.has(pattern)).map(([pattern, pair]) => [new RegExp('^(?:'+pattern+')$'), pair]);
         this.rawNumeric = (model.raw_numeric || []).map(([pattern,pair])=>[new RegExp('^(?:'+pattern+')$'),pair]);
         this.producerNumeric = (model.producer_numeric || []).map(([pattern,pair,styles])=>[new RegExp('^(?:'+pattern+')$'),pair,styles]);
+        this.producerLines = (model.producer_lines || []).map(([pattern,pair,styles])=>[new RegExp('^(?:'+pattern+')$'),pair,styles]);
+        this.producerLineCache = new Map();
         this.detailNumeric = detailRows.map(([pattern,pair])=>[new RegExp('^(?:'+pattern+')$'),pair]);
         const inlineRows=model.detail_inline_icons||[];
         this.detailInlineIcons=inlineRows.map(([pattern,pair])=>[new RegExp(pattern,'g'),pair]);
@@ -235,9 +237,9 @@ class RuntimeText {
         }
         return found;
     }
-    producerPair(source) {
+    producerPair(source,rules=this.producerNumeric) {
         let found=null;
-        for(const [pattern,pair,styles] of this.producerNumeric) {
+        for(const [pattern,pair,styles] of rules) {
             const m=pattern.exec(source);if(!m||m[0]!==source)continue;
             const values=m.slice(1).map(value=>value.replace(/[０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xfee0)));
             if(values.some(value=>Number(value)<-2147483648||Number(value)>2147483647))continue;
@@ -250,6 +252,23 @@ class RuntimeText {
             if(found&&JSON.stringify(found)!==JSON.stringify(rendered))return null;found=rendered;
         }
         return found;
+    }
+    producerLinePairs(source) {
+        if(!this.producerLines.length||!source.includes('<I'))return [];
+        if(this.producerLineCache.has(source))return this.producerLineCache.get(source);
+        const ranges=RuntimeText.rubyRanges(source);if(ranges===null)return [];
+        const result=[];let at=0;
+        source.split(/(\r\n|\n|\\n)/).forEach((line,i)=>{
+            const end=at+line.length;
+            if(!(i%2)&&!RuntimeText.overlaps([at,end],ranges)) {
+                const wrapped=/^((?:<\/?[Cc][0-9a-fA-F]*>|<\/?B>|<[sS]\d+>)*)(.*?)((?:<\/[Cc]>|<\/B>)*)$/.exec(line);
+                const pair=wrapped&&this.producerPair(wrapped[2],this.producerLines);
+                if(pair)result.push([[at,end],pair.map(text=>wrapped[1]+text+wrapped[3])]);
+            }
+            at=end;
+        });
+        if(this.producerLineCache.size>=2048)this.producerLineCache.clear();
+        this.producerLineCache.set(source,result);return result;
     }
     static ruby(a,b) {
         if(!a||!b)return a;
@@ -415,6 +434,7 @@ class RuntimeText {
         const anchored=this.anchoredDetails(source);
         const known=this.rawPair(source)!==null||
             this.rawPair(source.replace(/^(?:<#[^<>]*>)+/,''))!==null||
+            this.producerLinePairs(source).length>0||
             Boolean(anchored&&anchored[0].hasDetailInlineIcon(source))||
             Boolean(anchored&&anchored[0].hasDetailContext(source,anchored[1]))||
             (Object.hasOwn(this.keyed,key)&&this.keyed[key].source===source);
@@ -473,6 +493,18 @@ class RuntimeText {
         }
         const anchored=this.anchoredDetails(source);
         if(anchored)return anchored[0].translate(source,mode,'','',anchored[1]);
+        if(mode==='primary'||mode==='secondary') {
+            const spans=this.producerLinePairs(source);
+            if(spans.length) {
+                const result=[];let at=0;
+                for(const [[start,end],pair] of spans) {
+                    result.push(this.translate(source.slice(at,start),mode,'','',detailContext),pair[mode==='primary'?0:1]);
+                    at=end;
+                }
+                result.push(this.translate(source.slice(at),mode,'','',detailContext));
+                return result.join('');
+            }
+        }
         if(detailContext)source=this.replaceDetailContext(source,mode,detailContext);
         if(this.detailInlineIcons.length)source=this.replaceDetailInlineIcons(source,mode);
         if(this.ambiguousDisplay.has(source)||this.ambiguousDisplay.has(source.replace(/^(?:<#[^<>]*>)+/,'')))return source;

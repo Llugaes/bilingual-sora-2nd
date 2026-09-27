@@ -96,6 +96,32 @@ test('element-title producer keeps the native icon and count singular', () => {
     assert.equal(runtime.translate('幻属性【 属性值：<I48>×2147483648 】', 'primary'), '幻属性【 属性值：<I48>×2147483648 】');
 });
 
+test('element title survives a full detail label without loosening icon or line boundaries', () => {
+    const rule = ['幻属性【 属性值：<I48>×(-?(?:0|[1-9][0-9]{0,9})) 】',
+        ['Mirage Element [Elemental Value: <I48>x%d]', '幻属性【 属性値：<I48>×%d 】'], [['ascii'], ['ascii']]];
+    const local = baseModel({producer_numeric: [rule], producer_lines: [rule],
+        pairs: {'说明': ['Description', '説明']}, plain_pairs: {'说明': ['Description', '説明']}});
+    const runtime = new RuntimeText(baseModel({producer_numeric: [rule], producer_lines: [rule],
+        plain_pairs: {'2': ['two', '２']}, detail_sources: ['说明'], details: local}));
+    for (const [suffix, expected] of [['说明', 'Description'], ['UNKNOWN', 'UNKNOWN']]) {
+        const source = '<S32><C1>幻属性【 属性值：<I48>×2 】</C>\n' + suffix;
+        assert.equal(runtime.translate(source, 'primary'), '<S32><C1>Mirage Element [Elemental Value: <I48>x2]</C>\n' + expected);
+        const plan = runtime.render(source, 'annotation');
+        assert.equal(plan.kind, 'layered');
+        assert.match(plan.text, /Mirage Element/);
+        assert.match(plan.layers.map(x => x.text).join(''), /幻属性【 属性値：<I48>×2 】/);
+    }
+    for (const title of ['幻属性【 属性值：<I47>×2 】', '幻属性【 属性值：<I48>×2147483648 】',
+        '前缀幻属性【 属性值：<I48>×2 】', '幻属性【 属性值：<I48>×2 】后缀',
+        '<R>幻属性【 属性值：<I48>×2 】</R注解>', '<R>幻属性【 属性值：<I48>×2 】']) {
+        const source = title + '\n说明';
+        assert.equal(runtime.producerLinePairs(source).length, 0);
+        assert.doesNotMatch(runtime.translate(source, 'primary'), /Mirage Element/);
+    }
+    const conflict = new RuntimeText(baseModel({producer_lines: [rule, [rule[0], ['OTHER %d', 'OTHER %d'], rule[2]]]}));
+    assert.equal(conflict.producerLinePairs('幻属性【 属性值：<I48>×2 】').length, 0);
+});
+
 test('indexed resolver matches the old linear oracle for conflicts, fallback and neighbours', () => {
     const model = baseModel({
         detail_numeric: [

@@ -14,6 +14,7 @@ import hashlib
 from itertools import permutations
 import json
 from pathlib import Path
+import re
 import struct
 
 from sora_bilingual.config.locales import LANGUAGES, archive_names
@@ -167,7 +168,7 @@ def _literal_cluster_key(fields, languages):
     return tuple(result)
 
 
-def _status_fragments(catalogue, records, languages):
+def _status_fragments(catalogue, records, languages, help_titles=None):
     result = []
     for identity, metadata in sorted(records.items(), key=lambda row: row[1]["id"]):
         formats = _field(catalogue, "SkillItemStatusData", identity, "format", languages)
@@ -177,11 +178,32 @@ def _status_fragments(catalogue, records, languages):
                 break
             texts[language] = value.replace("%d", "")
         else:
+            # HelpIconList has layout scalars, not a stable cross-locale ID.
+            # Admit only its actual titles equivalent to this identified stat
+            # formatter: one terminal plus, with locale-specific glyph/spacing.
+            # This never aligns help rows by ordinal or by translated wording.
+            variants, provenance = {}, {}
+            for language, fragment in texts.items():
+                if not fragment.endswith("+"):
+                    continue
+                pattern = re.compile(
+                    re.escape(fragment[:-1].rstrip(" \t\u3000")) + r"[ \t\u3000]*[+＋]"
+                )
+                matched = [
+                    row
+                    for row in (help_titles or {}).get(language, ())
+                    if pattern.fullmatch(row["title"])
+                ]
+                if matched:
+                    variants[language] = sorted({row["title"] for row in matched})
+                    provenance[language] = [row["row"] for row in matched]
             result.append(
                 {
                     "key": f"table/t_itemhelp.tbl/generated/status_fragment/{metadata['id']}",
                     "texts": texts,
                     "item_help_scope": "status",
+                    "source_variants": variants,
+                    "status_label_rows": provenance,
                 }
             )
     return result
@@ -412,6 +434,7 @@ def compile_item_help_grammar(
     *,
     actual_contexts=(),
     element_titles=(),
+    help_titles=None,
     max_group_slots=3,
     languages=None,
 ):
@@ -479,7 +502,9 @@ def compile_item_help_grammar(
         if (
             len(group) >= 3
             and group[0][0] not in turn
-            and all(slot[0] in turn for slot in group[1:])
+            # Recognise the bounded leading group, not the entire raw tail.
+            # A fourth/fifth effect does not undo prefix + two adjacent stats.
+            and all(slot[0] in turn for slot in group[1:MAX_TYPED_GROUP_SLOTS])
         ):
             prefix = by_id.get(group[0][0])
             if prefix and prefix[0] in fields and not prefix[1]["parameter_types"]:
@@ -742,7 +767,9 @@ def compile_item_help_grammar(
                 detail_inline_icon=True,
             )
 
-    status_entries = _status_fragments(catalogue, metadata["SkillItemStatusData"], languages)
+    status_entries = _status_fragments(
+        catalogue, metadata["SkillItemStatusData"], languages, help_titles
+    )
     element_entries = _element_title_entries(catalogue, element_titles, languages)
     # These are menu headers, not effect-detail aliases.  They share this
     # return collection only so existing callers include all generated rows.
@@ -791,6 +818,15 @@ def compile_item_help_grammar(
             "raw_status_records": len(metadata["SkillItemStatusData"]),
             "raw_effect_records": len(metadata["SkillEffectHelpData"]),
             "status_families": len(status_entries),
+            "status_label_aliases": [
+                {
+                    "key": entry["key"],
+                    "sources": entry["source_variants"],
+                    "help_rows": entry["status_label_rows"],
+                }
+                for entry in status_entries
+                if entry["source_variants"]
+            ],
             "chance_records": len(chance),
             "turn_stat_records": len(turn),
             "turn_single_slot_records": len({slot[0] for slot in turn_slots}),
@@ -934,6 +970,24 @@ def _read_element_title_contract(item_help, item_table, orbment):
     return tuple(result[category] for category in sorted(result))
 
 
+def _read_help_titles(data):
+    layout = sections(data)
+    floor = max(start + size * count for _, start, size, count in layout)
+    _, start, size, count = next(row for row in layout if row[0] == "HelpIconList")
+    if size != 56:
+        raise ItemHelpContractError("help title stride changed")
+    result = []
+    for index in range(count):
+        pointer = struct.unpack_from("<Q", data, start + index * size + 8)[0]
+        if not floor <= pointer < len(data):
+            raise ItemHelpContractError("help title outside pool")
+        end = data.find(b"\0", pointer)
+        if end < 0:
+            raise ItemHelpContractError("unterminated help title")
+        result.append({"row": index, "title": data[pointer:end].decode("utf-8")})
+    return result
+
+
 def read_item_help_contract(game, languages=None):
     """Read all typed records and raw PAC effect groups across installed locales."""
     game = Path(game)
@@ -941,6 +995,7 @@ def read_item_help_contract(game, languages=None):
     if not languages or any(language not in LANGUAGES for language in languages):
         raise ItemHelpContractError("invalid item-help language set")
     per_language, groups_by_language, contexts_by_language, titles_by_language = {}, {}, {}, {}
+    help_titles = {}
     names = archive_names("table")
     for language in languages:
         filename = names[language]
@@ -953,6 +1008,7 @@ def read_item_help_contract(game, languages=None):
                 item_help = archive.read(logical["table/t_itemhelp.tbl"])
                 item_table = archive.read(logical["table/t_item.tbl"])
                 orbment = archive.read(logical["table/t_orbment.tbl"])
+                help_titles[language] = _read_help_titles(archive.read(logical["table/t_help.tbl"]))
                 element_titles = _read_element_title_contract(item_help, item_table, orbment)
                 effect_groups, effect_contexts = [], []
                 for table_path, (kind, offset, count) in EFFECT_LAYOUTS.items():
@@ -1020,6 +1076,7 @@ def read_item_help_contract(game, languages=None):
             "raw_effect_groups": len(first_groups),
             "_effect_contexts": first_contexts,
             "_element_titles": first_titles,
+            "_help_titles": help_titles,
         },
     )
 
@@ -1028,6 +1085,7 @@ def read_item_help_metadata(game, languages=None):
     metadata, _groups, audit = read_item_help_contract(game, languages)
     audit.pop("_effect_contexts", None)
     audit.pop("_element_titles", None)
+    audit.pop("_help_titles", None)
     return metadata, audit
 
 
@@ -1036,6 +1094,7 @@ def build_item_help_grammar(game, entries, source_language, languages=None):
     metadata, groups, audit = read_item_help_contract(game, languages)
     contexts = audit.pop("_effect_contexts", ())
     element_titles = audit.pop("_element_titles", ())
+    help_titles = audit.pop("_help_titles", {})
     result = compile_item_help_grammar(
         entries,
         source_language,
@@ -1043,6 +1102,7 @@ def build_item_help_grammar(game, entries, source_language, languages=None):
         groups,
         actual_contexts=contexts,
         element_titles=element_titles,
+        help_titles=help_titles,
         languages=languages,
     )
     result["audit"].update(audit)

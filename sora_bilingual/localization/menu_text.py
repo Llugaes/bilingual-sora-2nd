@@ -755,6 +755,17 @@ class MenuTranslator:
         self, entries, primary, secondary, source_language=DEFAULT_PRIMARY, _details_only=False
     ):
         entries = list(entries)
+        # These seven producers are complete header lines. The game submits
+        # them together with a description, so matching only the whole label
+        # (or splitting its icon first) loses their resource identity.
+        line_producers = [
+            e
+            for e in entries
+            if e.get("dynamic_producer", {}).get("family") == "item_help_element_title"
+        ]
+        self.producer_lines = _producer_numeric_rules(
+            line_producers, primary, secondary, source_language
+        )
         self.detail_inline_icons = (
             _detail_inline_icon_rules(entries, primary, secondary, source_language)
             if _details_only
@@ -835,7 +846,7 @@ class MenuTranslator:
                     and e.get("texts", {}).get(source_language) in item_help_headers
                 )
             ]
-            detail_entries += detail_aliases
+            detail_entries += detail_aliases + line_producers
             descriptions = {
                 e["texts"][source_language]
                 for e in detail_entries
@@ -857,7 +868,13 @@ class MenuTranslator:
             prefix = "table/t_text.tbl/"
             if pair and source_language in texts and entry.get("key", "").startswith(prefix):
                 self.keyed.append((entry["key"][len(prefix) :], texts[source_language], pair))
-            for value in {texts[source_language]} if source_language in texts else set():
+            sources = {texts[source_language]} if source_language in texts else set()
+            if entry.get("item_help_scope") == "status":
+                # Resource-proven presentation variants share the identified
+                # stat's target pair. Do not create competing target spellings
+                # when another locale has an unchanged source label.
+                sources.update(entry.get("source_variants", {}).get(source_language, ()))
+            for value in sources:
                 for source in {value, plain(value)}:
                     if source.strip():
                         candidates.setdefault(source, set()).add(pair)
@@ -1105,11 +1122,11 @@ class MenuTranslator:
                 matches.add(tuple(rendered))
         return next(iter(matches)) if len(matches) == 1 else None
 
-    def producer_pair(self, source):
+    def producer_pair(self, source, rules=None):
         matches = set()
         narrow = str.maketrans("０１２３４５６７８９", "0123456789")
         wide = str.maketrans("0123456789", "０１２３４５６７８９")
-        for pattern, pair, styles in self.producer_numeric:
+        for pattern, pair, styles in self.producer_numeric if rules is None else rules:
             match = pattern.fullmatch(source)
             if not match:
                 continue
@@ -1129,6 +1146,26 @@ class MenuTranslator:
                 )
             )
         return next(iter(matches)) if len(matches) == 1 else None
+
+    def producer_line_pairs(self, source):
+        if not self.producer_lines or "<I" not in source:
+            return []
+        ranges = _ruby_ranges(source)
+        if ranges is None:
+            return []
+        result, at = [], 0
+        for i, line in enumerate(re.split(r"(\r\n|\n|\\n)", source)):
+            end = at + len(line)
+            if not i % 2 and not _overlaps((at, end), ranges):
+                wrapped = re.fullmatch(
+                    r"((?:</?[Cc][0-9a-fA-F]*>|</?B>|<[sS]\d+>)*)(.*?)((?:</[Cc]>|</B>)*)", line
+                )
+                if wrapped and (pair := self.producer_pair(wrapped[2], self.producer_lines)):
+                    result.append(
+                        ((at, end), tuple(wrapped[1] + text + wrapped[3] for text in pair))
+                    )
+            at = end
+        return result
 
     def component(self, source, mode):
         pair = self.pair(source)
@@ -1167,6 +1204,16 @@ class MenuTranslator:
         if anchored := self._anchored_details(source):
             details, context = anchored
             return details.translate(source, mode, detail_context=context)
+        if mode in ("primary", "secondary"):
+            spans = self.producer_line_pairs(source)
+            if spans:
+                result, at = [], 0
+                for (start, end), pair in spans:
+                    result.append(self.translate(source[at:start], mode, detail_context))
+                    result.append(pair[0 if mode == "primary" else 1])
+                    at = end
+                result.append(self.translate(source[at:], mode, detail_context))
+                return "".join(result)
         if detail_context:
             source = self._replace_detail_context(source, mode, detail_context)
         if self.detail_inline_icons:
@@ -1223,6 +1270,7 @@ class MenuTranslator:
         known = (
             self.raw_pair(source) is not None
             or self.raw_pair(display_text(source)) is not None
+            or bool(self.producer_line_pairs(source))
             or bool(anchored and anchored[0].has_detail_inline_icon(source))
             or bool(anchored and anchored[0].has_detail_context(source, anchored[1]))
         )
@@ -1308,6 +1356,9 @@ class MenuTranslator:
             "raw_numeric": [(pattern.pattern, pair) for pattern, pair in self.raw_numeric],
             "producer_numeric": [
                 (pattern.pattern, pair, styles) for pattern, pair, styles in self.producer_numeric
+            ],
+            "producer_lines": [
+                (pattern.pattern, pair, styles) for pattern, pair, styles in self.producer_lines
             ],
             "detail_numeric": [(pattern.pattern, pair) for pattern, pair in self.detail_numeric],
             "detail_inline_icons": [
