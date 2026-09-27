@@ -7,6 +7,7 @@ class RuntimeText {
         this.model = model;
         this.numeric = (model.numeric || []).map(([pattern, pair]) => [new RegExp('^(?:'+pattern+')$'), pair]);
         this.rawNumeric = (model.raw_numeric || []).map(([pattern,pair])=>[new RegExp('^(?:'+pattern+')$'),pair]);
+        this.producerNumeric = (model.producer_numeric || []).map(([pattern,pair,styles])=>[new RegExp('^(?:'+pattern+')$'),pair,styles]);
         this.detailNumeric = (model.detail_numeric || []).map(([pattern,pair])=>[new RegExp('^(?:'+pattern+')$'),pair]);
         this.scoped = Object.fromEntries(Object.entries(model.scoped || {}).map(([k,v])=>[k,new RuntimeText(v)]));
         this.details = model.details ? new RuntimeText(model.details) : null;
@@ -14,12 +15,22 @@ class RuntimeText {
         this.ambiguousDisplay = new Set(model.ambiguous_display || []);
         this.cache = new Map();
         this.planCache = new Map();
+        this.speakerCache = new Map();
         this.keyed = Object.fromEntries(Object.entries(model.keyed || {}).map(([k,v])=>[k,{source:v.source,tr:new RuntimeText(v.model)}]));
     }
     static renderFormat(template,replacement) {
         return template.replace(PRINTF_TOKEN,token=>token==='%%'?'%':replacement());
     }
+    speakerContext(name,source) {
+        const models=this.model.speaker_contexts||{};
+        if(!Object.hasOwn(models,name))return null;
+        const selected=models[name],body=source.replace(/^(?:<#[^<>]*>)+/,'');
+        if(!Object.hasOwn(selected.pairs,source)&&!Object.hasOwn(selected.pairs,body))return null;
+        if(!this.speakerCache.has(name))this.speakerCache.set(name,{tr:new RuntimeText(selected)});
+        return this.speakerCache.get(name);
+    }
     pair(source) {
+        const producer=this.producerPair(source);if(producer)return producer;
         if (Object.hasOwn(this.model.plain_pairs,source)) return this.model.plain_pairs[source];
         let authoritative=null;
         for(const [pattern,pair] of this.detailNumeric) {
@@ -46,6 +57,7 @@ class RuntimeText {
     }
     rawPair(source) {
         if(Object.hasOwn(this.model.pairs,source))return this.model.pairs[source];
+        const producer=this.producerPair(source);if(producer)return producer;
         if(!source.includes('<'))return null;
         let found=null;
         for(const [pattern,pair] of this.rawNumeric) {
@@ -53,6 +65,22 @@ class RuntimeText {
             const rendered=pair.map((target,side)=>{
                 let i=1;return RuntimeText.renderFormat(target,()=>{
                     const v=m[i++];return (Object.hasOwn(this.model.plain_pairs,v)?this.model.plain_pairs[v]:[v,v])[side];
+                });
+            });
+            if(found&&JSON.stringify(found)!==JSON.stringify(rendered))return null;found=rendered;
+        }
+        return found;
+    }
+    producerPair(source) {
+        let found=null;
+        for(const [pattern,pair,styles] of this.producerNumeric) {
+            const m=pattern.exec(source);if(!m||m[0]!==source)continue;
+            const values=m.slice(1).map(value=>value.replace(/[０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xfee0)));
+            if(values.some(value=>Number(value)<-2147483648||Number(value)>2147483647))continue;
+            const rendered=pair.map((target,side)=>{
+                let i=0;return RuntimeText.renderFormat(target,()=>{
+                    const value=values[i],style=styles[side][i++];
+                    return style==='fullwidth'?value.replace(/[0-9]/g,c=>String.fromCharCode(c.charCodeAt(0)+0xfee0)):value;
                 });
             });
             if(found&&JSON.stringify(found)!==JSON.stringify(rendered))return null;found=rendered;
@@ -186,14 +214,14 @@ class RuntimeText {
         const left=a.split(/(\r\n|\n|\\n)/),visible=RuntimeText.visualSecondary(b);let right=visible.split(/\r\n|\n|\\n/);
         const count=(left.length+1)/2;
         const needsReflow=count!==right.length||left.some((v,i)=>!(i%2)&&Boolean(v.trim())!==Boolean(right[i/2]?.trim()));
-        if(needsReflow||visible.includes('<')) {
+        if(needsReflow||(visible.includes('<')&&count>1)) {
             const reflowed=RuntimeText.reflowAnnotationLines(a,visible);
             if(reflowed!==null)right=reflowed;
             else if(needsReflow) {
                 const payload=right.join(' '),anchor=left.findIndex((v,i)=>!(i%2)&&v.trim());
                 right=Array(count).fill('');right[Math.max(0,anchor/2)]=payload;
             }
-        }
+        } else if(count===1)right[0]+=RuntimeText.closeColours(right[0]);
         let text='';const layers=[];
         left.forEach((part,i)=>{
             if(i%2){text+=part;return;}

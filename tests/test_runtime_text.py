@@ -5,6 +5,7 @@ import unittest
 from sora_bilingual.localization.menu_text import (
     MenuTranslator,
     annotation_plan,
+    close_colours,
     reflow_annotation_lines,
 )
 
@@ -12,6 +13,55 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class RuntimeTextTests(unittest.TestCase):
+    def test_typed_producer_rendering_matches_python_without_fragmenting_colored_values(self):
+        entries = [
+            {
+                "texts": {
+                    "zh-Hans": "BP上升了<C2>%d<C0>点。",
+                    "en": "BP increased by <C2>%d<C0>.",
+                    "ja": "ＢＰが<C2>%d<C0>上がった。",
+                },
+                "dynamic_producer": {
+                    "numbers": {language: ["ascii"] for language in ("zh-Hans", "en", "ja")}
+                },
+            },
+            {"texts": {"zh-Hans": "2", "ja": "２", "en": "two"}},
+        ]
+        cases = []
+        for secondary in ("en", "ja"):
+            tr = MenuTranslator(entries, "zh-Hans", secondary)
+            sources = [f"BP上升了<C2>{n}<C0>点。" for n in (0, 2, 2147483647)]
+            cases.append(
+                {
+                    "model": tr.runtime_model(),
+                    "cases": [
+                        {
+                            "source": s,
+                            "plan": tr.render(s),
+                            "secondary": tr.translate(s, "secondary"),
+                        }
+                        for s in sources
+                    ],
+                }
+            )
+            for row in cases[-1]["cases"]:
+                self.assertEqual(len(row["plan"]["layers"]), 1)
+                self.assertEqual(
+                    row["plan"]["layers"][0]["text"],
+                    row["secondary"] + close_colours(row["secondary"]),
+                )
+        runner = """const fs=require('fs'),a=require('assert/strict'),{RuntimeText}=require('./sora_bilingual/game/scripts/runtime_text');
+for(const group of JSON.parse(fs.readFileSync(0,'utf8'))) {const r=new RuntimeText(group.model);
+for(const c of group.cases) {a.deepEqual(r.render(c.source),c.plan);a.equal(r.translate(c.source,'secondary'),c.secondary);}}"""
+        result = subprocess.run(
+            ["node", "-e", runner],
+            input=json.dumps(cases),
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_dialogue_controls_reflow_secondary_lines_without_losing_line_ownership(self):
         primary = "<#E_0#M_0#B_0>那个眼神……\n难道是在期待能得到什么吗？"
         secondary = "<#E_0#M_0#B_0>その眼差し……\nもしかして何か貰えると\n期待しているのかしら？"

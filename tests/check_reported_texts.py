@@ -22,6 +22,7 @@ from sora_bilingual.config.native_config import read_config
 from sora_bilingual.localization.native_catalog import load_entries, load_model, model_path
 from sora_bilingual.localization.menu_text import ITEM_HELP_PERCENT_RECOVERY, display_text
 import test_itemhelp_composition as keys
+from test_itemhelp_aggregates import EFFECTS, STATUS
 
 NOTE = "script/scena/mp3010_01.dat/LP_Capel/called/131/assembled_dialogue"
 KEY_HINT = "script/scena/mp3010_01.dat/LP_Capel/called/133/assembled_dialogue"
@@ -131,6 +132,50 @@ def cases(catalog, language, panel_keys=()):
     result["reported_full_water_recovery_detail"] = (
         f"<C3></C>{header}<I300><C3>{area}</C>】<c698>{effect}</C><c698>／</C><c698>{modifier('DEBUFF_CANCEL')}</C>\n<C0>{text(WATER_DESCRIPTION)}"
     )
+    result.update(aggregate_cases(catalog, language))
+    return result
+
+
+def aggregate_cases(catalog, language):
+    """Native three-slot constructors: named records, shared magnitude, locale order."""
+    result = {}
+    for identity, (record_id, *_) in STATUS.items():
+        form = catalog[f"table/t_itemhelp.tbl/SkillItemStatusData/{identity}/format"][language]
+        result[f"reported_aggregate_status_{record_id}"] = form.replace("%d", "")
+    effect_ids = {value[0]: identity for identity, value in EFFECTS.items()}
+
+    def field(record, name):
+        return catalog[f"table/t_itemhelp.tbl/SkillEffectHelpData/{effect_ids[record]}/{name}"][
+            language
+        ]
+
+    link = catalog["table/t_text.tbl/TXT_ITEM_HELP_LINK"][language]
+    suffix = "\n<C0>" + catalog[WATER_DESCRIPTION][language]
+    for name, ids, value, arrow in (
+        ("chance_two", (39, 31), 90, ""),
+        ("chance_three", (39, 34, 38), 30, ""),
+        ("def_adf", (81, 83), 5, "↑"),
+        ("str_spd", (80, 84), 3, "↑"),
+    ):
+        joined = link.join(field(record, "stat") for record in ids)
+        phrase = field(ids[0], "name").replace(field(ids[0], "stat"), joined, 1)
+        phrase = phrase.replace("%d", str(value)).replace("%s", arrow).replace("%%", "%").rstrip()
+        if name == "str_spd":
+            phrase = (
+                field(46, "name")
+                + catalog["table/t_text.tbl/TXT_ITEM_HELP_FORMAT8"][language]
+                + phrase
+            )
+        result["reported_aggregate_" + name] = "<c698>" + phrase + "</C>" + suffix
+    phrase = link.join(field(record, "stat") for record in (210, 205)) + field(210, "format")
+    result["reported_aggregate_hp_ep_absorb"] = "<c698>" + phrase.rstrip() + "</C>" + suffix
+    base = "table/t_condition_info.tbl/OverDriveEffect/sha256:c11077d57fe5ca14473342a34c8938e2f0fbc70431a41a69d777a33a5eb8b00d"
+    values = [
+        catalog[base + "/" + name][language]
+        for name in ("common_effect", "accuracy", "critical", "effect_1", "effect_2", "effect_3")
+    ]
+    template = catalog["table/t_text.tbl/TXT_CAMP_STATUS_OVERDRIVE_INFO_TEMPLATE"][language]
+    result["reported_aggregate_overdrive"] = template % tuple(values)
     return result
 
 
@@ -160,19 +205,18 @@ def item_help_family_cases(catalog, language):
         missing = [l for l in LANGUAGES if not texts.get(l, "").strip()]
         if missing:
             excluded.append({"key": key, "reason": "missing_or_blank_locale", "locales": missing})
-        elif key.rsplit("_", 1)[-1] in ("SELF", "FRIEND", "PERSENT"):
+        elif key.rsplit("_", 1)[-1] in ("SELF", "FRIEND", "PERSENT") or "_RANGE_" in key:
             excluded.append(
                 {
                     "key": key,
-                    "reason": "constructor_component_verified_in_recovery_not_independent_effect",
-                    "native_rva": "0x34cf9f/0x34d45b; 0x34d08d/0x34d15b",
+                    "reason": "constructor_component_not_independent_effect; range is covered by colored_skill_header/self_range, recovery by typed constructors",
                 }
             )
         elif key.endswith("_LINK"):
             excluded.append(
                 {
                     "key": key,
-                    "reason": "multi_stat_constructor_component_grouping_not_yet_verified",
+                    "reason": "multi_stat_separator_not_independent_effect; covered by reported_aggregate constructors",
                     "native_rva": "0x34cfcf/0x34d48b",
                 }
             )
@@ -252,7 +296,7 @@ def main():
         )
         if args.item_help_audit
         else None,
-        "item_help_scope": "component probes test isolated resource lookup, not proof of independent native display; recovery cases use verified single-stat order, prefixes, and percent/all branches; LINK multi-stat aggregation is not covered",
+        "item_help_scope": "component probes test isolated resource lookup, not proof of independent native display; recovery and reported aggregate cases use verified native constructors; raw fields and excluded constructor-only tokens remain listed",
         "item_help_family_excluded": family_excluded,
         "targets": [],
         "all_passed": True,
@@ -267,6 +311,7 @@ def main():
         config["primary"] = target
         model = load_model(entries, signature, config, game=args.game_dir)
         coverage = model.get("coverage")
+        exact_log = source["reported_log_slot_898"] in model["pairs"]
         del model
         gc.collect()
         primary = cases(catalog, target, panel_keys)
@@ -287,7 +332,9 @@ def main():
             and e["texts"].get(target)
             and e["texts"].get(args.secondary)
         ]
-        ambiguous_log = len({(c["primary"], c["secondary"]) for c in conflicts}) > 1
+        ambiguous_log = (
+            not exact_log and len({(c["primary"], c["secondary"]) for c in conflicts}) > 1
+        )
         data = {
             "model": str(model_path(signature, config)),
             "cases": [
@@ -316,6 +363,7 @@ def main():
                         }
                         if name == "reported_full_water_recovery_detail"
                         or name.startswith("item_help_recovery:")
+                        or (name.startswith("reported_aggregate_") and "<c698>" in value)
                         else {}
                     ),
                 }

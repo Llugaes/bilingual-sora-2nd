@@ -660,10 +660,12 @@ def align_functions(path, function_name, functions, audit):
             )
             reference = functions[languages[0]]
 
-            def emit(key, texts, display_role=None):
+            def emit(key, texts, display_role=None, speaker_ids=None):
                 entry = {"key": f"{path}/{function_name}/{key}" + suffix, "texts": texts}
                 if display_role:
                     entry["display_role"] = display_role
+                if speaker_ids:
+                    entry["speaker_ids"] = speaker_ids
                 entries.append(entry)
                 for lang in texts:
                     _add_counter(audit, "entries_with_" + lang)
@@ -678,10 +680,24 @@ def align_functions(path, function_name, functions, audit):
             for index, call in enumerate(reference.called):
                 complete = {l: assembled_dialogue(functions[l].called[index]) for l in languages}
                 if all(t is not None for t in complete.values()):
-                    emit(f"called/{index}/assembled_dialogue", complete, "dialogue")
+                    # The native history retains speaker names even when a
+                    # saved record no longer has a live script-call identity.
+                    # Keep the explicit actor argument; resolve it through the
+                    # validated name table later, never through call position.
+                    speaker_ids = {}
+                    for language in languages:
+                        args = functions[language].called[index].args
+                        if (
+                            len(args) >= 3
+                            and args[0] == ("int", 5)
+                            and args[1] in (("int", 0), ("int", 6), ("int", 19))
+                            and args[2][0] == "int"
+                        ):
+                            speaker_ids[language] = args[2][1]
+                    emit(f"called/{index}/assembled_dialogue", complete, "dialogue", speaker_ids)
                     display = {l: re.sub(r"^(?:<#[^<>]*>)+", "", t) for l, t in complete.items()}
                     if display != complete:
-                        emit(f"called/{index}/assembled_display", display, "dialogue")
+                        emit(f"called/{index}/assembled_display", display, "dialogue", speaker_ids)
                     _add_counter(audit, "assembled_dialogue_calls")
                 if family == "dialogue":
                     continue

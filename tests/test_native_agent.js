@@ -404,6 +404,12 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
             return buffer;
         },
         logWrite(text,slot){writeLog(allocate(text),slot);},
+        logRestore(text,slot,speaker){
+            const at=0x1604ec+slot*0x18c;
+            logOwnerPointer.data.fill(0,at,at+0x18c);
+            logOwnerPointer.data.write(speaker,at+4,0x60,'utf8');
+            logOwnerPointer.data.write(text,at+0x64,0x124,'utf8');
+        },
         logReset(){invoke(base.add(0xf40),[])();},
         logShow(label,slot,text,slots=[slot]){
             const controller=new ScratchPointer(0x480000);controller.add(0x18).writePointer(label);
@@ -1674,6 +1680,37 @@ function historyFixture(source='相同的完整对白。') {
     const p=r.label(0xab00,'');
     return {r,source,write:(call,slots)=>r.dialogueSet(p,source,data,'Talk',[1,call],slots)};
 }
+
+test('restored history uses retained speaker and full text without inventing a script identity',()=>{
+    const r=makeRuntime(),source='<#E_0><K4>相同的完整对白。',target='<#E_0><K4>女性の台詞。';
+    const pairs={[source]:[source,target]};
+    r.api.load({pairs:{},plain_pairs:{},ambiguous_display:[source],speaker_contexts:{
+        '雪拉扎德':{pairs,plain_pairs:pairs}
+    }},'secondary',true,1);
+    r.logRestore(source,7,'雪拉扎德');
+    const p=r.label(0xac00,'');r.logShow(p,7,source);
+    assert.equal(p.text(),target);
+    assert.equal(r.api.status().identityHits,0);
+    assert.equal(r.logMeasure([['雪拉扎德',source,7]]).bodies[0],target);
+    r.api.select('annotation',true);r.update(p);
+    assert.equal(r.api.snapshot().find(row=>row.original===source&&row.presentation==='layered')?.layers[0].text,'女性の台詞。');
+    r.api.select('secondary',true);
+    r.logRestore(source,7,'陌生人');r.logShow(p,7,source);assert.equal(p.text(),source);
+    r.logRestore(source,7,'雪拉扎德');r.logShow(p,7,source+'篡改');assert.equal(p.text(),source+'篡改');
+    r.externalSet(p,source);assert.equal(p.text(),source,'speaker context cannot leak into ordinary setters');
+});
+
+test('restored history can replace primary language when secondary equals the game language',()=>{
+    const r=makeRuntime(),body='<K4>相同的完整对白。',source='<#E_4>'+body,target='<#E_4><K4>Complete dialogue.';
+    const pairs={[body]:['<K4>Complete dialogue.',body]};
+    r.api.load({pairs:{},plain_pairs:{},ambiguous_display:[body],speaker_contexts:{
+        '雪拉扎德':{pairs,plain_pairs:{}}
+    }},'primary',true,1);
+    r.logRestore(source,7,'雪拉扎德');
+    const p=r.label(0xac00,'');r.logShow(p,7,source);
+    assert.equal(p.text(),target);
+    assert.equal(r.logMeasure([['雪拉扎德',source,7]]).bodies[0],target);
+});
 
 test('copied history retains exact branch identity in both measurement and visible rows',()=>{
     const {r,source,write}=historyFixture('<K>相同的完整对白。');

@@ -7,6 +7,103 @@ def entry(sc, ja, en=None):
 
 
 class MenuTextTests(unittest.TestCase):
+    def test_overdrive_trim_alias_cannot_conflict_with_unchanged_source(self):
+        prefix = "table/t_condition_info.tbl/OverDriveEffect/test/"
+        records = [
+            {
+                "key": "table/t_text.tbl/TXT_CAMP_STATUS_OVERDRIVE_INFO_TEMPLATE",
+                **entry(
+                    "基本：%s%s%s\n特有：%s%s%s",
+                    "基本：%s%s%s\n固有：%s%s%s",
+                    "Base: %s%s%s\nUnique: %s%s%s ",
+                ),
+            },
+            {"key": prefix + "name", **entry("强化", "強化", "Enhancement")},
+            {"key": prefix + "common_effect", **entry("解除减益", "デバフ解除", "Remove debuffs")},
+            {"key": prefix + "effect_1", **entry("STR+10%", "STR+10%", "STR+10%")},
+        ]
+        source = "基本：解除减益\n特有：STR+10%"
+        tr = MenuTranslator(records, "en", "ja")
+        self.assertEqual(tr.translate(source, "primary"), "Base: Remove debuffs\nUnique: STR+10% ")
+        self.assertEqual(tr.translate(source, "secondary"), "基本：デバフ解除\n固有：STR+10%")
+
+    def test_producer_numeric_width_and_full_sentence_annotation(self):
+        records = [
+            {
+                **entry(
+                    "BP上升了<C2>%d<C0>点。",
+                    "ＢＰが<C2>%d<C0>上がった。",
+                    "BP increased by <C2>%d<C0>.",
+                ),
+                "dynamic_producer": {
+                    "family": "on_quest_add_bp",
+                    "numbers": {"zh-Hans": ["ascii"], "ja": ["ascii"], "en": ["ascii"]},
+                },
+            },
+            {
+                **entry(
+                    "要支付%d米拉休息吗？", "%dミラ払って休憩しますか？", "Spend %d mira to rest?"
+                ),
+                "dynamic_producer": {
+                    "family": "rest_shop_process",
+                    "numbers": {"zh-Hans": ["fullwidth"], "ja": ["fullwidth"], "en": ["ascii"]},
+                },
+            },
+            # A global numeric name must not translate the producer's value.
+            entry("2", "２", "two"),
+        ]
+        for target, expected in (
+            ("ja", "ＢＰが<C2>2<C0>上がった。"),
+            ("en", "BP increased by <C2>2<C0>."),
+        ):
+            tr = MenuTranslator(records, "zh-Hans", target)
+            source = "BP上升了<C2>2<C0>点。"
+            self.assertEqual(tr.raw_pair(source), (source, expected))
+            plan = tr.render(source)
+            self.assertEqual(plan["text"], "<R></R_>" + source)
+            self.assertEqual([layer["text"] for layer in plan["layers"]], [expected + "</C></C>"])
+            rest = "要支付１００米拉休息吗？"
+            self.assertEqual(
+                tr.raw_pair(rest),
+                (
+                    rest,
+                    "１００ミラ払って休憩しますか？"
+                    if target == "ja"
+                    else "Spend 100 mira to rest?",
+                ),
+            )
+            self.assertIsNone(tr.raw_pair("要支付100米拉休息吗？"))
+            self.assertIsNone(tr.raw_pair("要支付１００米拉休息吗？额外"))
+
+    def test_mutable_emotion_header_does_not_resolve_a_conflicting_body(self):
+        body = "啊，说的也是呢。"
+        first, second = "<#E[1118]#M_0#B[#60s7]>", "<#E_0#M_0#B_0>"
+        records = [
+            {
+                "display_role": "dialogue",
+                **entry(
+                    first + body, first + "あっと、そうだったわね。", first + "Oh, I almost forgot!"
+                ),
+            },
+            {
+                "display_role": "dialogue",
+                **entry(second + body, second + "そうね。", second + "You're right."),
+            },
+        ]
+        tr = MenuTranslator(records, "en", "ja")
+        self.assertIn(body, tr.ambiguous_display)
+        for row in records:
+            source = row["texts"]["zh-Hans"]
+            self.assertNotIn(source, tr.pairs)  # native caller must capture real provenance
+            self.assertEqual(tr.translate(source, "primary"), source)
+            self.assertEqual(tr.translate(source, "secondary"), source)
+            self.assertEqual(tr.render(source)["kind"], "plain")
+            scoped = MenuTranslator([row], "en", "ja")
+            self.assertEqual(scoped.translate(source, "primary"), row["texts"]["en"])
+        self.assertEqual(tr.translate(body, "primary"), body)
+        unknown = "<#E_9#M_0#B_0>" + body
+        self.assertEqual(tr.translate(unknown, "secondary"), unknown)
+
     def test_verified_name_authority_clears_conflicting_speaker_guard(self):
         records = [
             {"display_role": "speaker", **entry("绯", "フェイ", "Fey")},

@@ -365,6 +365,9 @@ class ResourcesTests(unittest.TestCase):
             ],
         )
         self.assertTrue(all(row["display_role"] == "dialogue" for row in rows[:2]))
+        self.assertNotIn("speaker_ids", rows[0])  # command 8 has a window ID, not an actor
+        self.assertEqual(rows[1]["speaker_ids"], {"en": 9, "fr": 9})
+        self.assertNotIn("speaker_ids", rows[2])  # a fragment cannot identify a whole dialogue
         # A different speaker/voice, reordered calls or added calls cannot
         # borrow the neighbouring dialogue's translation.
         for slot in (2, 4):

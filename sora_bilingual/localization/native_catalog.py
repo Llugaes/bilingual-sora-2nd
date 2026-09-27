@@ -26,6 +26,7 @@ def fingerprint(game, *, legacy=False):
             "sora_bilingual/localization/tables.py",
             "sora_bilingual/localization/menu_tables.py",
             "sora_bilingual/localization/catalog_build.py",
+            "sora_bilingual/localization/dynamic_producers.py",
         )
     )
     # Presentation labels and first-run preferences cannot invalidate parsed game data.
@@ -43,6 +44,8 @@ def fingerprint(game, *, legacy=False):
                 "sora_bilingual/localization/menu_text.py",
                 "sora_bilingual/localization/native_catalog.py",
                 "sora_bilingual/localization/runtime_identity.py",
+                "sora_bilingual/localization/speaker_context.py",
+                "sora_bilingual/localization/item_help_composition.py",
             )
         )
     ).hexdigest()
@@ -124,13 +127,25 @@ def load_model(entries, signature, config, output=ROOT / "generated", *, game):
         sources = set(config.get("sources", []))
         lang = config.get("game_language", DEFAULT_PRIMARY)
         selected = [e for e in entries if e["texts"].get(lang) in sources]
+    grammar = None
+    if config.get("scope", "all") != "selected" and any(
+        e.get("key", "").startswith("table/t_itemhelp.tbl/SkillEffectHelpData/") for e in selected
+    ):
+        from sora_bilingual.localization.item_help_composition import build_item_help_grammar
+
+        source = config.get("game_language", DEFAULT_PRIMARY)
+        grammar = build_item_help_grammar(
+            game, selected, source, languages=(source, config["primary"], config["secondary"])
+        )
     translator = MenuTranslator(
-        selected,
+        selected + grammar["status_entries"] + grammar["detail_entries"] if grammar else selected,
         config["primary"],
         config["secondary"],
         config.get("game_language", DEFAULT_PRIMARY),
     )
     model = translator.runtime_model()
+    if grammar:
+        model["item_help_audit"] = grammar["audit"]
     coverage = Counter()
     source = config.get("game_language", DEFAULT_PRIMARY)
     for entry in selected:
@@ -164,6 +179,19 @@ def load_model(entries, signature, config, output=ROOT / "generated", *, game):
     )
     model["script_identities"] = compile_script_identities(*args, resolved_pairs=translator.pairs)
     model["table_identities"] = compile_table_identities(*args, resolved_pairs=translator.pairs)
+    from sora_bilingual.localization.speaker_context import (
+        compile_speaker_contexts,
+        read_speaker_names,
+    )
+
+    model["speaker_contexts"] = compile_speaker_contexts(
+        selected,
+        read_speaker_names(game, source) if any(e.get("speaker_ids") for e in selected) else {},
+        config["primary"],
+        config["secondary"],
+        source,
+        translator.pairs,
+    )
     publish_json(path, model)
     return model
 

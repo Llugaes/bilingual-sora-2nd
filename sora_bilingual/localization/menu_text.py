@@ -32,6 +32,42 @@ def _render_format(template, values):
     return FORMAT_TOKEN.sub(lambda match: "%" if match.group() == "%%" else next(values), template)
 
 
+def _producer_numeric_rules(entries, primary, secondary, source_language):
+    """Compile only integer slots whose display width was proven at the producer."""
+    result = []
+    for entry in entries:
+        producer = entry.get("dynamic_producer")
+        if not producer:
+            continue
+        texts, numbers = entry["texts"], producer.get("numbers", {})
+        languages = (source_language, primary, secondary)
+        if any(not texts.get(lang) or not numbers.get(lang) for lang in languages):
+            continue
+        styles = [numbers[lang] for lang in languages]
+        count = len(styles[0])
+        if not 1 <= count <= 4 or any(len(s) != count for s in styles):
+            continue
+        if any(style not in ("ascii", "fullwidth") for group in styles for style in group):
+            continue
+        if any(
+            texts[lang].count("%d") != count
+            or "%" in texts[lang].replace("%d", "").replace("%%", "")
+            for lang in languages
+        ):
+            continue
+        chunks = texts[source_language].split("%d")
+        pattern = re.escape(chunks[0].replace("%%", "%"))
+        for style, suffix in zip(styles[0], chunks[1:]):
+            digits = (
+                r"(-?(?:0|[1-9][0-9]{0,9}))"
+                if style == "ascii"
+                else r"(-?(?:０|[１-９][０-９]{0,9}))"
+            )
+            pattern += digits + re.escape(suffix.replace("%%", "%"))
+        result.append((re.compile(pattern), (texts[primary], texts[secondary]), styles[1:]))
+    return result
+
+
 def _latin_word_character(value):
     return (
         "A" <= value <= "Z"
@@ -257,7 +293,7 @@ def annotation_plan(primary, secondary):
     needs_reflow = left_count != len(right) or any(
         bool(a.strip()) != bool(b.strip()) for a, b in zip(lines[::2], right)
     )
-    if needs_reflow or "<" in visible:
+    if needs_reflow or ("<" in visible and left_count > 1):
         reflowed = reflow_annotation_lines(primary, visible)
         if reflowed is not None:
             right = reflowed
@@ -268,6 +304,8 @@ def annotation_plan(primary, secondary):
             right = [""] * left_count
             anchor = next((i for i, line in enumerate(lines[::2]) if line.strip()), 0)
             right[anchor] = payload
+    elif left_count == 1:
+        right[0] += close_colours(right[0])
     out = ""
     layers = []
     for i, part in enumerate(lines):
@@ -354,7 +392,7 @@ def needs_annotation(a, b):
     return bool(re.search(r"[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]", left))
 
 
-def overdrive_descriptions(entries):
+def overdrive_descriptions(entries, source_language=DEFAULT_PRIMARY):
     """Expand the game's six-slot template using one validated table record.
 
     This is not a word-level match: a displayed description must equal a
@@ -386,12 +424,14 @@ def overdrive_descriptions(entries):
             texts[lang] = pattern % tuple(fields.get(field, {}).get(lang, "") for field in slots)
         if texts:
             result.append({"key": key + "/assembled_description", "texts": texts})
-            result.append(
-                {
-                    "key": key + "/assembled_description_trimmed",
-                    "texts": {k: v.rstrip() for k, v in texts.items()},
-                }
-            )
+            source = texts.get(source_language, "")
+            if source.rstrip() != source:
+                result.append(
+                    {
+                        "key": key + "/assembled_description_trimmed",
+                        "texts": {k: v.rstrip() for k, v in texts.items()},
+                    }
+                )
     return result
 
 
@@ -594,10 +634,16 @@ class MenuTranslator:
         self, entries, primary, secondary, source_language=DEFAULT_PRIMARY, _details_only=False
     ):
         entries = list(entries)
+        self.producer_numeric = _producer_numeric_rules(
+            entries, primary, secondary, source_language
+        )
+        entries = [entry for entry in entries if not entry.get("dynamic_producer")]
         detail_aliases = []
         if not _details_only:
-            detail_aliases = item_help_detail_entries(entries)
-            entries += overdrive_descriptions(entries)
+            generated_details = [e for e in entries if e.get("detail_only")]
+            entries = [e for e in entries if not e.get("detail_only")]
+            detail_aliases = item_help_detail_entries(entries) + generated_details
+            entries += overdrive_descriptions(entries, source_language)
             entries += item_help_components(entries)
             # The game appends a numeric level to this localized resource.
             # Its prefix, punctuation and spaces all come from that locale.
@@ -639,7 +685,8 @@ class MenuTranslator:
             detail_entries = [
                 e
                 for e in entries
-                if e.get("key", "").startswith(
+                if e.get("item_help_scope") != "status"
+                and e.get("key", "").startswith(
                     (
                         "table/t_item.tbl/",
                         "table/t_itemhelp.tbl/",
@@ -740,13 +787,15 @@ class MenuTranslator:
                 candidates[source] = pairs
                 self.ambiguous_display.discard(source)
         self.pairs = {
-            s: next(iter(p)) for s, p in candidates.items() if len(p) == 1 and None not in p
+            s: next(iter(p))
+            for s, p in candidates.items()
+            if len(p) == 1 and None not in p and display_text(s) not in self.ambiguous_display
         }
         # Formatting-only differences do not make a translation ambiguous.
         normalized = {}
         for source, pairs in candidates.items():
             p = {None if v is None else (plain(v[0]), plain(v[1])) for v in pairs}
-            if len(p) == 1 and None not in p:
+            if len(p) == 1 and None not in p and display_text(source) not in self.ambiguous_display:
                 normalized[source] = next(iter(p))
         self.plain_pairs = normalized
         self.numeric = []
@@ -792,6 +841,9 @@ class MenuTranslator:
     def raw_pair(self, source):
         if source in self.pairs:
             return self.pairs[source]
+        producer = self.producer_pair(source)
+        if producer:
+            return producer
         if "<" not in source:
             return None
         matches = set()
@@ -807,6 +859,9 @@ class MenuTranslator:
         return next(iter(matches)) if len(matches) == 1 else None
 
     def pair(self, source):
+        producer = self.producer_pair(source)
+        if producer:
+            return producer
         if source in self.plain_pairs:
             return self.plain_pairs[source]
         # An audited detail constructor is more precise than a free-form %s
@@ -829,6 +884,31 @@ class MenuTranslator:
                     values = iter(self.plain_pairs.get(v, (v, v))[side] for v in m.groups())
                     rendered.append(_render_format(target, values))
                 matches.add(tuple(rendered))
+        return next(iter(matches)) if len(matches) == 1 else None
+
+    def producer_pair(self, source):
+        matches = set()
+        narrow = str.maketrans("０１２３４５６７８９", "0123456789")
+        wide = str.maketrans("0123456789", "０１２３４５６７８９")
+        for pattern, pair, styles in self.producer_numeric:
+            match = pattern.fullmatch(source)
+            if not match:
+                continue
+            values = [value.translate(narrow) for value in match.groups()]
+            if any(not -2147483648 <= int(value) <= 2147483647 for value in values):
+                continue
+            matches.add(
+                tuple(
+                    _render_format(
+                        target,
+                        iter(
+                            value.translate(wide) if style == "fullwidth" else value
+                            for value, style in zip(values, widths)
+                        ),
+                    )
+                    for target, widths in zip(pair, styles)
+                )
+            )
         return next(iter(matches)) if len(matches) == 1 else None
 
     def component(self, source, mode):
@@ -869,6 +949,12 @@ class MenuTranslator:
             for at, c in enumerate(source):
                 if c == "\n" and source[at + 1 :] in self.detail_sources:
                     return self.details.translate(source, mode)
+        # Only admitted complete literals reach this path. Mutable emotion
+        # headers cannot rescue an ambiguous body; those are removed at model
+        # compilation so native provenance capture sees the same eligibility.
+        exact = self.pairs.get(source)
+        if exact and mode in ("primary", "secondary"):
+            return exact[0 if mode == "primary" else 1]
         # A real complete-dialogue conflict must not re-enter via a generic
         # printf template or smaller fragments after its exact pair was denied.
         if source in self.ambiguous_display or display_text(source) in self.ambiguous_display:
@@ -992,6 +1078,9 @@ class MenuTranslator:
             "plain_pairs": self.plain_pairs,
             "numeric": [(pattern.pattern, pair) for pattern, pair in self.numeric],
             "raw_numeric": [(pattern.pattern, pair) for pattern, pair in self.raw_numeric],
+            "producer_numeric": [
+                (pattern.pattern, pair, styles) for pattern, pair, styles in self.producer_numeric
+            ],
             "detail_numeric": [(pattern.pattern, pair) for pattern, pair in self.detail_numeric],
             "same_language": self.same_language,
             "ambiguous_display": sorted(self.ambiguous_display),

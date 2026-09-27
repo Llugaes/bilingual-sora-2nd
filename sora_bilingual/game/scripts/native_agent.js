@@ -171,10 +171,12 @@ function wantedText(row,allocateLayers=true) {
             const mode=renderMode==='bilingual'?'annotation':renderMode;
             const context=(row.scriptIdentity&&scriptIdentities?scriptIdentities.lookup(row.scriptIdentity):null)||
                 (row.scriptPointer&&scriptIdentities?scriptIdentities.pointerLookup(row.scriptPointer,row.original):null)||
-                (row.tableIdentity&&tableIdentities?tableIdentities.lookup(row.tableIdentity,row.original):null);
+                (row.tableIdentity&&tableIdentities?tableIdentities.lookup(row.tableIdentity,row.original):null)||
+                (row.logSpeaker?resolver.speakerContext(row.logSpeaker,row.original):null);
             if(context&&!context.tr)context.tr=new TextFactory(context.model);
             const local=context?.tr;
-            const useLocal=local&&(Object.hasOwn(local.model.pairs,row.original)||local.translate(row.original,'secondary')!==row.original);
+            const useLocal=local&&(Object.hasOwn(local.model.pairs,row.original)||
+                local.translate(row.original,'secondary')!==row.original||local.translate(row.original,'primary')!==row.original);
             const translator=useLocal?local:resolver;
             const paragraph=row.paragraph&&paragraphs?paragraphs.lookup(row.paragraph.source,row.paragraph.index,row.original,mode):null;
             row.plan=paragraph||translator.render(row.original,mode,row.textKey||'',row.scope||'');
@@ -430,7 +432,7 @@ function observeNativeText(p) {
         if(existing&&existing.displayed===current)return;
         const row=existing||remember(p,current);
         row.original=current;row.displayed=current;
-        row.scriptIdentity=null;row.scriptPointer=null;row.tableIdentity=null;row.paragraph=null;
+        row.scriptIdentity=null;row.scriptPointer=null;row.tableIdentity=null;row.paragraph=null;row.logSpeaker=null;
         const renderEpoch=epoch,wanted=wantedText(row);
         if(wanted!==current){copyOwnedText(row,wanted);immediateWrites++;}
         row.epoch=renderEpoch;captureMetadata(row);
@@ -448,7 +450,7 @@ function adoptCopiedLabel(p,source) {
     try {
         const row=remember(p,original.original);
         row.displayed=current;
-        for(const key of ['scriptIdentity','scriptPointer','tableIdentity','paragraph'])row[key]=original[key];
+        for(const key of ['scriptIdentity','scriptPointer','tableIdentity','paragraph','logSpeaker'])row[key]=original[key];
         const renderEpoch=epoch,wanted=wantedText(row);
         if(wanted!==current){copyOwnedText(row,wanted);immediateWrites++;}
         row.epoch=renderEpoch;captureMetadata(row);
@@ -845,10 +847,10 @@ function captureLogPart(frame,slot,input) {
                 !Number.isInteger(slot)||slot<0||slot>=1600||frame.parts.length>=1600)throw Error('Invalid log contribution');
         const record=owner.add(0x1604ec+slot*0x18c);
         if(!record.add(0x64).equals(input))throw Error('Unrelated log source pointer');
-        if(!logOrigins.entries.has(slot)){frame.invalid=true;return;}
-        const stamp=logStamp(record),origin=logOrigins.lookup(slot,stamp);
-        frame.parts.push({slot,entry:logOrigins.entries.get(slot),stamp,text:input.readUtf8String()});
-        if(!origin)frame.invalid=true;
+        const entry=logOrigins.entries.get(slot),stamp=entry?logStamp(record):null;
+        const speaker=record.add(4).readUtf8String();
+        if(RuntimeText.byteLength(speaker)>=0x60)throw Error('Invalid log speaker');
+        frame.parts.push({slot,entry,stamp,speaker,text:input.readUtf8String()});
     }catch(_){frame.invalid=true;}
 }
 function logContributionsIdentity(frame,source) {
@@ -865,15 +867,27 @@ function logContributionsIdentity(frame,source) {
     }
     return identity;
 }
-function logInputIdentity(row,input,caller) {
+function logContributionsSpeaker(frame,source) {
+    const owner=logOwner();
+    if(!frame||frame.invalid||!owner||frame.owner!==String(owner)||frame.epoch!==logOrigins.epoch||!frame.parts.length)return null;
+    if(frame.parts.map(part=>part.text).join('')!==source)return null;
+    const speaker=frame.parts[0].speaker;if(!speaker)return null;
+    for(const part of frame.parts) {
+        const record=owner.add(0x1604ec+part.slot*0x18c);
+        if(part.speaker!==speaker||record.add(4).readUtf8String()!==speaker||record.add(0x64).readUtf8String()!==part.text)return null;
+    }
+    return speaker;
+}
+function logInputProvenance(row,input,caller) {
     if(!logOrigins)return null;
     try {
         const thread=Process.getCurrentThreadId(),present=logPresentFrames.get(thread)?.at(-1);
-        if(present&&caller?.equals(base.add(REPORT.native.log_text_return.rva))&&
-                row.pointer.equals(present.body))return logContributionsIdentity(present.parts,row.original);
+        let parts=null;
+        if(present&&caller?.equals(base.add(REPORT.native.log_text_return.rva))&&row.pointer.equals(present.body))parts=present.parts;
         const measure=logMeasureFrames.get(thread)?.at(-1);
         if(measure?.record&&row.pointer.equals(measure.body)&&input.equals(measure.record.add(8).readPointer()))
-            return logContributionsIdentity(logRows.get(String(measure.owner))?.get(String(measure.record)),row.original);
+            parts=logRows.get(String(measure.owner))?.get(String(measure.record));
+        if(parts)return {identity:logContributionsIdentity(parts,row.original),speaker:logContributionsSpeaker(parts,row.original)};
     }catch(_){logOriginStats.rejected++;}
     return null;
 }
@@ -1001,6 +1015,7 @@ function questLineContext(incoming,caller) {
     return {source:frame.source,index};
 }
 function identifyInput(row,input,caller) {
+    row.logSpeaker=null;
     row.paragraph=questLineContext(row.original,caller);
     const frame=dialogueFrames.get(Process.getCurrentThreadId())?.at(-1);
     const origin=frame?.outputs.get(String(input));
@@ -1008,8 +1023,9 @@ function identifyInput(row,input,caller) {
     const needsIdentity=!resolver||!Object.hasOwn(resolver.model.pairs,row.original);
     const started=needsIdentity?Date.now():undefined;
     if(needsIdentity&&!row.scriptIdentity){
-        const identity=logInputIdentity(row,input,caller);
-        if(identity){row.scriptIdentity=identity;identityHits++;logOriginStats.matched++;}
+        const origin=logInputProvenance(row,input,caller);
+        if(origin?.identity){row.scriptIdentity=origin.identity;identityHits++;logOriginStats.matched++;}
+        row.logSpeaker=origin?.speaker||null;
     }
     if(needsIdentity&&!row.scriptIdentity&&tableIdentities) {
         const entry=tableIdentities.select(input,row.original);
@@ -1251,7 +1267,7 @@ Interceptor.attach(base.add(REPORT.native.update.rva), {onEnter(args) {
             &&(row.metadata?.flags&0x0c)===(p.add(0x2e8).readU32()&0x0c)) return;
         // A text write bypassing SetText invalidates our remembered source.
         const current=readText(p);
-        if (current !== row.displayed) {row.original=current;row.displayed=current;row.scriptIdentity=null;row.scriptPointer=null;row.tableIdentity=null;row.paragraph=null;}
+        if (current !== row.displayed) {row.original=current;row.displayed=current;row.scriptIdentity=null;row.scriptPointer=null;row.tableIdentity=null;row.paragraph=null;row.logSpeaker=null;}
         const renderEpoch=epoch,wanted=wantedText(row);
         const replay = epoch === replayEpoch && Object.hasOwn(dictionary,row.original);
         const changed=wanted!==row.displayed||replay;

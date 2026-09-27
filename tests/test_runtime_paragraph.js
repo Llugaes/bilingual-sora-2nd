@@ -7,6 +7,34 @@ const {RuntimeParagraphs}=require('../sora_bilingual/game/scripts/runtime_paragr
 
 const model=pairs=>({pairs,plain_pairs:pairs,numeric:[],raw_numeric:[]});
 
+test('producer integers keep declared digit width and one complete rich-text lane',()=>{
+    const bp='BP上升了<C2>2<C0>点。',target='ＢＰが<C2>2<C0>上がった。';
+    const tr=new RuntimeText({...model({'2':['2','２']}),producer_numeric:[
+        ['BP上升了<C2>(-?(?:0|[1-9][0-9]{0,9}))<C0>点。',['BP上升了<C2>%d<C0>点。','ＢＰが<C2>%d<C0>上がった。'],[['ascii'],['ascii']]],
+        ['要支付(-?(?:０|[１-９][０-９]{0,9}))米拉休息吗？',['要支付%d米拉休息吗？','Spend %d mira to rest?'],[['fullwidth'],['ascii']]]
+    ]});
+    assert.deepEqual(tr.rawPair(bp),[bp,target]);
+    const plan=tr.render(bp,'annotation');
+    assert.equal(plan.kind,'layered');assert.equal(plan.text,'<R></R_>'+bp);
+    assert.deepEqual(plan.layers.map(l=>l.text),[target+RuntimeText.closeColours(target)]);
+    assert.deepEqual(tr.rawPair('要支付１００米拉休息吗？'),['要支付１００米拉休息吗？','Spend 100 mira to rest?']);
+    assert.equal(tr.rawPair('要支付100米拉休息吗？'),null);
+    assert.equal(tr.rawPair('BP上升了<C2>2147483648<C0>点。'),null);
+});
+
+test('a mutable emotion header cannot override a complete body conflict',()=>{
+    const body='啊，说的也是呢。',source='<#E[1118]#M_0#B[#60s7]>'+body;
+    const primary='<#E[1118]#M_0#B[#60s7]>Oh, I almost forgot!';
+    const secondary='<#E[1118]#M_0#B[#60s7]>あっと、そうだったわね。';
+    const tr=new RuntimeText({...model({[source]:[primary,secondary]}),ambiguous_display:[body]});
+    assert.equal(tr.translate(source,'primary'),source);
+    assert.equal(tr.translate(source,'secondary'),source);
+    assert.equal(tr.render(source,'annotation').kind,'plain');
+    assert.equal(new RuntimeText(model({[source]:[primary,secondary]})).translate(source,'primary'),primary);
+    const unknown='<#E_9#M_0#B_0>'+body;
+    assert.deepEqual(tr.render(unknown,'annotation'),{text:unknown,layers:[],kind:'plain'});
+});
+
 test('changed emotion headers retain complete body annotations and real ambiguity stays plain',()=>{
     const body='<K>绯小姐也是，过得好吗？',target='<K>フェイさんこそ元気だった？';
     const source='<#E_0#M_4#B_0>'+body;
