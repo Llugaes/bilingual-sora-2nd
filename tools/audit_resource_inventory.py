@@ -78,6 +78,14 @@ def catalog_inventory(entries):
         texts = entry["texts"]
         for language, value in texts.items():
             index[base][language].add(value)
+            called_ids = entry.get("called_ids")
+            called = called_ids.get(language) if called_ids else None
+            if isinstance(called, int) and "/called/" in base:
+                prefix, rest = base.rsplit("/called/", 1)
+                _canonical, separator, suffix = rest.partition("/")
+                if separator:
+                    localized = f"{prefix}/called/{called}/{suffix}"
+                    index[localized][language].add(value)
         missing = [language for language in LANGUAGES if language not in texts]
         blank = [
             language for language in LANGUAGES if language in texts and not texts[language].strip()

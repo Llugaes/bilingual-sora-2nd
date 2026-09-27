@@ -368,16 +368,168 @@ class ResourcesTests(unittest.TestCase):
         self.assertNotIn("speaker_ids", rows[0])  # command 8 has a window ID, not an actor
         self.assertEqual(rows[1]["speaker_ids"], {"en": 9, "fr": 9})
         self.assertNotIn("speaker_ids", rows[2])  # a fragment cannot identify a whole dialogue
-        # A different speaker/voice, reordered calls or added calls cannot
-        # borrow the neighbouring dialogue's translation.
+        # A different speaker/voice rejects that dialogue while preserving the
+        # other exact native ordinals.
         for slot in (2, 4):
             args = list(b.called[1].args)
             args[slot] = ("int", 99)
-            self.assertFalse(
-                align(replace(b, called=(b.called[0], replace(talk, args=tuple(args)))))
+            rows = align(replace(b, called=(b.called[0], replace(talk, args=tuple(args)))))
+            self.assertEqual(
+                [row["texts"] for row in rows if row.get("called_ids")],
+                [{"en": "<C1>Reward", "fr": "<C1>Gift"}],
             )
         self.assertFalse(align(replace(b, called=tuple(reversed(b.called)))))
-        self.assertFalse(align(replace(b, called=b.called + (reward,))))
+        rows = align(replace(b, called=b.called + (reward,)))
+        self.assertEqual(len([row for row in rows if row.get("called_ids")]), 2)
+
+    def test_dialogue_records_align_only_across_proven_call_segments(self):
+        from dataclasses import replace
+
+        def talk(text, speaker=9):
+            prefix = (("int", 5), ("int", 0))
+            if speaker is not None:
+                prefix += (("int", speaker),)
+            return resources.Called(None, 3, prefix + (("string", text),))
+
+        wait = resources.Called("wait_prompt", 0, ())
+
+        def function(*calls):
+            return resources.Function("Scene", 0, (), calls, (), ())
+
+        # Command 0's explicit default actor 0 and an omitted actor are the
+        # same native input, but only when the complete call sequence proves
+        # there was no insertion, deletion, or other metadata difference.
+        equal_length = {
+            "en": function(talk("A"), talk("Reject", 0), talk("C")),
+            "ja": function(talk("甲"), talk("除外", None), talk("丙")),
+        }
+        rows = resources.align_functions(
+            "script/a.dat", "Scene", equal_length, {"counters": Counter()}
+        )
+        aligned = [row for row in rows if row.get("called_ids")]
+        self.assertEqual(
+            [(row["called_ids"], row["texts"]) for row in aligned],
+            [
+                ({"en": 0, "ja": 0}, {"en": "A", "ja": "甲"}),
+                ({"en": 1, "ja": 1}, {"en": "Reject", "ja": "除外"}),
+                ({"en": 2, "ja": 2}, {"en": "C", "ja": "丙"}),
+            ],
+        )
+        self.assertEqual(aligned[1]["speaker_ids"], {"en": 0})
+
+        # A non-default actor remains identity-bearing.  It may preserve later
+        # ordinals, but the mismatched dialogue itself is never paired.
+        non_default = {
+            "en": function(talk("A"), talk("Reject", 9), talk("C")),
+            "ja": function(talk("甲"), talk("除外", None), talk("丙")),
+        }
+        rows = resources.align_functions(
+            "script/a.dat", "Scene", non_default, {"counters": Counter()}
+        )
+        aligned = [row for row in rows if row.get("called_ids")]
+        self.assertEqual(
+            [(row["called_ids"], row["texts"]) for row in aligned],
+            [
+                ({"en": 0, "ja": 0}, {"en": "A", "ja": "甲"}),
+                ({"en": 2, "ja": 2}, {"en": "C", "ja": "丙"}),
+            ],
+        )
+
+        # Even default-zero equivalence is rejected when another call makes
+        # the complete sequence non-identical.
+        unknown_tail = resources.Called("unknown", 0, ())
+        not_whole = {
+            "en": function(talk("A"), talk("Reject", 0), unknown_tail),
+            "ja": function(talk("甲"), talk("除外", None), wait),
+        }
+        rows = resources.align_functions(
+            "script/a.dat", "Scene", not_whole, {"counters": Counter()}
+        )
+        self.assertEqual(
+            [row["texts"] for row in rows if row.get("called_ids")],
+            [{"en": "A", "ja": "甲"}],
+        )
+
+        # Function flags and argument signatures are part of every partial
+        # mapping contract, including exact prefixes and removable gaps.
+        for changed in (
+            replace(not_whole["ja"], flags=1),
+            replace(not_whole["ja"], arg_types=(1,)),
+        ):
+            rows = resources.align_functions(
+                "script/a.dat",
+                "Scene",
+                {"en": not_whole["en"], "ja": changed},
+                {"counters": Counter()},
+            )
+            self.assertFalse(any(row.get("called_ids") for row in rows))
+
+        # A unique inserted non-display call gives one exact ordinal offset.
+        inserted = resources.Called("chr_look_pos", 0, (("int", 4), ("float", 123), ("float", 456)))
+        shifted = {
+            "en": function(talk("Before"), wait, talk("After")),
+            "ja": function(talk("前"), inserted, wait, talk("後")),
+        }
+        forward = resources.align_functions(
+            "script/a.dat", "Scene", shifted, {"counters": Counter()}
+        )
+        reverse = resources.align_functions(
+            "script/a.dat",
+            "Scene",
+            dict(reversed(tuple(shifted.items()))),
+            {"counters": Counter()},
+        )
+        forward = [row for row in forward if row.get("called_ids")]
+        reverse = [row for row in reverse if row.get("called_ids")]
+        self.assertEqual(forward, reverse, "locale iteration order must not choose the mapping")
+        self.assertEqual(
+            [(row["called_ids"], row["texts"]) for row in forward],
+            [
+                ({"en": 0, "ja": 0}, {"en": "Before", "ja": "前"}),
+                ({"en": 2, "ja": 3}, {"en": "After", "ja": "後"}),
+            ],
+        )
+
+    def test_dialogue_record_alignment_rejects_missing_or_reordered_display_calls(self):
+        def talk(text):
+            return resources.Called(None, 3, (("int", 5), ("int", 0), ("int", 9), ("string", text)))
+
+        def local(name):
+            return resources.Called(name, 0, ())
+
+        def function(*calls):
+            return resources.Function("Scene", 0, (), calls, (), ())
+
+        # Japanese has no counterpart for the two later display calls.  Only
+        # the exact common prefix is admitted.
+        missing = {
+            "en": function(
+                talk("A"),
+                local("TALK_BEGIN"),
+                talk("B"),
+                local("wait"),
+                talk("C"),
+                local("TALK_END"),
+            ),
+            "ja": function(talk("甲"), local("TALK_END")),
+        }
+        rows = resources.align_functions("script/a.dat", "Scene", missing, {"counters": Counter()})
+        aligned = [row for row in rows if row.get("called_ids")]
+        self.assertEqual(len(aligned), 1)
+        self.assertEqual(aligned[0]["called_ids"], {"en": 0, "ja": 0})
+
+        # Equal lengths do not justify fishing out later equal shapes after an
+        # insertion/deletion or unknown non-display mismatch.
+        reordered = {
+            "en": function(talk("A"), local("left"), talk("B"), local("tail"), talk("C")),
+            "ja": function(talk("甲"), local("inserted"), local("left"), talk("乙"), talk("丙")),
+        }
+        rows = resources.align_functions(
+            "script/a.dat", "Scene", reordered, {"counters": Counter()}
+        )
+        aligned = [row for row in rows if row.get("called_ids")]
+        self.assertEqual(len(aligned), 1)
+        self.assertEqual(aligned[0]["called_ids"], {"en": 0, "ja": 0})
 
     def test_parallel_catalog_matches_serial_including_invalid_and_missing_locales(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -439,16 +591,25 @@ class ResourcesTests(unittest.TestCase):
         self.assertEqual(set(name["texts"]), set(functions))
         self.assertFalse(any("/called/0/arg/" in e["key"] for e in entries))
 
-        # Wrapping is the only relaxation: changing the speaker/voice, using
-        # a dynamic value, or inserting a non-newline command breaks alignment.
+        # Actor/voice metadata rejects only that dialogue. Unknown controls or
+        # dynamic values still break the alignment at that point.
         from dataclasses import replace
 
         original = functions["fr"]
         args = original.called[0].args
         for altered in (
-            (("int", 99),) + args[1:],
             args[:2] + (("int", 99),) + args[3:],
             args[:4] + (("int", 99),) + args[5:],
+        ):
+            bad = replace(original.called[0], args=altered)
+            functions["fr"] = replace(original, called=(bad,) + original.called[1:])
+            rows = resources.align_functions(
+                "script/a.dat", "Scene", functions, {"counters": Counter()}
+            )
+            self.assertFalse(any("fr" in e["texts"] and "/called/0/" in e["key"] for e in rows))
+            self.assertTrue(any("fr" in e["texts"] and "/called/2/" in e["key"] for e in rows))
+        for altered in (
+            (("int", 99),) + args[1:],
             args + (("var", None),),
             args + (("int", 11),),
         ):

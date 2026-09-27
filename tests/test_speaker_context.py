@@ -1,7 +1,11 @@
 import unittest
 import struct
 
-from sora_bilingual.localization.speaker_context import compile_speaker_contexts, speaker_names
+from sora_bilingual.localization.speaker_context import (
+    compile_history_contexts,
+    compile_speaker_contexts,
+    speaker_names,
+)
 
 
 def dialogue(actor, target):
@@ -13,6 +17,64 @@ def dialogue(actor, target):
 
 
 class SpeakerContextTests(unittest.TestCase):
+    def test_old_history_keeps_all_source_locales_with_shared_target_pairs(self):
+        texts = {
+            "zh-Hans": "<#E_4>欢迎来到中央工房。",
+            "zh-Hant": "<#E_4>歡迎來到中央工房。",
+            "ja": "<#E_4>ようこそ中央工房。",
+        }
+        names = {"zh-Hans": {12: "埃里克"}, "zh-Hant": {12: "艾瑞克"}, "ja": {12: "エイリク"}}
+        entry = {
+            "display_role": "dialogue",
+            "texts": texts,
+            "speaker_ids": {locale: 12 for locale in texts},
+        }
+        old = compile_speaker_contexts([entry], names["zh-Hans"], "zh-Hans", "ja", "zh-Hans")
+        self.assertNotIn("艾瑞克", old, "previous current-source lookup missed traditional history")
+        model = compile_history_contexts([entry], names, "zh-Hans", "ja")
+        expected = ("欢迎来到中央工房。", "ようこそ中央工房。")
+        for value in texts.values():
+            self.assertEqual(model["pairs"][model["texts"][value.split(">", 1)[1]]], expected)
+        self.assertEqual(model["pairs"][model["names"]["艾瑞克"]], ("埃里克", "エイリク"))
+        self.assertEqual(len(model["pairs"]), 2)
+
+    def test_cross_locale_conflicts_stay_ambiguous_and_speakers_only_narrow(self):
+        names = {
+            "zh-Hans": {2: "甲", 5: "乙"},
+            "zh-Hant": {2: "甲", 5: "乙"},
+            "ja": {2: "A", 5: "B"},
+        }
+        first = dialogue(2, "第一句")
+        first["texts"]["zh-Hant"] = "共同文字"
+        first["speaker_ids"]["zh-Hant"] = 2
+        second = dialogue(5, "另一句")
+        second["texts"]["zh-Hans"] = "共同文字"
+        model = compile_history_contexts([first, second], names, "zh-Hans", "ja")
+        self.assertEqual(model["texts"]["共同文字"], -1)
+        self.assertEqual(model["pairs"][model["speakers"]["甲"]["共同文字"]][1], "第一句")
+        second["speaker_ids"]["zh-Hans"] = 2
+        model = compile_history_contexts([first, second], names, "zh-Hans", "ja")
+        self.assertEqual(model["speakers"]["甲"]["共同文字"], -1)
+
+    def test_history_missing_target_cannot_borrow_another_calls_translation(self):
+        names = {"zh-Hans": {2: "甲"}, "ja": {2: "A"}}
+        first = dialogue(2, "別の呼び出し")
+        first["key"] = "script/a.dat/Talk/called/3/assembled_dialogue"
+        missing = {
+            "key": "script/a.dat/Talk/called/4/assembled_dialogue",
+            "display_role": "dialogue",
+            "texts": {"zh-Hans": first["texts"]["zh-Hans"]},
+            "speaker_ids": {"zh-Hans": 2},
+        }
+        model = compile_history_contexts([first, missing], names, "zh-Hans", "ja")
+        self.assertEqual(model["texts"]["相同的正文。"], -1)
+        self.assertEqual(model["speakers"]["甲"]["相同的正文。"], -1)
+        # A partial alignment row from the SAME physical call is instead
+        # dominated by that call's complete row, even if ordinals changed.
+        missing["called_ids"] = {"zh-Hans": 3}
+        model = compile_history_contexts([first, missing], names, "zh-Hans", "ja")
+        self.assertEqual(model["pairs"][model["texts"]["相同的正文。"]][1], "別の呼び出し")
+
     def test_actor_identity_is_explicit_id_not_row_number_or_duplicate_costume(self):
         rows = [
             (2, "雪拉扎德"),

@@ -2,7 +2,11 @@ import hashlib
 import struct
 import unittest
 from unittest.mock import patch
-from sora_bilingual.localization.runtime_identity import compile_script_identities, script_signature
+from sora_bilingual.localization.runtime_identity import (
+    _dedupe_call_entries,
+    compile_script_identities,
+    script_signature,
+)
 
 
 class FakeArchive:
@@ -51,6 +55,8 @@ class RuntimeIdentityTests(unittest.TestCase):
     def fixture(self, dynamic=False):
         data = bytearray(512)
         struct.pack_into("<4sIIIII", data, 0, b"#scp", 24, 1, 0, 0, 0)
+        struct.pack_into("<I", data, 24, 192)
+        data[192:201] = bytes((36, 5, 0, 2, 36, 5, 0, 2, 13))
         struct.pack_into("<II", data, 40, 2, 64)
         struct.pack_into("<I", data, 52, 0xC0000000 + 220)
         data[220:225] = b"Talk\0"
@@ -138,3 +144,135 @@ class RuntimeIdentityTests(unittest.TestCase):
         self.assertEqual(record["size"], len(data))
         self.assertEqual(record["sha256"], hashlib.sha256(data).hexdigest())
         self.assertEqual(record["functions"], ["Talk"])
+
+    def test_call_sites_and_records_exist_even_when_current_language_pairs_are_equal(self):
+        data, entries = self.fixture()
+        for entry in entries:
+            entry["texts"]["ja"] = "はい。"
+        with patch("sora_bilingual.localization.runtime_identity.FpacArchive", FakeArchive):
+            result = compile_script_identities("unused", entries, "zh-Hans", "ja", "zh-Hans")
+        manifest = result["manifest"][script_signature(data)][0]
+        sites = manifest["callSites"]["Talk"]
+        self.assertEqual(sites["196"]["record"], 0)
+        self.assertEqual(sites["200"]["record"], 1)
+        fn = result["scripts"][script_signature(data)][0]["functions"]["Talk"]
+        self.assertEqual(set(fn["records"]), {"0", "1"})
+        for call in fn["records"].values():
+            self.assertEqual(call["model"]["pairs"]["好。"], ("好。", "はい。"))
+
+    def test_nonmatching_instruction_sequence_does_not_invent_pc_alignment(self):
+        data, entries = self.fixture()
+        data = bytearray(data)
+        data[193] = 4
+        FakeArchive.data = bytes(data)
+        with patch("sora_bilingual.localization.runtime_identity.FpacArchive", FakeArchive):
+            result = compile_script_identities("unused", entries, "zh-Hans", "ja", "zh-Hans")
+        source = result["manifest"][script_signature(data)][0]
+        self.assertEqual(source["callSites"]["Talk"], {})
+        self.assertEqual(sorted(source["callRecords"]["Talk"].values()), [[0], [1]])
+
+    def test_called_ids_select_the_source_locales_record(self):
+        data, _entries = self.fixture()
+        entry = {
+            "key": "script/scena/test.dat/Talk/called/0/assembled_dialogue/alignment/shared",
+            "texts": {"zh-Hans": "中文。", "ja": "好。", "en": "English."},
+            "display_role": "dialogue",
+            "called_ids": {"zh-Hans": 0, "ja": 1, "en": 0},
+        }
+        with patch("sora_bilingual.localization.runtime_identity.FpacArchive", FakeArchive):
+            result = compile_script_identities("unused", [entry], "zh-Hans", "en", "ja")
+        function = result["scripts"][script_signature(data)][0]["functions"]["Talk"]
+        self.assertEqual(set(function["records"]), {"1"})
+        record_key = "script/scena/test.dat/Talk/called/0/assembled_dialogue"
+        self.assertEqual(function["records"]["1"], {"key": record_key})
+        pair_index = result["record_pairs"][record_key]
+        self.assertEqual(
+            result["record_pair_values"][pair_index],
+            ("中文。", "English."),
+        )
+        self.assertEqual(result["source_language"], "ja")
+        manifest = result["manifest"][script_signature(data)][0]
+        self.assertEqual(
+            manifest["recordKeys"]["Talk"]["1"],
+            {"key": record_key, "source": "好。"},
+        )
+
+        without_target = {**entry, "texts": {"zh-Hans": "中文。", "ja": "好。"}}
+        with patch("sora_bilingual.localization.runtime_identity.FpacArchive", FakeArchive):
+            target_missing = compile_script_identities(
+                "unused", [without_target], "zh-Hans", "en", "ja"
+            )
+        manifest = target_missing["manifest"][script_signature(data)][0]
+        self.assertEqual(
+            manifest["recordKeys"]["Talk"]["1"],
+            {"key": record_key, "source": "好。"},
+            "source provenance must not depend on the selected target pair",
+        )
+        self.assertNotIn(record_key, target_missing["record_pairs"])
+
+        missing = {**entry, "called_ids": {"zh-Hans": 0, "en": 0}}
+        with patch("sora_bilingual.localization.runtime_identity.FpacArchive", FakeArchive):
+            result = compile_script_identities("unused", [missing], "zh-Hans", "en", "ja")
+        function = result["scripts"][script_signature(data)][0]["functions"]["Talk"]
+        self.assertEqual(function["records"], {}, "missing source ordinals must fail closed")
+        self.assertIn(
+            record_key,
+            result["record_pairs"],
+            "a retained old-locale identity still needs its target pair after a source switch",
+        )
+
+    def test_two_source_calls_cannot_share_one_canonical_record_key(self):
+        data, _entries = self.fixture()
+        entries = [
+            {
+                "key": f"script/scena/test.dat/Talk/called/0/assembled_dialogue/alignment/{call}",
+                "texts": {"zh-Hans": "中文。", "ja": "好。", "en": "English."},
+                "display_role": "dialogue",
+                "called_ids": {"zh-Hans": call, "ja": call, "en": call},
+            }
+            for call in (0, 1)
+        ]
+        with patch("sora_bilingual.localization.runtime_identity.FpacArchive", FakeArchive):
+            result = compile_script_identities("unused", entries, "zh-Hans", "en", "ja")
+        manifest = result["manifest"][script_signature(data)][0]
+        self.assertEqual(manifest.get("recordKeys", {}).get("Talk", {}), {})
+        function = result["scripts"][script_signature(data)][0]["functions"]["Talk"]
+        self.assertTrue(all("model" in record for record in function["records"].values()))
+
+    def test_called_ids_also_select_the_source_pointer_record(self):
+        data, _entries = self.fixture()
+        entries = [
+            {
+                "key": f"script/scena/test.dat/Talk/called/{canonical}/arg/3",
+                "texts": {"zh-Hans": primary, "ja": "好。", "en": secondary},
+                "called_ids": {"zh-Hans": canonical, "ja": source, "en": canonical},
+            }
+            for canonical, source, primary, secondary in (
+                (0, 1, "中文一。", "English one."),
+                (1, 0, "中文二。", "English two."),
+            )
+        ]
+        with patch("sora_bilingual.localization.runtime_identity.FpacArchive", FakeArchive):
+            result = compile_script_identities("unused", entries, "zh-Hans", "en", "ja")
+        self.assertEqual(result["pointer_models"][entries[0]["key"]]["source"], "好。")
+        pointers = {
+            item["key"]: item["offset"] for items in result["pointers"].values() for item in items
+        }
+        self.assertEqual(pointers[entries[0]["key"]], 280)
+        self.assertEqual(pointers[entries[1]["key"]], 256)
+
+    def test_same_call_complete_entry_dominates_its_partial_alignment_row(self):
+        partial = {
+            "key": "script/scena/test.dat/Talk/called/0/assembled_dialogue/alignment/partial",
+            "texts": {"zh-Hans": "好。"},
+            "display_role": "dialogue",
+        }
+        complete = {
+            "key": "script/scena/test.dat/Talk/called/0/assembled_dialogue",
+            "texts": {"zh-Hans": "好。", "ja": "はい。", "en": "Right."},
+            "display_role": "dialogue",
+        }
+        self.assertEqual(
+            _dedupe_call_entries([partial, complete], "zh-Hans", "ja", "zh-Hans"),
+            [complete],
+        )

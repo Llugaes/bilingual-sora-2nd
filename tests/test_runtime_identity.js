@@ -3,7 +3,104 @@ const assert=require('node:assert/strict');
 const test=require('node:test');
 const crypto=require('node:crypto');
 const {scriptSha256,ScriptIdentities,TableIdentities,LogIdentities}=require('../sora_bilingual/game/scripts/runtime_identity.js');
+const {RuntimeText}=require('../sora_bilingual/game/scripts/runtime_text.js');
 const model=(a,b)=>({pairs:{[a]:[a,b]},plain_pairs:{[a]:[a,b]},numeric:[]});
+
+test('dialogue provenance uses the verified call site even when strings and arguments are equal',()=>{
+    const bytes=Buffer.alloc(64,7),hash=scriptSha256(bytes),token='1,3221226000';
+    const manifest={h:[{size:64,sha256:hash,functions:['Talk'],callSites:{Talk:{
+        36:{record:0,token,group:5,command:0},40:{record:1,token,group:5,command:0},
+    }}}]};
+    const ids=new ScriptIdentities({manifest});
+    const a=ids.capture('h',()=>bytes,'Talk',token,{pc:36,group:5,command:0});
+    const b=ids.capture('h',()=>bytes,'Talk',token,{pc:40,group:5,command:0});
+    assert.equal(a.callId,0);assert.equal(b.callId,1);
+    assert.notDeepEqual(a,b,'independent calls must not share a dialogue identity');
+    assert.equal(ids.capture('h',()=>bytes,'Talk',token,{pc:37,group:5,command:0}),null);
+    assert.equal(ids.capture('h',()=>bytes,'Talk',token,{pc:36,group:5,command:8}),null);
+    assert.equal(ids.capture('h',()=>bytes,'Talk','other',{pc:36,group:5,command:0}),null);
+    assert.equal(ids.capture('h',()=>bytes,'Talk',token),null,'a site manifest cannot downgrade to string/argument identity');
+    const target=new ScriptIdentities({manifest,scripts:{h:[{size:64,sha256:hash,functions:{Talk:{
+        records:{0:{model:model('好。','Right.')},1:{model:model('好。','Agreed.')}},
+        calls:{[token]:{model:model('好。','Wrong shared fallback')}},model:model('好。','Wrong function fallback'),
+    }}}]}});
+    assert.equal(target.lookup(a).model.pairs['好。'][1],'Right.');
+    assert.equal(target.lookup(b).model.pairs['好。'][1],'Agreed.');
+    assert.equal(target.lookup({...a,callId:2}),null,'unknown dialogue ID cannot use another call or function');
+});
+
+test('canonical record identity survives a source-script reload without duplicating locale models',()=>{
+    const bytes=Buffer.alloc(64,11),hash=scriptSha256(bytes),key='script/a.dat/Talk/called/7/assembled_dialogue';
+    const manifest={h:[{size:64,sha256:hash,functions:['Talk'],callSites:{Talk:{
+        36:{record:3,token:'1',group:5,command:0},
+    }},recordKeys:{Talk:{3:{key,source:'旧源。'}}}}]};
+    const captured=new ScriptIdentities({source_language:'zh-Hans',manifest});
+    const site={pc:36,group:5,command:0};
+    const identity=captured.capture('h',()=>bytes,'Talk','1',site,'旧源。');
+    assert.equal(identity.recordKey,key);assert.equal(identity.sourceLocale,'zh-Hans');
+    assert.equal(identity.source,'旧源。');
+    assert.equal(captured.capture('h',()=>bytes,'Talk','1',site,'错误来源。'),null);
+
+    const active=new ScriptIdentities({
+        source_language:'ja',record_pairs:{[key]:0},record_pair_values:[['Primary.','Secondary.']],
+        scripts:{},manifest:{},
+    });
+    const resolved=active.lookup(identity,'旧源。');
+    assert.deepEqual(resolved.model.pairs['旧源。'],['Primary.','Secondary.']);
+    const translated=new RuntimeText(resolved.model);
+    assert.equal(translated.translate('旧源。','primary'),'Primary.');
+    assert.equal(translated.translate('旧源。','secondary'),'Secondary.');
+    const annotated=translated.render('旧源。','annotation');
+    assert.ok(annotated.text.includes('Primary.'));
+    assert.ok(annotated.text.includes('Secondary.')||annotated.layers.some(layer=>layer.text.includes('Secondary.')));
+    assert.equal(active.lookup(identity,'错误来源。'),null,'a stable key never relaxes exact source validation');
+    assert.equal(active.lookup({...identity,source:'伪造。'},'旧源。'),null);
+});
+
+test('canonical records preserve a runtime expression head but reject body controls or text changes',()=>{
+    const bytes=Buffer.alloc(64,12),hash=scriptSha256(bytes),key='script/a.dat/Talk/called/8/assembled_dialogue';
+    const site={pc:36,group:5,command:0},manifest={h:[{
+        size:64,sha256:hash,functions:['Talk'],
+        callSites:{Talk:{36:{record:4,token:'1',group:5,command:0}}},
+        recordKeys:{Talk:{4:{key,source:'<#E_0><K4>资源正文。'}}},
+    }]};
+    const captured=new ScriptIdentities({source_language:'zh-Hans',manifest});
+    const actual='<#E_9><K4>资源正文。';
+    const identity=captured.capture('h',()=>bytes,'Talk','1',site,actual);
+    assert.equal(identity.source,actual);
+    assert.equal(captured.capture('h',()=>bytes,'Talk','1',site,'<#E_9><K5>资源正文。'),null);
+    assert.equal(captured.capture('h',()=>bytes,'Talk','1',site,'<#E_9><K4>不同正文。'),null);
+
+    const active=new ScriptIdentities({
+        record_pairs:{[key]:0},
+        record_pair_values:[['<#E_0><K4>主语言。','<#E_0><K4>副语言。']],
+    });
+    const found=active.lookup(identity,actual),translated=new RuntimeText(found.model);
+    assert.equal(translated.translate(actual,'primary'),'<#E_9><K4>主语言。');
+    assert.equal(translated.translate(actual,'secondary'),'<#E_9><K4>副语言。');
+    assert.equal(translated.translate('<K4>资源正文。','secondary'),'<K4>副语言。');
+    const annotated=translated.render(actual,'annotation');
+    assert.ok(annotated.text.includes('<#E_9>'));
+    assert.ok(annotated.text.includes('主语言。'));
+    assert.ok(annotated.text.includes('副语言。')||annotated.layers.some(layer=>layer.text.includes('副语言。')));
+    assert.equal(active.lookup(identity,'<#E_1><K4>资源正文。'),null,'lookup retains the exact captured source');
+});
+
+test('VM operand identity resolves canonical IDs without guessing nested call instruction order',()=>{
+    const bytes=Buffer.alloc(128,7),sha256=scriptSha256(bytes);
+    const candidate={size:128,sha256,functions:['Talk'],callRecords:{Talk:{
+        '5:0:1,32':[7],'5:0:?,33':[8],'5:0:1,44':[9,10],
+    }},callSites:{Talk:{}}};
+    const ids=new ScriptIdentities({manifest:{h:[candidate]}});
+    const read=()=>bytes,site={pc:100,group:5,command:0};
+    assert.equal(ids.capture('h',read,'Talk','1,32',site).callId,7);
+    assert.equal(ids.capture('h',read,'Talk','999,33',site).callId,8);
+    assert.equal(ids.capture('h',read,'Talk','1,44',site),null,'equal operands cannot merge distinct called IDs');
+    candidate.callSites.Talk[100]={record:10,group:5,command:0};
+    assert.equal(ids.capture('h',read,'Talk','1,44',site).callId,10);
+    assert.equal(ids.capture('h',read,'Talk','1,32',{...site,pc:129}),null);
+    assert.equal(ids.capture('h',read,'Talk','1,99',site).callId,undefined,'dynamic producers retain their separate resolver contract');
+});
 
 test('log identity follows the physical record, not equal text or last observed dialogue',()=>{
     const records=new LogIdentities(),a={source:'好。',identity:{argumentsToken:'36'}},b={source:'好。',identity:{argumentsToken:'151'}};

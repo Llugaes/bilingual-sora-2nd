@@ -180,17 +180,27 @@ def load_model(entries, signature, config, output=ROOT / "generated", *, game):
     model["script_identities"] = compile_script_identities(*args, resolved_pairs=translator.pairs)
     model["table_identities"] = compile_table_identities(*args, resolved_pairs=translator.pairs)
     from sora_bilingual.localization.speaker_context import (
+        compile_history_contexts,
         compile_speaker_contexts,
         read_speaker_names,
     )
 
+    names_by_locale = {
+        locale: read_speaker_names(game, locale)
+        for locale, archive in archive_names("table").items()
+        if any(e.get("speaker_ids") for e in selected)
+        and (Path(game) / "pac/steam" / archive).exists()
+    }
     model["speaker_contexts"] = compile_speaker_contexts(
         selected,
-        read_speaker_names(game, source) if any(e.get("speaker_ids") for e in selected) else {},
+        names_by_locale.get(source, {}),
         config["primary"],
         config["secondary"],
         source,
         translator.pairs,
+    )
+    model["history_contexts"] = compile_history_contexts(
+        selected, names_by_locale, config["primary"], config["secondary"]
     )
     publish_json(path, model)
     return model

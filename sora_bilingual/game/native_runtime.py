@@ -48,6 +48,9 @@ POINTS = {
     "log_owner_destroyed": 0x2EC73,
     "log_owner_created": 0x2F946,
     "log_record_bind": 0x35F700,
+    # Every MessageLog row-id hit passes this activation boundary after any
+    # cold bind. It changes visibility only and never writes label text.
+    "log_record_activate": 0x360000,
     "log_name_return": 0x35FD71,
     "log_text_return": 0x3602A4,
     "log_present_append": 0x35F95D,

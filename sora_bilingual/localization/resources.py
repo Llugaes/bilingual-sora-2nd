@@ -16,7 +16,7 @@ import json
 import mmap
 import re
 import struct
-from collections import Counter
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -320,6 +320,7 @@ def _parse_code(
     function_names: tuple[str, ...],
     global_names: tuple[str, ...],
     string_offsets: list[int] | None = None,
+    instruction_positions: list[int] | None = None,
 ) -> tuple[tuple[tuple[object, ...], ...], tuple[str, ...]]:
     """Parse/normalise Ingert's SCP bytecode, retaining only text values."""
     pos = start
@@ -335,6 +336,8 @@ def _parse_code(
                 return _normalise_code_labels(result, pos), tuple(strings)
             raise FormatError(f"bytecode ends before a valid boundary at {pos:#x}")
         op_at = pos
+        if instruction_positions is not None:
+            instruction_positions.append(op_at)
         opcode = data[pos]
         pos += 1
         if opcode == 0:
@@ -612,6 +615,254 @@ def _script_paths(entries_by_language: Iterable[dict[str, str]]) -> list[str]:
     )
 
 
+def _dialogue_metadata_shape(call: Called) -> tuple[object, ...] | None:
+    """Normalize only actor/voice identity for a rejected static dialogue.
+
+    This shape is never enough to pair the dialogue itself.  It only proves
+    that an equal-length function did not insert, delete or reorder calls, so
+    later exact calls may retain their original ordinal mapping.
+    """
+    if assembled_dialogue(call) is None or call.kind != 3 or len(call.args) < 2:
+        return None
+    if call.args[0] != ("int", 5) or call.args[1] not in tuple(
+        ("int", command) for command in (0, 6, 7, 19)
+    ):
+        return None
+    first = next(i for i, (kind, _) in enumerate(call.args) if kind == "string")
+    prefix = list(call.args[:first])
+    # Commands 0/6/7/19 use arg 2 as the actor/window identity when it is
+    # present.  Some locale scripts omit it entirely.
+    if len(prefix) > 2 and prefix[2][0] in ("int", "var"):
+        del prefix[2]
+    normalized = []
+    index = 0
+    while index < len(prefix):
+        arg = prefix[index]
+        normalized.append(arg)
+        if arg in (("int", 11), ("int", 12)) and index + 1 < len(prefix):
+            index += 1
+            normalized.append((prefix[index][0], "voice"))
+        index += 1
+    shape = call.dialogue_shape()
+    return call.target, call.kind, tuple(normalized), shape[3], "static-dialogue"
+
+
+def _has_display_text(call: Called) -> bool:
+    return any(call.display_text_slots())
+
+
+def _optional_default_speaker_equivalent(left: Called, right: Called) -> bool:
+    """Accept only command-0's explicitly encoded zero versus its omission.
+
+    This is narrower than ``_dialogue_metadata_shape``: non-zero actors,
+    voices and controls remain identity-bearing.  Some official locale scripts
+    spell the default actor as argument 2 while others start the static string
+    stream immediately after the command.
+    """
+    if left.kind != 3 or right.kind != 3 or left.target != right.target:
+        return False
+    if assembled_dialogue(left) is None or assembled_dialogue(right) is None:
+        return False
+    base = (("int", 5), ("int", 0))
+
+    def prefix(call):
+        first = next(i for i, (kind, _) in enumerate(call.args) if kind == "string")
+        return call.args[:first]
+
+    left_prefix, right_prefix = prefix(left), prefix(right)
+    explicit = base + (("int", 0),)
+    if {left_prefix, right_prefix} != {base, explicit}:
+        return False
+    left_shape, right_shape = left.dialogue_shape(), right.dialogue_shape()
+    return left_shape[0:2] == right_shape[0:2] and left_shape[3:] == right_shape[3:]
+
+
+def _whole_sequence_allows_default_speaker(reference: Function, candidate: Function) -> bool:
+    """Prove an optional default speaker against the complete call sequence."""
+    if (
+        reference.flags != candidate.flags
+        or reference.arg_types != candidate.arg_types
+        or len(reference.called) != len(candidate.called)
+    ):
+        return False
+    return all(
+        left.dialogue_shape() == right.dialogue_shape()
+        or _optional_default_speaker_equivalent(left, right)
+        for left, right in zip(reference.called, candidate.called, strict=True)
+    )
+
+
+def _unique_non_display_gap(longer: Function, shorter: Function) -> tuple[int, int] | None:
+    """Return the sole removable non-display span making both sequences exact."""
+    difference = len(longer.called) - len(shorter.called)
+    if difference <= 0:
+        return None
+    long_shapes = tuple(call.dialogue_shape() for call in longer.called)
+    short_shapes = tuple(call.dialogue_shape() for call in shorter.called)
+    candidates = []
+    for start in range(len(shorter.called) + 1):
+        end = start + difference
+        if any(_has_display_text(call) for call in longer.called[start:end]):
+            continue
+        if long_shapes[:start] + long_shapes[end:] == short_shapes:
+            candidates.append((start, end))
+    return candidates[0] if len(candidates) == 1 else None
+
+
+def _dialogue_call_map(reference: Function, candidate: Function) -> dict[int, int]:
+    """Map only statically proven dialogue records between two functions."""
+    if reference.flags != candidate.flags or reference.arg_types != candidate.arg_types:
+        return {}
+    reference_shapes = tuple(call.dialogue_shape() for call in reference.called)
+    candidate_shapes = tuple(call.dialogue_shape() for call in candidate.called)
+    mapped = {}
+    if len(reference.called) == len(candidate.called):
+        allow_default_speaker = _whole_sequence_allows_default_speaker(reference, candidate)
+        for index, (left, right) in enumerate(zip(reference.called, candidate.called, strict=True)):
+            if reference_shapes[index] == candidate_shapes[index]:
+                if assembled_dialogue(left) is not None and assembled_dialogue(right) is not None:
+                    mapped[index] = index
+                continue
+            if allow_default_speaker and _optional_default_speaker_equivalent(left, right):
+                mapped[index] = index
+                continue
+            if _dialogue_metadata_shape(left) is not None and _dialogue_metadata_shape(
+                left
+            ) == _dialogue_metadata_shape(right):
+                # This differing dialogue keeps the sequence aligned but is
+                # itself rejected because actor/voice identity is not equal.
+                continue
+            break
+        return mapped
+
+    prefix = 0
+    while (
+        prefix < min(len(reference.called), len(candidate.called))
+        and reference_shapes[prefix] == candidate_shapes[prefix]
+    ):
+        if (
+            assembled_dialogue(reference.called[prefix]) is not None
+            and assembled_dialogue(candidate.called[prefix]) is not None
+        ):
+            mapped[prefix] = prefix
+        prefix += 1
+
+    if len(reference.called) < len(candidate.called):
+        gap = _unique_non_display_gap(candidate, reference)
+        if gap is not None:
+            start, end = gap
+            offset = end - start
+            return {
+                index: index if index < start else index + offset
+                for index, call in enumerate(reference.called)
+                if assembled_dialogue(call) is not None
+            }
+    else:
+        gap = _unique_non_display_gap(reference, candidate)
+        if gap is not None:
+            start, end = gap
+            offset = end - start
+            return {
+                index: index if index < start else index - offset
+                for index, call in enumerate(reference.called)
+                if not start <= index < end and assembled_dialogue(call) is not None
+            }
+    return mapped
+
+
+def _speaker_ids(functions, called_ids):
+    result = {}
+    for language, called in called_ids.items():
+        args = functions[language].called[called].args
+        if (
+            len(args) >= 3
+            and args[0] == ("int", 5)
+            and args[1] in (("int", 0), ("int", 6), ("int", 19))
+            and args[2][0] == "int"
+        ):
+            result[language] = args[2][1]
+    return result
+
+
+def _aligned_dialogue_records(path, function_name, functions, called_shapes, audit):
+    """Join exact dialogue records across otherwise different function groups."""
+    reference_language = min(functions)
+    reference = functions[reference_language]
+    mappings = {
+        language: _dialogue_call_map(reference, functions[language])
+        for language in sorted(functions)
+    }
+    called_groups = defaultdict(set)
+    dialogue_groups = defaultdict(set)
+    for language, function in functions.items():
+        called_groups[called_shapes[language]].add(language)
+        dialogue_groups[function.dialogue_sequence_shape()].add(language)
+    existing_groups = [languages for languages in called_groups.values() if len(languages) >= 2]
+    existing_groups.extend(
+        languages
+        for shape, languages in dialogue_groups.items()
+        if shape[-1]
+        and len(languages) >= 2
+        and len({called_shapes[language] for language in languages}) >= 2
+    )
+    entries = []
+    for reference_called, reference_call in enumerate(reference.called):
+        reference_text = assembled_dialogue(reference_call)
+        if reference_text is None:
+            continue
+        called_ids = {}
+        texts = {}
+        for language in sorted(functions):
+            called = mappings[language].get(reference_called)
+            if called is None:
+                continue
+            call = functions[language].called[called]
+            text = assembled_dialogue(call)
+            if text is None or (
+                call.dialogue_shape() != reference_call.dialogue_shape()
+                and not _optional_default_speaker_equivalent(call, reference_call)
+            ):
+                continue
+            called_ids[language] = called
+            texts[language] = text
+        languages = set(called_ids)
+        if len(languages) < 2 or any(languages <= group for group in existing_groups):
+            continue
+        identity = (
+            "called-record",
+            reference_language,
+            reference_called,
+            tuple(sorted(called_ids.items())),
+            reference_call.dialogue_shape(),
+        )
+        suffix = "/alignment/" + hashlib.sha256(repr(identity).encode()).hexdigest()
+        key = f"{path}/{function_name}/called/{reference_called}/assembled_dialogue{suffix}"
+        speaker_ids = _speaker_ids(functions, called_ids)
+        entry = {
+            "key": key,
+            "texts": texts,
+            "display_role": "dialogue",
+            "called_ids": called_ids,
+        }
+        if speaker_ids:
+            entry["speaker_ids"] = speaker_ids
+        entries.append(entry)
+        display = {
+            language: re.sub(r"^(?:<#[^<>]*>)+", "", text) for language, text in texts.items()
+        }
+        if display != texts:
+            display_entry = {
+                **entry,
+                "key": key.replace("/assembled_dialogue", "/assembled_display"),
+                "texts": display,
+            }
+            entries.append(display_entry)
+        _add_counter(audit, "assembled_dialogue_record_alignments")
+        for language in texts:
+            _add_counter(audit, "entries_with_" + language, 1 + (display != texts))
+    return entries
+
+
 def align_functions(path, function_name, functions, audit):
     """Only equal complete structural signatures may share localized records.
 
@@ -716,6 +967,7 @@ def align_functions(path, function_name, functions, audit):
                         {l: str(functions[l].called[index].args[slot][1]) for l in languages},
                         "speaker" if call.target == "chr_set_display_name" and slot == 1 else None,
                     )
+    entries.extend(_aligned_dialogue_records(path, function_name, functions, called_shapes, audit))
     return entries
 
 

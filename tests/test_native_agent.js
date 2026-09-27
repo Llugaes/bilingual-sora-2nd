@@ -6,7 +6,7 @@ const path = require('node:path');
 const test = require('node:test');
 const vm = require('node:vm');
 
-const AGENT = fs.readFileSync(path.join(__dirname, '..', 'sora_bilingual/game/scripts/native_agent.js'), 'utf8');
+const AGENT = fs.readFileSync(process.env.NATIVE_AGENT_SOURCE||path.join(__dirname, '..', 'sora_bilingual/game/scripts/native_agent.js'), 'utf8');
 const RESOLVER = fs.readFileSync(path.join(__dirname, '..', 'sora_bilingual/game/scripts/runtime_text.js'), 'utf8');
 const PARAGRAPHS = fs.readFileSync(path.join(__dirname, '..', 'sora_bilingual/game/scripts/runtime_paragraph.js'), 'utf8');
 const IDENTITIES = fs.readFileSync(path.join(__dirname, '..', 'sora_bilingual/game/scripts/runtime_identity.js'), 'utf8');
@@ -173,6 +173,7 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
             log_owner_destroyed:{rva:0xf30,bytes:'00000000000000000000000000000000'},
             log_owner_created:{rva:0xf40,bytes:'00000000000000000000000000000000'},
             log_record_bind:{rva:0xf50,bytes:'00000000000000000000000000000000'},
+            log_record_activate:{rva:0xf58,bytes:'00000000000000000000000000000000'},
             log_name_return:{rva:0xf60,bytes:'00000000000000000000000000000000'},
             log_text_return:{rva:0xf70,bytes:'00000000000000000000000000000000'},
             log_present_append:{rva:0xf80,bytes:'00000000000000000000000000000000'},
@@ -221,7 +222,8 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
 
     function renderRuby(label) {
         if (rubyCase && label.text().includes('<R>')) {
-                const values=new Map([[0,rubyCase.x],[4,rubyCase.nativeY??0],[0x158,.375],[0x15c,.375]]);
+                const nativeScale=rubyCase.nativeScale??.375;
+                const values=new Map([[0,rubyCase.x],[4,rubyCase.nativeY??0],[0x158,nativeScale],[0x15c,nativeScale]]);
                 const field=o=>({readFloat(){return values.get(o);},writeFloat(v){values.set(o,v);}});
                 const ctx = {...field(0),add:field};
                 const hook = hooks.get(String(base.add(REPORT.native.ruby_context_init.rva)));
@@ -347,7 +349,7 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
             }
             leaveBuild();
             const call={};begin?.onEnter.call(call,[owner]);
-            const result={setters:0,cleanup:0,heights:[],widths:[],ids:[],bodies:[]},vmContext=context;
+            const result={setters:0,cleanup:0,heights:[],widths:[],ids:[],bodies:[],names:[]},vmContext=context;
             for(let i=0;i<records.length;i++) {
                 const record=pending[i],descriptor=new ScratchPointer(0x470000);
                 descriptor.writeS32(i+1);
@@ -381,6 +383,7 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
                 result.heights.push(descriptor.add(0x18).readFloat());result.ids.push(descriptor.readS32());
                 result.widths.push(descriptor.add(0x14).readS32());
                 result.bodies.push(body.text());
+                result.names.push(name.text());
             }
             // The native destructor tail must run even for every cache hit.
             result.cleanup=records.length;
@@ -388,11 +391,12 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
             assert.equal(sandbox.rpc.exports.status().failed,false,JSON.stringify(sandbox.rpc.exports.status()));
             return result;
         },
-        dialogueSet(label,text,data,functionName,values,logSlot) {
+        dialogueSet(label,text,data,functionName,values,logSlot,site) {
             const machine=new ScratchPointer(0x34000000),object=new ScratchPointer(0x35000000),stack=new ScratchPointer(0x36000000);
             object.values.set(0,new RegionPointer(data));machine.values.set(8,object);
             machine.values.set(0x88,allocate(functionName));machine.values.set(0x70,values.length);
             machine.values.set(0x64,values.length*4);machine.values.set(0x58,stack);
+            if(site)for(const [field,value] of [[0x10,site.pc],[0x68,site.group],[0x6c,site.command]])machine.values.set(field,value);
             values.forEach((v,i)=>stack.values.set((values.length-i-1)*4,v));
             const buffer=allocate(text),leaveHandler=invoke(base.add(0xe00),[]);
             const leaveBuilder=invoke(base.add(0xf00),[nullPointer,buffer,nullPointer,machine]);leaveBuilder();
@@ -410,9 +414,16 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
             logOwnerPointer.data.write(speaker,at+4,0x60,'utf8');
             logOwnerPointer.data.write(text,at+0x64,0x124,'utf8');
         },
+        logMutateRecord(slot,offset,value){logOwnerPointer.data.writeUInt8(value,0x1604ec+slot*0x18c+offset);},
         logReset(){invoke(base.add(0xf40),[])();},
-        logShow(label,slot,text,slots=[slot]){
+        logNameShow(label,slot,text){
             const controller=new ScratchPointer(0x480000);controller.add(0x18).writePointer(label);
+            const leaveFrame=invoke(base.add(0xf50),[controller,new Pointer(slot)]);
+            const args=[label,allocate(text)],leave=invoke(base.add(0x100),args,base.add(0xf60));
+            copyIntoLabel(label,args[1]);leave();leaveFrame();
+        },
+        logShow(label,slot,text,slots=[slot]){
+            const controller=new ScratchPointer(0x480000);controller.add(0x18).writePointer(label);controller.add(0x38).writeS32(slot);
             const leaveFrame=invoke(base.add(0xf50),[controller,new Pointer(slot)]);
             for(const piece of slots){
                 const input=logOwnerPointer.add(0x160550+piece*0x18c);
@@ -420,7 +431,9 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
             }
             const args=[label,allocate(text)],leave=invoke(base.add(0x100),args,base.add(0xf70));
             copyIntoLabel(label,args[1]);leave();leaveFrame();
+            return controller;
         },
+        logActivate(controller){invoke(base.add(0xf58),[controller])();},
         externalBuffer(label,buffer) {
             const args=[label,buffer],leave=invoke(base.add(0x100),args);copyIntoLabel(label,args[1]);leave();
         },
@@ -464,7 +477,11 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
                 parser.add(0x240).writePointer(callback);
             }
             parser.writeFloat(20);parser.add(4).writeFloat(geometry.origin??100);
+            parser.add(0x1ab).writeU8(geometry.measuring?1:0);
+            parser.add(0x1bc).writeS32(0x7fffffff);parser.add(0x1c4).writeS32(-0x80000000);
             parser.values.set(8,label.add(0x318).readPointer().add(layer.offset));
+            parser.add(0x158).writeFloat(geometry.primaryScale??1);
+            parser.add(0x15c).writeFloat(geometry.primaryScale??1);
             const frame=new ScratchPointer(0x800000);
             parser.add(0x1c).writeS32(geometry.unitStart??0);
             frame.add(0x22c).writeS32(geometry.primaryUnits??0);
@@ -475,6 +492,14 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
             const measureCall={returnAddress:base.add(0x880),context:machine};
             const initializer=hooks.get(String(base.add(0x600)));
             initializer.onEnter.call(measureCall,measureArgs);initializer.onLeave.call(measureCall);
+            const recordReading=(parent,height)=>{
+                if(!height)return;
+                const nestedFrame=new ScratchPointer(0x870000);
+                nestedFrame.add(0x178).writeS32(0);nestedFrame.add(0x17c).writeS32(0);
+                nestedFrame.add(0x180).writeS32(12);nestedFrame.add(0x184).writeS32(height);
+                hooks.get(String(base.add(0xb00))).onEnter.call({context:{r15:label,rbx:parent,rbp:nestedFrame}});
+            };
+            recordReading(measureContext,geometry.primaryReadingHeight);
             assert.equal(measureArgs[1].readUtf8String(),layer.primary);
             assert.equal(measureArgs[2].toInt32(),[...layer.primary].length);
             assert.equal(measureContext.add(0x1a9).readU8(),0,'measurement must not draw duplicate text');
@@ -485,12 +510,14 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
             for(const placement of [false,true]) {
                 const child=new ScratchPointer(0x900000);
                 child.writeFloat(-100);child.add(4).writeFloat(geometry.nativeY??80);
-                child.add(0x158).writeFloat(.375);child.add(0x15c).writeFloat(.375);
+                const nativeScale=geometry.nativeScale??.375;
+                child.add(0x158).writeFloat(nativeScale);child.add(0x15c).writeFloat(nativeScale);
                 const call={returnAddress:base.add(placement?0x700:0x800),context:machine};
                 const args=[child,allocate('_'),new Pointer(1)];
                 init.onEnter.call(call,args);init.onLeave.call(call);
                 const ph=hooks.get(String(base.add(0xd00))),parseCall={};
                 child.add(0x1a5).writeU8(1);ph.onEnter.call(parseCall,[label,child]);
+                if(!placement)recordReading(child,geometry.secondaryReadingHeight);
                 results.push({text:args[1].readUtf8String(),count:args[2].toInt32(),
                     x:child.readFloat(),y:child.add(4).readFloat(),scale:child.add(0x158).readFloat(),
                     iconCallback:!child.add(0x240).readPointer().isNull(),
@@ -513,12 +540,28 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
             }
             return {results,duringCompensation,restoredCompensation:parser.add(0x1a7).readU8(),
                 primaryX:parser.readFloat(),primaryY:parser.add(4).readFloat(),
+                reservedTop:parser.add(0x1bc).readS32(),reservedBottom:parser.add(0x1c4).readS32(),
                 bounds:[0x3c8,0x3cc,0x3d0,0x3d4].map(v=>frame.add(v).readS32())};
         },
-        nestedRubyScale(label,index=0,{nativeScale=.375,emphasizedScale=null}={}) {
+        layerSizeContext(label,index=0,{primaryScale=1,absoluteSize=1.5,nativeScale=.375}={}) {
+            const row=sandbox.rpc.exports.snapshot().find(v=>v.original===label.originalForTest||v.displayed===label.text());
+            const layer=row.layers[index],parser=new ScratchPointer(0x720000),target=new ScratchPointer(0x721000);
+            parser.values.set(8,label.add(0x318).readPointer().add(layer.offset));
+            parser.add(0x158).writeFloat(primaryScale);parser.add(0x15c).writeFloat(primaryScale);
+            target.add(0x158).writeFloat(nativeScale);target.add(0x15c).writeFloat(nativeScale);
+            const initializer=hooks.get(String(base.add(0x600))),call={returnAddress:base.add(0x800),context:{r15:label,rbx:parser,rbp:new ScratchPointer(0x722000)}};
+            initializer.onEnter.call(call,[target,allocate('_'),new Pointer(1)]);
+            initializer.onLeave.call(call);
+            const factor=vm.runInContext('auxiliaryContexts.get('+JSON.stringify(String(target))+')?.factor',context);
+            return {layer:layer.text,factor,initial:target.add(0x15c).readFloat(),
+                emphasized:absoluteSize*factor,primary:absoluteSize};
+        },
+        nestedRubyScale(label,index=0,{nativeScale=.375,emphasizedScale=null,primaryScale=25/29}={}) {
             const row=sandbox.rpc.exports.snapshot().find(v=>v.original===label.originalForTest||v.displayed===label.text());
             const layer=row.layers[index],parser=new ScratchPointer(0x730000),frame=new ScratchPointer(0x740000);
             parser.values.set(8,label.add(0x318).readPointer().add(layer.offset));
+            parser.add(0x158).writeFloat(primaryScale);
+            parser.add(0x15c).writeFloat(primaryScale);
             const initializer=hooks.get(String(base.add(0x600))),parent=new ScratchPointer(0x750000),parentArgs=[parent,allocate('_'),new Pointer(1)];
             parent.add(0x158).writeFloat(nativeScale);parent.add(0x15c).writeFloat(nativeScale);
             const parentCall={returnAddress:base.add(0x800),context:{r15:label,rbx:parser,rbp:frame}};
@@ -1195,6 +1238,135 @@ test('emphasis before a native reading does not become its fixed multiplier',()=
     assert.equal(runtime.api.status().failed,false);
 });
 
+test('layered S/C dialogue keeps native ruby baseline and source emphasis ratio',()=>{
+    const primary='<#E_0#M_0#B_0><S3><C2>外公～\n２楼我整理好了。';
+    const secondary='<#E_0#M_0#B_0><C2><S3>おじいちゃ～ん。\n２階のお片付けは終わったよ。';
+    const runtime=makeRuntime(),label=runtime.label(0x4673,primary,0,32);
+    runtime.api.load({pairs:{[primary]:[primary,secondary]},plain_pairs:{[primary]:[primary,secondary]}},'annotation',true,.85,{ruby_scale:.9});
+    runtime.externalSet(label,primary);
+    const result=runtime.layerSizeContext(label,0,{primaryScale:1,nativeScale:.5});
+    assert.match(result.layer,/^<C2><S3>おじいちゃ～/,'the real target tag order remains C then S');
+    assert.ok(Math.abs(result.initial-.45)<1e-6,`normal ruby size ${result.initial}`);
+    assert.ok(Math.abs(result.factor-.45)<1e-6,`layer S/s factor ${result.factor}`);
+    assert.ok(Math.abs(result.primary-1.5)<1e-6);
+    assert.ok(Math.abs(result.emphasized-.675)<1e-6);
+    assert.ok(Math.abs(result.emphasized/result.primary-.45)<1e-6);
+    assert.equal(runtime.api.status().failed,false);
+});
+
+test('layered S5 dialogue keeps the same native emphasis ratio in both languages',()=>{
+    const primary='<S5>艾丝蒂尔姐姐！',secondary='<S5>エステルお姉ちゃんっ！';
+    const runtime=makeRuntime(),label=runtime.label(0x4674,primary,0,32);
+    runtime.api.load({pairs:{[primary]:[primary,secondary]},plain_pairs:{[primary]:[primary,secondary]}},'annotation',true,.85,{ruby_scale:.9});
+    runtime.externalSet(label,primary);
+    const result=runtime.layerSizeContext(label,0,{primaryScale:1,nativeScale:.5});
+    assert.equal(result.layer,secondary);
+    assert.ok(Math.abs(result.initial-.45)<1e-6);
+    assert.ok(Math.abs(result.factor-.45)<1e-6);
+    assert.ok(Math.abs(result.primary-1.5)<1e-6);
+    assert.ok(Math.abs(result.emphasized-.675)<1e-6);
+    assert.equal(runtime.api.status().failed,false);
+});
+
+test('colour-only layered text keeps the ordinary native ruby size',()=>{
+    const primary='完成总计<C3>25件</C>委托并汇报。';
+    const secondary='計<C3>２５件</C>のクエストを達成して報告する。';
+    const runtime=makeRuntime(),label=runtime.label(0x4675,primary,0,32);
+    runtime.api.load({pairs:{[primary]:[primary,secondary]},plain_pairs:{[primary]:[primary,secondary]}},'annotation',true,.85,{ruby_scale:.9});
+    runtime.externalSet(label,primary);
+    const result=runtime.layerSizeContext(label,0,{primaryScale:27/32,absoluteSize:1,nativeScale:.5});
+    assert.match(result.layer,/^計<C3>２５件/);
+    assert.ok(Math.abs(result.initial-.45)<1e-6);
+    assert.ok(Math.abs(result.factor-.45)<1e-6);
+    assert.ok(Math.abs(result.primary-1)<1e-6);
+    assert.equal(runtime.api.status().failed,false);
+});
+
+test('ordinary, colour-layer, S3 and S5 secondary text share the native ruby ratio',()=>{
+    // Fixed fixture scales exercise the plain-ruby, synthetic-layer and
+    // absolute-S callback routes with the same visible glyph. Actual native
+    // scales depend on the font and label; this is not a live glyph-size
+    // comparison or proof of a new font fix.
+    const plainCase={x:0,nativeScale:.5};
+    const plain=makeRuntime(plainCase),plainSource='甲',plainTarget='乙';
+    const plainLabel=plain.label(0x4677,plainSource,0,32);
+    plain.api.configure({[plainSource]:`<R>${plainSource}</R${plainTarget}>`},true);
+    plain.api.style(.85,{ruby_scale:.9});
+    plain.update(plainLabel);
+    assert.match(plainLabel.text(),/<R>/,`plain annotated output ${plainLabel.text()}`);
+    assert.ok(Math.abs(plainCase.scale-.45)<1e-6,`ordinary ruby ${plainCase.scale}`);
+
+    const layer=(source,target,primaryScale)=>{
+        const runtime=makeRuntime(),label=runtime.label(0x4678,source,0,32);
+        runtime.api.load({pairs:{[source]:[source,target]},plain_pairs:{[source]:[source,target]}},
+            'annotation',true,.85,{ruby_scale:.9});
+        runtime.externalSet(label,source);
+        return runtime.layerSizeContext(label,0,{primaryScale,nativeScale:.5});
+    };
+    const colour=layer('<C2>甲</C>','<C2>乙</C>',27/32);
+    const s3=layer('<S3>甲','<S3>乙',1);
+    const s5=layer('<S5>甲','<S5>乙',1);
+    for(const result of [colour,s3,s5]) {
+        assert.ok(Math.abs(result.initial-.45)<1e-6,`layer ruby ${result.initial}`);
+        assert.ok(Math.abs(result.factor-.45)<1e-6,`layer factor ${result.factor}`);
+    }
+    for(const result of [s3,s5])
+        assert.ok(Math.abs(result.emphasized/result.primary-.45)<1e-6,
+            `S secondary ratio ${result.emphasized/result.primary}`);
+});
+
+test('equipment replacement keeps every real C/icon reflow layer at the native ruby size',()=>{
+    // table/t_text.tbl/TXT_CAMP_EQUIP_CHANGE_CHOICES after its two native
+    // string arguments have been expanded.  The target has a different line
+    // split, so RuntimeText creates three synthetic layers: C-only, C+icon,
+    // then C-only.  C does not make a ruby child; every layer must instead
+    // begin from the engine's ruby baseline before ruby_scale is applied.
+    const source='<C2>克萝赛</C><C1>装备中的</C>\n<I123> <C2>猫咪靴</C>\n <C1>将会被卸下，确定要继续吗？</C>';
+    const primary='<C2>クローゼ</C><C1>が装備中の</C>\n<I123> <C2>にゃんこブーツ</C> <C1>が\n外されますがよろしいですか？</C>';
+    const runtime=makeRuntime(),label=runtime.label(0x4676,source,0,32);
+    runtime.api.load({pairs:{[source]:[primary,source]},plain_pairs:{[source]:[primary,source]}},
+        'annotation',true,.85,{ruby_scale:.9});
+    runtime.externalSet(label,source);
+    const row=runtime.api.snapshot().find(v=>v.original===source);
+    assert.equal(row.presentation,'layered');
+    assert.deepEqual(Array.from(row.layers,layer=>layer.text),[
+        '<C2>克萝赛</C><C1>装备中的</C>',
+        '<I123> <C2>猫咪靴</C> <C1>将会被</C>',
+        '<C1>卸下，确定要继续吗？</C>',
+    ]);
+    const nativePrimary=27/32, expected=.375*.9;
+    for(const index of [0,1,2]) {
+        const result=runtime.auxiliary(label,index,{primaryScale:nativePrimary,iconCallback:index===1});
+        // The measurement and placement callbacks are the real layer entry
+        // sequence; both retain the ordinary native-ruby baseline.
+        for(const callback of result.results)
+            assert.ok(Math.abs(callback.scale-expected)<1e-6,
+                `layer ${index} callback began at ${callback.scale}, expected ${expected}`);
+        assert.equal(result.results[1].iconCallback,index===1);
+    }
+    assert.equal(runtime.api.status().failed,false,runtime.api.status().failureReason);
+});
+
+test('Chinese-primary equipment confirmation retains ruby scaling after Japanese reflow',()=>{
+    const source='<C2>克萝赛</C><C1>装备中的</C>\n<I123> <C2>猫咪靴</C>\n <C1>将会被卸下，确定要继续吗？</C>';
+    const secondary='<C2>クローゼ</C><C1>が装備中の</C>\n<I123> <C2>にゃんこブーツ</C> <C1>が\n外されますがよろしいですか？</C>';
+    const runtime=makeRuntime(),label=runtime.label(0x4679,source,0,32);
+    runtime.api.load({pairs:{[source]:[source,secondary]},plain_pairs:{[source]:[source,secondary]}},
+        'annotation',true,.85,{ruby_scale:.9});
+    runtime.externalSet(label,source);
+    const row=runtime.api.snapshot().find(v=>v.original===source);
+    assert.equal(row.presentation,'layered');assert.equal(row.layers.length,3);
+    for(let index=0;index<row.layers.length;index++) {
+        const icons=row.layers[index].text.includes('<I');
+        const result=runtime.auxiliary(label,index,{primaryScale:27/32,iconCallback:icons});
+        for(const callback of result.results)
+            assert.ok(Math.abs(callback.scale-.375*.9)<1e-6,
+                `Japanese layer ${index} changed native ruby scale to ${callback.scale}`);
+        assert.equal(result.results[1].iconCallback,icons);
+    }
+    assert.equal(runtime.api.status().failed,false,runtime.api.status().failureReason);
+});
+
 test('logic reload rejects native instrumentation before executing any supplied code',()=>{
     const r=makeRuntime(),p=r.label(0x9210,'原文');
     r.api.load({pairs:{'原文':['原文','訳文']},plain_pairs:{'原文':['原文','訳文']}},'secondary',true,1);r.update(p);
@@ -1340,20 +1512,21 @@ test('ruby placement clamps only an owned negative left edge at the verified cal
     }
 });
 
-test('original ruby and emphasis remain unchanged while a separately owned lane renders',()=>{
+test('original ruby text and emphasis survive a separately owned lane',()=>{
     for(const a of ['来到<R>女神</R爱德斯>身旁。','<R>绝对不行</R・・・・>']) {
         const b='<R>女神</Rエイドス>の傍へ。';const runtime=makeRuntime();
         runtime.api.load({pairs:{[a]:[a,b]},plain_pairs:{[a]:[a,b]}},'annotation',true,.9);
         const label=runtime.label(0x9990,'',0,32);runtime.externalSet(label,a);
         assert.equal(label.text(),'<R></R_>'+a);
-        assert.equal(runtime.newline(label,100),100,'original line positions are untouched');
         const result=runtime.auxiliary(label);
         assert.deepEqual(result.bounds,[0,0,0,0]);
         assert.equal(result.primaryX,20);assert.equal(result.primaryY,100);
         assert.equal(result.duringCompensation,1);assert.equal(result.restoredCompensation,0);
         for(const [i,v] of result.results.entries()) {
             assert.equal(v.text,b);assert.equal(v.count,[...b].length);
-            assert.equal(v.nestedRubyDisabled,i===0?1:0);assert.ok(Math.abs(v.scale-.3)<1e-8);
+            assert.equal(v.nestedRubyDisabled,0,'owned original readings participate in both measure and draw');
+            assert.ok(Math.abs(v.scale-(.375*.8))<1e-8,
+                'an auxiliary layer keeps the engine ruby baseline before user ruby_scale');
         }
         assert.equal(result.results[1].x,20);
         assert.equal(result.results[1].y,80,'original parser positions remain native');
@@ -1714,6 +1887,127 @@ test('history captures IDs before a later language introduces a translation conf
     assert.equal(r.api.status().failed,false);
 });
 
+test('native readings reserve a plus a-prime above every owned line including the first',()=>{
+    const a='<R>刺激</R香辛料>是首行。\n再来<R>刺激</R香辛料>。',b='<R>刺激</Rスパイス>だ。\nまた<R>刺激</Rスパイス>。';
+    for(const measuring of [false,true]) {
+        const r=makeRuntime();r.api.load({pairs:{[a]:[a,b]},plain_pairs:{[a]:[a,b]}},'annotation',true,.85);
+        const p=r.label(0xb690,a,0,32);r.update(p);
+        for(const index of [0,1])for(let rebuild=0;rebuild<3;rebuild++) {
+            const origin=100+index*80;
+            const out=r.auxiliary(p,index,{origin,measuring,primaryReadingHeight:18,secondaryReadingHeight:5});
+            const expected=origin+(18+5)*.85;
+            assert.ok(Math.abs(out.primaryY-expected)<1e-4,`line ${index}, measuring=${measuring}: ${out.primaryY} != ${expected}`);
+            assert.equal(out.reservedTop,origin,'leading reserve belongs to the measured paragraph even on its first line');
+            assert.equal(out.reservedBottom,Math.ceil(expected));
+        }
+        assert.equal(r.api.status().failed,false);
+    }
+});
+
+test('primary and secondary reading reserves are independent and absent readings add nothing',()=>{
+    for(const mainReading of [false,true])for(const secondaryReading of [false,true])for(const measuring of [false,true]) {
+        const a='<C1>'+(mainReading?'<R>字</Rじ>':'字')+'</C>',b=secondaryReading?'<R>語</Rご>':'word';
+        const r=makeRuntime();r.api.load({pairs:{[a]:[a,b]},plain_pairs:{[a]:[a,b]}},'annotation',true,.85,{line_gap:4});
+        const p=r.label(0xb695,a,0,32);r.update(p);
+        assert.equal(r.newline(p,100),104,'base line gap x is independent of reading reserves');
+        const out=r.auxiliary(p,0,{origin:100,measuring,primaryReadingHeight:mainReading?18:0,secondaryReadingHeight:secondaryReading?5:0});
+        // Primary native ruby selects post-geometry scale. Secondary-only ruby
+        // keeps the existing main <s> path, so its measured reading is final.
+        const extra=((mainReading?18:0)+(secondaryReading?5:0))*(mainReading?.85:1);
+        assert.ok(Math.abs(out.primaryY-(100+extra))<1e-4,`${mainReading}/${secondaryReading}/${measuring}`);
+        assert.equal(r.api.status().failed,false);
+    }
+});
+
+test('activating an already bound history row reconciles its retained physical record',()=>{
+    const {r,source,write}=historyFixture();
+    write(36,7);
+    r.api.select('primary',true);
+    const row=r.label(0xab80,''),controller=r.logShow(row,7,source);
+    assert.equal(row.text(),source,'a row materialized in primary mode remains native');
+    r.api.select('secondary',true);
+    r.logActivate(controller);
+    assert.equal(row.text(),'一つ目の台詞。');
+    assert.equal(r.api.status().failed,false);
+});
+
+test('history activation rejects stale ownership, row ids, payloads and origins',()=>{
+    const {r,source,write}=historyFixture();
+    write(36,7);r.api.select('primary',true);
+    const row=r.label(0xaba0,''),controller=r.logShow(row,7,source);
+    r.api.select('secondary',true);
+
+    controller.add(0x38).writeS32(8);r.logActivate(controller);
+    assert.equal(row.text(),source,'a reused controller must still own the bound ring slot');
+    controller.add(0x38).writeS32(7);
+    row.owned.text=source+' changed';r.logActivate(controller);
+    assert.equal(row.text(),source+' changed','activation never repairs a body with different bytes');
+    row.owned.text=source;
+
+    r.logWrite(source,7);r.logActivate(controller);
+    assert.equal(row.text(),source,'equal-byte ring overwrite cannot retain an old call identity');
+    write(36,7);r.logActivate(controller);
+    assert.equal(row.text(),source,'a new commit with the old bytes still requires a native rebind');
+    r.logShow(row,7,source);
+    assert.equal(row.text(),'一つ目の台詞。','the real binder replaces the controller identity after overwrite');
+    const writes=r.api.status().writes;r.logActivate(controller);
+    assert.equal(r.api.status().writes,writes,'an already reconciled row is idempotent');
+
+    r.api.select('primary',true);r.update(row);assert.equal(row.text(),source);
+    r.logReset();r.api.select('secondary',true);r.logActivate(controller);
+    assert.equal(row.text(),source,'owner lifecycle reset invalidates controller sidecars');
+    assert.equal(r.api.status().failed,false);
+});
+
+test('history activation never borrows a new call identity from an equal-byte slot overwrite',()=>{
+    const {r,source,write}=historyFixture();
+    write(36,7);r.api.select('primary',true);
+    const row=r.label(0xabc0,''),controller=r.logShow(row,7,source);
+    r.api.select('secondary',true);write(151,7);r.logActivate(controller);
+    assert.equal(row.text(),source,'old controller binding must not acquire the new call ID');
+    r.logShow(row,7,source);
+    assert.equal(row.text(),'二つ目の台詞。','only native rebind admits the new physical record');
+    assert.equal(r.api.status().failed,false);
+});
+
+test('history activation validates the full unknown-record stamp even when text is unchanged',()=>{
+    const source='没有捕获身份的记录。',target='Identity-free translated record.';
+    const r=makeRuntime(),pairs={[source]:[source,target]};
+    r.api.load({pairs,plain_pairs:pairs},'primary',true,1);
+    r.logRestore(source,7,'甲');
+    const row=r.label(0xabd0,''),controller=r.logShow(row,7,source);
+    r.api.select('secondary',true);r.logMutateRecord(7,0,1);r.logActivate(controller);
+    assert.equal(row.text(),source,'same text and speaker cannot hide an unknown record stamp change');
+    r.logShow(row,7,source);assert.equal(row.text(),target,'native rebind accepts the current unknown record');
+    assert.equal(r.api.status().failed,false);
+});
+
+test('native history saves actual call IDs and never substitutes a different dialogue',()=>{
+    const {scriptSha256}=require('../sora_bilingual/game/scripts/runtime_identity.js');
+    const r=makeRuntime(),source='相同的对白。',data=Buffer.alloc(128);
+    data.write('#scp');data.writeUInt32LE(24,4);data.writeUInt32LE(1,8);
+    const signature=Buffer.concat([data.subarray(0,24),data.subarray(24,56),data.subarray(24,56)]).toString('hex');
+    const sha256=scriptSha256(data),manifest={[signature]:[{size:128,sha256,functions:['Talk'],callSites:{Talk:{
+        100:{record:4,group:5,command:0,token:'1,36'},104:{record:9,group:5,command:0,token:'1,36'},
+    }}}]};
+    const local=target=>({pairs:{[source]:[source,target]},plain_pairs:{[source]:[source,target]}});
+    r.api.load({...local('Shared now'),script_identities:{manifest,scripts:{}}},'secondary',true,1);
+    const live=r.label(0xab00,'');
+    for(const [slot,pc] of [[7,100],[8,104]])r.dialogueSet(live,source,data,'Talk',[1,36],slot,{pc,group:5,command:0});
+    assert.equal(r.api.status().logOriginSlots,2);
+    const row=r.label(0xac00,'');r.logShow(row,8,source);
+    const next={...local('WRONG global dialogue'),script_identities:{manifest,scripts:{[signature]:[{size:128,sha256,functions:{Talk:{
+        records:{4:{model:local('Right.')},9:{model:local('Agreed.')}},calls:{},model:local('WRONG function'),
+    }}}]}}};
+    r.api.load(next,'secondary',true,1);r.update(row);assert.equal(row.text(),'Agreed.');
+    r.logShow(row,7,source);assert.equal(row.text(),'Right.');
+    assert.equal(r.logMeasure([['',source,8]]).bodies[0],'Agreed.');
+    r.api.select('annotation',true);r.update(row);assert.ok(row.text().includes('Right.'));
+    delete next.script_identities.scripts[signature][0].functions.Talk.records[4];
+    r.api.load(next,'secondary',true,1);r.update(row);
+    assert.equal(row.text(),source,'missing own ID cannot borrow a globally matching sentence');
+});
+
 test('restored history uses retained speaker and full text without inventing a script identity',()=>{
     const r=makeRuntime(),source='<#E_0><K4>相同的完整对白。',target='<#E_0><K4>女性の台詞。';
     const pairs={[source]:[source,target]};
@@ -1743,6 +2037,53 @@ test('restored history can replace primary language when secondary equals the ga
     const p=r.label(0xac00,'');r.logShow(p,7,source);
     assert.equal(p.text(),target);
     assert.equal(r.logMeasure([['雪拉扎德',source,7]]).bodies[0],target);
+});
+
+test('mixed source-language history renders old bodies and names without leaking into menus',()=>{
+    const r=makeRuntime(),old='<#E_4>歡迎來到中央工房。',current='<#E_4>欢迎来到中央工房。';
+    const history={pairs:[['欢迎来到中央工房。','ようこそ中央工房。'],['埃里克','エイリク']],
+        texts:{'歡迎來到中央工房。':0,'欢迎来到中央工房。':0},names:{'艾瑞克':1,'埃里克':1},speakers:{}};
+    const model={pairs:{},plain_pairs:{},history_contexts:history};
+    r.api.load(model,'secondary',true,1);
+    r.logRestore(old,7,'艾瑞克');r.logRestore(current,8,'埃里克');
+    const body=r.label(0xac00,''),name=r.label(0xad00,'');
+    for(const [slot,source,speaker] of [[7,old,'艾瑞克'],[8,current,'埃里克']]) {
+        r.logShow(body,slot,source);assert.equal(body.text(),'<#E_4>ようこそ中央工房。');
+        r.logNameShow(name,slot,speaker);assert.equal(name.text(),'エイリク');
+        const measured=r.logMeasure([[speaker,source,slot]],{fontSize:slot+24});
+        assert.equal(measured.bodies[0],'<#E_4>ようこそ中央工房。');
+        assert.equal(measured.names[0],'エイリク');
+    }
+    r.api.load(model,'annotation',true,1);r.update(body);r.update(name);
+    assert.match(body.text(),/ようこそ中央工房/);
+    assert.match(name.text()+JSON.stringify(r.api.snapshot().find(row=>row.original==='埃里克')?.layers||[]),/エイリク/);
+    r.externalSet(body,old);assert.equal(body.text(),old);
+    r.externalSet(name,'艾瑞克');assert.equal(name.text(),'艾瑞克');
+    r.logShow(body,7,old+'篡改');assert.equal(body.text(),old+'篡改');
+    assert.equal(r.api.status().identityHits,0,'old exact lookup must not invent script identity');
+});
+
+test('a copied history body retains its body-only history context',()=>{
+    const r=makeRuntime(),source='<#E_4>歡迎來到中央工房。';
+    r.api.load({pairs:{},plain_pairs:{},history_contexts:{
+        pairs:[['欢迎来到中央工房。','ようこそ中央工房。']],
+        texts:{'歡迎來到中央工房。':0},names:{},speakers:{},
+    }},'secondary',true,1);
+    r.logRestore(source,7,'艾瑞克');
+    const body=r.label(0xae80,'');r.logShow(body,7,source);
+    assert.equal(body.text(),'<#E_4>ようこそ中央工房。');
+    const copy=r.cloneLabel(body,0xae90);
+    assert.equal(copy.text(),'<#E_4>ようこそ中央工房。');
+    assert.equal(r.api.status().failed,false);
+});
+
+test('mixed-language history ambiguity blocks a current-locale global match',()=>{
+    const r=makeRuntime(),source='<#E_9>共同文字';
+    r.api.load({pairs:{'共同文字':['共同文字','Wrong current-locale match']},plain_pairs:{},
+        history_contexts:{pairs:[],texts:{'共同文字':-1},speakers:{},names:{}}},'secondary',true,1);
+    r.logRestore(source,7,'甲');const row=r.label(0xae00,'');r.logShow(row,7,source);
+    assert.equal(row.text(),source);assert.equal(r.logMeasure([['甲',source,7]]).bodies[0],source);
+    r.api.select('annotation',true);r.update(row);assert.equal(row.text(),source);
 });
 
 test('copied history retains exact branch identity in both measurement and visible rows',()=>{

@@ -32,6 +32,96 @@ def _render_format(template, values):
     return FORMAT_TOKEN.sub(lambda match: "%" if match.group() == "%%" else next(values), template)
 
 
+def _detail_context_rules(entries, primary, secondary, source_language):
+    """Compile raw-resource-authorized spans keyed by an exact description."""
+    candidates = {}
+    for entry in entries:
+        if not entry.get("detail_context_only"):
+            continue
+        descriptions = entry.get("detail_context_descriptions", {})
+        description = descriptions.get(source_language)
+        source = entry.get("texts", {}).get(source_language)
+        pair = complete_pair(entry.get("texts", {}), primary, secondary)
+        if not description or not source or not pair:
+            continue
+        for anchor in (description, "<C0>" + description):
+            candidates.setdefault(anchor, {}).setdefault(source, set()).add(pair)
+    return {
+        description: {
+            source: next(iter(pairs)) for source, pairs in values.items() if len(pairs) == 1
+        }
+        for description, values in candidates.items()
+    }
+
+
+def _ruby_ranges(source):
+    """Return every original ruby range, or fail closed on an unbalanced tag."""
+    if "<R" not in source and "</R" not in source:
+        return []
+    ranges, at = [], 0
+    while at < len(source):
+        opening = source.find("<R>", at)
+        closing = source.find("</R", at)
+        if closing >= 0 and (opening < 0 or closing < opening):
+            return None
+        if opening < 0:
+            return None if "<R" in source[at:] else ranges
+        close_start = source.find("</R", opening + 3)
+        if close_start < 0:
+            return None
+        nested = source.find("<R", opening + 3)
+        if 0 <= nested < close_start:
+            return None
+        close_end = source.find(">", close_start + 3)
+        if close_end < 0:
+            return None
+        ranges.append((opening, close_end + 1))
+        at = close_end + 1
+    return ranges
+
+
+def _overlaps(span, ranges):
+    return any(span[0] < end and start < span[1] for start, end in ranges)
+
+
+def _find_all(source, value):
+    at = source.find(value)
+    while at >= 0:
+        yield at
+        at = source.find(value, at + len(value))
+
+
+def _detail_inline_icon_rules(entries, primary, secondary, source_language):
+    """Compile bounded, coloured detail spans that retain a native icon token."""
+    result = []
+    for entry in entries:
+        if not entry.get("detail_inline_icon"):
+            continue
+        texts = entry.get("texts", {})
+        pair = complete_pair(texts, primary, secondary)
+        source = texts.get(source_language)
+        icons = entry.get("item_help_contract", {}).get("inline_icons", ())
+        fields = _format_fields(source) if isinstance(source, str) else []
+        if (
+            not pair
+            or not source
+            or len(fields) != 1
+            or fields[0].group() != "%d"
+            or not icons
+            or any(
+                icon not in source or icon not in pair[0] or icon not in pair[1] for icon in icons
+            )
+        ):
+            continue
+        chunks, at = [], 0
+        for field in fields:
+            chunks.extend((re.escape(source[at : field.start()]), r"([+-]?\d+)"))
+            at = field.end()
+        chunks.append(re.escape(source[at:]))
+        result.append((re.compile("".join(chunks)), pair))
+    return result
+
+
 def _producer_numeric_rules(entries, primary, secondary, source_language):
     """Compile only integer slots whose display width was proven at the producer."""
     result = []
@@ -629,11 +719,56 @@ def item_help_detail_entries(entries):
     return result
 
 
+def map_jump_confirmations(entries):
+    """Expand the map-jump template only with its named destination records.
+
+    A location name also occurs in quest clients and unrelated script literals.
+    Those entries cannot select the wording of this complete menu prompt.
+    Keep one result per destination identity, including incomplete targets, so
+    genuinely different destinations with the same source remain ambiguous.
+    """
+    key = "table/t_text.tbl/TXT_MAPJUMP_CONFIRM_MAPJUMP"
+    templates = [entry["texts"] for entry in entries if entry.get("key") == key]
+    if len(templates) != 1:
+        return []
+    template = templates[0]
+    result = []
+    for entry in entries:
+        name_key = entry.get("key", "")
+        if not (
+            name_key.startswith("table/t_mapjump.tbl/MapJumpSpotData/")
+            and name_key.endswith("/name")
+        ):
+            continue
+        texts = {}
+        for language, name in entry.get("texts", {}).items():
+            form = template.get(language)
+            if name and form and form.count("%s") == 1 and "%" not in form.replace("%s", ""):
+                texts[language] = form.replace("%s", name)
+        if texts:
+            result.append({"key": name_key + "/mapjump_confirmation", "texts": texts})
+    return result
+
+
 class MenuTranslator:
     def __init__(
         self, entries, primary, secondary, source_language=DEFAULT_PRIMARY, _details_only=False
     ):
         entries = list(entries)
+        self.detail_inline_icons = (
+            _detail_inline_icon_rules(entries, primary, secondary, source_language)
+            if _details_only
+            else []
+        )
+        if _details_only:
+            self.detail_contexts = _detail_context_rules(
+                entries, primary, secondary, source_language
+            )
+            # These rows authorize only an exact span under an exact
+            # description.  They must not also become ordinary detail pairs.
+            entries = [entry for entry in entries if not entry.get("detail_context_only")]
+        else:
+            self.detail_contexts = {}
         self.producer_numeric = _producer_numeric_rules(
             entries, primary, secondary, source_language
         )
@@ -644,6 +779,7 @@ class MenuTranslator:
             entries = [e for e in entries if not e.get("detail_only")]
             detail_aliases = item_help_detail_entries(entries) + generated_details
             entries += overdrive_descriptions(entries, source_language)
+            entries += map_jump_confirmations(entries)
             entries += item_help_components(entries)
             # The game appends a numeric level to this localized resource.
             # Its prefix, punctuation and spaces all come from that locale.
@@ -838,9 +974,92 @@ class MenuTranslator:
             if not is_raw and source in detail_authority and "s" not in kinds:
                 self.detail_numeric.append(rule)
 
+    def has_detail_context(self, source, description):
+        values = self.detail_contexts.get(description, {})
+        ranges = _ruby_ranges(source)
+        return ranges is not None and any(
+            any(not _overlaps((at, at + len(span)), ranges) for at in _find_all(source, span))
+            for span in values
+        )
+
+    def _replace_detail_context(self, source, mode, description):
+        values = self.detail_contexts.get(description, {})
+        ranges = _ruby_ranges(source)
+        if not values or ranges is None:
+            return source
+        selected = []
+        for span, pair in values.items():
+            target = pair[0 if mode != "secondary" else 1]
+            for at in _find_all(source, span):
+                match = (at, at + len(span))
+                if not _overlaps(match, ranges):
+                    selected.append((match, target))
+        selected.sort()
+        if any(left[0][1] > right[0][0] for left, right in zip(selected, selected[1:])):
+            return source
+        for (start, end), value in reversed(selected):
+            source = source[:start] + value + source[end:]
+        return source
+
+    def has_detail_inline_icon(self, source):
+        ranges = _ruby_ranges(source)
+        if ranges is None:
+            return False
+        return any(
+            not _overlaps(match.span(), ranges)
+            for pattern, _pair in self.detail_inline_icons
+            for match in pattern.finditer(source)
+        )
+
+    def _replace_detail_inline_icons(self, source, mode):
+        """Replace only unambiguous complete icon-bearing spans in an anchored detail."""
+        ranges = _ruby_ranges(source)
+        if ranges is None:
+            return source
+        matches = {}
+        for pattern, pair in self.detail_inline_icons:
+            for match in pattern.finditer(source):
+                target = pair[0 if mode != "secondary" else 1]
+                rendered = _render_format(target, iter(match.groups()))
+                matches.setdefault(match.span(), set()).add(rendered)
+        conflicting = [span for span, values in matches.items() if len(values) != 1]
+        selected = [
+            (span, next(iter(values)))
+            for span, values in matches.items()
+            if len(values) == 1 and not _overlaps(span, conflicting) and not _overlaps(span, ranges)
+        ]
+        selected.sort()
+        if any(left[0][1] > right[0][0] for left, right in zip(selected, selected[1:])):
+            return source
+        for (start, end), value in reversed(selected):
+            source = source[:start] + value + source[end:]
+        return source
+
+    def _anchored_details(self, source):
+        if not self.details or "\n" not in source:
+            return None
+        for at, character in enumerate(source):
+            if character != "\n":
+                continue
+            suffix = source[at + 1 :]
+            for _ in range(16):
+                if suffix in self.detail_sources:
+                    return self.details, suffix
+                control = re.match(r"</?[Cc][0-9a-fA-F]*>|</?B>|<[sS]\d+>", suffix)
+                if not control:
+                    break
+                suffix = suffix[control.end() :]
+        return None
+
     def raw_pair(self, source):
         if source in self.pairs:
             return self.pairs[source]
+        # Layout-owned size controls are not part of a resource's identity.
+        # Peel only this leading wrapper, and only for a complete admitted
+        # literal: token-wise matching would split coloured prompt arguments.
+        size = re.match(r"^(?:<[sS]\d+>)+", source)
+        if size and (pair := self.pairs.get(source[size.end() :])):
+            return tuple(size[0] + target for target in pair)
         producer = self.producer_pair(source)
         if producer:
             return producer
@@ -936,7 +1155,7 @@ class MenuTranslator:
             )
         return source
 
-    def translate(self, source, mode="annotation"):
+    def translate(self, source, mode="annotation", detail_context=None):
         if mode == "bilingual":
             mode = "annotation"
         if self.same_language and mode == "annotation":
@@ -945,10 +1164,13 @@ class MenuTranslator:
         # database description after an effect header. That exact suffix is an
         # anchor for resolving header terms within the item/skill tables, where
         # a word like 强化 means 強化 rather than the shop command 強化する.
-        if self.details and "\n" in source:
-            for at, c in enumerate(source):
-                if c == "\n" and source[at + 1 :] in self.detail_sources:
-                    return self.details.translate(source, mode)
+        if anchored := self._anchored_details(source):
+            details, context = anchored
+            return details.translate(source, mode, detail_context=context)
+        if detail_context:
+            source = self._replace_detail_context(source, mode, detail_context)
+        if self.detail_inline_icons:
+            source = self._replace_detail_inline_icons(source, mode)
         # Only admitted complete literals reach this path. Mutable emotion
         # headers cannot rescue an ambiguous body; those are removed at model
         # compilation so native provenance capture sees the same eligibility.
@@ -997,7 +1219,13 @@ class MenuTranslator:
             or (a == b == source and display_text(source) in self.ambiguous_display)
         ):
             return {"text": a, "layers": [], "kind": "plain"}
-        known = self.raw_pair(source) is not None or self.raw_pair(display_text(source)) is not None
+        anchored = self._anchored_details(source)
+        known = (
+            self.raw_pair(source) is not None
+            or self.raw_pair(display_text(source)) is not None
+            or bool(anchored and anchored[0].has_detail_inline_icon(source))
+            or bool(anchored and anchored[0].has_detail_context(source, anchored[1]))
+        )
         if mode == "annotation" and known:
             prefix = re.match(r"^(?:<#[^<>]*>)*", a)[0]
             body = a[len(prefix) :]
@@ -1082,6 +1310,10 @@ class MenuTranslator:
                 (pattern.pattern, pair, styles) for pattern, pair, styles in self.producer_numeric
             ],
             "detail_numeric": [(pattern.pattern, pair) for pattern, pair in self.detail_numeric],
+            "detail_inline_icons": [
+                (pattern.pattern, pair) for pattern, pair in self.detail_inline_icons
+            ],
+            "detail_contexts": self.detail_contexts,
             "same_language": self.same_language,
             "ambiguous_display": sorted(self.ambiguous_display),
             "keyed": keyed,

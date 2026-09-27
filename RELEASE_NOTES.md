@@ -2,6 +2,9 @@
 
 ## 简体中文
 
+- 分别测量主文与副文原有注解的高度，为包含注解的行增加上方空间，首行同样适用；注解测量关闭字形输出，保留副文内的二级缩放。
+- 日志控件复用时重新核对完整记录与调用身份，补上只激活旧控件时遗漏的双语处理。旧日志支持保留的实际来源语言，新增毛婆婆任务全流程资源审计。
+- 为动态效果建立候选索引，减少首次打开详情时逐条尝试无关规则的开销；补齐带图标的回合属性效果、属性标题及完整地图移动确认句。
 - 修正带分隔线等前缀的日志在反复排版时主副文字持续缩小；补齐带动态表情控制头的完整对白匹配，防止先拆行而遗漏副文。纯图标行不再消耗下一行的译文。
 - 补充详情内 HP／EP 百分比回复、全部回复与直接效果标签的资源组合，保留各语言的词序；如“HP回复30％／解除减益”。
 - 修正字号钩子误入公共格式出口造成的副语言反复缩小，保留强调字号与副语言的比例。扩展几何范围尺寸、效果程度、彩色分段及道具类型的详情匹配。
@@ -19,6 +22,9 @@
 
 ## English
 
+- Measure native readings in the primary and secondary independently, reserving extra space above each affected line, including the first. Measurement emits no glyphs and preserves nested secondary scaling.
+- Revalidate full records and dialogue-call identities when log controllers are reused, restoring bilingual processing on activation. Retain the actual source language of older log entries and audit the complete Mao quest sequence.
+- Index dynamic-effect candidates to reduce unrelated rule checks on first entry. Extend matching for icon-based timed stat effects, elemental headers, and complete map-travel confirmation prompts.
 - Fix cumulative text shrinking when log rows with decorative prefixes rebuild. Match complete dialogue bodies before splitting lines when live expression controls differ, and keep icon-only lines from consuming the next line's translation.
 - Add detail-scoped HP/EP percentage and full-recovery combinations plus direct effect labels, preserving each locale's word order.
 - Isolate the font-size hook from the shared formatting exit to stop repeated secondary-text shrinking at color changes, preserving the scale during native emphasis. Extend detail matching for geometric range sizes, effect grades, colored fragments, and item categories.
@@ -36,6 +42,9 @@ This release updates resident native code and font delivery. Exit the game befor
 
 ## 日本語
 
+- 主文と副文に元からあるルビの高さを別々に計測し、先頭行を含む該当行の上側に必要な空間を確保します。計測時には文字を描画せず、副文内の二段目の縮小率を維持します。
+- 履歴の表示部品を再利用する際、記録全体と会話呼び出しの識別情報を再確認し、再表示時にも二言語処理を適用します。既存の履歴に残る元の言語を扱い、マオの依頼全体のリソース監査を追加しました。
+- 動的効果の候補を索引化し、詳細画面の初回表示で無関係な規則を照合する処理を減らしました。アイコン付きのターン効果、属性見出し、移動先の確認文の照合も拡張しました。
 - 区切り線などを含む履歴の再描画で主文・副文が縮み続ける問題を修正しました。実行時の表情指定が異なる会話も、行を分割する前に本文全体を照合します。アイコンだけの行が次行の訳文を消費する問題も修正しました。
 - HP／EP の割合回復・全回復と直接表示される効果名の照合を追加し、各言語の語順を維持します。
 - 文字サイズのフックを共通の書式処理から分離し、色変更のたびに副言語が縮小される問題を修正しました。強調時の比率を維持し、範囲サイズ、効果の程度、色で分割された文言、アイテム種別の説明照合を拡張しました。

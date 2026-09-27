@@ -69,10 +69,11 @@ const attach=Interceptor.attach.bind(Interceptor);
 const base=ptr(0),REPORT={native:{
   ruby_begin:{rva:markers.begin_marker},ruby_compensate:{rva:markers.compensate_marker},ruby_end:{rva:markers.end_marker}
 }};
-const rubyPermissions=new Map(),compensation=new Map();
+const rubyPermissions=new Map(),compensation=new Map(),auxiliaryContexts=new Map(),annotationMetrics=new Map();
 function ownedRow(p){return p.equals(label)?row:null;}
 function beginAnnotationLane(_label,_parser,phase){if(phase==='open')rubyBeginCalls++;else if(phase==='end')compensateCalls++;}
-function auxiliaryLayer(){return row?.plan.kind==='layered'?{row}:null;}
+const fixtureLayer={};
+function auxiliaryLayer(){return row?.plan.kind==='layered'?{row,layer:fixtureLayer}:null;}
 function fail(error){errors.push(String(error));}
 // Actual production callbacks; only R15/RBX are bridged to fixture arguments.
 const bridge={attach(address,callback){return attach(address,{

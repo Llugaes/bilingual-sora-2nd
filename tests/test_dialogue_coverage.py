@@ -2,6 +2,7 @@ import unittest
 
 from sora_bilingual.localization.menu_text import MenuTranslator
 from tools.audit_dialogue_coverage import audit, dialogue_records
+from tools.audit_resource_inventory import catalog_inventory, indexed_text
 
 
 def entry(number, source, secondary):
@@ -26,7 +27,7 @@ def model(entries):
                         "Talk": {
                             "calls": {
                                 str(i): {
-                                    "records": [i],
+                                    "records": [e.get("called_ids", {}).get("zh-Hans", i)],
                                     "model": MenuTranslator([e], "zh-Hans", "ja").runtime_model(),
                                 }
                                 for i, e in enumerate(entries)
@@ -76,3 +77,20 @@ class DialogueCoverageTests(unittest.TestCase):
         result = audit(entries, model(entries))  # fixture only supplies calls 0 and 1
         self.assertEqual(result["counts"]["without_exact_resolver_route_records"], 2)
         self.assertNotIn("call_identity_required_records", result["counts"])
+
+    def test_audits_use_the_source_locales_called_id(self):
+        entries = [entry(0, "相同的对白。", "違う台詞。"), entry(1, "相同的对白。", "別の台詞。")]
+        entries[0]["called_ids"] = {"zh-Hans": 7, "ja": 8}
+        entries[1]["called_ids"] = {"zh-Hans": 9, "ja": 10}
+        result = audit(entries, model(entries))
+        self.assertEqual(result["counts"]["call_identity_required_records"], 2)
+
+        index, _categories, _gaps = catalog_inventory(entries)
+        self.assertTrue(
+            indexed_text(
+                index,
+                "script/test.dat/Talk/called/8/assembled_display",
+                "ja",
+                "違う台詞。",
+            )
+        )

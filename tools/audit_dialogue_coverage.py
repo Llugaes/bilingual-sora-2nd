@@ -39,6 +39,18 @@ def _matches(model, source, expected):
     return actual is not None and tuple(actual) == tuple(plain(t) for t in expected)
 
 
+def _source_call_key(entry, source_language):
+    key = entry["key"].split("/assembled_", 1)[0]
+    called_ids = entry.get("called_ids")
+    if not called_ids:
+        return key
+    called = called_ids.get(source_language)
+    if not isinstance(called, int) or "/called/" not in key:
+        return None
+    prefix, _canonical = key.rsplit("/called/", 1)
+    return f"{prefix}/called/{called}"
+
+
 def audit(entries, model, primary="zh-Hans", secondary="ja", source_language="zh-Hans"):
     calls = defaultdict(list)
     scripts = model.get("script_identities", {})
@@ -80,9 +92,7 @@ def audit(entries, model, primary="zh-Hans", secondary="ja", source_language="zh
             if _matches(model, source, expected):
                 counts["direct_global_pair_records"] += 1
                 continue
-            key = entry["key"]
-            call_key = key.split("/assembled_", 1)[0]
-            contexts = calls.get(call_key, [])
+            contexts = calls.get(_source_call_key(entry, source_language), [])
             if contexts and all(_matches(context, source, expected) for context in contexts):
                 counts["call_identity_required_records"] += 1
                 reason = "requires_call_identity_not_text_alone"

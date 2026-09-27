@@ -18,7 +18,8 @@ function createNativeParser(contexts,onError) {
             bridgeCalls++;
             const key=String(parser),row=contexts.get(key);
             if(row) {
-                parser.add(0x1a5).writeU8(row.placement?0:1);
+                parser.add(0x1a5).writeU8((row.allowReadings??row.placement)?0:1);
+                if(row.measureOnly){parser.add(0x1a9).writeU8(0);parser.add(0x1ab).writeU8(1);}
                 return row.generation;
             }
             return scaleFallbacks.get(key)?.generation||0;
@@ -169,7 +170,10 @@ void parser_on_enter(GumInvocationContext *ic) {
     if (fallback_all) v->generation=parser_fallback(parser);
     else if (v->tracked) {
         v->generation=v->slot_generation;
-        if (v->generation) parser[0x1a5]=placement ? 0 : 1;
+        if (v->generation) {
+            parser[0x1a5]=(placement & 1) ? 0 : 1;
+            if (placement & 2) { parser[0x1a9]=0; parser[0x1ab]=1; }
+        }
     }
 }
 
@@ -323,7 +327,8 @@ void parser_snapshot(uint64_t *out) {
             contexts.set(String(parser),{...value,generation:serial});
             const factor=Number(value.factor);
             if(!Number.isFinite(factor)||factor<=0||factor>8)throw Error('Invalid auxiliary scale');
-            register(parser,serial,value.placement?1:0,factor);
+            const flags=((value.allowReadings??value.placement)?1:0)|(value.measureOnly?2:0);
+            register(parser,serial,flags,factor);
         },
         trackScale(parser,factor) {
             factor=Number(factor);

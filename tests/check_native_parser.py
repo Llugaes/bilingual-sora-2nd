@@ -95,6 +95,16 @@ rpc.exports={run(){
     check(listener.status().active===1,'new native generation lost');
     inBody=null;parse(label,inner,0);
     check(!contexts.has(String(inner))&&listener.status().active===0,'replacement generation leaked');
+    for (const measurementOnly of [false,true]) {
+        listener.set(inner,{factor:.3,placement:false,allowReadings:true,measureOnly:measurementOnly});
+        // The native caller overwrites 1ab after init; the permission must be
+        // applied at parser entry, independently of placement mode.
+        inner.add(0x1a5).writeU8(1);inner.add(0x1a9).writeU8(1);inner.add(0x1ab).writeU8(0);
+        check(parse(label,inner,0)===123,'owned measurement reading permission was lost');
+        check(inner.add(0x1a9).readU8()===(measurementOnly?0:1),'measurement changed the wrong output gate');
+        check(inner.add(0x1ab).readU8()===(measurementOnly?1:0),'measurement flag was overwritten');
+        check(!contexts.has(String(inner))&&listener.status().active===0,'reading measurement scope leaked');
+    }
     // The verified S/s command tail resets both fields to an absolute label
     // size. Restore the saved native-ruby factor inside C before glyph
     // emission; normal, emphasized and nested contexts stay independent.
@@ -172,6 +182,7 @@ rpc.exports={run(){
         original_ms:baseline,js_listener_ms:js,native_listener_ms:native,calls:12000,
         native_relative_to_js:native/js,ordinary_js_callbacks:0,
         cases:['outer/nested timing','native return and permission','parent inherits until return',
+            'owned reading measurement permission with output disabled',
             'same pointer generation replacement','S5/sN ruby-scale restoration and unowned isolation',
             'two native threads','1025-entry overflow fallback with size record and same-address reentry'],
         final_status:listener.status()};

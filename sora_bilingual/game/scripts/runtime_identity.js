@@ -33,11 +33,16 @@ function scriptSha256(input) {
     }
     return h.map(v=>v.toString(16).padStart(8,'0')).join('');
 }
+const expressionPrefix=value=>(value.match(/^(?:<#[^<>]*>)*/)||[''])[0];
+const expressionBody=value=>value.slice(expressionPrefix(value).length);
 
 class ScriptIdentities {
     constructor(model,hash=scriptSha256) {
         this.hash=hash;
         this.scripts=model?.scripts||{};this.manifest=model?.manifest||{};this.cache=new Map();
+        this.sourceLanguage=model?.source_language||null;
+        this.recordPairs=model?.record_pairs||{};this.recordPairValues=model?.record_pair_values||[];
+        this.callPatterns=new WeakMap();
         this.pointers=model?.pointers||{};this.pointerModels=model?.pointer_models||{};this.pointerCache=new Map();
     }
     pointerLookup(key,source) {
@@ -66,12 +71,45 @@ class ScriptIdentities {
         }
         return result;
     }
-    lookup(identity) {
+    recordLookup(identity,key,source) {
+        if(typeof identity.source!=='string'||source!==identity.source||
+                !Object.hasOwn(this.recordPairs,key))return null;
+        const index=this.recordPairs[key],pair=this.recordPairValues[index];
+        if(!Number.isInteger(index)||!Array.isArray(pair)||pair.length!==2||
+                pair.some(value=>typeof value!=='string'))return null;
+        const id='record/'+key+'/'+identity.source;
+        if(!this.cache.has(id)) {
+            if(this.cache.size>=1024)this.cache.clear();
+            const prefix=expressionPrefix(identity.source),body=expressionBody(identity.source);
+            const bodyPair=pair.map(expressionBody),fullPair=bodyPair.map(value=>prefix+value);
+            const pairs={[identity.source]:fullPair};
+            if(body!==identity.source)pairs[body]=bodyPair;
+            this.cache.set(id,{identity,model:{pairs,plain_pairs:pairs,numeric:[]}});
+        }
+        return this.cache.get(id);
+    }
+    lookup(identity,source=identity?.source) {
+        if(Object.hasOwn(identity,'source')&&source!==identity.source)return null;
         const {signature,sha256,functionName,argumentsToken}=identity;
         const scripts=Object.hasOwn(this.scripts,signature)?this.scripts[signature]:[];
         const script=scripts.find(v=>v.sha256===sha256);
-        if(!script||!Object.hasOwn(script.functions,functionName))return null;
-        const fn=script.functions[functionName];
+        const fn=script&&Object.hasOwn(script.functions,functionName)?script.functions[functionName]:null;
+        if(Object.hasOwn(identity,'callId')) {
+            if(!Number.isInteger(identity.callId)||identity.callId<0)return null;
+            const record=fn&&Object.hasOwn(fn.records||{},identity.callId)?fn.records[identity.callId]:null;
+            if(record?.model) {
+                const id=sha256+'/'+functionName+'/called/'+identity.callId;
+                if(!this.cache.has(id)) {
+                    if(this.cache.size>=1024)this.cache.clear();
+                    this.cache.set(id,{identity,model:record.model});
+                }
+                return this.cache.get(id);
+            }
+            const key=record?.key||identity.recordKey;
+            if(!key||identity.recordKey&&identity.recordKey!==key)return null;
+            return this.recordLookup(identity,key,source);
+        }
+        if(!fn)return null;
         let call=Object.hasOwn(fn.calls,argumentsToken)?fn.calls[argumentsToken]:null;
         if(!call) {
             const actual=argumentsToken.split(','),matches=Object.entries(fn.calls).filter(([token])=>{
@@ -88,6 +126,20 @@ class ScriptIdentities {
         }
         return this.cache.get(id);
     }
+    capturedIdentity(candidate,identity,functionName,source) {
+        if(source!==null&&source!==undefined) {
+            if(typeof source!=='string')return null;
+            identity.source=source;
+            if(this.sourceLanguage)identity.sourceLocale=this.sourceLanguage;
+        }
+        if(!Object.hasOwn(identity,'callId'))return identity;
+        const record=candidate.recordKeys?.[functionName]?.[identity.callId];
+        if(!record)return identity;
+        if(typeof source!=='string'||typeof record.source!=='string'||
+                expressionBody(record.source)!==expressionBody(source)||typeof record.key!=='string')return null;
+        identity.recordKey=record.key;
+        return identity;
+    }
     captureCandidates(signature) {
         const manifest=Object.hasOwn(this.manifest,signature)?this.manifest[signature]:null;
         if(Array.isArray(manifest)&&manifest.length)return manifest;
@@ -98,7 +150,7 @@ class ScriptIdentities {
         }));
     }
     canCapture(signature) {return this.captureCandidates(signature).length>0;}
-    capture(signature,readBlob,functionName,argumentsToken) {
+    capture(signature,readBlob,functionName,argumentsToken,site=null,source=null) {
         if(typeof functionName!=='string'||!functionName||typeof argumentsToken!=='string')return null;
         const hashes=new Map();
         for(const candidate of this.captureCandidates(signature)) {
@@ -117,7 +169,36 @@ class ScriptIdentities {
                     }
                 }
                 if(hashes.get(candidate.size)!==candidate.sha256)continue;
-                return {signature,sha256:candidate.sha256,functionName,argumentsToken};
+                const identity={signature,sha256:candidate.sha256,functionName,argumentsToken};
+                if(Object.hasOwn(candidate,'callRecords')) {
+                    if(!site||!Number.isInteger(site.pc)||site.pc<4||site.pc>candidate.size)return null;
+                    const index=candidate.callRecords[functionName]||{};
+                    const prefix=site.group+':'+site.command+':',token=prefix+argumentsToken;
+                    let matches=Object.hasOwn(index,token)?index[token]:[];
+                    if(!this.callPatterns.has(index))this.callPatterns.set(index,Object.entries(index).filter(([key])=>key.includes('?')));
+                    for(const [pattern,records] of this.callPatterns.get(index)) {
+                        if(!pattern.startsWith(prefix))continue;
+                        const expected=pattern.slice(prefix.length).split(','),actual=argumentsToken.split(',');
+                        if(expected.length===actual.length&&expected.every((v,i)=>v==='?'||v===actual[i]))matches=matches.concat(records);
+                    }
+                    if(!matches.length)return this.capturedIdentity(candidate,identity,functionName,source); // Dynamic producers retain their own parameter contracts.
+                    if(matches.length>1) {
+                        const call=candidate.callSites?.[functionName]?.[site.pc];
+                        matches=call&&call.group===site.group&&call.command===site.command&&matches.includes(call.record)?[call.record]:[];
+                    }
+                    if(matches.length!==1)return null;
+                    identity.callId=matches[0];identity.pc=site.pc;
+                    return this.capturedIdentity(candidate,identity,functionName,source);
+                }
+                if(Object.hasOwn(candidate,'callSites')) {
+                    const sites=candidate.callSites[functionName];
+                    if(!site||!Number.isInteger(site.pc)||!sites||!Object.hasOwn(sites,site.pc))return null;
+                    const call=sites[site.pc],actual=argumentsToken.split(','),expected=call.token.split(',');
+                    if(call.group!==site.group||call.command!==site.command||expected.length!==actual.length||
+                            !expected.every((value,i)=>value==='?'||value===actual[i]))return null;
+                    identity.callId=call.record;identity.pc=site.pc;
+                }
+                return this.capturedIdentity(candidate,identity,functionName,source);
             }catch(e){/* An unrelated or unreadable heap buffer has no provenance. */}
         }
         return null;

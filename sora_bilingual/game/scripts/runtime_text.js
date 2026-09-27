@@ -5,10 +5,18 @@ const PRINTF_TOKEN=/%%|%(?:\d+\$)?[-+0 #]*\d*(?:\.\d+)?[dius]/g;
 class RuntimeText {
     constructor(model) {
         this.model = model;
-        this.numeric = (model.numeric || []).map(([pattern, pair]) => [new RegExp('^(?:'+pattern+')$'), pair]);
+        const detailRows=model.detail_numeric||[],shadowed=new Set(detailRows.map(([pattern])=>pattern));
+        this.numeric = (model.numeric || []).filter(([pattern])=>!shadowed.has(pattern)).map(([pattern, pair]) => [new RegExp('^(?:'+pattern+')$'), pair]);
         this.rawNumeric = (model.raw_numeric || []).map(([pattern,pair])=>[new RegExp('^(?:'+pattern+')$'),pair]);
         this.producerNumeric = (model.producer_numeric || []).map(([pattern,pair,styles])=>[new RegExp('^(?:'+pattern+')$'),pair,styles]);
-        this.detailNumeric = (model.detail_numeric || []).map(([pattern,pair])=>[new RegExp('^(?:'+pattern+')$'),pair]);
+        this.detailNumeric = detailRows.map(([pattern,pair])=>[new RegExp('^(?:'+pattern+')$'),pair]);
+        const inlineRows=model.detail_inline_icons||[];
+        this.detailInlineIcons=inlineRows.map(([pattern,pair])=>[new RegExp(pattern,'g'),pair]);
+        this.detailContexts=model.detail_contexts||{};
+        this.numericIndex=RuntimeText.numericIndex(this.numeric,model.numeric||[],shadowed);
+        this.detailNumericIndex=RuntimeText.numericIndex(this.detailNumeric,detailRows);
+        this.detailInlineIconIndex=RuntimeText.numericIndex(this.detailInlineIcons,inlineRows);
+        this.numericCandidateCache=new Map();this.detailNumericCandidateCache=new Map();this.detailInlineIconCandidateCache=new Map();
         this.scoped = Object.fromEntries(Object.entries(model.scoped || {}).map(([k,v])=>[k,new RuntimeText(v)]));
         this.details = model.details ? new RuntimeText(model.details) : null;
         this.detailSources = new Set(model.detail_sources || []);
@@ -16,7 +24,50 @@ class RuntimeText {
         this.cache = new Map();
         this.planCache = new Map();
         this.speakerCache = new Map();
+        this.historyCache = new Map();
         this.keyed = Object.fromEntries(Object.entries(model.keyed || {}).map(([k,v])=>[k,{source:v.source,tr:new RuntimeText(v.model)}]));
+    }
+    static numericLiteral(pattern) {
+        const captures=['([+-]?\\d+)','([^<>\\r\\n]{1,512}?)'],runs=[];let run='';
+        for(let at=0;at<pattern.length;) {
+            const capture=captures.find(value=>pattern.startsWith(value,at));
+            if(capture){if(run)runs.push(run);run='';at+=capture.length;continue;}
+            const value=pattern[at++];
+            if(value==='\\') {
+                if(at>=pattern.length)return null;
+                const escaped=pattern[at++];
+                if(/[A-Za-z0-9]/.test(escaped))return null;
+                run+=escaped;continue;
+            }
+            if('^$.*+?()[]{}|'.includes(value))return null;
+            run+=value;
+        }
+        if(run)runs.push(run);
+        return runs.sort((a,b)=>b.length-a.length||a.localeCompare(b))[0]||null;
+    }
+    static numericIndex(compiled,rows,excluded=new Set()) {
+        const fallback=[],byFirst=new Map();let at=0;
+        for(const row of rows) {
+            if(excluded.has(row[0]))continue;
+            const rule=compiled[at++],literal=RuntimeText.numericLiteral(row[0]),entry={at:at-1,rule};
+            if(!literal){fallback.push(entry);continue;}
+            const first=Array.from(literal)[0];
+            if(!byFirst.has(first))byFirst.set(first,new Map());
+            const bucket=byFirst.get(first);
+            if(!bucket.has(literal))bucket.set(literal,[]);
+            bucket.get(literal).push(entry);
+        }
+        return {fallback,byFirst};
+    }
+    static numericCandidates(source,index,cache) {
+        if(cache.has(source))return cache.get(source);
+        const selected=index.fallback.slice();
+        for(const first of new Set(Array.from(source))) {
+            const bucket=index.byFirst.get(first);if(!bucket)continue;
+            for(const [literal,entries] of bucket)if(source.includes(literal))selected.push(...entries);
+        }
+        selected.sort((a,b)=>a.at-b.at);const result=selected.map(entry=>entry.rule);
+        if(cache.size>=20000)cache.clear();cache.set(source,result);return result;
     }
     static renderFormat(template,replacement) {
         return template.replace(PRINTF_TOKEN,token=>token==='%%'?'%':replacement());
@@ -29,11 +80,29 @@ class RuntimeText {
         if(!this.speakerCache.has(name))this.speakerCache.set(name,{tr:new RuntimeText(selected)});
         return this.speakerCache.get(name);
     }
+    historyContext(name,source,kind='body') {
+        const model=this.model.history_contexts;if(!model)return null;
+        const body=kind==='name'?source:source.replace(/^(?:<#[^<>]*>)+/,'');
+        const shared=kind==='name'?model.names:model.texts;
+        if(!shared||!Object.hasOwn(shared,body))return null;
+        let index=shared[body];
+        const narrowed=kind==='body'&&Object.hasOwn(model.speakers||{},name)?model.speakers[name]:null;
+        if(index<0&&narrowed&&Object.hasOwn(narrowed,body))index=narrowed[body];
+        const key=JSON.stringify([kind,body,index]);
+        if(!this.historyCache.has(key)) {
+            const pair=Number.isInteger(index)&&index>=0?model.pairs[index]:null;
+            const local=pair?{pairs:{[body]:pair},plain_pairs:{[body]:pair},same_language:model.same_language}:
+                {pairs:{},plain_pairs:{},ambiguous_display:[body]};
+            if(this.historyCache.size>=2048)this.historyCache.clear();
+            this.historyCache.set(key,{tr:new RuntimeText(local),strict:true});
+        }
+        return this.historyCache.get(key);
+    }
     pair(source) {
         const producer=this.producerPair(source);if(producer)return producer;
         if (Object.hasOwn(this.model.plain_pairs,source)) return this.model.plain_pairs[source];
         let authoritative=null;
-        for(const [pattern,pair] of this.detailNumeric) {
+        for(const [pattern,pair] of RuntimeText.numericCandidates(source,this.detailNumericIndex,this.detailNumericCandidateCache)) {
             const m=pattern.exec(source);if(!m||m[0]!==source)continue;
             const rendered=pair.map(target=>{let i=1;return RuntimeText.renderFormat(target,()=>m[i++]);});
             if(authoritative&&JSON.stringify(authoritative)!==JSON.stringify(rendered))return null;
@@ -41,7 +110,7 @@ class RuntimeText {
         }
         if(authoritative)return authoritative;
         let found=null;
-        for(const [pattern,pair] of this.numeric) {
+        for(const [pattern,pair] of RuntimeText.numericCandidates(source,this.numericIndex,this.numericCandidateCache)) {
             const m=pattern.exec(source);
             if(!m || m[0]!==source)continue;
             const rendered=pair.map((target,side)=>{
@@ -55,8 +124,103 @@ class RuntimeText {
         }
         return found;
     }
+    static rubyRanges(source) {
+        if(!source.includes('<R')&&!source.includes('</R'))return [];
+        const ranges=[];let at=0;
+        while(at<source.length) {
+            const opening=source.indexOf('<R>',at),closing=source.indexOf('</R',at);
+            if(closing>=0&&(opening<0||closing<opening))return null;
+            if(opening<0)return source.includes('<R',at)?null:ranges;
+            const closeStart=source.indexOf('</R',opening+3);
+            if(closeStart<0)return null;
+            const nested=source.indexOf('<R',opening+3);
+            if(nested>=0&&nested<closeStart)return null;
+            const closeEnd=source.indexOf('>',closeStart+3);
+            if(closeEnd<0)return null;
+            ranges.push([opening,closeEnd+1]);at=closeEnd+1;
+        }
+        return ranges;
+    }
+    static overlaps(span,ranges) {return ranges.some(([start,end])=>span[0]<end&&start<span[1]);}
+    hasDetailContext(source,description) {
+        const values=this.detailContexts[description]||{},ranges=RuntimeText.rubyRanges(source);
+        if(ranges===null)return false;
+        return Object.keys(values).some(span=>{
+            let at=source.indexOf(span);while(at>=0) {if(!RuntimeText.overlaps([at,at+span.length],ranges))return true;at=source.indexOf(span,at+span.length);}return false;
+        });
+    }
+    replaceDetailContext(source,mode,description) {
+        const values=this.detailContexts[description]||{},ranges=RuntimeText.rubyRanges(source);
+        if(ranges===null)return source;
+        const selected=[];
+        for(const [span,pair] of Object.entries(values)) {
+            const target=pair[mode==='secondary'?1:0];
+            for(let at=source.indexOf(span);at>=0;at=source.indexOf(span,at+span.length))
+                if(!RuntimeText.overlaps([at,at+span.length],ranges))selected.push({start:at,end:at+span.length,target});
+        }
+        selected.sort((a,b)=>a.start-b.start||a.end-b.end);
+        if(selected.some((row,index)=>index&&selected[index-1].end>row.start))return source;
+        for(let at=selected.length-1;at>=0;at--) {const row=selected[at];source=source.slice(0,row.start)+row.target+source.slice(row.end);}
+        return source;
+    }
+    hasDetailInlineIcon(source) {
+        const ranges=RuntimeText.rubyRanges(source);if(ranges===null)return false;
+        for(const [pattern] of RuntimeText.numericCandidates(source,this.detailInlineIconIndex,this.detailInlineIconCandidateCache)) {
+            pattern.lastIndex=0;
+            for(let match;(match=pattern.exec(source));) {
+                if(!RuntimeText.overlaps([match.index,match.index+match[0].length],ranges))return true;
+                if(!match[0].length)break;
+            }
+        }
+        return false;
+    }
+    replaceDetailInlineIcons(source,mode) {
+        const ranges=RuntimeText.rubyRanges(source);if(ranges===null)return source;
+        const matches=new Map();
+        for(const [pattern,pair] of RuntimeText.numericCandidates(source,this.detailInlineIconIndex,this.detailInlineIconCandidateCache)) {
+            pattern.lastIndex=0;
+            for(let match;(match=pattern.exec(source));) {
+                const target=pair[mode==='secondary'?1:0];let at=1;
+                const rendered=RuntimeText.renderFormat(target,()=>match[at++]);
+                const key=match.index+'\x00'+(match.index+match[0].length);
+                if(!matches.has(key))matches.set(key,{start:match.index,end:match.index+match[0].length,values:new Set()});
+                matches.get(key).values.add(rendered);
+                if(!match[0].length)break;
+            }
+        }
+        const conflicting=[...matches.values()].filter(row=>row.values.size!==1);
+        const selected=[...matches.values()].filter(row=>row.values.size===1&&
+            !conflicting.some(other=>row.start<other.end&&other.start<row.end)&&
+            !RuntimeText.overlaps([row.start,row.end],ranges)).sort((a,b)=>a.start-b.start||a.end-b.end);
+        if(selected.some((row,index)=>index&&selected[index-1].end>row.start))return source;
+        for(let at=selected.length-1;at>=0;at--) {
+            const row=selected[at],value=row.values.values().next().value;
+            source=source.slice(0,row.start)+value+source.slice(row.end);
+        }
+        return source;
+    }
+    anchoredDetails(source) {
+        if(!this.details||!source.includes('\n'))return null;
+        for(let at=source.indexOf('\n');at>=0;at=source.indexOf('\n',at+1)) {
+            let suffix=source.slice(at+1);
+            for(let controls=0;controls<16;controls++) {
+                if(this.detailSources.has(suffix))return [this.details,suffix];
+                const control=/^<\/?[Cc][0-9a-fA-F]*>|^<\/?B>|^<[sS]\d+>/.exec(suffix);
+                if(!control)break;
+                suffix=suffix.slice(control[0].length);
+            }
+        }
+        return null;
+    }
     rawPair(source) {
         if(Object.hasOwn(this.model.pairs,source))return this.model.pairs[source];
+        // Preserve layout-owned size controls around a complete known literal.
+        // Do not use a stripped fragment or a generic printf match as identity.
+        const size=/^(?:<[sS]\d+>)+/.exec(source);
+        if(size) {
+            const body=source.slice(size[0].length);
+            if(Object.hasOwn(this.model.pairs,body))return this.model.pairs[body].map(target=>size[0]+target);
+        }
         const producer=this.producerPair(source);if(producer)return producer;
         if(!source.includes('<'))return null;
         let found=null;
@@ -248,8 +412,11 @@ class RuntimeText {
             if(this.planCache.size>=20000)this.planCache.clear();this.planCache.set(ck,result);return result;
         }
         let result;
+        const anchored=this.anchoredDetails(source);
         const known=this.rawPair(source)!==null||
             this.rawPair(source.replace(/^(?:<#[^<>]*>)+/,''))!==null||
+            Boolean(anchored&&anchored[0].hasDetailInlineIcon(source))||
+            Boolean(anchored&&anchored[0].hasDetailContext(source,anchored[1]))||
             (Object.hasOwn(this.keyed,key)&&this.keyed[key].source===source);
         const prefix=(a.match(/^(?:<#[^<>]*>)*/)||[''])[0],body=a.slice(prefix.length),visibleB=RuntimeText.visualSecondary(b);
         if(mode==='annotation'&&known&&prefix&&!/[<>]/.test(body+visibleB)&&
@@ -288,15 +455,15 @@ class RuntimeText {
         if(parts.length>1)return parts.map((p,i)=>i%2?p:this.component(p,mode)).join('');
         return source;
     }
-    translate(source,mode='annotation',key='',scope='') {
+    translate(source,mode='annotation',key='',scope='',detailContext='') {
         if(this.model.same_language&&mode==='annotation')mode='primary';
-        const ck=mode+'\x00'+key+'\x00'+scope+'\x00'+source;
+        const ck=mode+'\x00'+key+'\x00'+scope+'\x00'+detailContext+'\x00'+source;
         if(this.cache.has(ck))return this.cache.get(ck);
-        const result=this.resolve(source,mode,key,scope);
+        const result=this.resolve(source,mode,key,scope,detailContext);
         if(this.cache.size>=20000)this.cache.clear();
         this.cache.set(ck,result);return result;
     }
-    resolve(source,mode,key,scope) {
+    resolve(source,mode,key,scope,detailContext='') {
         if(mode==='bilingual')mode='annotation';
         if(source.length>16384)return source;
         const keyed=Object.hasOwn(this.keyed,key)?this.keyed[key]:null;
@@ -304,10 +471,10 @@ class RuntimeText {
         if(scope&&this.scoped[scope]) {
             const t=this.scoped[scope].translate(source,mode);if(t!==source)return t;
         }
-        if(this.details) {
-            for(let at=source.indexOf('\n');at>=0;at=source.indexOf('\n',at+1))
-                if(this.detailSources.has(source.slice(at+1)))return this.details.translate(source,mode);
-        }
+        const anchored=this.anchoredDetails(source);
+        if(anchored)return anchored[0].translate(source,mode,'','',anchored[1]);
+        if(detailContext)source=this.replaceDetailContext(source,mode,detailContext);
+        if(this.detailInlineIcons.length)source=this.replaceDetailInlineIcons(source,mode);
         if(this.ambiguousDisplay.has(source)||this.ambiguousDisplay.has(source.replace(/^(?:<#[^<>]*>)+/,'')))return source;
         const pair=this.rawPair(source);
         if(pair&&(mode==='primary'||mode==='secondary'))return pair[mode==='primary'?0:1];

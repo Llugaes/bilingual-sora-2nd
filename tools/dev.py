@@ -29,6 +29,7 @@ def main():
             "--test",
             "tests/test_native_agent.js",
             "tests/test_runtime_identity.js",
+            "tests/test_runtime_text.js",
             "tests/test_runtime_paragraph.js",
             "tests/test_native_transport.js",
         )
@@ -39,7 +40,9 @@ def main():
             run(sys.executable, "-X", "utf8", "tests/check_native_parser.py")
             run(sys.executable, "-X", "utf8", "tests/check_native_size_hook.py")
             run(sys.executable, "-X", "utf8", "tests/check_native_measure.py")
+            run(sys.executable, "-X", "utf8", "tests/check_native_nested_ruby.py")
             run(sys.executable, "-X", "utf8", "tests/check_native_reentry.py")
+            run(sys.executable, "-X", "utf8", "tests/check_native_log_activation.py")
             run(sys.executable, "-X", "utf8", "tests/check_native_refresh.py")
     elif command == "publish-local":
         run(sys.executable, "-m", "sora_bilingual.updates.tool_updates")

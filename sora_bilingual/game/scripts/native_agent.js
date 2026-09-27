@@ -29,7 +29,7 @@ let scriptIdentities=null,tableIdentities=null,identityHits=0,identityMisses=0,t
 const dialogueFrames=new Map();
 const logOrigins=typeof LogIdentities==='function'?new LogIdentities():null;
 const logWriteFrames=new Map(),logPresentFrames=new Map();
-const logBuildFrames=new Map(),logRows=new Map();
+const logBuildFrames=new Map(),logRows=new Map(),logControllers=new Map();
 const logOriginStats={commits:0,withIdentity:0,matched:0,rejected:0,resets:0};
 const questFrames=new Map();
 const logMeasureFrames=new Map(),logHeightCache=new Map(),logNameCache=new Map();
@@ -37,6 +37,7 @@ let logCacheBytes=0,logFontGeneration=0;
 const logMeasureStats={runs:0,totalMs:0,hits:0,misses:0,nameHits:0,fixedRows:0,fallbacks:0,lastFallback:null};
 const resourceHash=typeof createNativeSha256==='function'?createNativeSha256():scriptSha256;
 const auxiliaryContexts=new Map(), compensation=new Map(), rubyPermissions=new Map();
+const annotationMetrics=new Map();
 const subtitleRoots=new Set(),layoutRoots=new Map();let scannedLayouts=false;
 for (const [name, point] of Object.entries(REPORT.native)) {
     const actual = Array.from(new Uint8Array(base.add(point.rva).readByteArray(16)))
@@ -156,6 +157,7 @@ function activeRewrite(p) {
     for(let i=stack.length-1;i>=0;i--)if(stack[i].pointer.equals(p))return stack[i];
     return null;
 }
+const sourceOnlyDialogue={model:{pairs:{},plain_pairs:{}}};
 function wantedText(row,allocateLayers=true) {
     const started=Date.now();
     const p=row.pointer,key=translationKey(row);
@@ -169,13 +171,16 @@ function wantedText(row,allocateLayers=true) {
     if(enabled&&!failed) {
         if(resolver) {
             const mode=renderMode==='bilingual'?'annotation':renderMode;
-            const context=(row.scriptIdentity&&scriptIdentities?scriptIdentities.lookup(row.scriptIdentity):null)||
+            const strictDialogue=Number.isInteger(row.scriptIdentity?.callId);
+            const scriptContext=row.scriptIdentity&&scriptIdentities?scriptIdentities.lookup(row.scriptIdentity,row.original):null;
+            const context=strictDialogue?(scriptContext||sourceOnlyDialogue):scriptContext||
                 (row.scriptPointer&&scriptIdentities?scriptIdentities.pointerLookup(row.scriptPointer,row.original):null)||
                 (row.tableIdentity&&tableIdentities?tableIdentities.lookup(row.tableIdentity,row.original):null)||
+                (row.logKind?resolver.historyContext(row.logSpeaker||'',row.original,row.logKind):null)||
                 (row.logSpeaker?resolver.speakerContext(row.logSpeaker,row.original):null);
             if(context&&!context.tr)context.tr=new TextFactory(context.model);
             const local=context?.tr;
-            const useLocal=local&&(Object.hasOwn(local.model.pairs,row.original)||
+            const useLocal=local&&(strictDialogue||context.strict||Object.hasOwn(local.model.pairs,row.original)||
                 local.translate(row.original,'secondary')!==row.original||local.translate(row.original,'primary')!==row.original);
             const translator=useLocal?local:resolver;
             const paragraph=row.paragraph&&paragraphs?paragraphs.lookup(row.paragraph.source,row.paragraph.index,row.original,mode):null;
@@ -206,7 +211,8 @@ function wantedText(row,allocateLayers=true) {
     // Original readings/size commands must keep their parser advances, but
     // still receive the same owned-glyph scale as other bilingual text.
     // Readings confined to the secondary never exempt the main paragraph.
-    const primaryMetrics=row.plan.kind==='layered'&&/<R>|<[sS]\d+>/.test(row.original);
+    const primaryReadings=row.plan.kind==='layered'&&row.plan.layers.some(layer=>(layer.primary||'').includes('<R>'));
+    const primaryMetrics=primaryReadings||(row.plan.kind==='layered'&&/<[sS]\d+>/.test(row.original));
     const hasText=text=>/[A-Za-z0-9\u00c0-\uffff]/.test(text.replace(/<[^<>]*>/g,''));
     const uncovered=row.plan.kind==='ruby'?hasText(wanted.replace(/<R>[^<>]*<\/R[^<>]*>/g,'')):
         row.plan.kind==='layered'&&wanted.split(/\r\n|\n|\\n/).some(line=>!line.includes('<R></R_>')&&hasText(line));
@@ -221,7 +227,7 @@ function wantedText(row,allocateLayers=true) {
     }
     row.reserveRubyHeight=row.plan.kind==='ruby'&&!uncovered&&!nativeSizeFallback;
     row.preservePrimaryLayout=shrink&&Boolean(uncovered||nativeSizeFallback||primaryMetrics);
-    row.extendLineSpacing=shrink&&!uncovered&&!nativeSizeFallback&&!primaryMetrics;
+    row.extendLineSpacing=shrink&&!uncovered&&!nativeSizeFallback&&(!primaryMetrics||primaryReadings);
     // Mixed labels keep native parser advances. Their owned glyphs are scaled
     // after layout, so untranslated levels, times and icons do not move.
     if(shrink&&!row.preservePrimaryLayout&&annotationScale<1) {
@@ -424,15 +430,16 @@ function copyOwnedText(row,text) {
     if(readText(p)!==text)throw Error('SetText did not retain a copied string');
     row.displayed=text;writes++;
 }
-function observeNativeText(p) {
+function observeNativeText(p,identify=null,force=false) {
     if(activeRewrite(p)||!isLabel(p))return;
     const lease=enterLabel(p);if(!lease)return;
     try {
         const current=readText(p),existing=labels.get(String(p));
-        if(existing&&existing.displayed===current)return;
+        if(!force&&existing&&existing.displayed===current)return;
         const row=existing||remember(p,current);
         row.original=current;row.displayed=current;
-        row.scriptIdentity=null;row.scriptPointer=null;row.tableIdentity=null;row.paragraph=null;row.logSpeaker=null;
+        row.scriptIdentity=null;row.scriptPointer=null;row.tableIdentity=null;row.paragraph=null;row.logSpeaker=null;row.logKind=null;
+        if(identify)identify(row);
         const renderEpoch=epoch,wanted=wantedText(row);
         if(wanted!==current){copyOwnedText(row,wanted);immediateWrites++;}
         row.epoch=renderEpoch;captureMetadata(row);
@@ -450,7 +457,7 @@ function adoptCopiedLabel(p,source) {
     try {
         const row=remember(p,original.original);
         row.displayed=current;
-        for(const key of ['scriptIdentity','scriptPointer','tableIdentity','paragraph','logSpeaker'])row[key]=original[key];
+        for(const key of ['scriptIdentity','scriptPointer','tableIdentity','paragraph','logSpeaker','logKind'])row[key]=original[key];
         const renderEpoch=epoch,wanted=wantedText(row);
         if(wanted!==current){copyOwnedText(row,wanted);immediateWrites++;}
         row.epoch=renderEpoch;captureMetadata(row);
@@ -571,6 +578,11 @@ const rubyContextCallbacks={
             const layer=auxiliaryLayer(p,this.context.rbx,row);
             if(layer) {
                 this.target=args[0];this.layer=layer;
+                if(this.baseMeasurement&&((layer.layer.primary||'').includes('<R>')||layer.layer.text.includes('<R>'))) {
+                    annotationMetrics.set(String(this.context.rbx),{primary:0,secondary:0,
+                        origin:this.context.rbx.add(4).readFloat(),layer:layer.layer});
+                }
+                this.metrics=annotationMetrics.get(String(this.context.rbx));
                 const text=this.baseMeasurement?(layer.layer.primary||layer.row.original):layer.layer.text;
                 args[1]=this.baseMeasurement?layer.primaryBuffer:layer.buffer;args[2]=ptr([...text].length);
                 return;
@@ -600,6 +612,17 @@ const rubyContextCallbacks={
                 // additional native call and no primary text is drawn here.
                 this.target.add(0x1a9).writeU8(0);
                 this.target.add(0x1a5).writeU8(1);
+                if(this.metrics) {
+                    // Read original primary readings in the existing measuring
+                    // pass, with output disabled. Only owned layer scopes gain
+                    // nested-reading permission; native single-language ruby
+                    // keeps its original recursion/permission rules.
+                    this.target.add(0x1ab).writeU8(1);
+                    const scope={factor:1,placement:false,allowReadings:true,measureOnly:true,
+                        metrics:this.metrics,metricRole:'primary',readingDepth:0};
+                    if(nativeParser)nativeParser.set(this.target,scope);
+                    else auxiliaryContexts.set(String(this.target),scope);
+                }
                 return;
             }
             const x = this.target.readFloat();
@@ -616,7 +639,11 @@ const rubyContextCallbacks={
             }
             if(this.layer) {
                 const factor=this.target.add(0x15c).readFloat();
-                const auxiliary={factor,placement:this.placement};
+                const auxiliary={factor,placement:this.placement,allowReadings:!!this.metrics||this.placement};
+                if(this.metrics&&!this.placement) {
+                    Object.assign(auxiliary,{metrics:this.metrics,metricRole:'secondary',readingDepth:0,measureOnly:true});
+                    this.target.add(0x1a9).writeU8(0);this.target.add(0x1ab).writeU8(1);
+                }
                 if(nativeParser)nativeParser.set(this.target,auxiliary);
                 else auxiliaryContexts.set(String(this.target),auxiliary);
                 if(this.placement) {
@@ -632,7 +659,13 @@ const rubyContextCallbacks={
             if(this.inherited) {
                 // Register this nested reading's own fixed multiplier for any
                 // S/s commands it contains, and for a deeper native reading.
-                const auxiliary={factor:this.target.add(0x15c).readFloat(),placement:this.placement};
+                const auxiliary={factor:this.target.add(0x15c).readFloat(),placement:this.placement,
+                    allowReadings:this.inherited.allowReadings??this.placement};
+                if(this.inherited.metrics) {
+                    Object.assign(auxiliary,{metrics:this.inherited.metrics,metricRole:this.inherited.metricRole,
+                        readingDepth:this.inherited.readingDepth+1,measureOnly:true});
+                    this.target.add(0x1a9).writeU8(0);this.target.add(0x1ab).writeU8(1);
+                }
                 if(nativeParser)nativeParser.set(this.target,auxiliary);
                 else auxiliaryContexts.set(String(this.target),auxiliary);
                 if(this.placement) {
@@ -683,9 +716,37 @@ if(REPORT.native.ruby_base_measure_end) Interceptor.attach(base.add(REPORT.nativ
 if(REPORT.native.ruby_compensate) Interceptor.attach(base.add(REPORT.native.ruby_compensate.rva),{onEnter(){
     try {
         const p=this.context.rbx;
+        const scope=auxiliaryContexts.get(String(p));
+        if(scope?.metrics&&scope.readingDepth===0) {
+            // 0x587224 has completed this reading's existing native parse.
+            // Its bounds are at rbp-0x40 + 0x1b8..0x1c4. Read the height,
+            // not a guessed font size, once per native reading on this line.
+            const top=this.context.rbp.add(0x17c).readS32(),bottom=this.context.rbp.add(0x184).readS32();
+            const height=bottom-top;
+            if(height>=0&&height<=65536)scope.metrics[scope.metricRole]=Math.max(scope.metrics[scope.metricRole],height);
+        }
         const row=ownedRow(this.context.r15);
         beginAnnotationLane(this.context.r15,p,'end',row);
-        if(!auxiliaryLayer(this.context.r15,p,row)&&row?.plan.kind!=='ruby')return;
+        const layer=auxiliaryLayer(this.context.r15,p,row);
+        if(layer) {
+            const key=String(p),metrics=annotationMetrics.get(key);
+            if(metrics?.layer===layer.layer) {
+                annotationMetrics.delete(key);
+                const reserve=(metrics.primary+metrics.secondary)*(row.preservePrimaryLayout?annotationScale:1);
+                const origin=p.add(4).readFloat(),next=origin+reserve;
+                if(!Number.isFinite(next)||reserve<0||reserve>65536)throw Error('Invalid native reading reserve');
+                if(reserve) {
+                    // The anchor precedes primary glyphs, so native bounds and
+                    // subsequent newlines include this reserve in both passes.
+                    // Include the old origin so the first line's blank space
+                    // is not cancelled by bounding-box normalisation.
+                    p.add(4).writeFloat(next);
+                    p.add(0x1bc).writeS32(Math.min(p.add(0x1bc).readS32(),Math.floor(origin)));
+                    p.add(0x1c4).writeS32(Math.max(p.add(0x1c4).readS32(),Math.ceil(next)));
+                }
+            }
+        }
+        if(!layer&&row?.plan.kind!=='ruby')return;
         // Measurement always retains the native one-time height reserve.
         // Suppressing it only for mixed/layered cold setters made their bounds
         // 12 units shorter than nested setters (whose hooks Frida suppresses).
@@ -713,7 +774,11 @@ if(REPORT.native.parse_text) Interceptor.attach(base.add(REPORT.native.parse_tex
         // post-parse geometry loop, without streaming any dialogue content.
         if(args[1].equals(args[0].add(0x400)))this.started=Date.now();
         // Permit original ruby inside the secondary's own temporary context.
-        if(this.aux)args[1].add(0x1a5).writeU8(auxiliaryContexts.get(this.key).placement?0:1);
+        if(this.aux) {
+            const scope=auxiliaryContexts.get(this.key);
+            args[1].add(0x1a5).writeU8((scope.allowReadings??scope.placement)?0:1);
+            if(scope.measureOnly){args[1].add(0x1a9).writeU8(0);args[1].add(0x1ab).writeU8(1);}
+        }
     },
     onLeave(){if(this.aux)auxiliaryContexts.delete(this.key);recordTiming('parse',this.started);}
 });
@@ -796,7 +861,8 @@ if(REPORT.native.dialogue_builder)Interceptor.attach(base.add(REPORT.native.dial
             const argc=vm.add(0x70).readU32(),top=vm.add(0x64).readS32(),stack=vm.add(0x58).readPointer();
             if(argc>512||top<argc*4||top>16*1024*1024)return;
             const values=[];for(let i=0;i<argc;i++)values.push(stack.add(top-(i+1)*4).readU32());
-            this.candidate={signature,blob,functionName,argumentsToken:values.join(',')};
+            const site={pc:vm.add(0x10).readU32(),group:vm.add(0x68).readU32(),command:vm.add(0x6c).readU32()};
+            this.candidate={signature,blob,functionName,argumentsToken:values.join(','),site};
         } catch(e) {
             // Unknown or changing resources lose identity, never game stability.
             identityMisses++;
@@ -810,8 +876,8 @@ if(REPORT.native.dialogue_builder)Interceptor.attach(base.add(REPORT.native.dial
             if(RuntimeText.byteLength(source)>=2048)return;
             // Provenance belongs to the source invocation, not the selected
             // languages. A later language may distinguish today's equal pair.
-            const {signature,blob,functionName,argumentsToken}=this.candidate;
-            this.identity=scriptIdentities?.capture(signature,n=>resourceHash.pointer?{pointer:blob,byteLength:n}:blob.readByteArray(n),functionName,argumentsToken);
+            const {signature,blob,functionName,argumentsToken,site}=this.candidate;
+            this.identity=scriptIdentities?.capture(signature,n=>resourceHash.pointer?{pointer:blob,byteLength:n}:blob.readByteArray(n),functionName,argumentsToken,site,source);
             if(!this.identity)return;
             this.frame.outputs.set(String(this.output),{source,identity:this.identity});
         }catch(e){identityMisses++;}finally{recordTiming('identity',started);}
@@ -832,7 +898,7 @@ function logStamp(record) {
     return Array.from(new Uint8Array(record.readByteArray(0x188))).map(v=>v.toString(16).padStart(2,'0')).join('');
 }
 function resetLogOrigins() {
-    logOrigins?.reset();logWriteFrames.clear();logPresentFrames.clear();logBuildFrames.clear();logRows.clear();logOriginStats.resets++;
+    logOrigins?.reset();logWriteFrames.clear();logPresentFrames.clear();logBuildFrames.clear();logRows.clear();logControllers.clear();logOriginStats.resets++;
 }
 function newLogContributions() {
     const owner=logOwner();
@@ -846,7 +912,7 @@ function captureLogPart(frame,slot,input) {
                 !Number.isInteger(slot)||slot<0||slot>=1600||frame.parts.length>=1600)throw Error('Invalid log contribution');
         const record=owner.add(0x1604ec+slot*0x18c);
         if(!record.add(0x64).equals(input))throw Error('Unrelated log source pointer');
-        const entry=logOrigins.entries.get(slot),stamp=entry?logStamp(record):null;
+        const entry=logOrigins.entries.get(slot),stamp=logStamp(record);
         const speaker=record.add(4).readUtf8String();
         if(RuntimeText.byteLength(speaker)>=0x60)throw Error('Invalid log speaker');
         frame.parts.push({slot,entry,stamp,speaker,text:input.readUtf8String()});
@@ -868,25 +934,94 @@ function logContributionsIdentity(frame,source) {
 }
 function logContributionsSpeaker(frame,source) {
     const owner=logOwner();
-    if(!frame||frame.invalid||!owner||frame.owner!==String(owner)||frame.epoch!==logOrigins.epoch||!frame.parts.length)return null;
-    if(frame.parts.map(part=>part.text).join('')!==source)return null;
-    const speaker=frame.parts[0].speaker;if(!speaker)return null;
+    if(!frame||frame.invalid||!owner||frame.owner!==String(owner)||frame.epoch!==logOrigins.epoch||!frame.parts.length)return undefined;
+    if(frame.parts.map(part=>part.text).join('')!==source)return undefined;
+    const speaker=frame.parts[0].speaker;
     for(const part of frame.parts) {
         const record=owner.add(0x1604ec+part.slot*0x18c);
-        if(part.speaker!==speaker||record.add(4).readUtf8String()!==speaker||record.add(0x64).readUtf8String()!==part.text)return null;
+        if(part.speaker!==speaker||record.add(4).readUtf8String()!==speaker||record.add(0x64).readUtf8String()!==part.text)return undefined;
     }
     return speaker;
+}
+function rememberLogController(frame) {
+    try {
+        const {controller,body,slot,parts}=frame||{};
+        if(!controller||!body||!parts||parts.invalid||!parts.parts.length||
+                controller.add(0x38).readS32()!==slot||!controller.add(0x18).readPointer().equals(body))return;
+        const owner=logOwner();
+        if(!owner||parts.owner!==String(owner)||parts.epoch!==logOrigins.epoch)return;
+        const key=String(controller);
+        // The game owns a fixed controller pool. Refuse unbounded pointer
+        // churn without disabling ordinary translation.
+        if(!logControllers.has(key)&&logControllers.size>=4096){logOriginStats.rejected++;return;}
+        logControllers.set(key,{controller,body,slot,owner:parts.owner,epoch:parts.epoch,
+            source:parts.parts.map(part=>part.text).join(''),
+            parts:parts.parts.map(part=>({slot:part.slot,text:part.text,speaker:part.speaker,
+                stamp:part.stamp,entry:part.entry}))});
+    }catch(_){logOriginStats.rejected++;}
+}
+function currentLogControllerParts(binding) {
+    const owner=logOwner();
+    if(!binding||!owner||binding.owner!==String(owner)||binding.epoch!==logOrigins.epoch||
+            binding.controller.add(0x38).readS32()!==binding.slot||
+            !binding.controller.add(0x18).readPointer().equals(binding.body))return null;
+    const current=newLogContributions();
+    for(const saved of binding.parts) {
+        const record=owner.add(0x1604ec+saved.slot*0x18c);
+        captureLogPart(current,saved.slot,record.add(0x64));
+    }
+    if(current.invalid||current.parts.length!==binding.parts.length)return null;
+    for(let i=0;i<current.parts.length;i++)
+        if(current.parts[i].slot!==binding.parts[i].slot||current.parts[i].text!==binding.parts[i].text||
+                current.parts[i].speaker!==binding.parts[i].speaker||current.parts[i].stamp!==binding.parts[i].stamp||
+                current.parts[i].entry!==binding.parts[i].entry)return null;
+    return current;
+}
+function reconcileLogController(controller) {
+    const binding=logControllers.get(String(controller));
+    const owner=logOwner();
+    if(!binding||!owner||binding.owner!==String(owner)||binding.epoch!==logOrigins.epoch||
+            binding.controller.add(0x38).readS32()!==binding.slot||
+            !binding.controller.add(0x18).readPointer().equals(binding.body)||
+            readText(binding.body)!==binding.source)return;
+    const parts=currentLogControllerParts(binding);
+    if(!parts)return;
+    const source=parts.parts.map(part=>part.text).join('');
+    if(source!==binding.source)return;
+    const thread=Process.getCurrentThreadId(),stack=logPresentFrames.get(thread)||[];
+    const frame={slot:binding.slot,body:binding.body,parts};stack.push(frame);logPresentFrames.set(thread,stack);
+    try {
+        observeNativeText(binding.body,row=>identifyInput(row,binding.body.add(0x318).readPointer(),
+            base.add(REPORT.native.log_text_return.rva)),true);
+    }finally {
+        if(stack.at(-1)===frame)stack.pop();else resetLogOrigins();
+        if(!stack.length)logPresentFrames.delete(thread);
+    }
 }
 function logInputProvenance(row,input,caller) {
     if(!logOrigins)return null;
     try {
         const thread=Process.getCurrentThreadId(),present=logPresentFrames.get(thread)?.at(-1);
+        if(present&&REPORT.native.log_name_return&&caller?.equals(base.add(REPORT.native.log_name_return.rva))&&
+                Number.isInteger(present.slot)&&present.slot>=0&&present.slot<1600) {
+            const owner=logOwner(),name=owner?.add(0x1604f0+present.slot*0x18c).readUtf8String();
+            if(name&&name===row.original&&RuntimeText.byteLength(name)<0x60)return {kind:'name',speaker:name};
+            return null;
+        }
         let parts=null;
         if(present&&caller?.equals(base.add(REPORT.native.log_text_return.rva))&&row.pointer.equals(present.body))parts=present.parts;
         const measure=logMeasureFrames.get(thread)?.at(-1);
+        if(measure?.record&&row.pointer.equals(measure.name)&&input.equals(measure.record.add(0x20).readPointer())) {
+            const pieces=logRows.get(String(measure.owner))?.get(String(measure.record));
+            const speaker=pieces&&logContributionsSpeaker(pieces,pieces.parts.map(part=>part.text).join(''));
+            return speaker&&speaker===row.original?{kind:'name',speaker}:null;
+        }
         if(measure?.record&&row.pointer.equals(measure.body)&&input.equals(measure.record.add(8).readPointer()))
             parts=logRows.get(String(measure.owner))?.get(String(measure.record));
-        if(parts)return {identity:logContributionsIdentity(parts,row.original),speaker:logContributionsSpeaker(parts,row.original)};
+        if(parts) {
+            const speaker=logContributionsSpeaker(parts,row.original);
+            if(speaker!==undefined)return {identity:logContributionsIdentity(parts,row.original),speaker,kind:'body'};
+        }
     }catch(_){logOriginStats.rejected++;}
     return null;
 }
@@ -930,16 +1065,19 @@ if(logOrigins&&REPORT.native.log_record_bind)Interceptor.attach(base.add(REPORT.
     onEnter(args){
         this.thread=Process.getCurrentThreadId();
         const stack=logPresentFrames.get(this.thread)||[];
-        this.frame={slot:args[1].toInt32(),body:null,parts:null};
+        this.frame={controller:args[0],slot:args[1].toInt32(),body:null,parts:null};
         try {this.frame.body=args[0].add(0x18).readPointer();this.frame.parts=newLogContributions();}
         catch(_){logOriginStats.rejected++;}
         stack.push(this.frame);logPresentFrames.set(this.thread,stack);
     },
     onLeave(){
         const stack=logPresentFrames.get(this.thread);
-        if(stack?.at(-1)===this.frame)stack.pop();else resetLogOrigins();
+        if(stack?.at(-1)===this.frame){rememberLogController(this.frame);stack.pop();}else resetLogOrigins();
         if(!stack?.length)logPresentFrames.delete(this.thread);
     }
+});
+if(logOrigins&&REPORT.native.log_record_activate)Interceptor.attach(base.add(REPORT.native.log_record_activate.rva),{
+    onEnter(args){try{reconcileLogController(args[0]);}catch(e){fail(e);}}
 });
 for(const [point,multiple] of [['log_present_append',true],['log_present_single',false]])if(REPORT.native[point])
     Interceptor.attach(base.add(REPORT.native[point].rva),{onEnter(){
@@ -1015,6 +1153,7 @@ function questLineContext(incoming,caller) {
 }
 function identifyInput(row,input,caller) {
     row.logSpeaker=null;
+    row.logKind=null;
     row.paragraph=questLineContext(row.original,caller);
     const frame=dialogueFrames.get(Process.getCurrentThreadId())?.at(-1);
     const origin=frame?.outputs.get(String(input));
@@ -1027,6 +1166,7 @@ function identifyInput(row,input,caller) {
         const origin=logInputProvenance(row,input,caller);
         if(origin?.identity){row.scriptIdentity=origin.identity;identityHits++;logOriginStats.matched++;}
         row.logSpeaker=origin?.speaker||null;
+        row.logKind=origin?.kind||null;
     }
     if(needsIdentity&&!row.scriptIdentity&&tableIdentities) {
         const entry=tableIdentities.select(input,row.original);
@@ -1139,7 +1279,7 @@ const logMeasureGate=REPORT.native.log_measure_row?installLogMeasureGate({
         const frame=logMeasureFrames.get(Process.getCurrentThreadId())?.at(-1);
         if(!frame||!frame.owner.equals(this.context.r13))return;
         frame.pending=null;
-        frame.record=this.context.rsp.add(0xc0).readPointer();frame.body=this.context.rdi;
+        frame.record=this.context.rsp.add(0xc0).readPointer();frame.body=this.context.rdi;frame.name=this.context.rsi;
         if(!enabled||failed)return;
         try {
             const mode=frame.owner.add(0x1d4).readU32();
@@ -1268,7 +1408,7 @@ Interceptor.attach(base.add(REPORT.native.update.rva), {onEnter(args) {
             &&(row.metadata?.flags&0x0c)===(p.add(0x2e8).readU32()&0x0c)) return;
         // A text write bypassing SetText invalidates our remembered source.
         const current=readText(p);
-        if (current !== row.displayed) {row.original=current;row.displayed=current;row.scriptIdentity=null;row.scriptPointer=null;row.tableIdentity=null;row.paragraph=null;row.logSpeaker=null;}
+        if (current !== row.displayed) {row.original=current;row.displayed=current;row.scriptIdentity=null;row.scriptPointer=null;row.tableIdentity=null;row.paragraph=null;row.logSpeaker=null;row.logKind=null;}
         const renderEpoch=epoch,wanted=wantedText(row);
         const replay = epoch === replayEpoch && Object.hasOwn(dictionary,row.original);
         const changed=wanted!==row.displayed||replay;

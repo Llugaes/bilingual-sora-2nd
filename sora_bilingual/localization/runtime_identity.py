@@ -17,8 +17,176 @@ from sora_bilingual.localization.resources import (
     _logical_script_entries,
     _utf8z,
     _parse_code,
+    _value,
+    Called,
+    assembled_dialogue,
 )
 from sora_bilingual.localization.menu_text import MenuTranslator, complete_pair, needs_annotation
+
+
+_DIALOGUE_COMMANDS = (0, 6, 7, 8, 19)
+
+
+def _source_called_id(entry, language, canonical):
+    """Resolve a catalog call key to the selected source archive's record ID."""
+    called_ids = entry.get("called_ids")
+    if called_ids is None:
+        return canonical
+    called = called_ids.get(language)
+    return called if isinstance(called, int) and called >= 0 else None
+
+
+def _call_entry_family(entry):
+    key = entry.get("key", "").split("/alignment/", 1)[0]
+    if "/called/" not in key:
+        return None
+    tail = key.split("/called/", 1)[1].split("/", 1)
+    return tail[1].split("/", 1)[0] if len(tail) == 2 else None
+
+
+def _dedupe_call_entries(entries, primary, secondary, language):
+    """Drop only same-record rows dominated by an exact complete row."""
+    entries = list(entries)
+    complete = [
+        entry
+        for entry in entries
+        if language in entry["texts"] and complete_pair(entry["texts"], primary, secondary)
+    ]
+    result = []
+    seen_complete = set()
+    for entry in entries:
+        texts = entry["texts"]
+        family = _call_entry_family(entry)
+        dominators = [
+            candidate
+            for candidate in complete
+            if _call_entry_family(candidate) == family
+            and all(candidate["texts"].get(locale) == text for locale, text in texts.items())
+        ]
+        if dominators:
+            best = max(
+                dominators,
+                key=lambda candidate: (len(candidate["texts"]), candidate.get("key", "")),
+            )
+            identity = (family, tuple(sorted(best["texts"].items())))
+            if complete_pair(texts, primary, secondary) is None:
+                continue
+            if identity in seen_complete:
+                continue
+            seen_complete.add(identity)
+            result.append(best)
+        else:
+            result.append(entry)
+    return result
+
+
+def _stable_dialogue_record(entry):
+    """Return the locale-independent identity of one physical dialogue call."""
+    key = entry.get("key", "").split("/alignment/", 1)[0]
+    if not key.endswith("/assembled_dialogue") or "/called/" not in key:
+        return None
+    called = key.rsplit("/called/", 1)[1].split("/", 1)
+    if len(called) != 2 or not called[0].isdigit():
+        return None
+    return key
+
+
+def _record_candidate(entries, language):
+    """Select one exact source for a canonical dialogue record."""
+    candidates = set()
+    for entry in entries:
+        key = _stable_dialogue_record(entry)
+        source = entry["texts"].get(language)
+        if key is not None and source is not None:
+            candidates.add((key, source))
+    return next(iter(candidates)) if len(candidates) == 1 else None
+
+
+def _script_call_sites(data, start, names):
+    """Map the VM's next PC to the compiler's independent called-record ID.
+
+    VM 0x5e7749..0x5e7790 stores the PC after opcode 36's three operands
+    before dispatch. Match the complete call sequence, never a filtered text
+    sequence, and validate each system operation and argument count.
+    """
+    starts = sorted(struct.unpack_from("<I", data, start + i * 32)[0] for i in range(len(names)))
+    global_at, global_count = struct.unpack_from("<II", data, 12)
+    globals_ = tuple(
+        _utf8z(data, struct.unpack_from("<I", data, global_at + i * 8)[0] & 0x3FFFFFFF)
+        for i in range(global_count)
+    )
+    result, records = {}, {}
+    for number, name in enumerate(names):
+        at = start + number * 32
+        count, called_at = struct.unpack_from("<II", data, at + 16)
+        calls, wanted = [], set()
+        for call in range(count):
+            target, kind, argc, args_at = struct.unpack_from("<IHHI", data, called_at + call * 12)
+            args = [struct.unpack_from("<II", data, args_at + i * 8) for i in range(argc)]
+            calls.append((target, kind, args))
+            if (
+                kind == 3
+                and argc >= 3
+                and args[0] == (0x40000005, 0)
+                and args[1] in ((0x40000000 + command, 0) for command in _DIALOGUE_COMMANDS)
+            ):
+                decoded = tuple(
+                    _value(data, args_at + i * 8) if tag == 0 else ("dynamic", None)
+                    for i, (_, tag) in enumerate(args)
+                )
+                if assembled_dialogue(Called(None, kind, decoded)) is not None:
+                    wanted.add(call)
+        if not wanted:
+            continue
+        index = defaultdict(list)
+        for call in sorted(wanted):
+            args = calls[call][2]
+            token = ",".join(str(value) if tag == 0 else "?" for value, tag in args[2:])
+            index[f"5:{args[1][0] - 0x40000000}:{token}"].append(call)
+        records[name] = dict(index)
+        code_at = struct.unpack_from("<I", data, at)[0]
+        end = next((v for v in starts if v > code_at), None)
+        positions = []
+        code, _ = _parse_code(data, code_at, end, number, tuple(names), globals_, None, positions)
+        sequence = [
+            (pos, op)
+            for pos, op in zip(positions, code, strict=True)
+            if op[0] in ("local-call", "external-call", "system-call")
+        ]
+        if len(sequence) != len(calls):
+            continue
+        sites = {}
+        for call, ((pc, op), (target, kind, args)) in enumerate(zip(sequence, calls, strict=True)):
+            valid = (
+                kind == 0
+                and op[0] == "local-call"
+                and target < len(names)
+                and op[1] == names[target]
+                or kind in (1, 2)
+                and op[:2] == ("external-call", 33 + kind)
+                and bool(args)
+                and args[0][1] == 0
+                and args[0][0] >> 30 == 3
+                and _utf8z(data, args[0][0] & 0x3FFFFFFF) == f"{op[2]}.{op[3]}"
+                and len(args) == op[4] + 1
+                or kind == 3
+                and op[0] == "system-call"
+                and len(args) >= 2
+                and args[:2] == [(0x40000000 + op[1], 0), (0x40000000 + op[2], 0)]
+                and len(args) == op[3] + 2
+            )
+            if not valid:
+                sites = {}
+                break
+            if call in wanted:
+                sites[str(pc + 4)] = {
+                    "record": call,
+                    "group": op[1],
+                    "command": op[2],
+                    "token": ",".join(str(value) if tag == 0 else "?" for value, tag in args[2:]),
+                }
+        result[name] = sites
+    return result, records
 
 
 def script_signature(data):
@@ -44,15 +212,18 @@ def _script_manifest_entry(data):
     ]
     if any(not name for name in names) or len(set(names)) != len(names):
         raise ValueError("Invalid script function names")
+    sites, records = _script_call_sites(data, start, names)
     return signature, {
         "size": len(data),
         "sha256": hashlib.sha256(data).hexdigest(),
         "functions": names,
+        "callSites": sites,
+        "callRecords": records,
     }
 
 
 def compile_script_identities(game, entries, primary, secondary, language, *, resolved_pairs=None):
-    """Compile every source SCP's provenance plus needed translation resolvers."""
+    """Compile source provenance and per-ID resolvers for all static dialogue."""
     if resolved_pairs is None:
         resolved_pairs = MenuTranslator(entries, primary, secondary, language).pairs
     # Use the same admission result as rendering. Comparing only raw duplicate
@@ -83,12 +254,19 @@ def compile_script_identities(game, entries, primary, secondary, language, *, re
         functions[identity].append(e)
         if e["texts"].get(language) in ambiguous:
             needed.add(identity)
-    paths = {path for path, _ in needed}
+    paths = {path for path, _ in functions}
     result = {}
     stats = defaultdict(int)
     pointers = defaultdict(list)
     pointer_models = {}
     blocked_functions = set()
+    record_pair_candidates = defaultdict(set)
+    for entry in entries:
+        record_key = _stable_dialogue_record(entry)
+        pair = complete_pair(entry["texts"], primary, secondary)
+        if record_key is not None and pair is not None:
+            record_pair_candidates[record_key].add(pair)
+    manifest_record_conflicts = set()
     archive = FpacArchive(Path(game) / "pac/steam" / _ARCHIVES[language])
     try:
         logical = _logical_script_entries(archive)
@@ -132,7 +310,9 @@ def compile_script_identities(game, entries, primary, secondary, language, *, re
             for number in range(count):
                 at = start + number * 32
                 name = _utf8z(data, struct.unpack_from("<I", data, at + 28)[0] & 0x3FFFFFFF)
-                if (path, name) not in needed:
+                source_identity = next(v for v in manifest[signature] if v["sha256"] == digest)
+                record_index = source_identity["callRecords"].get(name, {})
+                if (path, name) not in needed and not record_index:
                     continue
                 selected = functions[path, name]
                 code_offsets = None
@@ -147,7 +327,15 @@ def compile_script_identities(game, entries, primary, secondary, language, *, re
                     )
                     offset = None
                     if len(suffix) == 4 and suffix[0] == "called" and suffix[2] == "arg":
-                        call_at = struct.unpack_from("<I", data, at + 20)[0] + int(suffix[1]) * 12
+                        called = _source_called_id(entry, language, int(suffix[1]))
+                        if called is None:
+                            continue
+                        pointer_call_count, pointer_calls_at = struct.unpack_from(
+                            "<II", data, at + 16
+                        )
+                        if called >= pointer_call_count:
+                            continue
+                        call_at = pointer_calls_at + called * 12
                         argc, args_at = struct.unpack_from("<HI", data, call_at + 6)
                         slot = int(suffix[3])
                         if slot < argc:
@@ -181,18 +369,77 @@ def compile_script_identities(game, entries, primary, secondary, language, *, re
                                 "header": data[:24].hex(),
                             }
                         )
-                local = MenuTranslator(selected, primary, secondary, language, True)
                 call_count, call_start = struct.unpack_from("<II", data, at + 16)
                 by_call = defaultdict(list)
+                non_call_entries = []
                 for entry in selected:
                     if language not in entry["texts"]:
                         continue
                     suffix = entry["key"].split(".dat/", 1)[1].split("/")[1:]
                     if len(suffix) >= 2 and suffix[0] == "called":
-                        by_call[int(suffix[1])].append(entry)
+                        called = _source_called_id(entry, language, int(suffix[1]))
+                        if called is not None:
+                            by_call[called].append(entry)
+                    else:
+                        non_call_entries.append(entry)
+                raw_record_candidates = {
+                    call: candidate
+                    for call, values in by_call.items()
+                    if (candidate := _record_candidate(values, language)) is not None
+                }
+                calls_by_record = defaultdict(set)
+                for call, (record_key, _source) in raw_record_candidates.items():
+                    calls_by_record[record_key].add(call)
+                record_candidates = {
+                    call: candidate
+                    for call, candidate in raw_record_candidates.items()
+                    if len(calls_by_record[candidate[0]]) == 1
+                }
+                for call, (record_key, source) in record_candidates.items():
+                    records_by_function = source_identity.setdefault("recordKeys", {}).setdefault(
+                        name, {}
+                    )
+                    slot = str(call)
+                    identity = (id(source_identity), name, slot)
+                    value = {"key": record_key, "source": source}
+                    previous = records_by_function.get(slot)
+                    if identity in manifest_record_conflicts:
+                        continue
+                    if previous is not None and previous != value:
+                        del records_by_function[slot]
+                        manifest_record_conflicts.add(identity)
+                        stats["conflicting_canonical_record_keys"] += 1
+                    else:
+                        records_by_function[slot] = value
+                for call, values in tuple(by_call.items()):
+                    by_call[call] = _dedupe_call_entries(values, primary, secondary, language)
+                local_entries = non_call_entries + [
+                    entry for values in by_call.values() for entry in values
+                ]
+                local = MenuTranslator(
+                    local_entries if (path, name) in needed else [],
+                    primary,
+                    secondary,
+                    language,
+                    True,
+                )
                 groups = defaultdict(list)
                 call_numbers = defaultdict(list)
+                records = {}
+                identified_calls = {call for calls in record_index.values() for call in calls}
                 for call, values in by_call.items():
+                    if call in identified_calls:
+                        candidate = record_candidates.get(call)
+                        records[str(call)] = (
+                            {"key": candidate[0]}
+                            if candidate is not None
+                            else {
+                                "model": MenuTranslator(
+                                    values, primary, secondary, language, True
+                                ).runtime_model()
+                            }
+                        )
+                        stats["dialogue_records"] += 1
                     if not any(e["texts"].get(language) in ambiguous for e in values):
                         continue
                     if call >= call_count:
@@ -209,6 +456,7 @@ def compile_script_identities(game, entries, primary, secondary, language, *, re
                         0x40000000,
                         0x40000006,
                         0x40000007,
+                        0x40000008,
                         0x40000013,
                     ):
                         continue
@@ -228,7 +476,7 @@ def compile_script_identities(game, entries, primary, secondary, language, *, re
                                 stats["ambiguous_records_resolved_by_call"] += 1
                             else:
                                 stats["ambiguous_records_still_conflicting"] += 1
-                item = {"model": local.runtime_model(), "calls": calls}
+                item = {"model": local.runtime_model(), "calls": calls, "records": records}
                 function_identity = (digest, name)
                 if function_identity in blocked_functions:
                     continue
@@ -258,9 +506,25 @@ def compile_script_identities(game, entries, primary, secondary, language, *, re
         }
         used = {item["key"] for items in pointers.values() for item in items}
         pointer_models = {key: value for key, value in pointer_models.items() if key in used}
+        resolved_record_pairs = {
+            key: next(iter(pairs))
+            for key, pairs in record_pair_candidates.items()
+            if len(pairs) == 1
+        }
+        stats["canonical_record_pairs"] = len(resolved_record_pairs)
+        stats["conflicting_canonical_record_pairs"] = sum(
+            len(pairs) > 1 for pairs in record_pair_candidates.values()
+        )
+        record_pair_values = sorted(set(resolved_record_pairs.values()))
+        record_pair_indexes = {pair: index for index, pair in enumerate(record_pair_values)}
         return {
             "scripts": result,
             "manifest": dict(manifest),
+            "source_language": language,
+            "record_pairs": {
+                key: record_pair_indexes[pair] for key, pair in resolved_record_pairs.items()
+            },
+            "record_pair_values": record_pair_values,
             "stats": dict(stats),
             "pointers": dict(pointers),
             "pointer_models": pointer_models,
