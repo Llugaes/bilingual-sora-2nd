@@ -790,7 +790,7 @@ if(REPORT.native.dialogue_builder)Interceptor.attach(base.add(REPORT.native.dial
             if(start<24||count<1||count>65536||start+count*32>16*1024*1024)return;
             const hex=(p,n)=>Array.from(new Uint8Array(p.readByteArray(n))).map(v=>v.toString(16).padStart(2,'0')).join('');
             const signature=hex(blob,24)+hex(blob.add(start),32)+hex(blob.add(start+(count-1)*32),32);
-            if(!Object.hasOwn(scriptIdentities.scripts,signature))return;
+            if(!scriptIdentities.canCapture(signature))return;
             const functionName=vm.add(0x88).readPointer().readUtf8String();
             if(functionName.length>256)return;
             const argc=vm.add(0x70).readU32(),top=vm.add(0x64).readS32(),stack=vm.add(0x58).readPointer();
@@ -808,11 +808,10 @@ if(REPORT.native.dialogue_builder)Interceptor.attach(base.add(REPORT.native.dial
         try {
             const source=this.output.readUtf8String();
             if(RuntimeText.byteLength(source)>=2048)return;
-            // Exact globally unambiguous text already carries a complete pair;
-            // only ambiguous/context-dependent calls need resource identity.
-            if(resolver&&Object.hasOwn(resolver.model.pairs,source))return;
+            // Provenance belongs to the source invocation, not the selected
+            // languages. A later language may distinguish today's equal pair.
             const {signature,blob,functionName,argumentsToken}=this.candidate;
-            this.identity=scriptIdentities?.select(signature,n=>resourceHash.pointer?{pointer:blob,byteLength:n}:blob.readByteArray(n),functionName,argumentsToken)?.identity;
+            this.identity=scriptIdentities?.capture(signature,n=>resourceHash.pointer?{pointer:blob,byteLength:n}:blob.readByteArray(n),functionName,argumentsToken);
             if(!this.identity)return;
             this.frame.outputs.set(String(this.output),{source,identity:this.identity});
         }catch(e){identityMisses++;}finally{recordTiming('identity',started);}
@@ -1022,7 +1021,9 @@ function identifyInput(row,input,caller) {
     if(origin&&origin.source===row.original){row.scriptIdentity=origin.identity;identityHits++;}
     const needsIdentity=!resolver||!Object.hasOwn(resolver.model.pairs,row.original);
     const started=needsIdentity?Date.now():undefined;
-    if(needsIdentity&&!row.scriptIdentity){
+    // Preserve copied provenance even when today's global translation is unique;
+    // the same visible row can survive a language-model reload.
+    if(!row.scriptIdentity){
         const origin=logInputProvenance(row,input,caller);
         if(origin?.identity){row.scriptIdentity=origin.identity;identityHits++;logOriginStats.matched++;}
         row.logSpeaker=origin?.speaker||null;

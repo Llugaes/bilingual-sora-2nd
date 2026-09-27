@@ -55,9 +55,15 @@ rpc.exports.verify=function(expected,data){
   const p=Memory.alloc(Math.max(1,data.byteLength));p.writeByteArray(data);
   const model={pairs:{ok:['ok','yes']},plain_pairs:{ok:['ok','yes']}};
   const ids=new ScriptIdentities({scripts:{h:[{size:data.byteLength,sha256:expected,functions:{Talk:{model,calls:{}}}}]}},digest);
+  const source=new ScriptIdentities({manifest:{h:[{size:data.byteLength,sha256:expected,functions:['Talk']}]}},digest);
   const select=()=>ids.select('h',n=>({pointer:p,byteLength:n}),'Talk','1');
-  const first=select();p.writeU8(p.readU8()^1);const second=select();
-  return {matched:first?.model.pairs.ok[1]==='yes',changedBytesRejected:second===null};
+  const capture=()=>source.capture('h',n=>({pointer:p,byteLength:n}),'Talk','1');
+  const first=select(),saved=capture(),start=Date.now(),iterations=100;
+  for(let i=0;i<iterations;i++)if(!capture())throw Error('Lost unchanged identity');
+  const captureMeanMs=(Date.now()-start)/iterations;
+  p.writeU8(p.readU8()^1);const second=select(),changed=capture();
+  return {matched:first?.model.pairs.ok[1]==='yes',changedBytesRejected:second===null,
+    manifestCapture:saved?.sha256===expected&&changed===null,captureMeanMs,iterations};
 };
 """
         agent = session.create_script(source)
@@ -80,7 +86,12 @@ rpc.exports.verify=function(expected,data){
             )
             if args.native:
                 checks = agent.exports_sync.verify(hashlib.sha256(data).hexdigest(), data)
-                assert checks == {"matched": True, "changedBytesRejected": True}, checks
+                assert all(
+                    checks[k] is True
+                    for k in ("matched", "changedBytesRejected", "manifestCapture")
+                ), checks
+                result[-1]["capture_mean_ms"] = checks["captureMeanMs"]
+                result[-1]["capture_iterations"] = checks["iterations"]
         output = {
             "backend": "windows-cng" if args.native else "pure-js",
             "frida_default_runtime": True,

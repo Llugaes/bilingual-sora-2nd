@@ -69,6 +69,38 @@ test('shared function fallback retains each actual argument vector for language 
     assert.equal(ids.select('h',()=>bytes,'Talk','3,4').identity.argumentsToken,'3,4');
 });
 
+test('manifest captures a valid untranslated source identity for a later language model',()=>{
+    const bytes=Buffer.alloc(64,7),hash=scriptSha256(bytes);
+    const source=new ScriptIdentities({manifest:{h:[{size:64,sha256:hash,functions:['Talk']}]}});
+    assert.equal(source.canCapture('h'),true);
+    const identity=source.capture('h',()=>bytes,'Talk','1,3221226000');
+    assert.deepEqual(identity,{signature:'h',sha256:hash,functionName:'Talk',argumentsToken:'1,3221226000'});
+    assert.equal(source.lookup(identity),null,'capturing provenance does not invent a translation');
+    assert.equal(source.capture('h',()=>bytes,'Missing','1'),null);
+    bytes[0]=8;
+    assert.equal(source.capture('h',()=>bytes,'Talk','1,3221226000'),null);
+    const target=new ScriptIdentities({scripts:{h:[{size:64,sha256:scriptSha256(Buffer.alloc(64,7)),functions:{Talk:{model:model('other','other'),calls:{
+        '1,3221226000':{model:model('好。','はい。')},'1,3221227000':{model:model('好。','よし。')}
+    }}}}]}});
+    assert.equal(target.canCapture('h'),true,'old resolver models remain provenance candidates');
+    assert.deepEqual(target.capture('h',()=>Buffer.alloc(64,7),'Talk','1,3221226000'),identity);
+    assert.equal(target.lookup(identity).model.pairs['好。'][1],'はい。');
+});
+
+test('manifest capture hashes native pointer blobs without converting their pointer',()=>{
+    const bytes=Buffer.alloc(64,3),hash=scriptSha256(bytes),pointer={bytes};
+    const nativeHash=()=>{throw Error('pointer capture must not use a JS byte hash');};
+    nativeHash.pointer=(actual,size)=>{
+        assert.equal(actual,pointer);assert.equal(size,64);
+        return scriptSha256(actual.bytes);
+    };
+    const ids=new ScriptIdentities({manifest:{h:[{size:64,sha256:hash,functions:['Talk']}]}},nativeHash);
+    assert.deepEqual(ids.capture('h',n=>({pointer,byteLength:n}),'Talk','1'),{
+        signature:'h',sha256:hash,functionName:'Talk',argumentsToken:'1',
+    });
+    assert.equal(ids.capture('h',()=>({pointer,byteLength:63}),'Talk','1'),null);
+});
+
 function tableFixture() {
     const data=Buffer.alloc(128);data.write('#TBL');data.writeUInt32LE(1,4);
     const base=0x10000,offset=96;data.writeUInt32LE(42,16);data.writeBigUInt64LE(BigInt(base+offset),24);

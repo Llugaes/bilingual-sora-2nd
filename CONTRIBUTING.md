@@ -37,6 +37,7 @@ py -3.14 -m venv .venv
 | python tests/check_reported_texts.py --game-dir GAME_DIR --panel-audit generated/static-panels-check.json --output generated/panel-runtime.json | 全部静态面板的正式 JS 回放；全局失败保持失败，编译资源身份的结果单独记录，不能作为实机身份已传入的证明 |
 | python tests/check_reported_texts.py --game-dir GAME_DIR --item-help-audit --output generated/item-help-runtime.json | 技能详情同族资源探针及已验证的 HP／EP 回复组装回放；保留原始字段分母、格式排除项与歧义，不把独立字段通过当作运行态全覆盖 |
 | python tests/check_dynamic_and_history.py --game-dir GAME_DIR | 完整目录下的历史原串、说话人上下文与原始动态 producer 家族回放；同时核对翻译和副文层，不连接游戏 |
+| python tests/check_history_identity.py --game-dir GAME_DIR | 从原始脚本调用捕获身份，再切换语言模型；核对全部源脚本 manifest 分母及同文异译，不连接游戏 |
 
 矩阵可用 `--slice 0/8 --output generated/language-matrix-0.json` 分片运行，完整检查须汇总所有分片。同原文异译的情况要与成功翻译分开统计，不能以“保留原文”或两套实现输出一致作为翻译通过。资源齐全、模型可编译也不能证明游戏控件已经传入正确身份；新增原生接入与实际排版仍需实机验证。
 

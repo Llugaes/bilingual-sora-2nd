@@ -1582,9 +1582,10 @@ test('native dialogue carries exact VM identity through its builder without reta
     assert.equal(label.text(),'好。','source pointer reuse after handler exit must not retain provenance');
     assert.equal(runtime.api.status().failed,false);
     const hashes=runtime.scriptReads.filter(n=>n===data.length).length;
-    runtime.api.load({...model,...make('承知。')},'annotation',true,1);
+    const manifest={[signature]:[{size:data.length,sha256:scriptSha256(data),functions:['Talk']}]};
+    runtime.api.load({...make('承知。'),script_identities:{scripts:{},manifest}},'annotation',true,1);
     runtime.dialogueSet(label,'好。',data,'Talk',[1,3221226000]);assert.match(label.text(),/承知。/);
-    assert.equal(runtime.scriptReads.filter(n=>n===data.length).length,hashes,'exact complete global pairs do not rehash the script');
+    assert.equal(runtime.scriptReads.filter(n=>n===data.length).length,hashes+1,'source provenance is retained even when the current global pair is complete');
 });
 
 
@@ -1680,6 +1681,38 @@ function historyFixture(source='相同的完整对白。') {
     const p=r.label(0xab00,'');
     return {r,source,write:(call,slots)=>r.dialogueSet(p,source,data,'Talk',[1,call],slots)};
 }
+
+test('history captures IDs before a later language introduces a translation conflict',()=>{
+    const {scriptSha256}=require('../sora_bilingual/game/scripts/runtime_identity.js');
+    const r=makeRuntime(),source='啊，说的也是呢。',data=Buffer.alloc(128);
+    data.write('#scp');data.writeUInt32LE(24,4);data.writeUInt32LE(1,8);
+    const signature=Buffer.concat([data.subarray(0,24),data.subarray(24,56),data.subarray(24,56)]).toString('hex');
+    const sha256=scriptSha256(data),manifest={[signature]:[{size:data.length,sha256,functions:['Talk']}]};
+    const sharedPairs={[source]:[source,'あ、そうだったわね。']};
+    const shared={pairs:sharedPairs,plain_pairs:sharedPairs};
+    r.api.load({...shared,script_identities:{scripts:{},manifest}},'secondary',true,1);
+    const live=r.label(0xab00,'');
+    r.dialogueSet(live,source,data,'Talk',[1,36],7);
+    r.dialogueSet(live,source,data,'Talk',[1,151],8);
+    assert.equal(live.text(),'あ、そうだったわね。');
+    assert.equal(r.api.status().logOriginSlots,2,'capture must not depend on the current language conflict set');
+    const row=r.label(0xac00,'');
+    r.logShow(row,8,source);assert.equal(row.text(),'あ、そうだったわね。');
+    const local=target=>({pairs:{[source]:[source,target]},plain_pairs:{[source]:[source,target]}});
+    r.api.load({pairs:{},plain_pairs:{},ambiguous_display:[source],script_identities:{manifest,scripts:{
+        [signature]:[{size:data.length,sha256,functions:{Talk:{model:{pairs:{},plain_pairs:{}},calls:{
+            '1,36':{model:local('Oh, right.')},'1,151':{model:local('Oh, I almost forgot!')}
+        }}}}]
+    }}},'secondary',true,1);
+    r.update(row);assert.equal(row.text(),'Oh, I almost forgot!','already visible history must retain its ID across reload');
+    r.logShow(row,7,source);assert.equal(row.text(),'Oh, right.');
+    r.logShow(row,8,source);assert.equal(row.text(),'Oh, I almost forgot!');
+    assert.equal(r.logMeasure([['',source,7]]).bodies[0],'Oh, right.');
+    assert.equal(r.logMeasure([['',source,8]]).bodies[0],'Oh, I almost forgot!');
+    r.api.select('annotation',true);r.update(row);
+    assert.match(row.text(),/Oh, I almost forgot!/);
+    assert.equal(r.api.status().failed,false);
+});
 
 test('restored history uses retained speaker and full text without inventing a script identity',()=>{
     const r=makeRuntime(),source='<#E_0><K4>相同的完整对白。',target='<#E_0><K4>女性の台詞。';

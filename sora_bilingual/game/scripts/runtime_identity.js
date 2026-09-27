@@ -37,7 +37,7 @@ function scriptSha256(input) {
 class ScriptIdentities {
     constructor(model,hash=scriptSha256) {
         this.hash=hash;
-        this.scripts=model?.scripts||{};this.cache=new Map();
+        this.scripts=model?.scripts||{};this.manifest=model?.manifest||{};this.cache=new Map();
         this.pointers=model?.pointers||{};this.pointerModels=model?.pointer_models||{};this.pointerCache=new Map();
     }
     pointerLookup(key,source) {
@@ -88,6 +88,40 @@ class ScriptIdentities {
         }
         return this.cache.get(id);
     }
+    captureCandidates(signature) {
+        const manifest=Object.hasOwn(this.manifest,signature)?this.manifest[signature]:null;
+        if(Array.isArray(manifest)&&manifest.length)return manifest;
+        const scripts=Object.hasOwn(this.scripts,signature)?this.scripts[signature]:[];
+        return scripts.map(script=>({
+            size:script.size,sha256:script.sha256,
+            functions:Array.isArray(script.functions)?script.functions:Object.keys(script.functions||{}),
+        }));
+    }
+    canCapture(signature) {return this.captureCandidates(signature).length>0;}
+    capture(signature,readBlob,functionName,argumentsToken) {
+        if(typeof functionName!=='string'||!functionName||typeof argumentsToken!=='string')return null;
+        const hashes=new Map();
+        for(const candidate of this.captureCandidates(signature)) {
+            if(!Array.isArray(candidate.functions)||!candidate.functions.includes(functionName))continue;
+            if(!Number.isInteger(candidate.size)||candidate.size<24||candidate.size>16*1024*1024||
+                typeof candidate.sha256!=='string'||!/^[0-9a-f]{64}$/.test(candidate.sha256))continue;
+            try {
+                if(!hashes.has(candidate.size)) {
+                    const blob=readBlob(candidate.size);
+                    if(blob&&typeof blob==='object'&&Object.hasOwn(blob,'pointer')) {
+                        hashes.set(candidate.size,blob.byteLength===candidate.size&&typeof this.hash.pointer==='function'?
+                            this.hash.pointer(blob.pointer,candidate.size):null);
+                    } else {
+                        const bytes=blob instanceof Uint8Array?blob:new Uint8Array(blob);
+                        hashes.set(candidate.size,bytes.byteLength===candidate.size?this.hash(bytes):null);
+                    }
+                }
+                if(hashes.get(candidate.size)!==candidate.sha256)continue;
+                return {signature,sha256:candidate.sha256,functionName,argumentsToken};
+            }catch(e){/* An unrelated or unreadable heap buffer has no provenance. */}
+        }
+        return null;
+    }
     select(signature,readBlob,functionName,argumentsToken) {
         const candidates=Object.hasOwn(this.scripts,signature)?this.scripts[signature]:[];
         const hashes=new Map();
@@ -99,7 +133,8 @@ class ScriptIdentities {
             const identity={signature,sha256:script.sha256,functionName,argumentsToken};
             // Function fallback shares a resolver, not an invocation's args.
             // A later language reload may index a previously unneeded call.
-            return {...this.lookup(identity),identity};
+            const selected=this.lookup(identity);
+            return selected?{...selected,identity}:null;
         }
         return null;
     }

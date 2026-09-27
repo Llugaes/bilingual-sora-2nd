@@ -1,3 +1,4 @@
+import hashlib
 import struct
 import unittest
 from unittest.mock import patch
@@ -128,3 +129,12 @@ class RuntimeIdentityTests(unittest.TestCase):
         for data in (b"", b"#scp" + bytes(20), b"bad!" + bytes(100)):
             with self.assertRaises(ValueError):
                 script_signature(data)
+
+    def test_manifest_keeps_valid_source_script_without_a_translation_resolver(self):
+        data, _entries = self.fixture()
+        with patch("sora_bilingual.localization.runtime_identity.FpacArchive", FakeArchive):
+            result = compile_script_identities("unused", [], "zh-Hans", "ja", "zh-Hans")
+        record = result["manifest"][script_signature(data)][0]
+        self.assertEqual(record["size"], len(data))
+        self.assertEqual(record["sha256"], hashlib.sha256(data).hexdigest())
+        self.assertEqual(record["functions"], ["Talk"])

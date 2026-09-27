@@ -32,8 +32,27 @@ def script_signature(data):
     ).hex()
 
 
+def _script_manifest_entry(data):
+    """Return the bounded provenance needed before any language resolver exists."""
+    if not 24 <= len(data) <= 16 * 1024 * 1024:
+        raise ValueError("Script identity data outside capture bounds")
+    signature = script_signature(data)
+    start, count = struct.unpack_from("<II", data, 4)
+    names = [
+        _utf8z(data, struct.unpack_from("<I", data, start + number * 32 + 28)[0] & 0x3FFFFFFF)
+        for number in range(count)
+    ]
+    if any(not name for name in names) or len(set(names)) != len(names):
+        raise ValueError("Invalid script function names")
+    return signature, {
+        "size": len(data),
+        "sha256": hashlib.sha256(data).hexdigest(),
+        "functions": names,
+    }
+
+
 def compile_script_identities(game, entries, primary, secondary, language, *, resolved_pairs=None):
-    """Index only functions needed to disambiguate the global source model."""
+    """Compile every source SCP's provenance plus needed translation resolvers."""
     if resolved_pairs is None:
         resolved_pairs = MenuTranslator(entries, primary, secondary, language).pairs
     # Use the same admission result as rendering. Comparing only raw duplicate
@@ -73,6 +92,20 @@ def compile_script_identities(game, entries, primary, secondary, language, *, re
     archive = FpacArchive(Path(game) / "pac/steam" / _ARCHIVES[language])
     try:
         logical = _logical_script_entries(archive)
+        manifest = defaultdict(list)
+        for path in sorted(logical):
+            if not path.endswith(".dat"):
+                continue
+            try:
+                signature, item = _script_manifest_entry(archive.read(logical[path]))
+            except ValueError, struct.error:
+                stats["manifest_invalid_scripts"] += 1
+                continue
+            bucket = manifest[signature]
+            if not any(candidate["sha256"] == item["sha256"] for candidate in bucket):
+                bucket.append(item)
+                stats["manifest_scripts"] += 1
+                stats["manifest_functions"] += len(item["functions"])
         for path in sorted(paths):
             data = archive.read(logical[path])
             signature = script_signature(data)
@@ -227,6 +260,7 @@ def compile_script_identities(game, entries, primary, secondary, language, *, re
         pointer_models = {key: value for key, value in pointer_models.items() if key in used}
         return {
             "scripts": result,
+            "manifest": dict(manifest),
             "stats": dict(stats),
             "pointers": dict(pointers),
             "pointer_models": pointer_models,
