@@ -282,6 +282,36 @@ void parser_snapshot(uint64_t *out) {
     const readStats=new NativeFunction(module.parser_snapshot,'void',['pointer'],options);
     const snapshot=Memory.alloc(11*8);
     initialize();
+    function installSizeHook(entry,expectedBytes) {
+        // Gum follows an entry JMP before attaching. At 0x58687e that would
+        // hook 0x587462, the common exit for C/c and other commands as well
+        // as S/s, multiplying ruby size at every color change. Redirect only
+        // the verified size branch through an owned, non-branch hook site.
+        const signature=Array.from(new Uint8Array(entry.readByteArray(16)))
+            .map(x=>x.toString(16).padStart(2,'0')).join('');
+        if(Process.arch!=='x64'||signature!==expectedBytes||entry.readU8()!==0xe9)
+            throw Error('Unvalidated native size branch');
+        const continuation=entry.add(5).add(entry.add(1).readS32());
+        const gate=Memory.alloc(Process.pageSize,{near:entry,maxDistance:0x40000000});
+        Memory.patchCode(gate,64,writable=>{
+            const writer=new X86Writer(writable,{pc:gate});
+            for(let i=0;i<16;i++)writer.putNop();
+            writer.putJmpAddress(continuation);
+            writer.flush();writer.dispose();
+        });
+        if(!Memory.protect(gate,Process.pageSize,'r-x'))throw Error('Cannot protect native size branch');
+        const patch=Memory.alloc(16),writer=new X86Writer(patch,{pc:entry});
+        writer.putJmpAddress(gate);
+        const size=writer.offset;
+        writer.flush();writer.dispose();
+        if(size!==5)throw Error('Native size branch is outside rel32 range');
+        const listener=Interceptor.attach(gate,{onEnter:module.parser_size_on_enter});
+        Interceptor.flush();
+        // Installation is performed once before the agent starts translating.
+        // No adjacent entry point or shared command exit is overwritten.
+        Memory.patchCode(entry,5,writable=>writable.writeByteArray(patch.readByteArray(5)));
+        return {gate,listener,continuation};
+    }
     return {
         // All executable/data/bridge objects remain strongly owned for the
         // resident agent's lifetime. Never dispose while the game is running.
@@ -300,6 +330,7 @@ void parser_snapshot(uint64_t *out) {
             if(!Number.isFinite(factor)||factor<=0||factor>8)throw Error('Invalid parser scale');
             trackNative(parser,factor);
         },
+        installSizeHook,
         // Test-only direct entry to the same C body used by sizeOnEnter.
         applySize(parser) { return !!applySize(parser); },
         status() {

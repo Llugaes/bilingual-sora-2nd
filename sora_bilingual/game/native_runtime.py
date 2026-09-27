@@ -22,7 +22,8 @@ POINTS = {
     "ruby_context_init": 0x5830F0,
     "ruby_begin": 0x58678E,
     # Shared tail of the verified uppercase/lowercase absolute size commands.
-    # The resident agent validates these exact bytes before attaching.
+    # This JMP targets a common command exit: use the size-only branch gate,
+    # never Interceptor.attach directly (Gum follows JMPs before attaching).
     "ruby_size_end": 0x58687E,
     "ruby_place_return": 0x58714F,
     "text_lookup": 0x5E8550,

@@ -11,11 +11,25 @@ from sora_bilingual.config.locales import DEFAULT_PRIMARY
 TOKEN = re.compile(r"(<[^<>]*>|\r\n|\n|\\n)")
 STYLE = re.compile(r"</?[Cc][0-9a-fA-F]*>|<s\d+>")
 FORMAT = re.compile(r"%(?:\d+\$)?[-+0 #]*(?:\d+)?(?:\.\d+)?[dius]")
+FORMAT_TOKEN = re.compile(r"%%|" + FORMAT.pattern)
 SEPARATORS = re.compile(
     r"(\r\n|\n|\\n|[【】「」：:／/]| - |[ \u3000]{2,}|^[ \u3000]*[·・][ \u3000]*)"
 )
 LINE_BREAK = re.compile(r"\r\n|\n|\\n")
 LINE_START_PUNCTUATION = frozenset("、。！？）】》〉」』〕］｝")
+
+
+def _format_remainder(value):
+    """Remove supported printf fields and escaped literal percent signs."""
+    return FORMAT_TOKEN.sub("", value)
+
+
+def _format_fields(value):
+    return [match for match in FORMAT_TOKEN.finditer(value) if match.group() != "%%"]
+
+
+def _render_format(template, values):
+    return FORMAT_TOKEN.sub(lambda match: "%" if match.group() == "%%" else next(values), template)
 
 
 def _latin_word_character(value):
@@ -359,26 +373,36 @@ def overdrive_descriptions(entries):
     return result
 
 
-# Verified t_itemhelp.tbl kinds in all eight supported archives. Record hashes
-# mask localized pointers but retain native type IDs (circle 0x0e; HP recovery
-# 0x7b/0x80). Other %s slots can hold attributes, stats or numbers, not grades.
-ITEM_HELP_CIRCLE_LABELS = {
+# Verified SkillRangeHelpData labels whose localized text reserves a trailing
+# size slot in all eight archives. Fixed ranges and short_label fields do not.
+ITEM_HELP_SIZED_RANGE_LABELS = {
+    "table/t_itemhelp.tbl/SkillRangeHelpData/sha256:13a1faa6d4288b2afaeb29863719e1929285152bee56b5943ea806442b6fff7b/label",
+    "table/t_itemhelp.tbl/SkillRangeHelpData/sha256:19510ff635267619528cd597284f4a27a4051bb07c1a9ed8a0b320811e6b310b/label",
+    "table/t_itemhelp.tbl/SkillRangeHelpData/sha256:27305a59b8f293e11d3712075fef8ced814a6acd60f6a8d4b81c5a7a9d963dca/label",
+    "table/t_itemhelp.tbl/SkillRangeHelpData/sha256:2a2c762e0d6517c7db916fe291eb0c21a61dbb9804f6b0c338a115132e4962f9/label",
+    "table/t_itemhelp.tbl/SkillRangeHelpData/sha256:2f8d4eacb3b590c7e88136642ff0cf2812b5b296dec70f6533e462527cd441f5/label",
+    "table/t_itemhelp.tbl/SkillRangeHelpData/sha256:5b40935541146eb96f3ddffaf699e2fe36b1489a9fe9b1691fabdbe19b699e70/label",
+    "table/t_itemhelp.tbl/SkillRangeHelpData/sha256:69edb917c527c1cd62e5da007c513cc9a9247ac40194c275e1fc333e6d059dce/label",
     "table/t_itemhelp.tbl/SkillRangeHelpData/sha256:6a15f570d7d4b310463cc8eb627186cd7e4586d9ab2b87e663ebb1e538c2d090/label",
+    "table/t_itemhelp.tbl/SkillRangeHelpData/sha256:d3740e2d93482a970bdc5c805bb0e4ef863b2ca6ce6809551f3f17f1784c3783/label",
 }
-ITEM_HELP_RECOVERY_NAMES = {
-    "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:cc311d9666993ad7471edb97a4292bd44de5cac259718aab39db45a6008a99a8/name",
-    "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:df1cd77615efffbef0c60ea7948cf4aebb17da0a9efa21aea8d9794c8796d00c/name",
+
+# This name has no /stat field, but captured native output proves that its %s
+# receives TXT_ITEM_HELP_* magnitude text. Other stat-less %s names can take an
+# attribute or another argument kind and are deliberately excluded.
+ITEM_HELP_GRADE_NAMES = {
+    "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:93e17b497b0a5e2d8a6b21a7b66f0a4f5ccf0c6c214838a10ff8a55793b9898f/name",
 }
 
 
 def item_help_components(entries):
     """Index the resource-defined combinations built by the item-help UI.
 
-    The verified circle label concatenates a localized size. HP recovery
-    names substitute a localized magnitude, in locale-specific order. Never
-    cross all printf fields with these modifiers: format/attribute slots have
-    different argument contracts. Missing locales and collisions retain the
-    normal pair-admission checks.
+    Audited geometric labels concatenate a localized size. Effect names with
+    a non-empty sibling /stat field substitute a localized magnitude, as does
+    the one stat-less delay record observed in native output. Never cross
+    format/attribute/numeric slots with these modifiers. Missing locales and
+    collisions retain the normal pair-admission checks.
     """
     named = {e["key"]: e["texts"] for e in entries if "key" in e}
     ranges = [
@@ -395,8 +419,12 @@ def item_help_components(entries):
     ]
     result = []
     for key, texts in named.items():
-        is_range = key in ITEM_HELP_CIRCLE_LABELS
-        is_effect = key in ITEM_HELP_RECOVERY_NAMES
+        is_range = key in ITEM_HELP_SIZED_RANGE_LABELS
+        base = key.removesuffix("/name")
+        stat = named.get(base + "/stat") if key.endswith("/name") else None
+        is_effect = key in ITEM_HELP_GRADE_NAMES or bool(
+            stat and any(value.strip() for value in stat.values())
+        )
         if not (is_range or is_effect):
             continue
         for modifier_key, modifiers in ranges if is_range else magnitudes:
@@ -417,12 +445,76 @@ def item_help_components(entries):
     return result
 
 
+def item_help_detail_entries(entries):
+    """Return exact aliases used only inside an anchored item/skill detail.
+
+    Native colour tags can split an effect template around its magnitude. A
+    fragment is safe only when every locale has one string slot at the same
+    outer edge. Magnitudes are scoped here because values such as ``中`` are
+    ambiguous outside item help.
+    """
+    named = {e["key"]: e["texts"] for e in entries if "key" in e}
+    magnitudes = [
+        (key, texts)
+        for key, texts in named.items()
+        if key.removeprefix("table/t_text.tbl/TXT_ITEM_HELP_")
+        in {"MOSTSMALL", "SMALL", "MIDDLE", "LARGE", "MOSTLARGE"}
+    ]
+    result = [
+        {
+            "key": "table/t_itemhelp.tbl/generated/magnitude/" + key.rsplit("/", 1)[-1],
+            "texts": texts,
+        }
+        for key, texts in magnitudes
+    ]
+    result.extend(
+        {
+            "key": key + "/detail_authority",
+            "texts": texts,
+            "detail_authority": True,
+        }
+        for key, texts in named.items()
+        if key.startswith("table/t_itemhelp.tbl/SkillRangeHelpData/") and key.endswith("/label")
+    )
+    for key, texts in named.items():
+        if not key.endswith("/name"):
+            continue
+        stat = named.get(key.removesuffix("/name") + "/stat")
+        if key not in ITEM_HELP_GRADE_NAMES and not (
+            stat and any(value.strip() for value in stat.values())
+        ):
+            continue
+        if not texts or any(
+            value.count("%s") != 1 or "%" in value.replace("%s", "") for value in texts.values()
+        ):
+            continue
+        edges = {
+            "prefix" if value.endswith("%s") else "suffix" if value.startswith("%s") else None
+            for value in texts.values()
+        }
+        if len(edges) != 1 or None in edges:
+            continue
+        edge = next(iter(edges))
+        fragments = {language: value.replace("%s", "") for language, value in texts.items()}
+        if all(value.strip() for value in fragments.values()):
+            result.append(
+                {
+                    "key": key + "/fragment/" + edge,
+                    "texts": fragments,
+                    "detail_authority": True,
+                }
+            )
+    return result
+
+
 class MenuTranslator:
     def __init__(
         self, entries, primary, secondary, source_language=DEFAULT_PRIMARY, _details_only=False
     ):
         entries = list(entries)
+        detail_aliases = []
         if not _details_only:
+            detail_aliases = item_help_detail_entries(entries)
             entries += overdrive_descriptions(entries)
             entries += item_help_components(entries)
             # The game appends a numeric level to this localized resource.
@@ -455,6 +547,13 @@ class MenuTranslator:
                     self.scoped[scope] = MenuTranslator(
                         selected, primary, secondary, source_language, True
                     )
+            item_help_headers = {
+                e["texts"][source_language]
+                for e in entries
+                if e.get("key", "").startswith("table/t_itemhelp.tbl/ItemKindHelpData/")
+                and e.get("key", "").endswith("/description")
+                and source_language in e["texts"]
+            }
             detail_entries = [
                 e
                 for e in entries
@@ -466,12 +565,18 @@ class MenuTranslator:
                         "table/t_support_ability.tbl/",
                     )
                 )
+                and not (
+                    e.get("key", "").startswith("table/t_item.tbl/ItemKindParam2/")
+                    and e.get("texts", {}).get(source_language) in item_help_headers
+                )
             ]
-            self.detail_sources = {
+            detail_entries += detail_aliases
+            descriptions = {
                 e["texts"][source_language]
                 for e in detail_entries
                 if e.get("key", "").endswith("/description") and source_language in e["texts"]
             }
+            self.detail_sources = descriptions | {"<C0>" + value for value in descriptions}
             if detail_entries:
                 self.details = MenuTranslator(
                     detail_entries, primary, secondary, source_language, True
@@ -479,6 +584,7 @@ class MenuTranslator:
         self.keyed = []
         candidates = {}
         display_candidates = {}
+        detail_authority = {}
         for entry in entries:
             texts = entry["texts"]
             pair = complete_pair(texts, primary, secondary)
@@ -490,6 +596,8 @@ class MenuTranslator:
                 for source in {value, plain(value)}:
                     if source.strip():
                         candidates.setdefault(source, set()).add(pair)
+                        if entry.get("detail_authority") and pair:
+                            detail_authority.setdefault(source, set()).add(pair)
                         if display_record and pair:
                             display_candidates.setdefault(source, set()).add(pair)
                 # Native dialogue controls may be consumed before SetText.
@@ -527,6 +635,12 @@ class MenuTranslator:
         for source, pairs in names.items():
             if len(pairs) == 1 and None not in pairs:
                 candidates[source] = pairs
+        # Resource-generated fragments are valid only in the already-anchored
+        # detail model. Prefer their spacing over a colliding standalone stat
+        # record when native colour tags split the original name template.
+        for source, pairs in detail_authority.items():
+            if len(pairs) == 1:
+                candidates[source] = pairs
         self.pairs = {
             s: next(iter(p)) for s, p in candidates.items() if len(p) == 1 and None not in p
         }
@@ -542,35 +656,35 @@ class MenuTranslator:
         for source, pair, is_raw in [(s, p, False) for s, p in normalized.items()] + [
             (s, p, True) for s, p in self.pairs.items() if "<" in s
         ]:
-            matches = list(FORMAT.finditer(source))
+            matches = _format_fields(source)
             if (
                 not matches
                 or len(matches) > 4
-                or any("%" in FORMAT.sub("", t) for t in (source, *pair))
+                or any("%" in _format_remainder(t) for t in (source, *pair))
             ):
                 continue
             # Number arguments retain order unless explicit positional slots are
             # available; reject mismatched placeholder contracts.
-            if any(len(FORMAT.findall(t)) != len(matches) for t in pair):
+            if any(len(_format_fields(t)) != len(matches) for t in pair):
                 continue
-            if any("$" in m.group() for t in (source, *pair) for m in FORMAT.finditer(t)):
+            if any("$" in m.group() for t in (source, *pair) for m in _format_fields(t)):
                 continue
             kinds = [m.group()[-1] for m in matches]
-            if any([m.group()[-1] for m in FORMAT.finditer(t)] != kinds for t in pair):
+            if any([m.group()[-1] for m in _format_fields(t)] != kinds for t in pair):
                 continue
-            if "s" in kinds and len(FORMAT.sub("", source).strip()) < 2:
+            if "s" in kinds and len(_format_remainder(source).strip()) < 2:
                 continue
             chunks = []
             at = 0
             for m in matches:
                 chunks.extend(
                     (
-                        re.escape(source[at : m.start()]),
+                        re.escape(source[at : m.start()].replace("%%", "%")),
                         r"([^<>\r\n]{1,512}?)" if m.group()[-1] == "s" else r"([+-]?\d+)",
                     )
                 )
                 at = m.end()
-            chunks.append(re.escape(source[at:]))
+            chunks.append(re.escape(source[at:].replace("%%", "%")))
             (self.raw_numeric if is_raw else self.numeric).append(
                 (re.compile("".join(chunks)), pair)
             )
@@ -588,7 +702,7 @@ class MenuTranslator:
             rendered = []
             for side, target in enumerate(pair):
                 values = iter(self.plain_pairs.get(v, (v, v))[side] for v in m.groups())
-                rendered.append(FORMAT.sub(lambda _: next(values), target))
+                rendered.append(_render_format(target, values))
             matches.add(tuple(rendered))
         return next(iter(matches)) if len(matches) == 1 else None
 
@@ -604,7 +718,7 @@ class MenuTranslator:
                     # Name arguments are translated only by an exact known pair;
                     # unknown player-defined values are preserved verbatim.
                     values = iter(self.plain_pairs.get(v, (v, v))[side] for v in m.groups())
-                    rendered.append(FORMAT.sub(lambda _: next(values), target))
+                    rendered.append(_render_format(target, values))
                 matches.add(tuple(rendered))
         return next(iter(matches)) if len(matches) == 1 else None
 

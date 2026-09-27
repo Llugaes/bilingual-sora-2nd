@@ -1,6 +1,7 @@
 'use strict';
 // Shared pure resolver: runs synchronously inside the native label callback.
 // No RPC, timers, pointers, filesystem access, or fuzzy substring matching.
+const PRINTF_TOKEN=/%%|%(?:\d+\$)?[-+0 #]*\d*(?:\.\d+)?[dius]/g;
 class RuntimeText {
     constructor(model) {
         this.model = model;
@@ -13,6 +14,9 @@ class RuntimeText {
         this.planCache = new Map();
         this.keyed = Object.fromEntries(Object.entries(model.keyed || {}).map(([k,v])=>[k,{source:v.source,tr:new RuntimeText(v.model)}]));
     }
+    static renderFormat(template,replacement) {
+        return template.replace(PRINTF_TOKEN,token=>token==='%%'?'%':replacement());
+    }
     pair(source) {
         if (Object.hasOwn(this.model.plain_pairs,source)) return this.model.plain_pairs[source];
         let found=null;
@@ -21,7 +25,7 @@ class RuntimeText {
             if(!m || m[0]!==source)continue;
             const rendered=pair.map((target,side)=>{
                 let i=1;
-                return target.replace(/%(?:\d+\$)?[-+0 #]*\d*(?:\.\d+)?[dius]/g,()=>{
+                return RuntimeText.renderFormat(target,()=>{
                     const v=m[i++];return (Object.hasOwn(this.model.plain_pairs,v)?this.model.plain_pairs[v]:[v,v])[side];
                 });
             });
@@ -37,7 +41,7 @@ class RuntimeText {
         for(const [pattern,pair] of this.rawNumeric) {
             const m=pattern.exec(source);if(!m||m[0]!==source)continue;
             const rendered=pair.map((target,side)=>{
-                let i=1;return target.replace(/%(?:\d+\$)?[-+0 #]*\d*(?:\.\d+)?[dius]/g,()=>{
+                let i=1;return RuntimeText.renderFormat(target,()=>{
                     const v=m[i++];return (Object.hasOwn(this.model.plain_pairs,v)?this.model.plain_pairs[v]:[v,v])[side];
                 });
             });

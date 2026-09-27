@@ -37,6 +37,7 @@ def main():
             # process. This must never attach to a running game.
             run(sys.executable, "-X", "utf8", "tests/check_native_geometry.py")
             run(sys.executable, "-X", "utf8", "tests/check_native_parser.py")
+            run(sys.executable, "-X", "utf8", "tests/check_native_size_hook.py")
             run(sys.executable, "-X", "utf8", "tests/check_native_measure.py")
             run(sys.executable, "-X", "utf8", "tests/check_native_reentry.py")
             run(sys.executable, "-X", "utf8", "tests/check_native_refresh.py")

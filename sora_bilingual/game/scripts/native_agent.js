@@ -601,11 +601,11 @@ const rubyContextCallbacks={
             }
             const x = this.target.readFloat();
             if (!Number.isFinite(x)) throw Error('Non-finite ruby placement');
-            // ruby_context_init copies its caller's float arguments. A
-            // styled continuation inside a layered secondary therefore
-            // already carries the parent ruby scale; multiplying that scale
-            // by the saved parent factor makes every <C…> continuation tiny.
-            const scaleFactor=this.inherited?1:rubyScale;
+            // Nested native <R> readings start from the engine's fixed ruby
+            // size (0x586f57..0x586f92), not the parent's current size. C/c/B
+            // commands do not create contexts. Scale an actual nested reading
+            // relative to its parent's annotation multiplier.
+            const scaleFactor=this.inherited?this.inherited.factor:rubyScale;
             for(const offset of [0x158,0x15c]) {
                 const field=this.target.add(offset),scale=field.readFloat();
                 if(!Number.isFinite(scale)||scale<=0||scale>8)throw Error('Unvalidated ruby scale');
@@ -627,12 +627,9 @@ const rubyContextCallbacks={
                 return;
             }
             if(this.inherited) {
-                // A colour/bold continuation may itself become the parent of
-                // another continuation. Its fields contain the current scale,
-                // which may already include an absolute <S…>/<s…> emphasis.
-                // Keep the parent's stable native-ruby multiplier so a later
-                // absolute reset remains emphasis * rubyMultiplier.
-                const auxiliary={factor:this.inherited.factor,placement:this.placement};
+                // Register this nested reading's own fixed multiplier for any
+                // S/s commands it contains, and for a deeper native reading.
+                const auxiliary={factor:this.target.add(0x15c).readFloat(),placement:this.placement};
                 if(nativeParser)nativeParser.set(this.target,auxiliary);
                 else auxiliaryContexts.set(String(this.target),auxiliary);
                 if(this.placement) {
@@ -717,8 +714,8 @@ if(REPORT.native.parse_text) Interceptor.attach(base.add(REPORT.native.parse_tex
     },
     onLeave(){if(this.aux)auxiliaryContexts.delete(this.key);recordTiming('parse',this.started);}
 });
-if(nativeParser?.sizeOnEnter&&REPORT.native.ruby_size_end)
-    Interceptor.attach(base.add(REPORT.native.ruby_size_end.rva),{onEnter:nativeParser.sizeOnEnter});
+const nativeSizeHook=nativeParser?.installSizeHook&&REPORT.native.ruby_size_end
+    ?nativeParser.installSizeHook(base.add(REPORT.native.ruby_size_end.rva),REPORT.native.ruby_size_end.bytes):null;
 if(REPORT.native.line_ruby_origin) Interceptor.attach(base.add(REPORT.native.line_ruby_origin.rva),{
     onEnter(args) {
         this.parser=null;

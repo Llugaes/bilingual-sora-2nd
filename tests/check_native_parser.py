@@ -98,7 +98,7 @@ rpc.exports={run(){
     // The verified S/s command tail resets both fields to an absolute label
     // size. Restore the saved native-ruby factor inside C before glyph
     // emission; normal, emphasized and nested contexts stay independent.
-    const sizeScratch=Memory.alloc(0x300),nestedSize=Memory.alloc(0x300),unownedSize=Memory.alloc(0x300);
+    const sizeScratch=Memory.alloc(0x300),independentSize=Memory.alloc(0x300),unownedSize=Memory.alloc(0x300);
     listener.trackScale(sizeScratch,.45);
     sizeScratch.add(0x158).writeFloat(.45);sizeScratch.add(0x15c).writeFloat(.45);
     check(Math.fround(sizeScratch.add(0x15c).readFloat())===Math.fround(.45),'normal ruby scale changed');
@@ -109,30 +109,14 @@ rpc.exports={run(){
     check(sizeScratch.add(0x158).readU32()===productBits(.8,.45)&&sizeScratch.add(0x15c).readU32()===productBits(.8,.45),'sN ratio differs from normal ruby');
     sizeEnd(unownedSize,1.5);check(!listener.applySize(unownedSize),'unowned primary size was intercepted');
     check(unownedSize.add(0x15c).readU32()===productBits(1.5,1),'unowned primary size changed');
-    listener.trackScale(nestedSize,.3);sizeEnd(nestedSize,1.5);check(listener.applySize(nestedSize),'nested ruby factor missing');
-    check(nestedSize.add(0x15c).readU32()===productBits(1.5,.3),'nested ruby factor leaked from parent');
-    // C/B style continuations each receive a new ruby context. Their fields
-    // already inherit .3, but every absolute S/s reset must still recover
-    // exactly .3 rather than a compounded .09/.027 factor.
-    const styledContexts=[Memory.alloc(0x300),Memory.alloc(0x300),Memory.alloc(0x300)];
-    for(const p of styledContexts)listener.set(p,{factor:.3,placement:false});
-    for(const p of styledContexts) {
-        sizeEnd(p,1.5);check(listener.applySize(p)&&p.add(0x15c).readU32()===productBits(1.5,.3),'styled S5 factor compounded');
-        sizeEnd(p,.8);check(listener.applySize(p)&&p.add(0x15c).readU32()===productBits(.8,.3),'styled sN factor compounded');
-    }
-    // A styled child may be copied after its parent has already processed S5
-    // (.5 native ruby * .9 user scale * 1.5 emphasis = .675). The parser
-    // record must still carry the stable .45 multiplier, not that current
-    // .675 scale, for every later absolute S/s command.
-    const emphaticStyledContexts=[Memory.alloc(0x300),Memory.alloc(0x300),Memory.alloc(0x300)];
-    for(const p of emphaticStyledContexts)listener.set(p,{factor:.45,placement:false});
-    for(const p of emphaticStyledContexts) {
-        sizeEnd(p,1.5);check(listener.applySize(p)&&p.add(0x15c).readU32()===productBits(1.5,.45),'emphasized styled S5 multiplier changed');
-        sizeEnd(p,.8);check(listener.applySize(p)&&p.add(0x15c).readU32()===productBits(.8,.45),'emphasized styled sN multiplier changed');
-    }
+    // A separately owned ruby context keeps an independent S/s factor. This
+    // is deliberately not a C/B style model: verified C/c tags share a
+    // parser exit and are exercised by check_native_size_hook.py.
+    listener.trackScale(independentSize,.3);sizeEnd(independentSize,1.5);check(listener.applySize(independentSize),'independent ruby factor missing');
+    check(independentSize.add(0x15c).readU32()===productBits(1.5,.3),'independent ruby factor leaked');
     // Entering the parser retires the test-only scale records exactly like a
     // production parse, so no pointer-derived state survives its invocation.
-    parse(label,sizeScratch,0);parse(label,nestedSize,0);for(const p of styledContexts)parse(label,p,0);for(const p of emphaticStyledContexts)parse(label,p,0);
+    parse(label,sizeScratch,0);parse(label,independentSize,0);
     check(listener.status().active===0,'size records leaked after parser return');
     // Independent native threads exercise lock and invocation-local timing.
     const startThread=new NativeFunction(kernel.getExportByName('CreateThread'),'pointer',
@@ -188,7 +172,7 @@ rpc.exports={run(){
         original_ms:baseline,js_listener_ms:js,native_listener_ms:native,calls:12000,
         native_relative_to_js:native/js,ordinary_js_callbacks:0,
         cases:['outer/nested timing','native return and permission','parent inherits until return',
-            'same pointer generation replacement','S5/sN ruby-scale restoration','nested styled C/B/S contexts and unowned size isolation',
+            'same pointer generation replacement','S5/sN ruby-scale restoration and unowned isolation',
             'two native threads','1025-entry overflow fallback with size record and same-address reentry'],
         final_status:listener.status()};
     detach();return report;

@@ -509,7 +509,7 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
                 primaryX:parser.readFloat(),primaryY:parser.add(4).readFloat(),
                 bounds:[0x3c8,0x3cc,0x3d0,0x3d4].map(v=>frame.add(v).readS32())};
         },
-        inheritedLayerScale(label,index=0,{nativeScale=.375,emphasizedScale=null}={}) {
+        nestedRubyScale(label,index=0,{nativeScale=.375,emphasizedScale=null}={}) {
             const row=sandbox.rpc.exports.snapshot().find(v=>v.original===label.originalForTest||v.displayed===label.text());
             const layer=row.layers[index],parser=new ScratchPointer(0x730000),frame=new ScratchPointer(0x740000);
             parser.values.set(8,label.add(0x318).readPointer().add(layer.offset));
@@ -521,25 +521,24 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
             const parentFactor=factorOf(parent);
             // The verified S/s tail resets this to an absolute label scale and
             // the native parser applies parentFactor afterwards. Simulate that
-            // real sequence before a colour child inherits the current value.
+            // sequence before a nested native reading is initialized.
             if(emphasizedScale!==null) {
                 parent.add(0x158).writeFloat(emphasizedScale);
                 parent.add(0x15c).writeFloat(emphasizedScale);
             }
             parent.add(4).writeFloat(100);
             const child=new ScratchPointer(0x760000),childArgs=[child,allocate('_'),new Pointer(1)];
-            // ruby_context_init copies the caller's current float arguments.
-            // A colour/style continuation therefore starts with the parent
-            // scale already applied instead of a fresh unit scale.
-            child.add(0x158).writeFloat(parent.add(0x158).readFloat());
-            child.add(0x15c).writeFloat(parent.add(0x15c).readFloat());
+            // The native R handler derives xmm6 from the global ruby font
+            // size, independently of its parent's current float fields.
+            child.add(0x158).writeFloat(nativeScale);
+            child.add(0x15c).writeFloat(nativeScale);
             child.add(4).writeFloat(80);
             const childCall={returnAddress:base.add(0x700),context:{r15:label,rbx:parent,rbp:frame}};
             initializer.onEnter.call(childCall,childArgs);initializer.onLeave.call(childCall);
             const childFactor=factorOf(child);
             const grandchild=new ScratchPointer(0x770000),grandchildArgs=[grandchild,allocate('_'),new Pointer(1)];
-            grandchild.add(0x158).writeFloat(child.add(0x158).readFloat());
-            grandchild.add(0x15c).writeFloat(child.add(0x15c).readFloat());
+            grandchild.add(0x158).writeFloat(nativeScale);
+            grandchild.add(0x15c).writeFloat(nativeScale);
             grandchild.add(4).writeFloat(80);
             const grandchildCall={returnAddress:base.add(0x700),context:{r15:label,rbx:child,rbp:frame}};
             initializer.onEnter.call(grandchildCall,grandchildArgs);initializer.onLeave.call(grandchildCall);
@@ -1159,34 +1158,34 @@ test('secondary icon parser owns a cloned icon callback only for its drawing pas
     assert.equal(runtime.api.status().failed,false);
 });
 
-test('coloured layered continuation preserves its inherited ruby scale',()=>{
-    const a='完成总计<C3>25件</C>委托并汇报。',b='計<C3>２５件</C>のクエストを達成して報告する。';
+test('native reading inside a secondary layer scales relative to its parent',()=>{
+    const a='完成总计25件委托并汇报。',b='計２５件の<R>依頼</Rいらい>を達成して報告する。';
     const runtime=makeRuntime();runtime.api.load({pairs:{[a]:[a,b]},plain_pairs:{[a]:[a,b]}},'annotation',true,.85);
     const label=runtime.label(0x4671,a);runtime.update(label);
-    const scales=runtime.inheritedLayerScale(label);
+    const scales=runtime.nestedRubyScale(label);
     assert.ok(Math.abs(scales.parent-.3)<1e-6);
-    assert.ok(Math.abs(scales.child-scales.parent)<1e-6,'a colour continuation must not square the inherited ruby factor');
-    assert.ok(Math.abs(scales.grandchild-scales.parent)<1e-6,'a nested colour/bold continuation must keep the inherited ruby factor');
+    assert.ok(Math.abs(scales.child-.1125)<1e-6,'native nested reading starts from the engine baseline times its parent multiplier');
+    assert.ok(Math.abs(scales.grandchild-.0421875)<1e-6,'a deeper reading must use its own parent multiplier');
     assert.ok(Math.abs(scales.grandchildY-(scales.childY+(80-scales.childY)*scales.child))<1e-6,
-        'a third continuation must retain the preceding auxiliary context');
+        'a deeper reading must retain the preceding auxiliary context');
     assert.equal(runtime.api.status().failed,false);
 });
 
-test('coloured emphasis continuations retain the native ruby multiplier',()=>{
-    const a='完成总计<C3>25件</C>委托并汇报。',b='計<C3>２５件</C>のクエストを達成して報告する。';
+test('emphasis before a native reading does not become its fixed multiplier',()=>{
+    const a='完成总计25件委托并汇报。',b='<S5>計２５件の<R>依頼</Rいらい>を達成して報告する。';
     const runtime=makeRuntime();runtime.api.load({pairs:{[a]:[a,b]},plain_pairs:{[a]:[a,b]}},'annotation',true,.85);
     runtime.api.style(.85,{ruby_scale:.9});
     const label=runtime.label(0x4672,a);runtime.update(label);
     // Native ruby .5 times the user .9 is the stable annotation multiplier.
-    // After S5 the copied child scale is .675, but another absolute S5 must
-    // still restore .45 * 1.5, not .675 * 1.5.
-    const scales=runtime.inheritedLayerScale(label,0,{nativeScale:.5,emphasizedScale:.675});
+    // After S5 the parent is .675. The nested reading still begins at the
+    // native .5 baseline and uses the stable .45 parent multiplier.
+    const scales=runtime.nestedRubyScale(label,0,{nativeScale:.5,emphasizedScale:.675});
     assert.ok(Math.abs(scales.parent-.675)<1e-6);
     assert.ok(Math.abs(scales.parentFactor-.45)<1e-6);
-    assert.ok(Math.abs(scales.child-.675)<1e-6);
-    assert.ok(Math.abs(scales.grandchild-.675)<1e-6);
-    assert.ok(Math.abs(scales.childFactor-.45)<1e-6,'a colour child must retain the stable ruby multiplier after S5');
-    assert.ok(Math.abs(scales.grandchildFactor-.45)<1e-6,'nested colour/bold continuations must retain the stable ruby multiplier after S5');
+    assert.ok(Math.abs(scales.child-.225)<1e-6);
+    assert.ok(Math.abs(scales.grandchild-.1125)<1e-6);
+    assert.ok(Math.abs(scales.childFactor-.225)<1e-6,'a nested reading must register its own multiplier after S5');
+    assert.ok(Math.abs(scales.grandchildFactor-.1125)<1e-6,'a deeper native reading must register its own multiplier after S5');
     assert.equal(runtime.api.status().failed,false);
 });
 

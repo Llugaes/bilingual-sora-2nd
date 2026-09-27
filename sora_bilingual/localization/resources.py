@@ -128,18 +128,30 @@ class Called:
 def assembled_dialogue(call: Called) -> str | None:
     """Join only the verified static talk/cinematic argument grammar.
 
-    System group 5, commands 0/6/7/19 use literal strings and integer 10 for a
-    newline after the first text argument. Other operations after text begins
-    may contain dynamic substitutions; they are deliberately not fabricated.
+    System group 5 commands 0/6/7/19 use literal strings and integer 10 for a
+    newline after the first text argument. Command 8 uses the same body grammar
+    after its verified window/style prefix. Other operations after
+    text begins may contain dynamic substitutions; they are not fabricated.
     """
-    if (
-        call.kind != 3
-        or len(call.args) < 3
-        or call.args[0] != ("int", 5)
-        or call.args[1] not in (("int", 0), ("int", 6), ("int", 7), ("int", 19))
-    ):
+    if call.kind != 3 or len(call.args) < 3 or call.args[0] != ("int", 5):
         return None
-    first = next((i for i, (kind, _) in enumerate(call.args) if kind == "string"), None)
+    command = call.args[1]
+    if command in (("int", 0), ("int", 6), ("int", 7), ("int", 19)):
+        first = next((i for i, (kind, _) in enumerate(call.args) if kind == "string"), None)
+    elif command == ("int", 8):
+        # Only the window argument and these observed single style controls
+        # may precede a static panel. Longer integer runs are not opaque
+        # metadata: e.g. 17,itemId inserts localized item names before the
+        # first literal string. Extracting only that suffix would lose text.
+        first = next((i for i, (kind, _) in enumerate(call.args) if kind == "string"), None)
+        if (
+            first not in (3, 4)
+            or call.args[2][0] != "int"
+            or (first == 4 and call.args[3] not in tuple(("int", n) for n in (13, 16, 26, 28)))
+        ):
+            return None
+    else:
+        return None
     if first is None:
         return None
     parts = []

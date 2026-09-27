@@ -21,6 +21,8 @@ py -3.14 -m venv .venv
 
 本地资源回放工具使用 SORA_GAME_DIR 显式传入游戏目录。无本地资源的 CI 会跳过相应验证；跳过不能作为实机通过的证据。
 
+排版、漏译与原生钩子修复先按[诊断与回归约定](docs/DEBUGGING.md)采集原入口的失败证据。Windows 下 `tools.dev check` 也运行自建隐藏进程的原生检查，包含字号分支与颜色公共出口的实际跳转；不会附加游戏。
+
 语言覆盖检查使用本机生成的 `generated/catalog.json`，报告保留在 `generated/`，不提交游戏文本：
 
 | 命令 | 验证范围 |
@@ -29,6 +31,8 @@ py -3.14 -m venv .venv
 | python -m tools.audit_dialogue_coverage --model generated/runtime-HASH.json | 对应模型的完整对白配对与调用身份路径；将 HASH 换为实际缓存标识，并传入匹配的语言参数 |
 | python tests/check_language_matrix.py | 八语来源／主文／副文的 512 种配置，对照资源目标值，另检查 Python/JavaScript 一致性 |
 | python tests/check_all_models.py | 编译全部 64 种主副语言模型，需设置 SORA_GAME_DIR |
+| python tests/check_reported_texts.py | 用全目录模型和正式 JS 解析器回放全屏说明、技能范围与效果、道具详情；默认简中来源、八种主语言、日文副语言，可用 --source / --secondary 更换 |
+| python -m tools.audit_static_panels --game GAME_DIR --catalog generated/catalog.json --output generated/static-panels-check.json | 从八语言原始资源扫描全屏说明，区分静态可提取、动态排除、配对缺项和目录差异；GAME_DIR 替换为游戏目录 |
 
 矩阵可用 `--slice 0/8 --output generated/language-matrix-0.json` 分片运行，完整检查须汇总所有分片。同原文异译的情况要与成功翻译分开统计，不能以“保留原文”或两套实现输出一致作为翻译通过。资源齐全、模型可编译也不能证明游戏控件已经传入正确身份；新增原生接入与实际排版仍需实机验证。
 

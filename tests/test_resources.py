@@ -114,7 +114,142 @@ def write_game(
 
 
 class ResourcesTests(unittest.TestCase):
-    def test_unrelated_reward_format_does_not_block_verified_dialogue_sequence(self):
+    def test_command8_literal_rich_text_assembles_but_dynamic_tail_is_rejected(self):
+        actual = resources.Called(
+            None,
+            3,
+            (
+                ("int", 5),
+                ("int", 8),
+                ("int", 65535),
+                ("int", 26),
+                ("string", "<c930>"),
+                ("string", ""),
+                ("int", 10),
+                ("string", "项目：游击士协会招牌"),
+                ("int", 10),
+                ("string", "怪盗绅士布卢布兰施展天才本领、从无能的游击士协会"),
+                ("int", 10),
+                ("string", "蔡斯分部的屋檐上取走的金属制招牌。几乎没有经济价"),
+                ("int", 10),
+                ("string", "值，却能给予协会相关人士难以估计的打击，读到这里"),
+                ("int", 10),
+                ("string", "的各位想必也正因这份屈辱而浑身颤抖吧。噢，话先说"),
+                ("int", 10),
+                ("string", "到这。差不多该提示下一把钥匙的所在地了。"),
+            ),
+        )
+        self.assertEqual(
+            resources.assembled_dialogue(actual),
+            "<c930>\n项目：游击士协会招牌\n怪盗绅士布卢布兰施展天才本领、从无能的游击士协会\n蔡斯分部的屋檐上取走的金属制招牌。几乎没有经济价\n值，却能给予协会相关人士难以估计的打击，读到这里\n的各位想必也正因这份屈辱而浑身颤抖吧。噢，话先说\n到这。差不多该提示下一把钥匙的所在地了。",
+        )
+        from dataclasses import replace
+
+        self.assertIsNone(
+            resources.assembled_dialogue(replace(actual, args=actual.args[:-1] + (("var", None),)))
+        )
+        # mp0054_01/EV_07_05_00_END/called/2: command-8 locale metadata
+        # may end at args[2], leaving the colour markup as the first text arg.
+        colour_at_arg3 = resources.Called(
+            None,
+            3,
+            (
+                ("int", 5),
+                ("int", 8),
+                ("int", 65535),
+                ("string", "<C1>"),
+                ("string", "由于约书亚正式回归到队伍中，"),
+                ("int", 10),
+                ("string", "勇猛攻击“爆裂猛攻”"),
+                ("int", 10),
+                ("string", "已强化为“<C2>全面爆裂猛攻<C1>”。"),
+            ),
+        )
+        self.assertEqual(
+            resources.assembled_dialogue(colour_at_arg3),
+            "<C1>由于约书亚正式回归到队伍中，\n勇猛攻击“爆裂猛攻”\n已强化为“<C2>全面爆裂猛攻<C1>”。",
+        )
+        self.assertIsNone(
+            resources.assembled_dialogue(
+                replace(colour_at_arg3, args=colour_at_arg3.args + (("int", 22),))
+            )
+        )
+        for dynamic_prefix in (("var", None), ("call", None)):
+            self.assertIsNone(
+                resources.assembled_dialogue(
+                    replace(
+                        colour_at_arg3,
+                        args=colour_at_arg3.args[:2] + (dynamic_prefix,) + colour_at_arg3.args[3:],
+                    )
+                )
+            )
+        self.assertIsNone(
+            resources.assembled_dialogue(
+                replace(colour_at_arg3, args=colour_at_arg3.args[:2] + colour_at_arg3.args[3:])
+            )
+        )
+
+    def test_command8_integer_item_references_before_literal_are_not_metadata(self):
+        # Actual JA mp6010_01/EV_00_06_00/called/83: item references produce
+        # visible text before the final literal. Never admit only its suffix.
+        args = tuple(("int", n) for n in (5, 8, 65535, 16, 17, 500, 10, 17, 1000, 10, 17, 1100))
+        call = resources.Called(None, 3, args + (("string", "を装備した。"),))
+        self.assertIsNone(resources.assembled_dialogue(call))
+        for style in (13, 16, 26, 28):
+            call = resources.Called(
+                None, 3, tuple(("int", n) for n in (5, 8, 65535, style)) + (("string", "Text"),)
+            )
+            self.assertEqual(resources.assembled_dialogue(call), "Text")
+
+    def test_dynamic_item_prefix_cannot_poison_neighbouring_static_reward_alignment(self):
+        # Real pattern in mp6010_01: JA item names occur before the first
+        # literal; EN interleaves them with strings. Neither is static text.
+        jp_dynamic = resources.Called(
+            None,
+            3,
+            tuple(("int", n) for n in (5, 8, 65535, 16, 17, 500)) + (("string", "を装備した。"),),
+        )
+        en_dynamic = resources.Called(
+            None,
+            3,
+            (
+                ("int", 5),
+                ("int", 8),
+                ("int", 65535),
+                ("int", 16),
+                ("string", "Equipped "),
+                ("int", 17),
+                ("int", 500),
+                ("string", "."),
+            ),
+        )
+        prefix = tuple(("int", n) for n in (5, 8, 65535, 16))
+        functions = {
+            language: resources.Function(
+                "Reward",
+                0,
+                (),
+                (dynamic, resources.Called(None, 3, prefix + (("string", text),))),
+                (),
+                (),
+            )
+            for language, dynamic, text in (
+                ("ja", jp_dynamic, "<C5>１０００ミラ<C0>を手に入れた。"),
+                ("en", en_dynamic, "Obtained <C5>1,000 mira<C0>."),
+            )
+        }
+        rows = resources.align_functions(
+            "script/a.dat", "Reward", functions, {"counters": Counter()}
+        )
+        assembled = [row for row in rows if "/assembled_dialogue" in row["key"]]
+        self.assertEqual(len(assembled), 1)
+        self.assertTrue(assembled[0]["key"].endswith("called/1/assembled_dialogue"))
+        self.assertEqual(
+            assembled[0]["texts"],
+            {"ja": "<C5>１０００ミラ<C0>を手に入れた。", "en": "Obtained <C5>1,000 mira<C0>."},
+        )
+
+    def test_static_command8_and_talk_align_when_command8_chunking_differs(self):
         from dataclasses import replace
 
         talk = resources.Called(
@@ -140,9 +275,18 @@ class ResourcesTests(unittest.TestCase):
             )
 
         rows = align(b)
-        self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0]["texts"], {"en": "Continue", "fr": "Proceed"})
-        self.assertEqual(rows[0]["display_role"], "dialogue")
+        self.assertEqual(
+            [(row["key"].split("/Scene/")[1], row["texts"]) for row in rows],
+            [
+                (
+                    "called/0/assembled_dialogue",
+                    {"en": "<C1>Reward", "fr": "<C1>Gift"},
+                ),
+                ("called/1/assembled_dialogue", {"en": "Continue", "fr": "Proceed"}),
+                ("called/1/arg/5", {"en": "Continue", "fr": "Proceed"}),
+            ],
+        )
+        self.assertTrue(all(row["display_role"] == "dialogue" for row in rows[:2]))
         # A different speaker/voice, reordered calls or added calls cannot
         # borrow the neighbouring dialogue's translation.
         for slot in (2, 4):
