@@ -39,61 +39,11 @@ class AutoConnector:
         # A separate durable prerequisite from the live text backend. The UI
         # can display this object even while a game is already connected.
         self.font_status = {"state": "idle", "message": "等待发现游戏目录"}
-        self.preparation_status = {"state": "waiting", "message": "请先完成启动前准备"}
-        self.game_path = None
-        self.preparation_source = None
-        self.preparation_game = None
-        self.preparation_selected_at = 0
-        try:
-            choice = json.loads(
-                self.status_path.with_name("preparation-choice.json").read_text("utf-8")
-            )
-            from sora_bilingual.config.locales import LOCALES
-
-            if choice.get("source") in LOCALES:
-                self.preparation_source = choice["source"]
-                self.preparation_game = choice.get("game")
-                self.preparation_selected_at = float(choice.get("selected_at", 0))
-        except OSError, ValueError, TypeError, AttributeError:
-            pass
-        self.discovery_requested = threading.Event()
         self.stop = threading.Event()
         self.wake = threading.Event()
         self.retry_requested = threading.Event()
         self.thread = threading.Thread(target=self._run, name="auto-connect", daemon=True)
         self.thread.start()
-
-    def select_game(self, game):
-        from sora_bilingual.game.install import remember_game
-
-        game = Path(game).resolve()
-        if not (game / "sora_2nd.exe").is_file() or not (game / "pac/steam").is_dir():
-            raise ValueError("请选择包含 sora_2nd.exe 和 pac/steam 的游戏目录")
-        remember_game(game)
-        self.discovery_requested.set()
-        self.wake.set()
-
-    def prepare_game(self, game, source):
-        from sora_bilingual.config.locales import LOCALES
-        from sora_bilingual.config.native_config import write_config
-
-        if source not in LOCALES:
-            raise ValueError("请选择游戏当前的文字语言")
-        self.select_game(game)
-        # A preparation hint is not a runtime language detection. Do not write
-        # it to native-control or consume its first-run language-default marker.
-        choice = {
-            "game": str(Path(game).resolve()),
-            "source": source,
-            "selected_at": time.time(),
-        }
-        write_config(choice, self.status_path.with_name("preparation-choice.json"))
-        self.preparation_game = choice["game"]
-        self.preparation_source = source
-        self.preparation_selected_at = choice["selected_at"]
-        self.preparation_status = {"state": "preparing", "message": "正在准备语言映射"}
-        self.discovery_requested.set()
-        self.wake.set()
 
     def retry(self):
         """Request a safe reconnect after a failed, non-resident backend.
@@ -113,7 +63,7 @@ class AutoConnector:
         from sora_bilingual.game.install import find_game
         from sora_bilingual.game.native_loading import ModelPreparation, prepare_fresh
         from sora_bilingual.config.locales import LOCALES
-        from sora_bilingual.config.native_config import read_config, apply_pending_language_defaults
+        from sora_bilingual.config.native_config import read_config
         from sora_bilingual.localization.native_catalog import fingerprint, model_path
         from sora_bilingual.localization.model_wire import wire_ready
         from sora_bilingual.updates.tool_updates import ReleaseWatch
@@ -122,10 +72,7 @@ class AutoConnector:
         releases = ReleaseWatch()
         device = None
         preparation = ModelPreparation(
-            lambda c: prepare_fresh(
-                c["game"], c["config"], cache_only="catalog" if c.get("catalog_only") else True
-            ),
-            lambda c: c,
+            lambda c: prepare_fresh(c["game"], c["config"], cache_only=True), lambda c: c
         )
         font_preparation = ModelPreparation(lambda c: prepare(c["game"]), lambda c: c)
 
@@ -169,11 +116,6 @@ class AutoConnector:
                     continue
                 if device is None:
                     device = frida.get_local_device()
-                if self.discovery_requested.is_set():
-                    self.discovery_requested.clear()
-                    installed_game = find_game()
-                    preparing_key = None
-                    next_font_check = 0
                 games = set()
                 for p in device.enumerate_processes():
                     if p.name.lower() == "sora_2nd.exe":
@@ -234,19 +176,6 @@ class AutoConnector:
                 prepared = preparation.poll()
                 if prepared and prepared[0].get("key") == preparing_key:
                     preparation_error = "预缓存失败：" + str(prepared[2]) if prepared[2] else None
-                    self.preparation_status = {
-                        "state": "error"
-                        if prepared[2]
-                        else "catalog-ready"
-                        if prepared[0].get("catalog_only")
-                        else "ready",
-                        "message": preparation_error
-                        or (
-                            "语言资源已准备，启动游戏后自动检测文字语言"
-                            if prepared[0].get("catalog_only")
-                            else "语言映射已准备"
-                        ),
-                    }
                 fonts_prepared = font_preparation.poll()
                 if fonts_prepared and fonts_prepared[0]["game"] == installed_game:
                     if fonts_prepared[2]:
@@ -307,7 +236,6 @@ class AutoConnector:
                 if installed_game is None and time.monotonic() >= next_discovery:
                     installed_game = find_game()
                     next_discovery = time.monotonic() + 30
-                self.game_path = str(installed_game) if installed_game else None
                 if installed_game is not None and str(installed_game) != font_game:
                     font_game = str(installed_game)
                     font_candidate = None
@@ -315,7 +243,6 @@ class AutoConnector:
                     font_fingerprint = None
                     next_font_check = 0
                     preparing_key = None
-                    self.preparation_status = {"state": "waiting", "message": "请先完成启动前准备"}
                 # The source identity uses only archive metadata and source
                 # hashes. Poll it infrequently so an idle coordinator never
                 # re-reads or rebuilds fonts every connection tick.
@@ -362,40 +289,21 @@ class AutoConnector:
                                 "game_running": bool(games),
                             }
                         )
-                # A fresh install can parse every resource before source detection.
-                # Selecting/applying a model still requires a confirmed source.
+                # Offline prewarming can only use a language confirmed during
+                # the previous game process. A newly observed PID is always
+                # left to native_probe's one-shot table detector before any
+                # model for that process is selected or applied.
                 if not busy and not games:
                     if installed_game is not None:
                         config = read_config()
                         previous_source = status.get("last_detected_game_language")
-                        selected_source = (
-                            self.preparation_source
-                            if (
-                                self.preparation_game == str(installed_game.resolve())
-                                and self.preparation_source in LOCALES
-                            )
-                            else None
-                        )
-                        # A newer runtime observation supersedes the offline hint
-                        # only for this installation. A later manual choice can
-                        # still prepare a language the user intends to switch to.
                         if (
-                            status.get("game_directory") == str(installed_game.resolve())
-                            and status.get("source_language_status") == "game_not_running"
-                            and status.get("updated_at", 0) > self.preparation_selected_at
-                            and previous_source in LOCALES
-                        ):
-                            selected_source = previous_source
-                        if selected_source:
-                            config = {
-                                **apply_pending_language_defaults(config, selected_source),
-                                "game_language": selected_source,
-                            }
-                        elif (
                             status.get("source_language_status") != "game_not_running"
                             or previous_source not in LOCALES
+                            or status.get("game_directory", str(installed_game.resolve()))
+                            != str(installed_game.resolve())
                         ):
-                            config = {"catalog_only": True}
+                            config = None
                         else:
                             config = {**config, "game_language": previous_source}
                     else:
@@ -403,14 +311,7 @@ class AutoConnector:
                     if config is not None:
                         identity = {
                             k: config.get(k)
-                            for k in (
-                                "primary",
-                                "secondary",
-                                "game_language",
-                                "scope",
-                                "sources",
-                                "catalog_only",
-                            )
+                            for k in ("primary", "secondary", "game_language", "scope", "sources")
                         }
                         key = (
                             str(installed_game),
@@ -418,28 +319,11 @@ class AutoConnector:
                             json.dumps(identity, sort_keys=True),
                         )
                         if key != preparing_key:
-                            catalog_only = config.get("catalog_only", False)
-                            if catalog_only or not wire_ready(model_path(key[1], config)):
+                            if not wire_ready(model_path(key[1], config)):
                                 preparation_error = None
-                                self.preparation_status = {
-                                    "state": "preparing",
-                                    "message": "正在准备语言资源"
-                                    if catalog_only
-                                    else "正在准备语言映射",
-                                }
                                 preparation.request(
-                                    {
-                                        "game": installed_game,
-                                        "config": config,
-                                        "catalog_only": catalog_only,
-                                        "key": key,
-                                    }
+                                    {"game": installed_game, "config": config, "key": key}
                                 )
-                            else:
-                                self.preparation_status = {
-                                    "state": "ready",
-                                    "message": "语言映射已准备",
-                                }
                             preparing_key = key
                 # An old-process prewarm is never a reason to delay checking
                 # the new process's current source language.
@@ -454,18 +338,11 @@ class AutoConnector:
                     source_retry_identity = None
                     source_retry_count = 0
                     next_source_retry = 0
-                    if installed_game is None:
-                        self.message = "未找到游戏目录，请在启动前准备中选择"
-                    elif self.font_status.get("state") in ("healthy", "installed"):
-                        self.message = (
-                            "启动前准备完成，可以启动游戏"
-                            if self.preparation_status.get("state") == "ready"
-                            else self.preparation_status["message"]
-                        )
-                    else:
-                        self.message = self.font_status.get(
-                            "message", "自动连接已开启，等待游戏启动"
-                        )
+                    self.message = (
+                        "字体已就绪，可以启动游戏"
+                        if self.font_status.get("state") in ("healthy", "installed")
+                        else self.font_status.get("message", "自动连接已开启，等待游戏启动")
+                    )
                 elif len(games) > 1:
                     self.message = "检测到多个游戏进程，请保留一个"
                 elif busy:
@@ -485,7 +362,7 @@ class AutoConnector:
                 elif self.error:
                     self.message = "连接失败：" + self.error
                 if preparation.active and not games:
-                    self.message = "正在后台准备语言缓存，完成后自动连接"
+                    self.message = "正在后台准备语言缓存，可直接启动游戏"
                 elif preparation_error and not games:
                     self.message = preparation_error
                 elif self.font_status.get("state") == "restart-required":

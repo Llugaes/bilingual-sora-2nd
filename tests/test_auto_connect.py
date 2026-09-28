@@ -8,10 +8,9 @@ from sora_bilingual.app.auto_connect import ConnectionPolicy
 
 
 class AutoConnectTests(unittest.TestCase):
-    def test_newer_runtime_source_supersedes_offline_hint_for_same_game(self):
+    def test_first_install_prepares_fonts_without_choices_or_mapping_build(self):
         from sora_bilingual.app.auto_connect import AutoConnector
 
-        entered = threading.Event()
         with (
             tempfile.TemporaryDirectory() as tmp,
             patch("sora_bilingual.app.auto_connect.ROOT", Path(tmp)),
@@ -20,169 +19,37 @@ class AutoConnectTests(unittest.TestCase):
                 return_value=SimpleNamespace(enumerate_processes=lambda: []),
             ),
             patch("sora_bilingual.game.install.find_game", return_value=Path(tmp)),
-            patch("sora_bilingual.localization.native_catalog.fingerprint", return_value={}),
-            patch("sora_bilingual.localization.model_wire.wire_ready", return_value=False),
             patch("sora_bilingual.fonts.font_delivery.source_fingerprint", return_value="fonts"),
-            patch("sora_bilingual.fonts.font_delivery.prepare", return_value=Path(tmp) / "fonts"),
-            patch("sora_bilingual.fonts.font_delivery.ensure", return_value={"state": "healthy"}),
             patch(
-                "sora_bilingual.game.native_loading.prepare_fresh",
-                side_effect=lambda *a, **k: entered.set() or "cache",
-            ) as prepare,
-        ):
-            status = Path(tmp) / "status.json"
-            status.write_text(
-                json.dumps(
-                    {
-                        "game_directory": str(Path(tmp).resolve()),
-                        "source_language_status": "game_not_running",
-                        "last_detected_game_language": "ja",
-                        "updated_at": 2,
-                    }
-                ),
-                "utf8",
-            )
-            status.with_name("preparation-choice.json").write_text(
-                json.dumps(
-                    {
-                        "game": str(Path(tmp).resolve()),
-                        "source": "en",
-                        "selected_at": 1,
-                    }
-                ),
-                "utf8",
-            )
-            auto = AutoConnector(status)
-            try:
-                self.assertTrue(entered.wait(2))
-                self.assertEqual(prepare.call_args.args[1]["game_language"], "ja")
-            finally:
-                auto.close()
-
-    def test_completed_old_build_cannot_replace_new_cached_selection(self):
-        from sora_bilingual.app.auto_connect import AutoConnector
-
-        entered, release = threading.Event(), threading.Event()
-        ready = [False]
-
-        def build(*args, **kwargs):
-            entered.set()
-            release.wait(3)
-            raise ValueError("obsolete build failed")
-
-        with (
-            tempfile.TemporaryDirectory() as tmp,
-            patch("sora_bilingual.app.auto_connect.ROOT", Path(tmp)),
-            patch("sora_bilingual.game.install.remember_game"),
+                "sora_bilingual.fonts.font_delivery.prepare", return_value=Path(tmp) / "fonts"
+            ) as fonts,
             patch(
-                "sora_bilingual.app.auto_connect.frida.get_local_device",
-                return_value=SimpleNamespace(enumerate_processes=lambda: []),
-            ),
-            patch("sora_bilingual.game.install.find_game", return_value=Path(tmp)),
-            patch("sora_bilingual.localization.native_catalog.fingerprint", return_value={}),
-            patch(
-                "sora_bilingual.localization.model_wire.wire_ready", side_effect=lambda _: ready[0]
-            ),
-            patch("sora_bilingual.fonts.font_delivery.source_fingerprint", return_value="fonts"),
-            patch("sora_bilingual.fonts.font_delivery.prepare", return_value=Path(tmp) / "fonts"),
-            patch("sora_bilingual.fonts.font_delivery.ensure", return_value={"state": "healthy"}),
-            patch("sora_bilingual.game.native_loading.prepare_fresh", side_effect=build),
-        ):
-            (Path(tmp) / "sora_2nd.exe").touch()
-            (Path(tmp) / "pac/steam").mkdir(parents=True)
-            auto = AutoConnector(Path(tmp) / "status.json")
-            try:
-                self.assertTrue(entered.wait(2))
-                ready[0] = True
-                auto.prepare_game(Path(tmp), "en")
-                end = time.monotonic() + 2
-                while auto.preparation_status["state"] != "ready" and time.monotonic() < end:
-                    auto.wake.set()
-                    time.sleep(0.01)
-                self.assertEqual(auto.preparation_status["state"], "ready")
-                release.set()
-                # Let the coordinator consume the obsolete worker error.
-                time.sleep(0.35)
-                self.assertEqual(auto.preparation_status["state"], "ready")
-            finally:
-                release.set()
-                auto.close()
-
-    def test_explicit_preparation_source_builds_offline_without_claiming_detection(self):
-        from sora_bilingual.app.auto_connect import AutoConnector
-
-        entered = threading.Event()
-        with (
-            tempfile.TemporaryDirectory() as tmp,
-            patch("sora_bilingual.app.auto_connect.ROOT", Path(tmp)),
-            patch(
-                "sora_bilingual.app.auto_connect.frida.get_local_device",
-                return_value=SimpleNamespace(enumerate_processes=lambda: []),
-            ),
-            patch("sora_bilingual.game.install.find_game", return_value=Path(tmp)),
-            patch("sora_bilingual.localization.native_catalog.fingerprint", return_value={}),
-            patch("sora_bilingual.localization.model_wire.wire_ready", return_value=False),
-            patch(
-                "sora_bilingual.config.native_config.read_config",
-                return_value={
-                    "primary": "zh-Hans",
-                    "secondary": "ja",
-                    "language_defaults_pending": True,
-                },
-            ),
-            patch("sora_bilingual.fonts.font_delivery.source_fingerprint", return_value="fonts"),
-            patch("sora_bilingual.fonts.font_delivery.prepare", return_value=Path(tmp) / "fonts"),
-            patch("sora_bilingual.fonts.font_delivery.ensure", return_value={"state": "installed"}),
-            patch(
-                "sora_bilingual.game.native_loading.prepare_fresh",
-                side_effect=lambda *a, **k: entered.set() or "cache",
-            ) as prepare,
+                "sora_bilingual.fonts.font_delivery.ensure", return_value={"state": "installed"}
+            ) as install,
+            patch("sora_bilingual.game.native_loading.prepare_fresh") as mappings,
             patch("sora_bilingual.app.auto_connect.subprocess.Popen") as launch,
         ):
-            status = Path(tmp) / "status.json"
+            status = Path(tmp) / "missing-status.json"
+            # A retired candidate's hint must not bring the manual workflow back.
             status.with_name("preparation-choice.json").write_text(
                 json.dumps({"game": str(Path(tmp).resolve()), "source": "en"}), "utf8"
             )
             auto = AutoConnector(status)
             try:
-                self.assertTrue(entered.wait(2))
-                self.assertEqual(prepare.call_args.args[1]["game_language"], "en")
-                self.assertEqual(prepare.call_args.args[1]["primary"], "en")
-                self.assertTrue(prepare.call_args.kwargs["cache_only"] is True)
-                self.assertFalse(status.exists(), "offline hint must not claim runtime detection")
+                end = time.monotonic() + 2
+                while auto.font_status.get("state") != "installed" and time.monotonic() < end:
+                    auto.wake.set()
+                    time.sleep(0.01)
+                self.assertEqual(auto.font_status["state"], "installed")
+                self.assertEqual(auto.message, "字体已就绪，可以启动游戏")
+                fonts.assert_called_once_with(Path(tmp))
+                self.assertFalse(install.call_args.kwargs["game_running"])
+                self.assertFalse(install.call_args.kwargs["is_game_running"]())
+                mappings.assert_not_called()
                 launch.assert_not_called()
-            finally:
-                auto.close()
-
-    def test_new_install_prepares_resources_before_any_game_was_seen(self):
-        from sora_bilingual.app.auto_connect import AutoConnector
-
-        entered = threading.Event()
-        with (
-            tempfile.TemporaryDirectory() as tmp,
-            patch("sora_bilingual.app.auto_connect.ROOT", Path(tmp)),
-            patch(
-                "sora_bilingual.app.auto_connect.frida.get_local_device",
-                return_value=SimpleNamespace(enumerate_processes=lambda: []),
-            ),
-            patch("sora_bilingual.game.install.find_game", return_value=Path(tmp)),
-            patch("sora_bilingual.localization.native_catalog.fingerprint", return_value={}),
-            patch("sora_bilingual.fonts.font_delivery.source_fingerprint", return_value="fonts"),
-            patch("sora_bilingual.fonts.font_delivery.prepare", return_value=Path(tmp) / "fonts"),
-            patch("sora_bilingual.fonts.font_delivery.ensure", return_value={"state": "installed"}),
-            patch(
-                "sora_bilingual.game.native_loading.prepare_fresh",
-                side_effect=lambda *a, **k: entered.set() or "cache",
-            ) as prepare,
-            patch("sora_bilingual.app.auto_connect.subprocess.Popen") as launch,
-        ):
-            auto = AutoConnector(Path(tmp) / "missing-status.json")
-            try:
-                self.assertTrue(
-                    entered.wait(2), "fresh install waits for a game instead of preparing offline"
+                self.assertFalse(
+                    status.exists(), "font preparation must not claim a detected language"
                 )
-                self.assertEqual(prepare.call_args.kwargs["cache_only"], "catalog")
-                launch.assert_not_called()
             finally:
                 auto.close()
 

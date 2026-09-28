@@ -1169,7 +1169,9 @@ class MenuTranslator:
     def component(self, source, mode):
         # A numeric run between native controls is presentation data, not a
         # translatable label. In particular, keep icon multipliers verbatim.
-        if any(c.isdigit() for c in source) and not any(c.isalpha() for c in source):
+        if re.search(r"[0-9０-９]", source) and re.fullmatch(
+            r"[\s×+−\-0-9０-９.,，．%％]+", source
+        ):
             return source
         pair = self.pair(source)
         if pair:

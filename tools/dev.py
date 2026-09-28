@@ -36,6 +36,7 @@ def main():
         if sys.platform == "win32":
             # Exercise the compiled native helper in a self-created hidden
             # process. This must never attach to a running game.
+            run(sys.executable, "-X", "utf8", "tests/check_runtime_text_engine.py")
             run(sys.executable, "-X", "utf8", "tests/check_native_geometry.py")
             run(sys.executable, "-X", "utf8", "tests/check_native_parser.py")
             run(sys.executable, "-X", "utf8", "tests/check_native_size_hook.py")

@@ -469,7 +469,7 @@ class RuntimeText {
     }
     component(source,mode) {
         // Icon counts and other numeric-only runs retain their native form.
-        if(/\p{N}/u.test(source)&&!/\p{L}/u.test(source))return source;
+        if(/[0-9０-９]/.test(source)&&/^[\s×+−\-0-9０-９.,，．%％]+$/.test(source))return source;
         const pair=this.pair(source);
         if(pair) {
             const [a,b]=pair;

@@ -233,126 +233,43 @@ class OverlayUiTests(unittest.TestCase):
         self.window.secondary_color.set_color((0.2, 0.4, 0.6), emit=True)
         self.assertEqual(read_config(self.control)["secondary_color"], [0.2, 0.4, 0.6])
 
-    def test_startup_preparation_selects_only_a_hint_and_requires_font_and_mapping_ready(self):
-        # Exercise the translated UI even on a Chinese developer machine.
-        self.window.ui_language.setCurrentIndex(self.window.ui_language.findData("en"))
-        game = Path(self.temp.name) / "Game"
-        other_game = Path(self.temp.name) / "OtherGame"
-        game.mkdir()
-        other_game.mkdir()
-        before = self.control.read_bytes()
-
-        class Connector:
-            game_path = str(game)
-            preparation_source = "zh-Hans"
-            font_status = {"state": "installed", "message": "字体已安装"}
-            preparation_status = {"state": "ready", "message": "语言映射已准备"}
-
-            def __init__(self):
-                self.selected = []
-                self.prepared = []
-
-            def select_game(self, path):
-                self.selected.append(Path(path))
-
-            def prepare_game(self, path, source):
-                self.prepared.append((Path(path), source))
-
-        connector = Connector()
+    def test_automatic_font_status_needs_no_directory_language_or_prepare_action(self):
+        connector = type("Connector", (), {"font_status": {}})()
         self.window._auto_connector = connector
-        self.window._present_startup_preparation()
-        self.assertEqual(self.window.preparation_language.currentData(), "zh-Hans")
-        self.assertIn(
-            tr("字体与语言映射已就绪，可以启动游戏。"), self.window.preparation_notice.text()
-        )
-
-        self.window.preparation_language.setCurrentIndex(
-            self.window.preparation_language.findData("en")
-        )
-        self.window._present_startup_preparation()
-        self.assertEqual(self.window.preparation_language.currentData(), "en")
-        self.assertNotIn(
-            tr("字体与语言映射已就绪，可以启动游戏。"), self.window.preparation_notice.text()
-        )
-
-        connector.preparation_status = {"state": "preparing", "message": "正在准备语言映射"}
-        self.window._present_startup_preparation()
-        self.assertTrue(self.window.prepare_game.isEnabled())
-        self.assertEqual(self.window.prepare_game.text(), tr("开始准备"))
-        with patch(
-            "sora_bilingual.app.native_settings.QFileDialog.getExistingDirectory",
-            return_value=str(other_game),
-        ):
-            self.window._choose_game_directory()
-        self.assertEqual(connector.selected, [other_game])
-        self.assertEqual(self.window.preparation_game.text(), str(other_game))
-        self.assertTrue(self.window.prepare_game.isEnabled())
-        self.assertNotIn(
-            tr("字体与语言映射已就绪，可以启动游戏。"), self.window.preparation_notice.text()
-        )
-        self.assertEqual(self.window.detected_game_language.text(), tr("等待检测"))
-
-        self.window.prepare_game.click()
-        self.assertEqual(connector.prepared, [(other_game, "en")])
-        self.assertEqual(self.control.read_bytes(), before)
-
-        connector.game_path = str(other_game)
-        connector.preparation_source = "en"
-        connector.preparation_status = {"state": "ready", "message": "语言映射已准备"}
-        self.window._present_startup_preparation()
-        self.assertIn(
-            tr("字体与语言映射已就绪，可以启动游戏。"), self.window.preparation_notice.text()
-        )
-
-        connector.font_status = {"state": "error", "message": "字体准备失败"}
-        self.window._present_startup_preparation()
-        self.assertNotIn(
-            tr("字体与语言映射已就绪，可以启动游戏。"), self.window.preparation_notice.text()
-        )
-        self.assertIn(tr("字体未就绪："), self.window.preparation_notice.text())
-
-        self.window.show()
-        self.app.processEvents()
-        screenshot = self.window.grab()
-        self.assertGreater(screenshot.width(), 0)
-        self.assertGreater(screenshot.height(), 0)
-
-    def test_recovered_preparation_waits_for_the_matching_discovered_game(self):
-        # Exercise the translated UI even on a Chinese developer machine.
-        self.window.ui_language.setCurrentIndex(self.window.ui_language.findData("en"))
-        game = Path(self.temp.name) / "Game"
-        other_game = Path(self.temp.name) / "OtherGame"
-        game.mkdir()
-        other_game.mkdir()
-        connector = type(
-            "Connector",
-            (),
-            {
-                "game_path": None,
-                "preparation_game": str(game),
-                "preparation_source": "zh-Hans",
-                "font_status": {"state": "installed", "message": "字体已安装"},
-                "preparation_status": {"state": "ready", "message": "语言映射已准备"},
-            },
-        )()
-        self.window._auto_connector = connector
-        self.window._present_startup_preparation()
-        self.assertEqual(self.window.preparation_language.currentData(), "zh-Hans")
-        self.assertNotIn(
-            tr("字体与语言映射已就绪，可以启动游戏。"), self.window.preparation_notice.text()
-        )
-
-        connector.game_path = str(game)
-        self.window._present_startup_preparation()
-        self.assertIn(
-            tr("字体与语言映射已就绪，可以启动游戏。"), self.window.preparation_notice.text()
-        )
-
-        connector.game_path = str(other_game)
-        self.window._present_startup_preparation()
-        self.assertNotIn(
-            tr("字体与语言映射已就绪，可以启动游戏。"), self.window.preparation_notice.text()
-        )
+        for locale in ("zh-Hans", "en", "ja"):
+            with self.subTest(locale=locale):
+                self.window.ui_language.setCurrentIndex(self.window.ui_language.findData(locale))
+                before = self.control.read_bytes()
+                connector.font_status = {
+                    "state": "preparing",
+                    "message": "正在从本机游戏资源准备多语言字体",
+                }
+                self.window._present_font_preparation()
+                self.assertNotIn(
+                    tr("字体已就绪，可以启动游戏"), self.window.font_preparation_status.text()
+                )
+                connector.font_status = {"state": "installed"}
+                self.window._present_font_preparation()
+                self.assertEqual(
+                    self.window.font_preparation_status.text(), tr("字体已就绪，可以启动游戏")
+                )
+                self.assertEqual(
+                    self.window.font_preparation_detail.text(),
+                    tr("首次进入游戏后会自动初始化语言映射，可能需要几分钟。"),
+                )
+                connector.font_status = {
+                    "state": "error",
+                    "message": "字体准备失败",
+                    "detail": "failure details",
+                }
+                self.window._present_font_preparation()
+                self.assertEqual(self.window.font_preparation_detail.text(), "failure details")
+                self.assertNotIn(
+                    tr("字体已就绪，可以启动游戏"), self.window.font_preparation_status.text()
+                )
+                self.assertEqual(self.control.read_bytes(), before)
+        for field in ("choose_game", "preparation_language", "prepare_game"):
+            self.assertFalse(hasattr(self.window, field), field)
 
     def test_display_mode_controls_preserve_the_existing_interaction_contract(self):
         label = self.window.display_form.labelForField(self.window.single_options)

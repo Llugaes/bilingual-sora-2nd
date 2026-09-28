@@ -33,7 +33,6 @@ from PySide6.QtWidgets import (
     QSlider,
     QInputDialog,
     QDialog,
-    QFileDialog,
     QScrollArea,
     QFrame,
     QButtonGroup,
@@ -279,10 +278,6 @@ class NativeSettingsWindow(QWidget):
         self._connect_process = None
         self._connection_error = None
         self._auto_connector = None
-        self._selected_preparation_game = None
-        self._submitted_preparation_game = None
-        self._submitted_preparation_source = None
-        self._preparation_source_initialized = False
         self.setWindowTitle("Sora Native 双语设置")
         self.setMinimumWidth(560)
         layout = QVBoxLayout(self)
@@ -321,53 +316,18 @@ class NativeSettingsWindow(QWidget):
         style_layout.setContentsMargins(16, 16, 16, 16)
         binding_layout = QVBoxLayout(binding_page)
         binding_layout.setContentsMargins(16, 16, 16, 16)
-        language_layout.addWidget(self._section_title("启动前准备"))
-        self.preparation_card = QWidget()
-        self.preparation_card.setObjectName("statusFooter")
-        preparation_layout = QVBoxLayout(self.preparation_card)
-        preparation_layout.setContentsMargins(10, 8, 10, 8)
-        preparation_layout.setSpacing(6)
-        preparation_form = QFormLayout()
-        preparation_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapAllRows)
-        self.preparation_game = QLabel("未找到游戏目录")
-        self.preparation_game.setWordWrap(True)
-        self.choose_game = QPushButton("选择游戏目录")
-        self.choose_game.setAccessibleName("选择游戏目录")
-        self.choose_game.setToolTip("选择包含 sora_2nd.exe 和 pac/steam 的游戏目录。")
-        self.preparation_language = QComboBox()
-        self.preparation_language.setAccessibleName("游戏当前文字语言（提前准备）")
-        self.preparation_language.setToolTip(
-            "只用于启动前准备；游戏启动后仍会自动检测当前文字语言。"
-        )
-        self.preparation_language.setSizeAdjustPolicy(
-            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
-        )
-        self.preparation_language.setMinimumContentsLength(12)
-        self.preparation_language.addItem("请选择游戏当前文字语言", None)
-        for code, label in LANGUAGES:
-            self.preparation_language.addItem(label, code)
-        self.font_preparation_status = QLabel("等待发现游戏目录")
+        self.font_card = QWidget()
+        self.font_card.setObjectName("statusFooter")
+        font_layout = QVBoxLayout(self.font_card)
+        font_layout.setContentsMargins(10, 8, 10, 8)
+        self.font_preparation_status = QLabel("自动寻找游戏并准备字体…")
         self.font_preparation_status.setWordWrap(True)
-        self.mapping_preparation_status = QLabel("请先完成启动前准备")
-        self.mapping_preparation_status.setWordWrap(True)
-        preparation_form.addRow("游戏目录", self.preparation_game)
-        preparation_form.addRow(self.choose_game)
-        preparation_language_label = QLabel("游戏当前文字语言（提前准备）")
-        preparation_language_label.setWordWrap(True)
-        preparation_form.addRow(preparation_language_label, self.preparation_language)
-        preparation_form.addRow("字体状态", self.font_preparation_status)
-        preparation_form.addRow("语言映射状态", self.mapping_preparation_status)
-        preparation_layout.addLayout(preparation_form)
-        self.prepare_game = QPushButton("开始准备")
-        self.prepare_game.setObjectName("primaryAction")
-        self.prepare_game.setAccessibleName("开始准备")
-        self.prepare_game.setToolTip("准备字体和语言映射，不会启动游戏。")
-        self.preparation_notice = QLabel("请选择游戏目录和文字语言，再开始准备。")
-        self.preparation_notice.setObjectName("helpText")
-        self.preparation_notice.setWordWrap(True)
-        preparation_layout.addWidget(self.prepare_game)
-        preparation_layout.addWidget(self.preparation_notice)
-        language_layout.addWidget(self.preparation_card)
+        self.font_preparation_detail = QLabel()
+        self.font_preparation_detail.setObjectName("helpText")
+        self.font_preparation_detail.setWordWrap(True)
+        font_layout.addWidget(self.font_preparation_status)
+        font_layout.addWidget(self.font_preparation_detail)
+        language_layout.addWidget(self.font_card)
         form = QFormLayout()
         style_form = QFormLayout()
         # English labels are wider than the compact panel.  Wrap the field
@@ -611,9 +571,6 @@ class NativeSettingsWindow(QWidget):
         self.record_keyboard.clicked.connect(self._begin_keyboard_capture)
         self.record_controller.clicked.connect(self._request_controller_capture)
         self.binding_action.currentIndexChanged.connect(self.reload_control)
-        self.choose_game.clicked.connect(self._choose_game_directory)
-        self.preparation_language.currentIndexChanged.connect(self._preparation_language_changed)
-        self.prepare_game.clicked.connect(self._begin_preparation)
         self.reload_control()
         self._status_timer = QTimer(self)
         self._status_timer.timeout.connect(self.refresh_status)
@@ -796,142 +753,25 @@ class NativeSettingsWindow(QWidget):
         if self._auto_connector is None:
             self._auto_connector = AutoConnector(self.status_path)
 
-    def _preparation_game_path(self) -> Path | None:
-        connector = self._auto_connector
-        value = self._selected_preparation_game or getattr(connector, "game_path", None)
-        try:
-            return Path(value) if value else None
-        except TypeError:
-            return None
-
-    @staticmethod
-    def _same_game_path(left: Path | None, right: Path | None) -> bool:
-        if left is None or right is None:
-            return False
-        try:
-            return str(left.resolve()).casefold() == str(right.resolve()).casefold()
-        except OSError:
-            return str(left).casefold() == str(right).casefold()
-
-    def _preparation_language_changed(self, *_: Any) -> None:
-        self._update_preparation_action()
-
-    def _update_preparation_action(self, *_: Any) -> None:
-        connector = self._auto_connector
-        source = self.preparation_language.currentData()
-        game = self._preparation_game_path()
-        preparing = (
-            isinstance(getattr(connector, "preparation_status", None), dict)
-            and connector.preparation_status.get("state") == "preparing"
+    def _present_font_preparation(self) -> None:
+        self.font_card.setVisible(self._auto_connector is not None)
+        fonts = getattr(self._auto_connector, "font_status", {}) or {}
+        state = fonts.get("state", "idle")
+        self.font_preparation_status.setText(
+            "字体已就绪，可以启动游戏"
+            if state in ("healthy", "installed")
+            else str(fonts.get("message") or "自动寻找游戏并准备字体…")
         )
-        queued_current = (
-            preparing
-            and self._same_game_path(game, self._submitted_preparation_game)
-            and source == self._submitted_preparation_source
+        detail = fonts.get("detail")
+        if isinstance(detail, list):
+            detail = "\n".join(map(str, detail))
+        self.font_preparation_detail.setText(
+            str(detail)
+            if detail
+            else "首次进入游戏后会自动初始化语言映射，可能需要几分钟。"
+            if state in ("healthy", "installed")
+            else "字体准备完成后即可启动游戏，无需选择目录或游戏语言。"
         )
-        self.prepare_game.setEnabled(bool(game and source in LOCALES and not queued_current))
-        self.prepare_game.setText("正在准备…" if queued_current else "开始准备")
-
-    def _present_startup_preparation(self) -> None:
-        connector = self._auto_connector
-        game = self._preparation_game_path()
-        if game is None:
-            self.preparation_game.setText("未找到游戏目录")
-        else:
-            self.preparation_game.setText(str(game))
-
-        connector_game = getattr(connector, "game_path", None)
-        try:
-            connector_game = Path(connector_game) if connector_game else None
-        except TypeError:
-            connector_game = None
-        source = getattr(connector, "preparation_source", None)
-        if connector is not None and not self._preparation_source_initialized:
-            self._preparation_source_initialized = True
-            if source in LOCALES:
-                with QSignalBlocker(self.preparation_language):
-                    self._set_combo(self.preparation_language, source)
-                submitted_game = getattr(connector, "preparation_game", None)
-                try:
-                    submitted_game = Path(submitted_game) if submitted_game else None
-                except TypeError:
-                    submitted_game = None
-                if submitted_game is None:
-                    submitted_game = connector_game
-                if submitted_game is not None:
-                    self._submitted_preparation_game = submitted_game
-                    self._submitted_preparation_source = source
-        fonts = getattr(connector, "font_status", {}) or {}
-        preparation = getattr(connector, "preparation_status", {}) or {}
-        font_state = str(fonts.get("state") or "idle")
-        preparation_state = str(preparation.get("state") or "waiting")
-        selection_pending = (
-            self._selected_preparation_game is not None
-            and not self._same_game_path(self._selected_preparation_game, connector_game)
-        )
-        current_preparation = (
-            self._same_game_path(game, self._submitted_preparation_game)
-            and self.preparation_language.currentData() == self._submitted_preparation_source
-        )
-        if selection_pending:
-            self.font_preparation_status.setText("正在切换到所选游戏目录")
-            self.mapping_preparation_status.setText("等待所选游戏的语言映射")
-        else:
-            self.font_preparation_status.setText(str(fonts.get("message") or "等待发现游戏目录"))
-            self.mapping_preparation_status.setText(
-                str(preparation.get("message") or "请先完成启动前准备")
-            )
-        if (
-            not selection_pending
-            and current_preparation
-            and font_state in ("healthy", "installed")
-            and preparation_state == "ready"
-        ):
-            self.preparation_notice.setText("字体与语言映射已就绪，可以启动游戏。")
-        elif not selection_pending and font_state in ("error", "conflict", "restart-required"):
-            self.preparation_notice.setText(
-                "字体未就绪：" + str(fonts.get("message") or "请查看字体状态。")
-            )
-        elif preparation_state == "error":
-            self.preparation_notice.setText(
-                "语言映射未就绪：" + str(preparation.get("message") or "请重试准备。")
-            )
-        elif game is None or self.preparation_language.currentData() not in LOCALES:
-            self.preparation_notice.setText("请选择游戏目录和文字语言，再开始准备。")
-        else:
-            self.preparation_notice.setText("字体和语言映射准备完成后再启动游戏。")
-        self._update_preparation_action()
-
-    def _choose_game_directory(self) -> None:
-        chosen = QFileDialog.getExistingDirectory(self, tr("选择游戏目录"))
-        if not chosen:
-            return
-        self.enable_auto_connect()
-        try:
-            self._auto_connector.select_game(Path(chosen))
-        except ValueError as exc:
-            self.preparation_notice.setText("选择游戏目录失败：" + str(exc))
-            return
-        self._selected_preparation_game = Path(chosen)
-        self._submitted_preparation_game = None
-        self._submitted_preparation_source = None
-        self._present_startup_preparation()
-
-    def _begin_preparation(self) -> None:
-        self.enable_auto_connect()
-        game = self._preparation_game_path()
-        source = self.preparation_language.currentData()
-        if game is None or source not in LOCALES:
-            self._present_startup_preparation()
-            return
-        try:
-            self._auto_connector.prepare_game(game, source)
-        except ValueError as exc:
-            self.preparation_notice.setText("开始准备失败：" + str(exc))
-            return
-        self._submitted_preparation_game = game
-        self._submitted_preparation_source = source
-        self._present_startup_preparation()
 
     def reload_control(self) -> None:
         control = read_control(self.control_path)
@@ -1149,7 +989,7 @@ class NativeSettingsWindow(QWidget):
         except (OSError, ValueError) as exc:
             self.backend_label.setText("配置读取失败：" + str(exc))
             return
-        self._present_startup_preparation()
+        self._present_font_preparation()
         action = self.binding_action.currentData()
         pad = self._binding(control, action).get("gamepad", {})
         buttons = ["按钮 " + str(b + 1) for b in pad.get("buttons", [])]

@@ -41,7 +41,7 @@ Field interactions and notifications:
 
 1. Download `bilingual-sora-2nd-VERSION-windows-x64-setup.exe` from the [latest release](https://github.com/Llugaes/bilingual-sora-2nd/releases/latest) and run the installer.
 2. Open **Bilingual Sora 2nd** from the Start menu or desktop shortcut. Choose the interface language and your primary/secondary languages on first launch.
-3. Keep the game closed. Under **Before starting the game**, confirm its folder, choose its current text language, and start preparation. Wait until both language mappings and multilingual fonts are ready, then start the game normally. The tool connects automatically; it does not launch the game itself.
+3. The tool automatically finds the game and prepares multilingual fonts. No folder or game-language selection is needed. Keep the game closed until fonts are ready, then start it normally. The tool connects automatically; first-time language mapping initialization may take a few minutes.
 
 Supports Windows 10/11 x64 without administrator rights. Python and runtime dependencies are bundled, so the downloaded installer works offline with no separate environment setup. The interface supports English, Japanese, and Simplified Chinese. Updates retain existing settings.
 
@@ -57,7 +57,7 @@ The primary language defaults to the game's text language. The secondary default
 
 These are initial preferences, not restrictions on language pairs. Existing settings survive restarts and updates unchanged. Choose English, Simplified Chinese, or Japanese for the interface on first launch; **Interface language** changes it live or follows the system. UI language, source matching, and display languages are independent.
 
-First preparation parses your local game resources and builds a reusable cache before you start the game. The tool searches Steam installations; you can select the folder if it is not found. The selected game text language is only a preparation hint: the running game is still detected and checked, without changing its language setting. Text is rendered by native game controls; the Qt interface provides configuration and status. Use windowed or borderless mode; the settings overlay is not guaranteed to appear over exclusive fullscreen.
+The tool automatically finds Steam installations. After the first game launch, it detects the actual text language and builds a cache from local resources. Valid caches are reused; the game language setting is never changed. Text is rendered by native game controls; the Qt interface provides configuration and status. Use windowed or borderless mode; the settings overlay is not guaranteed to appear over exclusive fullscreen.
 
 ### Fonts for additional languages
 
@@ -85,7 +85,7 @@ Record one keyboard or SDL controller combination under **Shortcuts**. The same 
 
 Text size and spacing update live and persist across menus. Secondary color multiplies the original RGB values; defaults are RGB 230 / 230 / 230 and 90% opacity. Adjust opacity with the slider below the color button. The vertical offset applies only in bilingual mode; positive values move text down.
 
-First use or changed game resources require language-cache preparation. Open the tool before starting the game and let preparation finish; valid caches are reused.
+On first connection or after game resources change, language caches are prepared automatically. This may take a few minutes; valid caches are reused.
 
 ## Recommended usage and known limitations
 
@@ -93,7 +93,7 @@ For smoother play, select **Single-language mode → Hold for secondary language
 
 - **Bilingual dialogue-log performance remains an unresolved limitation.** Opening the log can cause a noticeable hitch, and its frame rate can be lower than in single-language mode. In-game feedback has reported opening pauses of around **700 ms**, including on repeated opens. Results vary with history size, language pair, and hardware. Caching and native optimizations reduce some costs but do not guarantee a hitch-free log; the issue should not be considered fixed. Use the single-language hold setup above if it affects your play.
 - **The cost includes layout and parsing, not just font drawing.** Bilingual text uses the game's native annotation layout. The log processes historical text in bulk and repeatedly parses some controls while displayed. Changing secondary color or opacity does not remove that work.
-- **Preparing a language pair can take time.** First connection, an uncached pair, or changed game resources require local resource processing. Start the tool early and allow preparation to finish. This is separate from the dialogue-log opening hitch.
+- **Preparing a language pair can take time.** First connection, an uncached pair, or changed game resources require local resource processing. Initialization runs automatically, and secondary text appears when it finishes. This is separate from the dialogue-log opening hitch.
 - **Coverage and available space have limits.** Uncertain matches keep the original text; text embedded in images or videos is not processed. Bilingual text does not enlarge the game's fixed text boxes, so long text or large fonts may be crowded. Reduce text size or use single-language mode. The full game and every language pair have not been exhaustively verified.
 
 ## Automatic updates
