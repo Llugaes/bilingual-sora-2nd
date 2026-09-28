@@ -174,11 +174,13 @@ function wantedText(row,allocateLayers=true) {
             const mode=renderMode==='bilingual'?'annotation':renderMode;
             const strictDialogue=Number.isInteger(row.scriptIdentity?.callId);
             const scriptContext=row.scriptIdentity&&scriptIdentities?scriptIdentities.lookup(row.scriptIdentity,row.original):null;
-            const context=strictDialogue?(scriptContext||sourceOnlyDialogue):scriptContext||
+            const speakerContext=row.logKind==='name'&&row.logIdentity&&scriptIdentities?
+                scriptIdentities.historySpeakerLookup(row.logIdentity,row.original):null;
+            const context=speakerContext||(strictDialogue?(scriptContext||sourceOnlyDialogue):scriptContext||
                 (row.scriptPointer&&scriptIdentities?scriptIdentities.pointerLookup(row.scriptPointer,row.original):null)||
                 (row.tableIdentity&&tableIdentities?tableIdentities.lookup(row.tableIdentity,row.original):null)||
                 (row.logKind?resolver.historyContext(row.logSpeaker||'',row.original,row.logKind):null)||
-                (row.logSpeaker?resolver.speakerContext(row.logSpeaker,row.original):null);
+                (row.logSpeaker?resolver.speakerContext(row.logSpeaker,row.original):null));
             if(context&&!context.tr)context.tr=new TextFactory(context.model);
             const local=context?.tr;
             const useLocal=local&&(strictDialogue||context.strict||Object.hasOwn(local.model.pairs,row.original)||
@@ -980,6 +982,10 @@ function captureLogPart(frame,slot,input) {
     if(!frame||frame.invalid)return;
     try {
         const owner=logOwner();
+        // The two native append loops use different index registers, but both
+        // pass the actual ring text in RDX. Derive its slot from that pointer;
+        // the alignment and exact pointer checks below still validate it.
+        if(owner&&slot===null)slot=input.sub(owner.add(0x160550)).toInt32()/0x18c;
         if(!owner||frame.owner!==String(owner)||frame.epoch!==logOrigins.epoch||
                 !Number.isInteger(slot)||slot<0||slot>=1600||frame.parts.length>=1600)throw Error('Invalid log contribution');
         const record=owner.add(0x1604ec+slot*0x18c);
@@ -1004,7 +1010,7 @@ function logContributionsIdentity(frame,source) {
         if(key!==null&&key!==currentKey)return null;
         identity=current;key=currentKey;
     }
-    if(!missing)return identity;
+    if(!missing)return identity?.source===source?identity:null;
     // The native writer persists the script's message marker at record+0.
     // Reconstruct a physical call ID only through the compiled marker index;
     // equal source/target strings never merge independent calls. Every split
@@ -1088,7 +1094,11 @@ function logInputProvenance(row,input,caller) {
         if(present&&REPORT.native.log_name_return&&caller?.equals(base.add(REPORT.native.log_name_return.rva))&&
                 Number.isInteger(present.slot)&&present.slot>=0&&present.slot<1600) {
             const owner=logOwner(),name=owner?.add(0x1604f0+present.slot*0x18c).readUtf8String();
-            if(name&&name===row.original&&RuntimeText.byteLength(name)<0x60)return {kind:'name',speaker:name};
+            if(name&&name===row.original&&RuntimeText.byteLength(name)<0x60) {
+                const parts=present.parts,source=parts?.parts.map(part=>part.text).join('');
+                if(logContributionsSpeaker(parts,source)!==name)return null;
+                return {kind:'name',speaker:name,identity:logContributionsIdentity(parts,source)};
+            }
             return null;
         }
         let parts=null;
@@ -1097,7 +1107,8 @@ function logInputProvenance(row,input,caller) {
         if(measure?.record&&row.pointer.equals(measure.name)&&input.equals(measure.record.add(0x20).readPointer())) {
             const pieces=logRows.get(String(measure.owner))?.get(String(measure.record));
             const speaker=pieces&&logContributionsSpeaker(pieces,pieces.parts.map(part=>part.text).join(''));
-            return speaker&&speaker===row.original?{kind:'name',speaker}:null;
+            return speaker&&speaker===row.original?{kind:'name',speaker,
+                identity:logContributionsIdentity(pieces,pieces.parts.map(part=>part.text).join(''))}:null;
         }
         if(measure?.record&&row.pointer.equals(measure.body)&&input.equals(measure.record.add(8).readPointer()))
             parts=logRows.get(String(measure.owner))?.get(String(measure.record));
@@ -1128,18 +1139,20 @@ if(logOrigins&&REPORT.native.log_write&&REPORT.native.log_write_commit) {
             if(!stack?.length)logWriteFrames.delete(this.thread);
         }
     });
-    Interceptor.attach(base.add(REPORT.native.log_write_commit.rva),{onEnter(){
+    for(const point of ['log_write_commit','log_write_append_commit'])if(REPORT.native[point])
+    Interceptor.attach(base.add(REPORT.native[point].rva),{onEnter(){
         const frame=logWriteFrames.get(Process.getCurrentThreadId())?.at(-1);
         try {
             const owner=logOwner();
             if(!owner||!frame||!frame.owner.equals(owner)||!this.context.rbp.equals(owner)){
                 resetLogOrigins();return;
             }
-            const delta=this.context.r8.sub(owner).toInt32(),slot=delta/0x18c;
-            if(!Number.isInteger(slot)||slot<0||slot>=1600||!owner.add(slot*0x18c).equals(this.context.r8)){
+            const record=this.context.rcx.add(-0x180);
+            const delta=record.sub(owner.add(0x1604ec)).toInt32(),slot=delta/0x18c;
+            if(!Number.isInteger(slot)||slot<0||slot>=1600||!owner.add(0x1604ec+slot*0x18c).equals(record)){
                 resetLogOrigins();return;
             }
-            logOrigins.commit(slot,logStamp(owner.add(0x1604ec+delta)),frame.origin);
+            logOrigins.commit(slot,logStamp(record),frame.origin);
             logOriginStats.commits++;if(frame.origin)logOriginStats.withIdentity++;
         }catch(_){resetLogOrigins();logOriginStats.rejected++;}
     }});
@@ -1169,7 +1182,7 @@ if(logOrigins&&REPORT.native.log_record_activate)Interceptor.attach(base.add(REP
 for(const [point,multiple] of [['log_present_append',true],['log_present_single',false]])if(REPORT.native[point])
     Interceptor.attach(base.add(REPORT.native[point].rva),{onEnter(){
         const frame=logPresentFrames.get(Process.getCurrentThreadId())?.at(-1);
-        if(frame?.parts)captureLogPart(frame.parts,multiple?this.context.rbx.toInt32():frame.slot,multiple?this.context.rdx:this.context.rdi);
+        if(frame?.parts)captureLogPart(frame.parts,multiple?null:frame.slot,multiple?this.context.rdx:this.context.rdi);
     }});
 if(logOrigins&&REPORT.native.log_rows_build)Interceptor.attach(base.add(REPORT.native.log_rows_build.rva),{
     onEnter(args){
@@ -1196,7 +1209,7 @@ for(const point of ['log_row_start','log_row_append','log_row_single','log_row_c
                 if(frame.rows.size>=1600)throw Error('Invalid log row count');
                 frame.rows.set(String(this.context.rbx),frame.parts);frame.parts=null;
             }else if(frame.parts)captureLogPart(frame.parts,
-                point==='log_row_append'?this.context.rbx.toInt32():this.context.r15.toInt32(),
+                point==='log_row_append'?null:this.context.r15.toInt32(),
                 point==='log_row_append'?this.context.rdx:this.context.rdi);
         }catch(_){frame.parts=null;logOriginStats.rejected++;}
     }});
@@ -1241,6 +1254,7 @@ function questLineContext(incoming,caller) {
 function identifyInput(row,input,caller) {
     row.logSpeaker=null;
     row.logKind=null;
+    row.logIdentity=null;
     row.paragraph=questLineContext(row.original,caller);
     const frame=dialogueFrames.get(Process.getCurrentThreadId())?.at(-1);
     const origin=frame?.outputs.get(String(input));
@@ -1251,7 +1265,11 @@ function identifyInput(row,input,caller) {
     // the same visible row can survive a language-model reload.
     if(!row.scriptIdentity){
         const origin=logInputProvenance(row,input,caller);
-        if(origin?.identity){row.scriptIdentity=origin.identity;identityHits++;logOriginStats.matched++;}
+        if(origin?.identity){
+            if(origin.kind==='name')row.logIdentity=origin.identity;
+            else row.scriptIdentity=origin.identity;
+            identityHits++;logOriginStats.matched++;
+        }
         row.logSpeaker=origin?.speaker||null;
         row.logKind=origin?.kind||null;
     }
@@ -1603,7 +1621,7 @@ rpc.exports = {
     disable() {if(enabled){enabled=false;epoch++;}return true;},
     replay() {enabled=false;replayEpoch=++epoch;return true;},
     snapshot() {return [...labels.values()].map(r=>({original:r.original,displayed:r.displayed,text_key:r.textKey,scope:r.scope,
-        script_identity:r.scriptIdentity,script_pointer_key:r.scriptPointer,table_identity:r.tableIdentity,presentation:r.plan?.kind,surface:r.surface,layers:r.layerBuffers?.map(v=>v.layer),...r.metadata}));},
+        script_identity:r.scriptIdentity,log_identity:r.logIdentity,log_kind:r.logKind,script_pointer_key:r.scriptPointer,table_identity:r.tableIdentity,presentation:r.plan?.kind,surface:r.surface,layers:r.layerBuffers?.map(v=>v.layer),...r.metadata}));},
     status() {
         const parser=nativeParser?.status();
         const measured=parser?{...timings,parse:{count:parser.count,totalMs:parser.totalMs,maxMs:parser.maxMs,over8Ms:parser.over8Ms}}:timings;

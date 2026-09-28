@@ -2,7 +2,7 @@
 
 The raw tables contain metadata omitted from the display catalogue: effect
 parameter types and native effect slots for every item and skill.  Skills
-have five slots while items have three; typed aggregate families remain
+have five slots, as do item effect records; typed aggregate families remain
 bounded separately from that raw storage capacity.  This module proves
 constructor families from those actual groups before emitting a bounded
 grammar.  It never crosses arbitrary ``%s`` records.
@@ -29,13 +29,14 @@ class ItemHelpContractError(ValueError):
 
 EFFECT_LAYOUTS = {
     "table/t_skill.tbl": ("SkillParam", 0x30, 5),
-    "table/t_item.tbl": ("ItemTableData", 0x6C, 3),
+    "table/t_item.tbl": ("ItemTableData", 0x3C, 5),
 }
 
 # The raw SkillParam row exposes five 16-byte effect blocks at +0x30.
-# The native normalizer uses an object-relative +0x3c address; its object
-# base is not the #TBL record base, so this PAC reader stays on the verified
-# row-relative offsets. Existing typed families are only proven for
+# The item normalizer at 0x23f010 reads the loaded ItemTableData row returned
+# by 0x23ef20, copying +0x3c..+0x7c into the normalized five-slot record.
+# Live ID 4050 and the raw PAC agree on the first two effects (1092, 1033).
+# Existing typed families are only proven for
 # combinations of at most three effects; raw capacity must never widen their
 # permutations.
 MAX_RAW_GROUP_SLOTS = 5
@@ -179,7 +180,7 @@ def _status_fragments(catalogue, records, languages, help_titles=None):
             # Admit only its actual titles equivalent to this identified stat
             # formatter: one terminal plus, with locale-specific glyph/spacing.
             # This never aligns help rows by ordinal or by translated wording.
-            variants, provenance = {}, {}
+            variants, provenance, display_texts = {}, {}, dict(texts)
             for language, fragment in texts.items():
                 if not fragment.endswith("+"):
                     continue
@@ -192,12 +193,18 @@ def _status_fragments(catalogue, records, languages, help_titles=None):
                     if pattern.fullmatch(row["title"])
                 ]
                 if matched:
-                    variants[language] = sorted({row["title"] for row in matched})
+                    titles = sorted({row["title"] for row in matched})
+                    # The status record identifies the stat; HelpIconList owns
+                    # the displayed glyph. Its rows are locale-specific, so
+                    # only a unique per-locale match may replace the output.
+                    variants[language] = sorted({fragment, *titles})
                     provenance[language] = [row["row"] for row in matched]
+                    if len(titles) == 1:
+                        display_texts[language] = titles[0]
             result.append(
                 {
                     "key": f"table/t_itemhelp.tbl/generated/status_fragment/{metadata['id']}",
-                    "texts": texts,
+                    "texts": display_texts,
                     "item_help_scope": "status",
                     "source_variants": variants,
                     "status_label_rows": provenance,
@@ -407,6 +414,7 @@ def compile_item_help_grammar(
     actual_contexts=(),
     element_titles=(),
     help_titles=None,
+    connect_groups=None,
     max_group_slots=3,
     languages=None,
 ):
@@ -427,10 +435,20 @@ def compile_item_help_grammar(
         for identity in metadata["SkillEffectHelpData"]
         if f"table/t_itemhelp.tbl/SkillEffectHelpData/{identity}/name" in catalogue
     }
+    # Native grouping is selected by SkillConnectListData, not by a shared
+    # integer parameter or a coincidentally similar translated format.
+    # The public low-level compiler also accepts metadata-only fixtures;
+    # production always supplies the validated connection table.
+    connection_kinds = (
+        None
+        if connect_groups is None
+        else {record_id: row["kind"] for row in connect_groups for record_id in row["ids"]}
+    )
     chance = {
         value["id"]: identity
         for identity, value in metadata["SkillEffectHelpData"].items()
         if identity in fields
+        and (connection_kinds is None or connection_kinds.get(value["id"]) == 7)
         and value["parameter_types"] == (1,)
         and _is_chance(fields[identity], languages)
     }
@@ -438,6 +456,7 @@ def compile_item_help_grammar(
         value["id"]: identity
         for identity, value in metadata["SkillEffectHelpData"].items()
         if identity in fields
+        and (connection_kinds is None or connection_kinds.get(value["id"]) == 4)
         and value["parameter_types"] == (16,)
         and _is_turn_stat(fields[identity], languages)
     }
@@ -446,6 +465,11 @@ def compile_item_help_grammar(
         if identity not in fields or value["parameter_types"]:
             continue
         key = _literal_cluster_key(fields[identity], languages)
+        if connection_kinds is not None:
+            kind = connection_kinds.get(value["id"])
+            if kind not in (11, 12):
+                continue
+            key = (kind, key) if key is not None else None
         if key is not None:
             literal_clusters.setdefault(key, {})[value["id"]] = identity
 
@@ -515,7 +539,6 @@ def compile_item_help_grammar(
         and value["parameter_types"] == (4,)
         and _is_percent_recovery(fields[identity], percent, languages)
     }
-
     generated = {}
     context_entries = []
     context_seen = set()
@@ -577,6 +600,47 @@ def compile_item_help_grammar(
                     languages,
                     parameter_types=[1],
                 )
+    # SkillConnectListData selects the native constructor independently from
+    # each effect's parameter type. Branch 17 (0x34de3f) formats the first
+    # effect's name, then each following stat + format, with separate numbers.
+    # Read its members from the table; never enumerate translated effect names.
+    independent_numeric_groups = set()
+    for connection in connect_groups or ():
+        if connection["kind"] != 17:
+            continue
+        members = tuple(connection["ids"])
+        if not any(sum(slot[0] in members for slot in group) > 1 for group in groups):
+            continue
+        for length in range(2, min(MAX_TYPED_GROUP_SLOTS, len(members)) + 1):
+            for ids in permutations(members, length):
+                records = [fields[by_id[record_id][0]] for record_id in ids]
+                if any(not row["stat"] or not row["format"] for row in records):
+                    raise ItemHelpContractError("independent numeric constructor fields missing")
+                if any(by_id[record_id][1]["parameter_types"] != (1,) for record_id in ids):
+                    raise ItemHelpContractError(
+                        "independent numeric constructor parameters changed"
+                    )
+                texts = {}
+                link = _constant(catalogue, "LINK", languages)
+                for language in languages:
+                    parts = [records[0]["name"][language]] + [
+                        row["stat"][language] + row["format"][language] for row in records[1:]
+                    ]
+                    if any(not _one_field(part, "d") for part in parts):
+                        raise ItemHelpContractError(
+                            "independent numeric constructor fields changed"
+                        )
+                    texts[language] = link[language].join(parts)
+                _add_unique(
+                    generated,
+                    texts,
+                    "independent_numeric_group",
+                    ids,
+                    languages,
+                    parameter_types=[1] * length,
+                    connect_kind=17,
+                )
+                independent_numeric_groups.add(ids)
     if turn_groups:
         for length in range(2, max_group_slots + 1):
             for ids in permutations(turn, length):
@@ -778,7 +842,7 @@ def compile_item_help_grammar(
     }
     for group in groups:
         ids = [slot[0] for slot in group]
-        if tuple(ids) in independent_literal_groups:
+        if tuple(ids) in independent_literal_groups or tuple(ids) in independent_numeric_groups:
             continue
         if len(ids) > 1 and any(record_id not in known for record_id in ids):
             unsupported_groups.add(tuple(ids))
@@ -806,6 +870,7 @@ def compile_item_help_grammar(
             "percent_recovery_records": len(recovery),
             "percent_recovery_groups_proven": len(set(recovery_groups)),
             "percent_recovery_headers_proven": len(set(recovery_header_groups)),
+            "independent_numeric_groups_proven": len(independent_numeric_groups),
             "literal_clusters_proven": len(proven_literal_clusters),
             "prefix_records_proven": len(prefixes),
             "turn_stat_inline_icon_records": len(inline_turn_icon_records),
@@ -925,6 +990,23 @@ def _read_help_titles(data):
     return result
 
 
+def _read_connect_groups(data):
+    layout = sections(data)
+    floor = max(start + size * count for _, start, size, count in layout)
+    _, start, size, count = next(row for row in layout if row[0] == "SkillConnectListData")
+    if size != 24:
+        raise ItemHelpContractError("effect connection stride changed")
+    result = []
+    for index in range(count):
+        at = start + index * size
+        kind = struct.unpack_from("<I", data, at)[0]
+        pointer, total = struct.unpack_from("<QI", data, at + 8)
+        if total > 204 or not floor <= pointer <= len(data) - total * 2:
+            raise ItemHelpContractError("effect connection list outside pool")
+        result.append({"kind": kind, "ids": list(struct.unpack_from(f"<{total}H", data, pointer))})
+    return result
+
+
 def read_item_help_contract(game, languages=None):
     """Read all typed records and raw PAC effect groups across installed locales."""
     game = Path(game)
@@ -933,6 +1015,7 @@ def read_item_help_contract(game, languages=None):
         raise ItemHelpContractError("invalid item-help language set")
     per_language, groups_by_language, contexts_by_language, titles_by_language = {}, {}, {}, {}
     help_titles = {}
+    connections_by_language = {}
     names = archive_names("table")
     for language in languages:
         filename = names[language]
@@ -943,6 +1026,7 @@ def read_item_help_contract(game, languages=None):
             with FpacArchive(path) as archive:
                 logical = _logical_tables(archive)
                 item_help = archive.read(logical["table/t_itemhelp.tbl"])
+                connections_by_language[language] = _read_connect_groups(item_help)
                 item_table = archive.read(logical["table/t_item.tbl"])
                 help_titles[language] = _read_help_titles(archive.read(logical["table/t_help.tbl"]))
                 element_titles = _read_element_title_contract(item_help, item_table)
@@ -991,6 +1075,8 @@ def read_item_help_contract(game, languages=None):
     first_contexts = contexts_by_language[languages[0]]
     first_titles = titles_by_language[languages[0]]
     for language in languages[1:]:
+        if connections_by_language[language] != connections_by_language[languages[0]]:
+            raise ItemHelpContractError("effect connection groups differ in " + language)
         if per_language[language] != first_metadata:
             raise ItemHelpContractError("item-help metadata differs in " + language)
         if groups_by_language[language] != first_groups:
@@ -1012,6 +1098,7 @@ def read_item_help_contract(game, languages=None):
             "_effect_contexts": first_contexts,
             "_element_titles": first_titles,
             "_help_titles": help_titles,
+            "_connect_groups": connections_by_language[languages[0]],
         },
     )
 
@@ -1021,6 +1108,7 @@ def read_item_help_metadata(game, languages=None):
     audit.pop("_effect_contexts", None)
     audit.pop("_element_titles", None)
     audit.pop("_help_titles", None)
+    audit.pop("_connect_groups", None)
     return metadata, audit
 
 
@@ -1030,6 +1118,7 @@ def build_item_help_grammar(game, entries, source_language, languages=None):
     contexts = audit.pop("_effect_contexts", ())
     element_titles = audit.pop("_element_titles", ())
     help_titles = audit.pop("_help_titles", {})
+    connect_groups = audit.pop("_connect_groups", ())
     result = compile_item_help_grammar(
         entries,
         source_language,
@@ -1038,6 +1127,7 @@ def build_item_help_grammar(game, entries, source_language, languages=None):
         actual_contexts=contexts,
         element_titles=element_titles,
         help_titles=help_titles,
+        connect_groups=connect_groups,
         languages=languages,
     )
     result["audit"].update(audit)

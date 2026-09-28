@@ -44,7 +44,11 @@ POINTS = {
     "dialogue_bubble": 0x4AEE20,
     "dialogue_builder": 0x4AD670,
     "log_write": 0x43DFB0,
-    "log_write_commit": 0x43E2DF,
+    # Both copy branches have written the complete 0x188-byte payload here.
+    # RCX is the actual destination +0x180. R8 is the previous record on the
+    # append branch and must never identify the newly written ring slot.
+    "log_write_commit": 0x43E209,
+    "log_write_append_commit": 0x43E2A9,
     "log_owner_destroyed": 0x2EC73,
     "log_owner_created": 0x2F946,
     "log_record_bind": 0x35F700,

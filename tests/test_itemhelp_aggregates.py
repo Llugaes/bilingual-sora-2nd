@@ -6,6 +6,7 @@ import unittest
 
 from sora_bilingual.config.locales import LANGUAGES
 from sora_bilingual.localization.item_help_composition import (
+    EFFECT_LAYOUTS,
     _iter_effect_groups,
     compile_item_help_grammar,
 )
@@ -233,6 +234,67 @@ def fixture():
 
 
 class ItemHelpAggregateTests(unittest.TestCase):
+    def test_item_reader_keeps_first_and_fifth_native_effect_slots(self):
+        # Native item lookup returns the #TBL row itself; normalizer 0x23f010
+        # copies all five blocks at +0x3c..+0x7c. The previous +0x6c/3 reader
+        # missed the ID 4050 combination observed in the live game.
+        start, stride = 88, 256
+        raw = bytearray(start + stride)
+        struct.pack_into("<4sI64sIIII", raw, 0, b"#TBL", 1, b"ItemTableData", 0, start, stride, 1)
+        expected = (
+            (1092, 30, 0, 0),
+            (1033, 10, 0, 0),
+            (31, 20, 0, 0),
+            (32, 30, 0, 0),
+            (33, 40, 0, 0),
+        )
+        for slot, values in enumerate(expected):
+            struct.pack_into("<4I", raw, start + 0x3C + slot * 16, *values)
+        kind, offset, count = EFFECT_LAYOUTS["table/t_item.tbl"]
+        self.assertEqual(
+            tuple(_iter_effect_groups(bytes(raw), "table/t_item.tbl", kind, offset, count)),
+            ((start, expected),),
+        )
+
+    def test_connection_group_formats_each_number_independently(self):
+        entries, metadata, groups = fixture()
+        for rid, name, stat, form in [
+            (
+                1092,
+                ("道具的效果+%d％", "Item Effects +%d%%", "アイテムの効果+%d％"),
+                ("效果", "Effect", "効果"),
+                ("+%d％", "+%d%%", "+%d％"),
+            ),
+            (
+                1033,
+                ("道具的射程+%dm", "Item Range +%dm", "アイテムの射程+%dｍ"),
+                ("射程距离", "Range", "射程距離"),
+                ("+%dm", " +%dm", "+%dｍ"),
+            ),
+        ]:
+            identity = f"effect-{rid}"
+            metadata["SkillEffectHelpData"][identity] = {"id": rid, "parameter_types": (1,)}
+            for field, values in [("name", name), ("stat", stat), ("format", form)]:
+                entries.append(
+                    {
+                        "key": f"table/t_itemhelp.tbl/SkillEffectHelpData/{identity}/{field}",
+                        "texts": texts(values),
+                    }
+                )
+        groups.append(((1092, 30, 0, 0), (1033, 10, 0, 0)))
+        grammar = compile_item_help_grammar(
+            entries, "zh-Hans", metadata, groups, connect_groups=[{"kind": 17, "ids": [1033, 1092]}]
+        )
+        self.assertEqual(grammar["audit"]["chance_records"], 0)
+        self.assertEqual(grammar["audit"]["independent_numeric_groups_proven"], 2)
+        tr = MenuTranslator(entries + grammar["detail_entries"], "en", "ja", "zh-Hans")
+        source = "道具的效果+30％･射程距离+10m"
+        self.assertEqual(tr.details.translate(source, "primary"), "Item Effects +30%/Range +10m")
+        self.assertEqual(
+            tr.details.translate(source, "secondary"), "アイテムの効果+30％･射程距離+10ｍ"
+        )
+        self.assertEqual(tr.details.render(source)["kind"], "ruby")
+
     def test_status_labels_accept_only_resource_proven_plus_variants(self):
         entries, metadata, groups = fixture()
         help_titles = {
@@ -251,7 +313,7 @@ class ItemHelpAggregateTests(unittest.TestCase):
             ("命中率＋", "ACC+", "命中率+"),
             ("必杀率＋", "CRT+", "必殺率+"),
             ("回避率＋", "EVA+", "回避率+"),
-            ("魔法回避率＋", "AEV+", "魔法回避率+"),
+            ("魔法回避率＋", "AEV+", "魔法回避率＋"),
         ):
             tr = MenuTranslator(entries + grammar["status_entries"], "en", "ja", "zh-Hans")
             self.assertEqual(tr.translate(source, "primary"), english)
@@ -262,7 +324,7 @@ class ItemHelpAggregateTests(unittest.TestCase):
         # A HelpIconList glyph variant must not give unchanged English input
         # two different target pairs (ASCII + vs fullwidth +).
         reverse = MenuTranslator(entries + grammar["status_entries"], "zh-Hans", "ja", "en")
-        self.assertEqual(reverse.translate("AEV+", "primary"), "魔法回避率+")
+        self.assertEqual(reverse.translate("AEV+", "primary"), "魔法回避率＋")
         conflicted = MenuTranslator(
             entries
             + grammar["status_entries"]
@@ -277,8 +339,8 @@ class ItemHelpAggregateTests(unittest.TestCase):
 
     def test_skill_raw_slots_use_table_record_offset_not_object_relative_offset(self):
         # The PAC row starts a verified five-slot sequence at +0x30.  The
-        # normalizer's object-relative +0x3c is inside that first raw tuple,
-        # so treating it as a distinct PAC slot base silently drops ID 123.
+        # item normalizer's +0x3c must not be applied to a SkillParam row:
+        # that offset is inside the skill's first tuple and drops ID 123.
         stride = 176
         start = 88
         raw = bytearray(start + stride)
@@ -378,7 +440,7 @@ class ItemHelpAggregateTests(unittest.TestCase):
         )
         self.assertTrue(grammar["detail_entries"])
 
-    def test_actual_single_slot_and_timed_builders_stay_anchored(self):
+    def test_actual_single_slot_and_timed_builders_work_with_or_without_description(self):
         entries, metadata, groups = fixture()
         description = {
             "key": "table/t_skill.tbl/example/description",
@@ -411,7 +473,9 @@ class ItemHelpAggregateTests(unittest.TestCase):
                     translator.translate(source + suffix, "primary"),
                     target + "\n<C0>Skill description",
                 )
-        self.assertEqual(translator.translate("强运（60秒）", "primary"), "强运（60秒）")
+        for source, target in expected.items():
+            if source != "无效":  # A context-only short alias remains scoped.
+                self.assertEqual(translator.translate(source, "primary"), target)
 
     def test_live_turn_icon_segment_is_replaced_only_under_the_detail_anchor(self):
         entries, metadata, groups = fixture()
@@ -712,7 +776,7 @@ for(const c of data.cases) {
             capture_output=True,
         )
 
-    def test_menu_translator_keeps_typed_aggregates_inside_anchored_details(self):
+    def test_complete_typed_effects_do_not_require_a_description_to_translate(self):
         entries, metadata, groups = fixture()
         description = {
             "key": "table/t_skill.tbl/example/description",
@@ -728,18 +792,35 @@ for(const c of data.cases) {
         )
 
         bare = "混乱･睡眠･黑暗90％"
-        self.assertEqual(translator.translate(bare, "primary"), bare)
+        self.assertEqual(translator.translate(bare, "primary"), "Confuse/Sleep/Blind 90%")
+        self.assertNotEqual(translator.render(bare)["kind"], "plain")
         self.assertEqual(
             translator.translate(bare + "\n技能说明", "primary"),
             "Confuse/Sleep/Blind 90%\nSkill description",
         )
-        self.assertEqual(translator.translate("混乱･中毒90％", "primary"), "混乱･中毒90％")
+        self.assertEqual(translator.translate("混乱･中毒90％", "primary"), "Confuse/Poison 90%")
         self.assertEqual(
             translator.translate("混乱･中毒90％\n技能说明", "primary"),
             "Confuse/Poison 90%\nSkill description",
         )
         self.assertEqual(translator.translate("命中率+", "primary"), "ACC+")
         self.assertEqual(translator.translate("命中率+", "secondary"), "命中率+")
+
+        # Complete constructors participate in ordinary conflict handling.
+        # Their detail authority must not override another resource globally.
+        conflicting = (
+            entries
+            + grammar["status_entries"]
+            + grammar["detail_entries"]
+            + [
+                {
+                    "key": "table/other/context",
+                    "texts": texts(("混乱･睡眠･黑暗%d％", "Different %d", "別の内容%d")),
+                }
+            ]
+        )
+        tr = MenuTranslator(conflicting, "en", "ja", "zh-Hans")
+        self.assertEqual(tr.translate(bare, "primary"), bare)
 
     def test_literal_stat_boundary_padding_selects_one_original_record(self):
         entries, metadata, groups = fixture()

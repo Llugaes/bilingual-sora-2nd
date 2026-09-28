@@ -46,6 +46,8 @@ def main():
             run(sys.executable, "-X", "utf8", "tests/check_native_nested_ruby.py")
             run(sys.executable, "-X", "utf8", "tests/check_native_reentry.py")
             run(sys.executable, "-X", "utf8", "tests/check_native_log_activation.py")
+            run(sys.executable, "-X", "utf8", "tests/check_native_log_commit.py")
+            run(sys.executable, "-X", "utf8", "tests/check_native_dynamic_identity.py")
             run(sys.executable, "-X", "utf8", "tests/check_native_refresh.py")
     elif command == "publish-local":
         run(sys.executable, "-m", "sora_bilingual.updates.tool_updates")

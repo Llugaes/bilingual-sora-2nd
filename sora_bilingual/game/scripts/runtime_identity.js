@@ -43,6 +43,9 @@ class ScriptIdentities {
         this.sourceLanguage=model?.source_language||null;
         this.recordPairs=model?.record_pairs||{};this.recordPairValues=model?.record_pair_values||[];
         this.historyMarkers=model?.history_markers||{};
+        this.historySpeakerSetters=model?.history_speaker_setters||{};
+        this.dynamicProducers=model?.dynamic_producers||{scripts:{},records:{}};
+        this.producerPatterns=new Map();
         this.callPatterns=new WeakMap();
         this.pointers=model?.pointers||{};this.pointerModels=model?.pointer_models||{};this.pointerCache=new Map();
     }
@@ -106,6 +109,28 @@ class ScriptIdentities {
         if(sourceLocales.length===1)identity.sourceLocale=sourceLocales[0];
         return identity;
     }
+    historySpeakerLookup(identity,name) {
+        if(!identity?.recordKey||typeof name!=='string')return null;
+        const rows=this.historySpeakerSetters[identity.recordKey];
+        if(!Array.isArray(rows))return null;
+        const candidates=new Map();
+        for(const row of rows) {
+            if(!Array.isArray(row)||row.length!==4||row.some(value=>typeof value!=='string'))continue;
+            const [locale,expected,...pair]=row;
+            if(name!==expected||identity.sourceLocale&&identity.sourceLocale!==locale||
+                    identity.sourceLocales&&!identity.sourceLocales.includes(locale))continue;
+            candidates.set(JSON.stringify(pair),pair);
+        }
+        if(candidates.size!==1)return null;
+        const pair=candidates.values().next().value;
+        const key='speaker/'+identity.recordKey+'/'+name;
+        if(!this.cache.has(key)) {
+            if(this.cache.size>=1024)this.cache.clear();
+            const pairs={[name]:pair};
+            this.cache.set(key,{model:{pairs,plain_pairs:pairs},strict:true});
+        }
+        return this.cache.get(key);
+    }
     recordLookup(identity,key,source) {
         if(typeof identity.source!=='string'||source!==identity.source||
                 !Object.hasOwn(this.recordPairs,key))return null;
@@ -123,8 +148,26 @@ class ScriptIdentities {
         }
         return this.cache.get(id);
     }
+    producerSourceMatches(pattern,source) {
+        if(typeof pattern!=='string'||typeof source!=='string')return false;
+        if(!this.producerPatterns.has(pattern))this.producerPatterns.set(pattern,new RegExp('^(?:'+pattern+')$'));
+        const match=this.producerPatterns.get(pattern).exec(source);
+        return !!match&&match[0]===source&&match.slice(1).every(value=>Number.isInteger(Number(value))&&Number(value)>=-2147483648&&Number(value)<=2147483647);
+    }
+    producerLookup(identity,source) {
+        const model=this.dynamicProducers.records?.[identity.recordKey]?.[identity.sourceLocale];
+        if(!model||!Array.isArray(model.producer_numeric)||model.producer_numeric.length!==1||
+                !this.producerSourceMatches(model.producer_numeric[0][0],source))return null;
+        const key='producer/'+identity.recordKey+'/'+identity.sourceLocale;
+        if(!this.cache.has(key)) {
+            if(this.cache.size>=1024)this.cache.clear();
+            this.cache.set(key,{model,strict:true});
+        }
+        return this.cache.get(key);
+    }
     lookup(identity,source=identity?.source) {
         if(Object.hasOwn(identity,'source')&&source!==identity.source)return null;
+        if(identity.producer)return this.producerLookup(identity,source);
         const {signature,sha256,functionName,argumentsToken}=identity;
         const scripts=Object.hasOwn(this.scripts,signature)?this.scripts[signature]:[];
         const script=scripts.find(v=>v.sha256===sha256);
@@ -205,6 +248,15 @@ class ScriptIdentities {
                 }
                 if(hashes.get(candidate.size)!==candidate.sha256)continue;
                 const identity={signature,sha256:candidate.sha256,functionName,argumentsToken};
+                const producer=this.dynamicProducers.scripts?.[candidate.sha256]?.[functionName]?.[argumentsToken];
+                if(producer&&site?.group===5&&site.command===8) {
+                    if(!Number.isInteger(site.pc)||site.pc<4||site.pc>candidate.size||site.pc!==producer.pc||
+                            !Number.isInteger(producer.callId)||producer.callId<0||
+                            typeof producer.recordKey!=='string'||
+                            !this.producerSourceMatches(producer.sourcePattern,source))return null;
+                    return {...identity,producer:true,callId:producer.callId,recordKey:producer.recordKey,
+                        source,sourceLocale:this.sourceLanguage,pc:site.pc};
+                }
                 if(Object.hasOwn(candidate,'callRecords')) {
                     if(!site||!Number.isInteger(site.pc)||site.pc<4||site.pc>candidate.size)return null;
                     const index=candidate.callRecords[functionName]||{};

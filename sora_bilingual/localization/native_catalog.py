@@ -44,6 +44,7 @@ def fingerprint(game, *, legacy=False):
                 "sora_bilingual/localization/menu_text.py",
                 "sora_bilingual/localization/native_catalog.py",
                 "sora_bilingual/localization/runtime_identity.py",
+                "sora_bilingual/localization/dynamic_identity.py",
                 "sora_bilingual/localization/speaker_context.py",
                 "sora_bilingual/localization/item_help_composition.py",
             )

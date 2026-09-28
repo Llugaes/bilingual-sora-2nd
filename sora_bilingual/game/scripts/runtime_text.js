@@ -1,7 +1,7 @@
 'use strict';
 // Shared pure resolver: runs synchronously inside the native label callback.
 // No RPC, timers, pointers, filesystem access, or fuzzy substring matching.
-const PRINTF_TOKEN=/%%|%(?:\d+\$)?[-+0 #]*\d*(?:\.\d+)?[dius]/g;
+const PRINTF_TOKEN=/%%|%(?:\d+\$)?[-+0 #]*\d*(?:\.\d+)?[diusg]/g;
 class RuntimeText {
     constructor(model) {
         this.model = model;
@@ -71,7 +71,7 @@ class RuntimeText {
         if(cache.size>=20000)cache.clear();cache.set(source,result);return result;
     }
     static renderFormat(template,replacement) {
-        return template.replace(PRINTF_TOKEN,token=>token==='%%'?'%':replacement());
+        return template.replace(PRINTF_TOKEN,token=>token==='%%'?'%':replacement(token));
     }
     speakerContext(name,source) {
         const models=this.model.speaker_contexts||{};
@@ -89,13 +89,23 @@ class RuntimeText {
         let index=shared[body];
         const narrowed=kind==='body'&&Object.hasOwn(model.speakers||{},name)?model.speakers[name]:null;
         if(index<0&&narrowed&&Object.hasOwn(narrowed,body))index=narrowed[body];
-        const key=JSON.stringify([kind,body,index]);
+        // Only copied history without a resolved script identity reaches this
+        // fallback. Keep the exact index ambiguous; selecting an official
+        // candidate for display must never create a dialogue identity.
+        let fallback=false;
+        if(index<0) {
+            const candidates=kind==='name'?model.fallback_names:model.fallback_texts;
+            const speaker=kind==='body'?model.fallback_speakers?.[name]:null;
+            const selected=speaker&&Object.hasOwn(speaker,body)?speaker[body]:candidates?.[body];
+            if(Number.isInteger(selected)&&selected>=0){index=selected;fallback=true;}
+        }
+        const key=JSON.stringify([kind,body,index,fallback]);
         if(!this.historyCache.has(key)) {
             const pair=Number.isInteger(index)&&index>=0?model.pairs[index]:null;
             const local=pair?{pairs:{[body]:pair},plain_pairs:{[body]:pair},same_language:model.same_language}:
                 {pairs:{},plain_pairs:{},ambiguous_display:[body]};
             if(this.historyCache.size>=2048)this.historyCache.clear();
-            this.historyCache.set(key,{tr:new RuntimeText(local),strict:true});
+            this.historyCache.set(key,{tr:new RuntimeText(local),strict:true,fallback});
         }
         return this.historyCache.get(key);
     }
@@ -110,20 +120,21 @@ class RuntimeText {
             authoritative=rendered;
         }
         if(authoritative)return authoritative;
-        let found=null;
+        const literal=new Map(),freeform=new Map();
         for(const [pattern,pair] of RuntimeText.numericCandidates(source,this.numericIndex,this.numericCandidateCache)) {
             const m=pattern.exec(source);
             if(!m || m[0]!==source)continue;
             const rendered=pair.map((target,side)=>{
                 let i=1;
-                return RuntimeText.renderFormat(target,()=>{
-                    const v=m[i++];return (Object.hasOwn(this.model.plain_pairs,v)?this.model.plain_pairs[v]:[v,v])[side];
+                return RuntimeText.renderFormat(target,token=>{
+                    const v=m[i++];return token.endsWith('s')&&Object.hasOwn(this.model.plain_pairs,v)?this.model.plain_pairs[v][side]:v;
                 });
             });
-            if(found && JSON.stringify(found)!==JSON.stringify(rendered))return null;
-            found=rendered;
+            const stringSlots=(pair[0].match(PRINTF_TOKEN)||[]).some(token=>token.endsWith('s'));
+            (stringSlots?freeform:literal).set(JSON.stringify(rendered),rendered);
         }
-        return found;
+        const selected=literal.size?literal:freeform;
+        return selected.size===1?selected.values().next().value:null;
     }
     static rubyRanges(source) {
         if(!source.includes('<R')&&!source.includes('</R'))return [];
@@ -242,8 +253,8 @@ class RuntimeText {
         for(const [pattern,pair] of this.rawNumeric) {
             const m=pattern.exec(source);if(!m||m[0]!==source)continue;
             const rendered=pair.map((target,side)=>{
-                let i=1;return RuntimeText.renderFormat(target,()=>{
-                    const v=m[i++];return (Object.hasOwn(this.model.plain_pairs,v)?this.model.plain_pairs[v]:[v,v])[side];
+                let i=1;return RuntimeText.renderFormat(target,token=>{
+                    const v=m[i++];return token.endsWith('s')&&Object.hasOwn(this.model.plain_pairs,v)?this.model.plain_pairs[v][side]:v;
                 });
             });
             if(found&&JSON.stringify(found)!==JSON.stringify(rendered))return null;found=rendered;
@@ -277,7 +288,9 @@ class RuntimeText {
         return left.map((v,i)=>i%2?v:RuntimeText.needsAnnotation(v,right[i/2])?'<R>'+v+'</R'+right[i/2]+'>':v).join('');
     }
     static needsAnnotation(a,b) {
-        const visible=s=>s.replace(/<[^<>]*>/g,'').replace(/[\uff01-\uff5e]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xfee0)).trim();
+        // Native ruby readings are displayed text, not formatting. Equal Latin
+        // bases can carry different translated readings in </R...>.
+        const visible=s=>s.replace(/<\/R([^<>]*)>/g,'\x00$1').replace(/<[^<>]*>/g,'').replace(/[\uff01-\uff5e]/g,c=>String.fromCharCode(c.charCodeAt(0)-0xfee0)).trim();
         const left=visible(a),right=visible(b);
         return !!left&&!!right&&(left!==right||/[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/.test(left));
     }
@@ -448,7 +461,7 @@ class RuntimeText {
             Boolean(anchored&&anchored[0].hasDetailContext(source,anchored[1]))||
             (Object.hasOwn(this.keyed,key)&&this.keyed[key].source===source);
         const prefix=(a.match(/^(?:<#[^<>]*>)*/)||[''])[0],body=a.slice(prefix.length),visibleB=RuntimeText.visualSecondary(b);
-        if(mode==='annotation'&&known&&prefix&&!/[<>]/.test(body+visibleB)&&
+        if(mode==='annotation'&&known&&!/[<>]/.test(body+visibleB)&&
                 body.split(/\r\n|\n|\\n/).length===visibleB.split(/\r\n|\n|\\n/).length) {
             const value=RuntimeText.ruby(body,visibleB);
             if(value!==null) {

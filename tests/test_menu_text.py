@@ -7,6 +7,61 @@ def entry(sc, ja, en=None):
 
 
 class MenuTextTests(unittest.TestCase):
+    def test_complete_pair_renders_when_only_source_has_controls(self):
+        for source, primary, secondary in (
+            ("<R>言葉</Rことば>", "话语", "Words"),
+            ("Source<w1800>\nsecond line", "第一行\n第二行", "First line\nsecond line"),
+            ("1,100...1,000...900...", "１１００、１０００、９００……", "1,100...1,000...900..."),
+        ):
+            tr = MenuTranslator(
+                [entry(primary, secondary, source)], "zh-Hans", "ja", source_language="en"
+            )
+            plan = tr.render(source)
+            self.assertEqual(plan["kind"], "ruby", source)
+            for line in secondary.split("\n"):
+                self.assertIn("</R" + line + ">", plan["text"])
+
+    def test_native_reading_difference_is_visible_even_with_same_latin_base(self):
+        source = "<R>Ｆｌａｍｍｅ！</R火焰啊！>"
+        for target in ("<R>Ｆｌａｍｍｅ！</R炎よ！>", "<R>Flamme!"):
+            plan = MenuTranslator([entry(source, target)], "zh-Hans", "ja").render(source)
+            self.assertEqual(plan["kind"], "layered")
+            self.assertEqual(len(plan["layers"]), 1)
+            self.assertEqual(plan["layers"][0]["text"], target)
+            self.assertTrue(plan["text"].endswith(source))
+
+    def test_complete_numeric_wording_precedes_freeform_constructor(self):
+        records = [
+            entry("危机时%d回合“心眼”", "ピンチ時に%dターン「心眼」", "Foresight (%d turns)"),
+            entry("危机时%d回合%s%s", "ピンチ時に%dターン%s%s", "Critical %d turns %s%s"),
+            entry("2", "２", "Two"),
+        ]
+        for primary in ("zh-Hans", "en"):
+            tr = MenuTranslator(records, primary, "ja")
+            self.assertEqual(
+                tr.translate("危机时2回合“心眼”", "secondary"), "ピンチ時に2ターン「心眼」"
+            )
+            self.assertNotEqual(tr.render("危机时2回合“心眼”")["kind"], "plain")
+        # Two equally concrete resources remain ambiguous, irrespective of order.
+        records.append(entry("危机时%u回合“心眼”", "別の効果%u", "Other effect %u"))
+        self.assertEqual(
+            MenuTranslator(records, "zh-Hans", "ja").translate("危机时2回合“心眼”", "secondary"),
+            "危机时2回合“心眼”",
+        )
+
+    def test_only_string_arguments_use_name_translation(self):
+        tr = MenuTranslator(
+            [
+                entry("2", "２", "Two"),
+                entry("药", "薬", "Potion"),
+                entry("<C1>%s</C> %d", "<C1>%s</C> %d", "<C1>%s</C> %d"),
+            ],
+            "en",
+            "ja",
+        )
+        self.assertEqual(tr.translate("<C1>药</C> 2", "primary"), "<C1>Potion</C> 2")
+        self.assertEqual(tr.translate("<C1>药</C> 2", "secondary"), "<C1>薬</C> 2")
+
     def test_overdrive_trim_alias_cannot_conflict_with_unchanged_source(self):
         prefix = "table/t_condition_info.tbl/OverDriveEffect/test/"
         records = [
@@ -223,6 +278,26 @@ class MenuTextTests(unittest.TestCase):
             self.assertEqual(tr.translate("Source", "secondary"), "Source")
         # Missing fragments alone do not become an invented translation.
         self.assertEqual(MenuTranslator([fragment], "en", "de", "fr").translate("Source"), "Source")
+
+    def test_unique_complete_label_is_not_blacklisted_by_missing_fragment(self):
+        complete = {
+            "key": "table/t_text.tbl/TXT_USE_HEAL_MACHINE",
+            "texts": {"zh-Hans": "休息", "ja": "休憩する", "en": "Rest"},
+        }
+        fragment = {"key": "script/map/bed/code/0/alignment/partial", "texts": {"zh-Hans": "休息"}}
+        tr = MenuTranslator([complete, fragment], "en", "ja", "zh-Hans")
+        self.assertEqual(tr.translate("休息", "primary"), "Rest")
+        self.assertEqual(tr.translate("休息", "secondary"), "休憩する")
+        conflict = {"texts": {"zh-Hans": "休息", "ja": "別の文", "en": "Different"}}
+        self.assertEqual(
+            MenuTranslator([complete, fragment, conflict], "en", "ja", "zh-Hans").translate(
+                "休息", "secondary"
+            ),
+            "休息",
+        )
+        self.assertEqual(
+            MenuTranslator([fragment], "en", "ja", "zh-Hans").translate("休息", "secondary"), "休息"
+        )
 
     def test_incomplete_or_blank_locale_never_erases_source_or_invents_translation(self):
         for missing in (None, "", "   "):

@@ -14,6 +14,54 @@ const baseModel = overrides => ({
     ...overrides,
 });
 
+test('complete pairs render target languages when source alone has native controls',()=>{
+    const cases=[
+        ['<R>言葉</Rことば>', ['话语','Words']],
+        ['Source<w1800>\nsecond line',['第一行\n第二行','First line\nsecond line']],
+        ['1,100...1,000...900...',['１１００、１０００、９００……','1,100...1,000...900...']],
+    ];
+    for(const [source,pair] of cases) {
+        const plan=new RuntimeText(baseModel({pairs:{[source]:pair}})).render(source);
+        assert.equal(plan.kind,'ruby',source);
+        for(const line of pair[1].split('\n'))assert.ok(plan.text.includes('</R'+line+'>'),source);
+    }
+});
+
+test('different original readings need a secondary layer even with the same Latin base',()=>{
+    const source='<R>Ｆｌａｍｍｅ！</R火焰啊！>';
+    for(const target of ['<R>Ｆｌａｍｍｅ！</R炎よ！>','<R>Flamme!']) {
+        const plan=new RuntimeText(baseModel({pairs:{[source]:[source,target]}})).render(source);
+        assert.equal(plan.kind,'layered');
+        assert.equal(plan.layers.length,1);
+        assert.equal(plan.layers[0].text,target);
+        assert.ok(plan.text.endsWith(source));
+    }
+    assert.equal(RuntimeText.needsAnnotation('<R>ABC</Rsame>','<R>ＡＢＣ</Rsame>'),false);
+});
+
+test('complete numeric effect template wins over a free-form constructor, but not another concrete template',()=>{
+    const source='危机时2回合“心眼”';
+    const numeric=[
+        ['危机时([+-]?\\d+)回合“心眼”',['危机时%d回合“心眼”','ピンチ時に%dターン「心眼」']],
+        ['危机时([+-]?\\d+)回合([^<>\\r\\n]{1,512}?)([^<>\\r\\n]{1,512}?)',['危机时%d回合%s%s','ピンチ時に%dターン%s%s']],
+    ];
+    for(const rows of [numeric,[...numeric].reverse()]) {
+        const runtime=new RuntimeText(baseModel({numeric:rows,plain_pairs:{'2':['2','２']}}));
+        assert.equal(runtime.translate(source,'secondary'),'ピンチ時に2ターン「心眼」');
+        assert.equal(runtime.render(source).kind,'ruby');
+    }
+    numeric.push(['危机时([+-]?\\d+)回合“心眼”',['危机时%u回合“心眼”','別の効果%u']]);
+    assert.equal(new RuntimeText(baseModel({numeric})).translate(source,'secondary'),source);
+});
+
+test('numeric printf slots are never translated as names, including coloured mixed arguments',()=>{
+    const runtime=new RuntimeText(baseModel({plain_pairs:{'2':['Two','２'],'药':['Potion','薬']},
+        raw_numeric:[['<C1>([^<>\\r\\n]{1,512}?)</C> ([+-]?\\d+)',['<C1>%s</C> %d','<C1>%s</C> %d']]],
+    }));
+    assert.equal(runtime.translate('<C1>药</C> 2','primary'),'<C1>Potion</C> 2');
+    assert.equal(runtime.translate('<C1>药</C> 2','secondary'),'<C1>薬</C> 2');
+});
+
 test('layout size wrapper preserves complete coloured prompt identity and layers', () => {
     const source='确定要移动至<C1>蔡恩拉德酒店</C>吗？';
     const targets=['Fast Travel to <C1>Zahnrad Hotel</C>?','<C1>ツァンラートホテル</C>へ移動しますか？'];

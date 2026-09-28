@@ -16,6 +16,14 @@ def dialogue(actor, target):
     }
 
 
+def speaker(label, target, key="script/a.dat/Talk/called/1/arg/1", **texts):
+    return {
+        "key": key,
+        "display_role": "speaker",
+        "texts": {"zh-Hans": label, "ja": target, **texts},
+    }
+
+
 class SpeakerContextTests(unittest.TestCase):
     def test_old_history_keeps_all_source_locales_with_shared_target_pairs(self):
         texts = {
@@ -121,3 +129,69 @@ class SpeakerContextTests(unittest.TestCase):
             [mismatch, dialogue(65535, "台詞。")], {2: "雪拉扎德"}, "zh-Hans", "ja", "zh-Hans"
         )
         self.assertEqual(result, {})
+
+    def test_direct_generic_speaker_setter_supplies_history_name_pair(self):
+        model = compile_history_contexts(
+            [speaker("女子的声音", "女性の声", en="Woman's Voice")],
+            {},
+            "en",
+            "ja",
+        )
+        self.assertEqual(
+            model["pairs"][model["names"]["女子的声音"]], ("Woman's Voice", "女性の声")
+        )
+
+    def test_generic_speaker_rejects_conflicting_or_unproven_physical_setters(self):
+        complete = speaker("女子的声音", "女性の声", en="Woman's Voice")
+        same_setter_partial = {
+            "key": complete["key"] + "/alignment/partial",
+            "display_role": "speaker",
+            "texts": {"zh-Hans": "女子的声音"},
+        }
+        model = compile_history_contexts([complete, same_setter_partial], {}, "en", "ja")
+        self.assertEqual(
+            model["pairs"][model["names"]["女子的声音"]], ("Woman's Voice", "女性の声")
+        )
+        conflict = speaker(
+            "女子的声音",
+            "女の声",
+            "script/a.dat/Talk/called/2/arg/1",
+            en="Woman's Voice",
+        )
+        model = compile_history_contexts([complete, conflict], {}, "en", "ja")
+        self.assertEqual(model["names"]["女子的声音"], -1)
+        not_a_setter = speaker(
+            "旁白",
+            "ナレーション",
+            "script/a.dat/Talk/called/3/arg/2",
+            en="Narration",
+        )
+        model = compile_history_contexts([not_a_setter], {}, "en", "ja")
+        self.assertNotIn("旁白", model["names"])
+
+    def test_old_history_fallback_prefers_same_speaker_and_ignores_incomplete_claims(self):
+        names = {"zh-Hans": {2: "甲"}, "ja": {2: "A"}}
+        first = dialogue(2, "甲訳")
+        first["key"] = "script/a.dat/Talk/called/3/assembled_dialogue"
+        second = dialogue(2, "乙訳")
+        second["key"] = "script/a.dat/Talk/called/4/assembled_dialogue"
+        partial = {
+            "key": "script/a.dat/Talk/called/5/assembled_dialogue",
+            "display_role": "dialogue",
+            "texts": {"zh-Hans": first["texts"]["zh-Hans"]},
+            "speaker_ids": {"zh-Hans": 2},
+        }
+        model = compile_history_contexts([second, partial, first], names, "zh-Hans", "ja")
+        body = "相同的正文。"
+        self.assertEqual(model["texts"][body], -1)
+        self.assertEqual(model["speakers"]["甲"][body], -1)
+        selected = model["pairs"][model["fallback_speakers"]["甲"][body]]
+        self.assertEqual(selected, ("相同的正文。", "乙訳"))
+        self.assertEqual(model["pairs"][model["fallback_texts"][body]], selected)
+        reversed_model = compile_history_contexts([first, partial, second], names, "zh-Hans", "ja")
+        self.assertEqual(
+            reversed_model["pairs"][reversed_model["fallback_speakers"]["甲"][body]], selected
+        )
+        only_partial = compile_history_contexts([partial], names, "zh-Hans", "ja")
+        self.assertNotIn(body, only_partial["fallback_texts"])
+        self.assertNotIn("甲", only_partial["fallback_speakers"])

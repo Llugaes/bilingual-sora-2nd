@@ -149,6 +149,9 @@ _RESOURCE_IDENTITY_FIELDS = {
     "LookPointTableData": ((0, 8, 24), ((32, 40, "Q"), (48, 56, "Q"))),
     "ViewerMapData": ((8, 40, 56), ((24, 32, "Q"),)),
     "NameTableData": ((16, 24, 32, 48, 64, 80, 88, 96), ()),
+    # These are map/script/resource selectors.  Their addresses change with
+    # localisation, but their strings separate otherwise identical place rows.
+    "PlaceTableData": ((8, 16, 24, 48, 64, 88, 120), ()),
     "StatusParam": ((0,), ()),
     "TipsTableData": ((24,), ((8, 16, "I"),)),
 }
@@ -193,6 +196,13 @@ def record_identity(data, at, kind, schema, text_floor):
         strings, arrays = _RESOURCE_IDENTITY_FIELDS[kind]
         for offset in strings:
             pointer = struct.unpack_from("<Q", row, offset)[0]
+            # In installed PlaceTableData, the +120 selector is one byte past
+            # the final NUL pool entry once per locale to encode an empty
+            # selector. Preserve that observed value without using its moving
+            # address as identity.
+            if kind == "PlaceTableData" and pointer == len(data):
+                extra += struct.pack("<QQ", offset, 0)
+                continue
             if not text_floor <= pointer < len(data):
                 raise FormatError(f"{kind} resource outside pool")
             end = data.find(b"\0", pointer)

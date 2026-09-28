@@ -160,6 +160,53 @@ class ResourceIdentityTests(unittest.TestCase):
                     self.identity(kind, data)
 
 
+class PlaceIdentityTests(unittest.TestCase):
+    def record(self, padding=0, name="Place", resource="mp1000", empty_selector=False):
+        data = bytearray(168 + padding)
+        values = [
+            (8, resource),
+            (16, resource + "_entry"),
+            (24, ""),
+            (48, "K"),
+            (64, "K"),
+            (88, "K"),
+            (96, name),
+            (104, ""),
+        ]
+        if not empty_selector:
+            values.append((120, resource + "_event"))
+        for offset, value in values:
+            struct.pack_into("<Q", data, offset, len(data))
+            data.extend(value.encode("utf-8") + b"\0")
+        if empty_selector:
+            struct.pack_into("<Q", data, 120, len(data))
+        return data
+
+    def test_localized_place_text_does_not_change_resource_identity(self):
+        schema = SCHEMAS["PlaceTableData"]
+        identity = lambda data: record_identity(data, 0, "PlaceTableData", schema, 168)
+        self.assertEqual(identity(self.record()), identity(self.record(31, "地点的本地化名称")))
+        self.assertNotEqual(identity(self.record()), identity(self.record(resource="mp1001")))
+
+    def test_observed_place_one_past_pool_empty_selector_is_narrowly_allowed(self):
+        schema = SCHEMAS["PlaceTableData"]
+        identity = lambda data: record_identity(data, 0, "PlaceTableData", schema, 168)
+        self.assertEqual(
+            identity(self.record(empty_selector=True)),
+            identity(self.record(31, empty_selector=True)),
+        )
+        invalid = self.record(empty_selector=True)
+        struct.pack_into("<Q", invalid, 120, len(invalid) + 1)
+        with self.assertRaises(FormatError):
+            identity(invalid)
+
+    def test_one_past_is_not_an_empty_value_for_other_resource_kinds(self):
+        data = ResourceIdentityTests().record("NameTableData")
+        struct.pack_into("<Q", data, 16, len(data))
+        with self.assertRaises(FormatError):
+            ResourceIdentityTests().identity("NameTableData", data)
+
+
 def fpac(entries):
     names = [name.encode() + b"\0" for name, _ in entries]
     table_end = 16 + 32 * len(entries)

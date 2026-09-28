@@ -33,9 +33,15 @@ _RECIPE_MAX_ID = 2316
 # They cover normal, bad, special, and alternate cooking results.  The regular
 # medicine/ingredient classes are deliberately outside this finite domain.
 _RECIPE_ITEM_CLASSES = frozenset((656129, 721665, 787457, 852993, 1253377))
-_RECIPE_RENDER = "<C0><I12></C><C5>{name}</C>"
-_ITEM_RENDER = "<C0><I110></C><C5>{name}</C>"
-_ITEM_CALLEES = frozenset(("ITEM_ADD_MESSAGE_EV", "ITEM_ADD_MESSAGE2_EV"))
+# The native item/recipe builders choose the display icon from the runtime item
+# record.  Keep the icon number as a typed producer slot: it is not a fixed
+# resource constant (for example, food and fishing-rod notifications use
+# different icon IDs).
+_RECIPE_RENDER = "<C0><I%d></C><C5>{name}</C>"
+_ITEM_RENDER = "<C0><I%d></C><C5>{name}</C>"
+_ITEM_SINGLE_CALLEES = frozenset(("ITEM_ADD_MESSAGE_EV", "ITEM_ADD_MESSAGE_TK"))
+_ITEM_SPLIT_CALLEES = frozenset(("ITEM_ADD_MESSAGE2_EV", "ITEM_ADD_MESSAGE2_TK"))
+_ITEM_CALLEES = _ITEM_SINGLE_CALLEES | _ITEM_SPLIT_CALLEES
 
 
 def _audit(reason: str, **detail: object) -> dict[str, object]:
@@ -294,6 +300,12 @@ def _recipe_entries(
                         "opcode": 17,
                     },
                 },
+                "dynamic_producer": {
+                    "family": "unlock_recipe",
+                    "dynamic_icon": True,
+                    "numbers": {language: ["ascii"] for language in texts},
+                    "slots": [{"kind": "icon", "opcode": 17}],
+                },
             }
         )
     audit["counters"]["recipe_items_emitted"] += len(result)
@@ -307,7 +319,7 @@ def _item_call_parts(call: object) -> tuple[int, str, str, tuple[int, ...]] | No
     args = getattr(call, "args", ())
     if not args or args[0][0] != "int" or not isinstance(args[0][1], int) or args[0][1] <= 0:
         return None
-    if call.target == "ITEM_ADD_MESSAGE_EV":
+    if call.target in _ITEM_SINGLE_CALLEES:
         if len(args) not in (2, 3) or args[1][0] != "string":
             return None
         if len(args) == 3 and (
@@ -443,6 +455,12 @@ def _item_entries(
                                 "function": function_name,
                                 "called": called,
                             },
+                        },
+                        "dynamic_producer": {
+                            "family": "item_add_message",
+                            "dynamic_icon": True,
+                            "numbers": {language: ["ascii"] for language in texts},
+                            "slots": [{"kind": "icon", "markup": "<I%d>"}],
                         },
                     }
                 )

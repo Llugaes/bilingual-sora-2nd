@@ -10,7 +10,7 @@ from sora_bilingual.config.locales import DEFAULT_PRIMARY
 
 TOKEN = re.compile(r"(<[^<>]*>|\r\n|\n|\\n)")
 STYLE = re.compile(r"</?[Cc][0-9a-fA-F]*>|<s\d+>")
-FORMAT = re.compile(r"%(?:\d+\$)?[-+0 #]*(?:\d+)?(?:\.\d+)?[dius]")
+FORMAT = re.compile(r"%(?:\d+\$)?[-+0 #]*(?:\d+)?(?:\.\d+)?[diusg]")
 FORMAT_TOKEN = re.compile(r"%%|" + FORMAT.pattern)
 SEPARATORS = re.compile(
     r"(\r\n|\n|\\n|[【】「」：:／/\[\]()]| - |[ \u3000]{2,}|^[ \u3000]*[·・][ \u3000]*)"
@@ -471,6 +471,9 @@ def ruby(primary, secondary):
 
 def needs_annotation(a, b):
     def visible(value):
+        # A native ruby reading is visible content even when its Latin base
+        # is identical in both languages.
+        value = re.sub(r"</R([^<>]*)>", lambda match: "\x00" + match[1], value)
         value = re.sub(r"<[^<>]*>", "", value)
         return re.sub(r"[\uff01-\uff5e]", lambda m: chr(ord(m[0]) - 0xFEE0), value).strip()
 
@@ -789,6 +792,15 @@ class MenuTranslator:
             generated_details = [e for e in entries if e.get("detail_only")]
             entries = [e for e in entries if not e.get("detail_only")]
             detail_aliases = item_help_detail_entries(entries) + generated_details
+            # Proven complete effect constructors can appear without a
+            # description (including items whose description is empty). They
+            # are ordinary global candidates, not privileged detail aliases.
+            # Context-dependent spans and element-label fragments stay scoped.
+            entries += [
+                {**e, "detail_authority": False}
+                for e in generated_details
+                if e.get("item_help_contract") and not e.get("detail_context_only")
+            ]
             entries += overdrive_descriptions(entries, source_language)
             entries += map_jump_confirmations(entries)
             entries += item_help_components(entries)
@@ -859,12 +871,15 @@ class MenuTranslator:
                 )
         self.keyed = []
         candidates = {}
+        incomplete_candidates = {}
+        incomplete_records = set()
         display_candidates = {}
         detail_authority = {}
         for entry in entries:
             texts = entry["texts"]
             pair = complete_pair(texts, primary, secondary)
             display_record = entry.get("display_role") in ("dialogue", "speaker")
+            fragment = "/code/" in entry.get("key", "") and "/alignment/" in entry.get("key", "")
             prefix = "table/t_text.tbl/"
             if pair and source_language in texts and entry.get("key", "").startswith(prefix):
                 self.keyed.append((entry["key"][len(prefix) :], texts[source_language], pair))
@@ -878,6 +893,12 @@ class MenuTranslator:
                 for source in {value, plain(value)}:
                     if source.strip():
                         candidates.setdefault(source, set()).add(pair)
+                        if pair is None:
+                            if not fragment:
+                                incomplete_records.add(source)
+                            incomplete_candidates.setdefault(source, set()).add(
+                                tuple(texts.get(locale) for locale in (primary, secondary))
+                            )
                         if entry.get("detail_authority") and pair:
                             detail_authority.setdefault(source, set()).add(pair)
                         if display_record and pair:
@@ -889,10 +910,33 @@ class MenuTranslator:
                     candidates.setdefault(visible, set()).add(
                         tuple(display_text(t) for t in pair) if pair else None
                     )
+                    if pair is None:
+                        if not fragment:
+                            incomplete_records.add(visible)
+                        incomplete_candidates.setdefault(visible, set()).add(
+                            tuple(
+                                display_text(texts[locale]) if texts.get(locale) else None
+                                for locale in (primary, secondary)
+                            )
+                        )
                     if display_record and pair:
                         display_candidates.setdefault(visible, set()).add(
                             tuple(display_text(t) for t in pair)
                         )
+        # A partial bytecode alignment is not an independent display record.
+        # It must not blacklist an otherwise unique complete UI pair. Missing
+        # fields of actual table/call records remain identity-local misses.
+        for source, fragments in incomplete_candidates.items():
+            complete = candidates[source] - {None}
+            if source in incomplete_records or len(complete) != 1:
+                continue
+            pair = next(iter(complete))
+            if all(
+                not value or not value.strip() or plain(value) == plain(pair[i])
+                for fragment in fragments
+                for i, value in enumerate(fragment)
+            ):
+                candidates[source] = complete
         # Complete, structurally aligned display records are stronger evidence
         # than an unpaired bytecode fragment. Missing fragments are not a second
         # translation. Actual conflicting translations remain quarantined.
@@ -981,7 +1025,11 @@ class MenuTranslator:
                 chunks.extend(
                     (
                         re.escape(source[at : m.start()].replace("%%", "%")),
-                        r"([^<>\r\n]{1,512}?)" if m.group()[-1] == "s" else r"([+-]?\d+)",
+                        r"([^<>\r\n]{1,512}?)"
+                        if m.group()[-1] == "s"
+                        else r"([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)"
+                        if m.group()[-1] == "g"
+                        else r"([+-]?\d+)",
                     )
                 )
                 at = m.end()
@@ -1108,7 +1156,10 @@ class MenuTranslator:
                 continue
             rendered = []
             for side, target in enumerate(pair):
-                values = iter(self.plain_pairs.get(v, (v, v))[side] for v in m.groups())
+                values = (
+                    self.plain_pairs.get(v, (v, v))[side] if field.group().endswith("s") else v
+                    for field, v in zip(_format_fields(target), m.groups())
+                )
                 rendered.append(_render_format(target, values))
             matches.add(tuple(rendered))
         return next(iter(matches)) if len(matches) == 1 else None
@@ -1129,6 +1180,7 @@ class MenuTranslator:
         if authoritative:
             return next(iter(authoritative)) if len(authoritative) == 1 else None
         matches = set()
+        literal_matches = set()
         for pattern, pair in self.numeric:
             m = pattern.fullmatch(source)
             if m:
@@ -1136,10 +1188,22 @@ class MenuTranslator:
                 for side, target in enumerate(pair):
                     # Name arguments are translated only by an exact known pair;
                     # unknown player-defined values are preserved verbatim.
-                    values = iter(self.plain_pairs.get(v, (v, v))[side] for v in m.groups())
+                    values = (
+                        self.plain_pairs.get(v, (v, v))[side] if field.group().endswith("s") else v
+                        for field, v in zip(_format_fields(target), m.groups())
+                    )
                     rendered.append(_render_format(target, values))
-                matches.add(tuple(rendered))
-        return next(iter(matches)) if len(matches) == 1 else None
+                # A numeric-only template identifies the complete wording.
+                # A free-form string constructor may consume that wording too,
+                # but cannot veto it by arbitrarily dividing adjacent %s slots.
+                selected = (
+                    matches
+                    if any(m.group()[-1] == "s" for m in _format_fields(pair[0]))
+                    else literal_matches
+                )
+                selected.add(tuple(rendered))
+        selected = literal_matches or matches
+        return next(iter(selected)) if len(selected) == 1 else None
 
     def producer_pair(self, source, rules=None):
         matches = set()
@@ -1295,10 +1359,8 @@ class MenuTranslator:
             prefix = re.match(r"^(?:<#[^<>]*>)*", a)[0]
             body = a[len(prefix) :]
             visible_b = visual_secondary(b)
-            if (
-                prefix
-                and "<" not in body + visible_b
-                and len(re.split(r"\r\n|\n|\\n", body)) == len(re.split(r"\r\n|\n|\\n", visible_b))
+            if "<" not in body + visible_b and len(re.split(r"\r\n|\n|\\n", body)) == len(
+                re.split(r"\r\n|\n|\\n", visible_b)
             ):
                 value = ruby(body, visible_b)
                 if value is not None:

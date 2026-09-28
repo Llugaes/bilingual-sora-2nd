@@ -6,6 +6,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import json
+import argparse
 import subprocess
 import frida
 from sora_bilingual.localization.native_catalog import ready_model
@@ -13,15 +14,28 @@ from sora_bilingual.config.native_config import read_config
 from sora_bilingual.localization.menu_text import MenuTranslator
 
 ROOT = Path(__file__).resolve().parents[1]
-GAME = Path(os.environ["SORA_GAME_DIR"])
 
 
 def main():
-    model, _, _ = ready_model(GAME, read_config())
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--model", type=Path, help="reuse an exact compiled model checkpoint")
+    parser.add_argument("--sources", type=Path, help="JSON array of complete cold-render inputs")
+    parser.add_argument(
+        "--output", type=Path, default=ROOT / "generated/frida-text-performance.json"
+    )
+    args = parser.parse_args()
+    if args.model:
+        model = json.loads(args.model.read_text("utf-8"))
+    else:
+        model, _, _ = ready_model(Path(os.environ["SORA_GAME_DIR"]), read_config())
     model = {k: v for k, v in model.items() if k not in ("script_identities", "table_identities")}
     sources = list(model["pairs"])
     sources = sources[:: max(1, len(sources) // 600)]
     sources += ["读音", "交谈", "<I1544>", "<I915>", "未知文本 " + str(len(sources))]
+    if args.sources:
+        # Put representative first-use details before the catalogue sample:
+        # warmed regular expressions must not hide opening-page latency.
+        sources = list(dict.fromkeys(json.loads(args.sources.read_text("utf-8")) + sources))
     cases = []
     for source in sources:
         pair = model["pairs"].get(source)
@@ -75,9 +89,8 @@ rpc.exports={profile(cases){
             runtime="frida-default",
             includes_game_layout=False,
         )
-        (ROOT / "generated/frida-text-performance.json").write_text(
-            json.dumps(result, indent=2), "utf-8"
-        )
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(json.dumps(result, indent=2), "utf-8")
         print(json.dumps(result, indent=2))
     finally:
         if session is not None:

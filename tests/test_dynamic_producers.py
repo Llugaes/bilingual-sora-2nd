@@ -97,9 +97,9 @@ class DynamicProducerTests(unittest.TestCase):
             for entry in entries
             if entry.get("producer_origin", {}).get("family") == "unlock_recipe"
         )
-        self.assertEqual(recipe["texts"]["zh-Hans"], "Recipe <C0><I12></C><C5>zh-Hans dish</C>!")
+        self.assertEqual(recipe["texts"]["zh-Hans"], "Recipe <C0><I%d></C><C5>zh-Hans dish</C>!")
         self.assertNotIn("%s", recipe["texts"]["zh-Hans"])
-        self.assertNotIn("dynamic_producer", recipe)
+        self.assertTrue(recipe["dynamic_producer"]["dynamic_icon"])
         self.assertEqual(audit["counters"]["recipe_items_emitted"], 1)
 
     def test_rejects_unknown_bp_opcode_only_for_that_locale(self):
@@ -130,8 +130,9 @@ class DynamicProducerTests(unittest.TestCase):
             for entry in entries
             if entry.get("producer_origin", {}).get("family") == "item_add_message"
         )
-        self.assertEqual(item["texts"]["zh-Hans"], "Received <C0><I110></C><C5>zh-Hans quartz</C>.")
+        self.assertEqual(item["texts"]["zh-Hans"], "Received <C0><I%d></C><C5>zh-Hans quartz</C>.")
         self.assertEqual(item["producer_origin"]["item_id"], 4202)
+        self.assertTrue(item["dynamic_producer"]["dynamic_icon"])
 
     def test_accepts_the_verified_japanese_suffix_only_item_message_arity(self):
         item_call = Called(
@@ -154,7 +155,27 @@ class DynamicProducerTests(unittest.TestCase):
             for entry in entries
             if entry.get("producer_origin", {}).get("family") == "item_add_message"
         )
-        self.assertEqual(item["texts"]["ja"], "<C0><I110></C><C5>ja quartz</C>を貰った。")
+        self.assertEqual(item["texts"]["ja"], "<C0><I%d></C><C5>ja quartz</C>を貰った。")
+
+    def test_accepts_talk_item_message_variants_with_a_runtime_icon_slot(self):
+        item_call = Called(
+            "ITEM_ADD_MESSAGE2_TK",
+            0,
+            (("int", 4202), ("string", "Received "), ("string", ".")),
+        )
+        scripts = _scripts(item_call=item_call)
+        scripts["ja"]["script/scena/reward.dat"].functions["Reward"] = _function(
+            "Reward",
+            (Called("ITEM_ADD_MESSAGE_TK", 0, (("int", 4202), ("string", "を受け取った。"))),),
+        )
+        entries, _audit = _build(scripts, _items())
+        item = next(
+            entry
+            for entry in entries
+            if entry.get("producer_origin", {}).get("family") == "item_add_message"
+        )
+        self.assertEqual(item["texts"]["ja"], "<C0><I%d></C><C5>ja quartz</C>を受け取った。")
+        self.assertEqual(item["texts"]["en"], "Received <C0><I%d></C><C5>en quartz</C>.")
 
     def test_source_conflict_is_audited_without_erasing_another_locale_pair(self):
         entries, audit = _build(_scripts(), _items())

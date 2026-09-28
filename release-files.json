@@ -63,6 +63,7 @@
   "sora_bilingual/localization/menu_tables.py",
   "sora_bilingual/localization/menu_text.py",
   "sora_bilingual/localization/dynamic_producers.py",
+  "sora_bilingual/localization/dynamic_identity.py",
   "sora_bilingual/localization/item_help_composition.py",
   "sora_bilingual/localization/speaker_context.py",
   "sora_bilingual/localization/model_worker.py",

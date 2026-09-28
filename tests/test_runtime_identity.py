@@ -9,6 +9,7 @@ import unittest
 from unittest.mock import patch
 from sora_bilingual.localization.runtime_identity import (
     _compile_history_markers,
+    _active_speaker_setter_records,
     _dedupe_call_entries,
     _history_marker,
     compile_script_identities,
@@ -68,6 +69,54 @@ def text_table(rows):
 
 
 class RuntimeIdentityTests(unittest.TestCase):
+    def test_active_speaker_setter_requires_branch_free_provenance(self):
+        setter = ("女子的声音", ("Woman's Voice", "女性の声"))
+        dialogue = Called(
+            None,
+            3,
+            (
+                ("int", 5),
+                ("int", 6),
+                ("int", 21000),
+                ("int", 11),
+                ("int", 31577),
+                ("string", "正文"),
+            ),
+        )
+        wait = Called("wait_prompt", 0, ())
+        function = SimpleNamespace(
+            called=(
+                Called("chr_set_display_name", 0, (("int", 21000), ("string", "女子的声音"))),
+                dialogue,
+                wait,
+                dialogue,
+            ),
+            code_shape=(),
+        )
+        self.assertEqual(
+            _active_speaker_setter_records(
+                function, {0: setter}, {1: "record/one", 3: "record/two"}
+            ),
+            {"record/one": {setter}, "record/two": {setter}},
+        )
+        changed = SimpleNamespace(
+            called=(
+                function.called[0],
+                Called("chr_set_display_name", 0, (("int", 21000), ("string", "女の声"))),
+                dialogue,
+            ),
+            code_shape=(),
+        )
+        self.assertEqual(_active_speaker_setter_records(changed, {0: setter}, {2: "record"}), {})
+        unknown = SimpleNamespace(
+            called=(function.called[0], Called("unknown", 0, ()), dialogue), code_shape=()
+        )
+        self.assertEqual(_active_speaker_setter_records(unknown, {0: setter}, {2: "record"}), {})
+        branched = SimpleNamespace(called=function.called, code_shape=(("branch", 11, 0),))
+        self.assertEqual(
+            _active_speaker_setter_records(branched, {0: setter}, {1: "record/one"}), {}
+        )
+
     def test_text_table_pointer_identities_keep_stable_keys_and_same_source_variants(self):
         FakeTableArchive.data = text_table(
             (

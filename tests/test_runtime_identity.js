@@ -6,6 +6,39 @@ const {scriptSha256,ScriptIdentities,TableIdentities,LogIdentities}=require('../
 const {RuntimeText}=require('../sora_bilingual/game/scripts/runtime_text.js');
 const model=(a,b)=>({pairs:{[a]:[a,b]},plain_pairs:{[a]:[a,b]},numeric:[]});
 
+test('dynamic item identity preserves distinct outer calls through history and locale reload',()=>{
+    const bytes=Buffer.alloc(64,17),hash=scriptSha256(bytes),helper='ITEM_ADD_MESSAGE2_EV';
+    const tokens=['1073807359,1073741840,3222711866,1073741841,1073742044,3222711862',
+        '1073807359,1073741840,3222713304,1073741841,1073742044,3222713300'];
+    const source='拿到了<I7>木门钥匙。',pattern='拿到了<I([0-9]+)>木门钥匙。';
+    const keys=[488,0].map((id,i)=>`dynamic/script/a.dat/Outer${i}/called/${id}/item/220`);
+    const models=['Received','Obtained'].map(verb=>({pairs:{},plain_pairs:{},numeric:[],
+        producer_numeric:[[pattern,['拿到了<I%d>木门钥匙。',verb+' <I%d>Wooden Door Key.'],[['ascii'],['ascii']]]]}));
+    const scripts={[hash]:{[helper]:Object.fromEntries(tokens.map((token,i)=>[token,
+        {recordKey:keys[i],callId:[488,0][i],sourcePattern:pattern,model:models[i],pc:36}]))}};
+    const records=Object.fromEntries(keys.map((key,i)=>[key,{'zh-Hans':models[i]}]));
+    const manifest={h:[{size:64,sha256:hash,functions:[helper],callRecords:{}}]};
+    const ids=new ScriptIdentities({source_language:'zh-Hans',manifest,dynamic_producers:{scripts,records}});
+    const site={pc:36,group:5,command:8},history=new LogIdentities();
+    for(let i=0;i<2;i++) {
+        const identity=ids.capture('h',()=>bytes,helper,tokens[i],site,source);
+        assert.equal(identity.recordKey,keys[i]);
+        assert.equal(identity.callId,[488,0][i]);
+        history.commit(i,'stamp'+i,identity);
+    }
+    const reloaded=new ScriptIdentities({source_language:'ja',dynamic_producers:{scripts:{},records}});
+    for(let i=0;i<2;i++) {
+        const identity=history.lookup(i,'stamp'+i);
+        const selected=reloaded.lookup(identity,source);
+        assert.equal(new RuntimeText(selected.model).translate(source,'secondary'),['Received','Obtained'][i]+' <I7>Wooden Door Key.');
+        assert.equal(reloaded.lookup({...identity,recordKey:'missing'},source),null);
+    }
+    assert.equal(ids.capture('h',()=>bytes,helper,tokens[0],site,'另一种物品。'),null);
+    assert.equal(ids.capture('h',()=>bytes,helper,tokens[0],{...site,pc:37},source),null);
+    assert.equal(ids.capture('h',()=>Buffer.alloc(64),helper,tokens[0],site,source),null);
+    assert.equal(ids.capture('h',()=>bytes,helper,tokens[0],{...site,command:0},source)?.recordKey,undefined);
+});
+
 test('dialogue provenance uses the verified call site even when strings and arguments are equal',()=>{
     const bytes=Buffer.alloc(64,7),hash=scriptSha256(bytes),token='1,3221226000';
     const manifest={h:[{size:64,sha256:hash,functions:['Talk'],callSites:{Talk:{

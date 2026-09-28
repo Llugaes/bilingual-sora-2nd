@@ -75,6 +75,53 @@ def compile_speaker_contexts(entries, names, primary, secondary, language, resol
     return result
 
 
+def _static_speaker_name_candidates(entries, primary, secondary):
+    """Return complete target pairs for direct ``mes`` name setters.
+
+    A generic display label is not necessarily present in ``t_name``: the
+    announcement voice, for example, is a literal string in ``arg/1`` just
+    before the dialogue calls.  History retains that literal but not its
+    setter call ID.  We can therefore admit it only when every *physical*
+    setter using the same source label agrees on one complete target pair.
+
+    Alignment fragments for the same setter are not independent evidence.  A
+    complete direct row dominates their missing-language fragment, while a
+    different setter with the same label remains a real ambiguity.
+    """
+
+    def physical_setter(entry):
+        key = entry.get("key", "").split("/alignment/", 1)[0]
+        prefix, separator, suffix = key.partition("/called/")
+        if not prefix or not separator:
+            return None
+        parts = suffix.split("/")
+        if len(parts) != 3 or not parts[0].isdigit() or parts[1:] != ["arg", "1"]:
+            return None
+        return key
+
+    physical_claims = defaultdict(lambda: defaultdict(set))
+    for entry in entries:
+        if entry.get("display_role") != "speaker":
+            continue
+        setter = physical_setter(entry)
+        texts = entry.get("texts", {})
+        values = {value for value in texts.values() if value and value.strip()}
+        if setter is None or not values:
+            continue
+        pair = complete_pair(texts, primary, secondary)
+        for source in values:
+            physical_claims[setter][source].add(pair)
+
+    candidates = defaultdict(set)
+    for claims in physical_claims.values():
+        for source, pairs in claims.items():
+            complete = {pair for pair in pairs if pair is not None}
+            # A partial alignment row of this same raw setter is dominated by
+            # its complete row.  Do not let it erase verified setter evidence.
+            candidates[source].update(complete or {None})
+    return candidates
+
+
 def compile_history_contexts(entries, names_by_locale, primary, secondary):
     """Exact old-log lookup across source locales, with shared target pairs.
 
@@ -151,6 +198,8 @@ def compile_history_contexts(entries, names_by_locale, primary, secondary):
             )
             if all(pair):
                 names[name].add(pair)
+    for source, candidates in _static_speaker_name_candidates(entries, primary, secondary).items():
+        names[source].update(candidates)
 
     pool, indices = [], {}
 
@@ -168,24 +217,55 @@ def compile_history_contexts(entries, names_by_locale, primary, secondary):
             result[source] = indices[pair]
         return result
 
+    def fallback(candidates):
+        """Choose a deterministic complete pair without changing exact ambiguity."""
+        result = {}
+        for source, pairs in candidates.items():
+            normalized = defaultdict(list)
+            for pair in pairs:
+                if pair is not None:
+                    normalized[tuple(_without_line_padding(value) for value in pair)].append(pair)
+            if not normalized:
+                continue
+            key = min(normalized)
+            pair = min(normalized[key], key=lambda value: (sum(map(len, value)), value))
+            if pair not in indices:
+                indices[pair] = len(pool)
+                pool.append(pair)
+            result[source] = indices[pair]
+        return result
+
     shared = compact(texts)
+    fallback_texts = fallback(
+        {source: pairs for source, pairs in texts.items() if shared[source] < 0}
+    )
     # Speaker maps only need to narrow global conflicts. Unique full bodies
     # already have one O(1) lookup and do not need eight duplicate actor maps.
     narrowed = {}
+    fallback_speakers = {}
     for name, candidates in speakers.items():
-        selected = compact(
-            {
-                source: pairs | {None} if source in unknown_speakers else pairs
-                for source, pairs in candidates.items()
-                if shared[source] < 0
-            }
-        )
+        selected_candidates = {
+            source: pairs | {None} if source in unknown_speakers else pairs
+            for source, pairs in candidates.items()
+            if shared[source] < 0
+        }
+        selected = compact(selected_candidates)
         if selected:
             narrowed[name] = selected
+        selected_fallback = fallback(selected_candidates)
+        if selected_fallback:
+            fallback_speakers[name] = selected_fallback
+    name_index = compact(names)
+    fallback_names = fallback(
+        {source: pairs for source, pairs in names.items() if name_index[source] < 0}
+    )
     result = {
         "texts": shared,
         "speakers": narrowed,
-        "names": compact(names),
+        "names": name_index,
+        "fallback_texts": fallback_texts,
+        "fallback_speakers": fallback_speakers,
+        "fallback_names": fallback_names,
         "pairs": pool,
         "same_language": primary == secondary,
     }

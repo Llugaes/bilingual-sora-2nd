@@ -171,11 +171,96 @@ def _history_marker_catalog_records(entries):
     }
 
 
-def _compile_history_markers(game, entries):
-    """Compile exact old-log provenance across every installed source locale."""
+def _speaker_setter_catalog_records(entries, primary, secondary):
+    """Return one complete label pair for each physical display-name setter."""
+
+    def identity(entry):
+        key = entry.get("key", "").split("/alignment/", 1)[0]
+        prefix, separator, suffix = key.partition("/called/")
+        if not prefix or not separator:
+            return None
+        parts = suffix.split("/")
+        if len(parts) != 3 or not parts[0].isdigit() or parts[1:] != ["arg", "1"]:
+            return None
+        path, separator, function = prefix.partition(".dat/")
+        if not path or not separator or not function:
+            return None
+        return path + ".dat", function, int(parts[0])
+
+    claims = defaultdict(set)
+    for entry in entries:
+        if entry.get("display_role") != "speaker":
+            continue
+        record = identity(entry)
+        if record is None:
+            continue
+        pair = complete_pair(entry["texts"], primary, secondary)
+        for locale, source in entry["texts"].items():
+            if not source or not source.strip():
+                continue
+            called = _source_called_id(entry, locale, record[2])
+            if called is not None:
+                claims[locale, record[0], record[1], called].add((source, pair))
+
+    result = {}
+    for physical, values in claims.items():
+        # A complete direct setter dominates its incomplete alignment fragment.
+        complete = {(source, pair) for source, pair in values if pair is not None}
+        if len(complete) == 1:
+            result[physical] = next(iter(complete))
+    return result
+
+
+def _active_speaker_setter_records(function, setters, dialogues):
+    """Map marker-qualified calls to their active, static name setter.
+
+    Only a branch-free function with ``wait_prompt`` between known operations
+    is admitted.  Any other call after a setter can change VM state outside
+    this compiler's contract, so it clears every active label.
+    """
+    if any(instruction[0] == "branch" for instruction in function.code_shape):
+        return {}
+    active, result = {}, defaultdict(set)
+    for called, call in enumerate(function.called):
+        if call.target == "chr_set_display_name":
+            if len(call.args) == 2 and call.args[0][0] == "int" and call.args[1][0] == "string":
+                actor = int(call.args[0][1])
+                setter = setters.get(called)
+                if setter is not None and setter[0] == call.args[1][1]:
+                    active[actor] = setter
+                else:
+                    active.pop(actor, None)
+            else:
+                active.clear()
+            continue
+        source = assembled_dialogue(call)
+        if source is not None:
+            record = dialogues.get(called)
+            actor = call.args[2][1] if len(call.args) >= 3 and call.args[2][0] == "int" else None
+            if record is not None and actor in active:
+                result[record].add(active[actor])
+            continue
+        if active and not (call.target == "wait_prompt" and not call.args):
+            active.clear()
+    return dict(result)
+
+
+def _compile_history_speaker_setters(game, entries, primary, secondary):
+    """Compile record-keyed generic name pairs without changing marker identity."""
+    return _compile_history_provenance(game, entries, primary, secondary)[1]
+
+
+def _compile_history_provenance(game, entries, primary=None, secondary=None):
+    """Read each source script once for marker and optional name provenance."""
     from sora_bilingual.localization.speaker_context import read_speaker_names
 
     catalog = _history_marker_catalog_records(entries)
+    setters_by_function = defaultdict(dict)
+    if primary is not None and secondary is not None:
+        for (locale, path, function, called), setter in _speaker_setter_catalog_records(
+            entries, primary, secondary
+        ).items():
+            setters_by_function[locale, path, function][called] = setter
     # A marker only becomes usable when an exact catalog record already maps
     # this locale, script function and called-record ordinal.  Parsing every
     # installed script cannot add a candidate: those records would be rejected
@@ -185,6 +270,7 @@ def _compile_history_markers(game, entries):
     for locale, path, function, called in catalog:
         wanted[locale][path][function].add(called)
     buckets = defaultdict(set)
+    speaker_rows = defaultdict(set)
     names = {}
     for locale in LANGUAGES:
         archive = FpacArchive(Path(game) / "pac/steam" / _ARCHIVES[locale])
@@ -199,6 +285,7 @@ def _compile_history_markers(game, entries):
                     calls = wanted[locale][path].get(function_name)
                     if not calls:
                         continue
+                    dialogues = {}
                     for called, call in enumerate(function.called):
                         if called not in calls:
                             continue
@@ -224,12 +311,30 @@ def _compile_history_markers(game, entries):
                         speaker = names.get(locale, {}).get(speaker_id)
                         record_key = candidate[0]
                         buckets[str(marker)].add((locale, source, speaker, record_key, called))
+                        dialogues[called] = record_key
+                    if primary is not None and secondary is not None:
+                        local_setters = setters_by_function[locale, path, function_name]
+                        for record_key, candidates in _active_speaker_setter_records(
+                            function, local_setters, dialogues
+                        ).items():
+                            for source, pair in candidates:
+                                speaker_rows[record_key].add((locale, source, *pair))
         finally:
             archive.close()
-    return {
+    markers = {
         marker: [list(row) for row in sorted(rows, key=repr)]
         for marker, rows in sorted(buckets.items(), key=lambda item: int(item[0]))
     }
+    speakers = {
+        record_key: [list(row) for row in sorted(rows, key=repr)]
+        for record_key, rows in sorted(speaker_rows.items())
+    }
+    return markers, speakers
+
+
+def _compile_history_markers(game, entries):
+    """Compile exact old-log provenance across every installed source locale."""
+    return _compile_history_provenance(game, entries)[0]
 
 
 def _script_call_sites(data, start, names):
@@ -647,11 +752,19 @@ def compile_script_identities(game, entries, primary, secondary, language, *, re
         )
         record_pair_values = sorted(set(resolved_record_pairs.values()))
         record_pair_indexes = {pair: index for index, pair in enumerate(record_pair_values)}
+        history_markers, history_speaker_setters = _compile_history_provenance(
+            game, entries, primary, secondary
+        )
+        from sora_bilingual.localization.dynamic_identity import compile_dynamic_identities
+
+        dynamic_producers = compile_dynamic_identities(game, entries, primary, secondary, language)
         return {
             "scripts": result,
             "manifest": dict(manifest),
             "source_language": language,
-            "history_markers": _compile_history_markers(game, entries),
+            "history_markers": history_markers,
+            "history_speaker_setters": history_speaker_setters,
+            "dynamic_producers": dynamic_producers,
             "record_pairs": {
                 key: record_pair_indexes[pair] for key, pair in resolved_record_pairs.items()
             },

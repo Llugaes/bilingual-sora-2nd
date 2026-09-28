@@ -70,6 +70,7 @@ GROUPS = {
         "sora_bilingual/localization/catalog_build.py",
         "sora_bilingual/localization/menu_text.py",
         "sora_bilingual/localization/dynamic_producers.py",
+        "sora_bilingual/localization/dynamic_identity.py",
         "sora_bilingual/localization/item_help_composition.py",
         "sora_bilingual/localization/speaker_context.py",
         "sora_bilingual/localization/runtime_identity.py",

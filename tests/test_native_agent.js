@@ -173,6 +173,7 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
             dialogue_builder:{rva:0xf00,bytes:'00000000000000000000000000000000'},
             log_write:{rva:0xf10,bytes:'00000000000000000000000000000000'},
             log_write_commit:{rva:0xf20,bytes:'00000000000000000000000000000000'},
+            log_write_append_commit:{rva:0xf28,bytes:'00000000000000000000000000000000'},
             log_owner_destroyed:{rva:0xf30,bytes:'00000000000000000000000000000000'},
             log_owner_created:{rva:0xf40,bytes:'00000000000000000000000000000000'},
             log_record_bind:{rva:0xf50,bytes:'00000000000000000000000000000000'},
@@ -316,7 +317,13 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
         for(const [slot,chunk] of Array.isArray(slots)?slots:[[slots,buffer.readUtf8String()]]){
             const at=0x1604ec+slot*0x18c;
             owner.data.fill(0,at,at+0x18c);owner.data.write(chunk,at+0x64,0x120,'utf8');
-            hooks.get(String(base.add(0xf20))).onEnter.call({context:{rbp:owner,r8:owner.add(slot*0x18c)}});
+            const append=slot!==0||owner.data[0x160550+1599*0x18c]!==0;
+            // The real writer's append path leaves R8 at the preceding
+            // record. RCX advances through the actual copy destination.
+            const commit=hooks.get(String(base.add(append?0xf28:0xf20)))||hooks.get(String(base.add(0xf20)));
+            commit.onEnter.call({context:{
+                rbp:owner,r8:owner.add((append?(slot+1599)%1600:slot)*0x18c),rcx:owner.add(at+0x180)
+            }});
         }
         leave();
     }
@@ -420,9 +427,13 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
         },
         logMutateRecord(slot,offset,value){logOwnerPointer.data.writeUInt8(value,0x1604ec+slot*0x18c+offset);},
         logReset(){invoke(base.add(0xf40),[])();},
-        logNameShow(label,slot,text){
+        logNameShow(label,slot,text,slots=[slot]){
             const controller=new ScratchPointer(0x480000);controller.add(0x18).writePointer(label);
             const leaveFrame=invoke(base.add(0xf50),[controller,new Pointer(slot)]);
+            for(const piece of slots){
+                const input=logOwnerPointer.add(0x160550+piece*0x18c);
+                hooks.get(String(base.add(slots.length>1?0xf80:0xf90))).onEnter.call({context:{rbx:new Pointer(slots.length-1),rax:new Pointer(piece),rdx:input,rdi:input}});
+            }
             const args=[label,allocate(text)],leave=invoke(base.add(0x100),args,base.add(0xf60));
             copyIntoLabel(label,args[1]);leave();leaveFrame();
         },
@@ -443,7 +454,7 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
             const leaveFrame=invoke(base.add(0xf50),[controller,new Pointer(slot)]);
             for(const piece of slots){
                 const input=logOwnerPointer.add(0x160550+piece*0x18c);
-                hooks.get(String(base.add(slots.length>1?0xf80:0xf90))).onEnter.call({context:{rbx:new Pointer(piece),rdx:input,rdi:input}});
+                hooks.get(String(base.add(slots.length>1?0xf80:0xf90))).onEnter.call({context:{rbx:new Pointer(slots.length-1),rax:new Pointer(piece),rdx:input,rdi:input}});
             }
             const args=[label,allocate(text)],leave=invoke(base.add(0x100),args,base.add(0xf70));
             copyIntoLabel(label,args[1]);leave();leaveFrame();
@@ -2141,6 +2152,37 @@ test('native history saves actual call IDs and never substitutes a different dia
     assert.equal(row.text(),source,'missing own ID cannot borrow a globally matching sentence');
 });
 
+test('consecutive distinct dialogue bodies keep their own IDs in every log slot, including ring wrap',()=>{
+    const {scriptSha256}=require('../sora_bilingual/game/scripts/runtime_identity.js');
+    const r=makeRuntime(),data=Buffer.alloc(128);
+    data.write('#scp');data.writeUInt32LE(24,4);data.writeUInt32LE(1,8);
+    const signature=Buffer.concat([data.subarray(0,24),data.subarray(24,56),data.subarray(24,56)]).toString('hex');
+    const sources=['我先回谈话室，等那孩子回来吧。','要是找到了，就把人带过来吧。','嗯，我知道了。'];
+    const targets=['I will wait in the lounge.','Bring her here when you find her.','All right.'];
+    const keys=sources.map((_,i)=>`script/a.dat/Talk/called/${i}/assembled_dialogue`);
+    const manifest={[signature]:[{size:128,sha256:scriptSha256(data),functions:['Talk'],
+        callSites:{Talk:Object.fromEntries(sources.map((_,i)=>[100+i*4,{record:i,group:5,command:0,token:`1,${i}`}]))},
+        recordKeys:{Talk:Object.fromEntries(sources.map((source,i)=>[i,{key:keys[i],source}]))}}]};
+    r.api.load({pairs:{},plain_pairs:{},script_identities:{manifest,
+        record_pairs:Object.fromEntries(keys.map((key,i)=>[key,i])),record_pair_values:sources.map((source,i)=>[source,targets[i]])}},
+        'secondary',true,1);
+    const live=r.label(0xab20,''),log=r.label(0xab30,'');
+    for(const slots of [[0,1,2],[1598,1599,0]]) {
+        for(let i=0;i<sources.length;i++) {
+            r.dialogueSet(live,sources[i],data,'Talk',[1,i],slots[i],{pc:100+i*4,group:5,command:0});
+            assert.equal(live.text(),targets[i],'normal dialogue must already use its own ID');
+        }
+        for(let i=0;i<sources.length;i++) {
+            r.logShow(log,slots[i],sources[i]);assert.equal(log.text(),targets[i]);
+            assert.equal(r.logMeasure([['',sources[i],slots[i]]],{fontSize:slots[0]===0?29:30}).bodies[0],targets[i]);
+            r.api.select('annotation',true);r.update(log);assert.ok(log.text().includes(targets[i]));
+            r.api.select('secondary',true);
+            r.logShow(log,slots[i],sources[i]);assert.equal(log.text(),targets[i],'reopened rows keep each earlier ID');
+        }
+    }
+    assert.equal(r.api.status().failed,false);
+});
+
 test('restored history uses retained speaker and full text without inventing a script identity',()=>{
     const r=makeRuntime(),source='<#E_0><K4>相同的完整对白。',target='<#E_0><K4>女性の台詞。';
     const pairs={[source]:[source,target]};
@@ -2158,6 +2200,59 @@ test('restored history uses retained speaker and full text without inventing a s
     r.logRestore(source,7,'陌生人');r.logShow(p,7,source);assert.equal(p.text(),source);
     r.logRestore(source,7,'雪拉扎德');r.logShow(p,7,source+'篡改');assert.equal(p.text(),source+'篡改');
     r.externalSet(p,source);assert.equal(p.text(),source,'speaker context cannot leak into ordinary setters');
+});
+
+test('identity-free old history uses an official candidate without leaking into live text or exact IDs',()=>{
+    const r=makeRuntime(),body='这样啊……',source='<#E_8>'+body,key='script/a.dat/Talk/called/8/assembled_dialogue';
+    r.api.load({pairs:{},plain_pairs:{},history_contexts:{
+        pairs:[[body,'そうか。'],[body,'なるほど。']],texts:{[body]:-1},names:{},speakers:{'艾丝蒂尔':{[body]:-1}},
+        fallback_texts:{[body]:0},fallback_speakers:{'艾丝蒂尔':{[body]:1}},
+    },script_identities:{record_pairs:{[key]:0},record_pair_values:[[body,'その通り。']],
+        history_markers:{801:[['zh-Hans',source,'艾丝蒂尔',key,8]]},
+    }},'secondary',true,1);
+    const row=r.label(0xae20,'');r.logRestore(source,7,'艾丝蒂尔');r.logShow(row,7,source);
+    assert.equal(row.text(),'<#E_8>なるほど。');
+    assert.equal(r.logMeasure([['艾丝蒂尔',source,7]]).bodies[0],'<#E_8>なるほど。');
+    assert.equal(r.api.status().identityHits,0,'candidate display does not invent a physical call ID');
+    r.api.select('annotation',true);r.update(row);
+    assert.match(row.text()+JSON.stringify(r.api.snapshot()),/なるほど/);
+    r.api.select('secondary',true);r.logRestore(source,8,'艾丝蒂尔',801);r.logShow(row,8,source);
+    assert.equal(row.text(),'<#E_8>その通り。','a real marker-derived ID wins over the candidate');
+    r.externalSet(row,source);assert.equal(row.text(),source,'old-history fallback is not a live dialogue resolver');
+    assert.equal(r.api.status().failed,false);
+});
+
+test('history names use the actual dialogue setter in visible and measuring controls',()=>{
+    const r=makeRuntime(),source='……让各位久等了。',name='女子的声音';
+    const keys=[12,24].map(call=>`script/a.dat/Talk/called/${call}/assembled_dialogue`);
+    r.api.load({pairs:{},plain_pairs:{},history_contexts:{pairs:[[name,'Wrong generic name']],texts:{},speakers:{},names:{[name]:0}},
+        script_identities:{history_markers:Object.fromEntries(keys.map((key,i)=>[100+i,[['zh-Hans',source,name,key,12+i*12]]])),
+        history_speaker_setters:Object.fromEntries(keys.map((key,i)=>[key,[['zh-Hans',name,name,i?'女の声':'女性の声']]]))}
+    },'secondary',true,1);
+    const label=r.label(0xae30,'');
+    for(const [slot,marker,expected] of [[7,100,'女性の声'],[8,101,'女の声']]) {
+        r.logRestore(source,slot,name,marker);r.logNameShow(label,slot,name);
+        assert.equal(label.text(),expected);
+        assert.equal(r.logMeasure([[name,source,slot]]).names[0],expected);
+    }
+    r.externalSet(label,name);assert.equal(label.text(),name,'setter provenance does not follow a reused name control');
+    assert.equal(r.api.status().failed,false);
+});
+
+test('multi-slot history names retain the full dialogue identity before visible and measuring setters',()=>{
+    const r=makeRuntime(),source='第一行\n第二行',name='女子的声音';
+    const key='script/a.dat/Talk/called/12/assembled_dialogue';
+    r.api.load({pairs:{},plain_pairs:{},history_contexts:{pairs:[[name,'Wrong generic name']],texts:{},speakers:{},names:{[name]:0}},
+        script_identities:{history_markers:{100:[['zh-Hans',source,name,key,12]]},
+        history_speaker_setters:{[key]:[['zh-Hans',name,name,'女性の声']]}}
+    },'secondary',true,1);
+    const label=r.label(0xae30,'');
+    r.logRestore('第一行\n',1599,name,100);r.logRestore('第二行',0,name,100);
+    r.logNameShow(label,1599,name,[1599,0]);assert.equal(label.text(),'女性の声');
+    assert.equal(r.logMeasure([[name,source,0,[1599,0]]]).names[0],'女性の声');
+    r.logRestore('第二行',0,name,101);r.logNameShow(label,1599,name,[1599,0]);
+    assert.notEqual(label.text(),'女性の声','different physical markers cannot inherit a setter identity');
+    assert.equal(r.api.status().failed,false);
 });
 
 test('restored history can replace primary language when secondary equals the game language',()=>{
