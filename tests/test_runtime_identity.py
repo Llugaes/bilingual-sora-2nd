@@ -18,11 +18,13 @@ from sora_bilingual.config.locales import LANGUAGES
 class FakeArchive:
     entries = {"script_sc/scena/test.dat": (0, 512)}
     data = None
+    reads = []
 
     def __init__(self, *args):
         pass
 
     def read(self, *args):
+        self.reads.append(args)
         return self.data
 
     def close(self):
@@ -169,6 +171,46 @@ class RuntimeIdentityTests(unittest.TestCase):
         self.assertTrue(all(row[2] == "甲" for row in result["101"]))
         self.assertEqual(len(result["102"]), len(LANGUAGES))
         self.assertTrue(all(row[2] is None for row in result["102"]))
+
+    def test_history_marker_compiler_skips_catalog_unreachable_scripts(self):
+        call = Called(
+            None,
+            3,
+            (("int", 5), ("int", 0), ("int", 1), ("int", 11), ("int", 101), ("string", "同一。")),
+        )
+        entry = {
+            "key": "script/scena/test.dat/Talk/called/0/assembled_dialogue",
+            "texts": {locale: "同一。" for locale in LANGUAGES},
+            "display_role": "dialogue",
+        }
+        script = SimpleNamespace(
+            functions={
+                "Talk": SimpleNamespace(called=(call,)),
+                "Unrelated": SimpleNamespace(called=(call,)),
+            }
+        )
+        FakeArchive.reads = []
+        with (
+            patch("sora_bilingual.localization.runtime_identity.FpacArchive", FakeArchive),
+            patch(
+                "sora_bilingual.localization.runtime_identity._logical_script_entries",
+                return_value={
+                    "script/scena/test.dat": "wanted",
+                    "script/scena/unreachable.dat": "unwanted",
+                },
+            ),
+            patch("sora_bilingual.localization.runtime_identity.parse_scp", return_value=script),
+            patch(
+                "sora_bilingual.localization.speaker_context.read_speaker_names",
+                return_value={1: "甲"},
+            ),
+        ):
+            result = _compile_history_markers("unused", [entry])
+        self.assertEqual(
+            result["101"],
+            sorted(([locale, "同一。", "甲", entry["key"], 0] for locale in LANGUAGES), key=repr),
+        )
+        self.assertEqual(FakeArchive.reads, [("wanted",)] * len(LANGUAGES))
 
     def test_identical_script_bytes_with_conflicting_localizations_are_quarantined(self):
         _, entries = self.fixture()

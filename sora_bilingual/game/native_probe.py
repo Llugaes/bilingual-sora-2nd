@@ -129,7 +129,12 @@ def run(game=None, duration=0):
         # change. The resident model alone always uses the verified source.
         config = {**config, "game_language": detected_game_language}
         model_started = time.monotonic()
-        model, signature, entries = ready_model(game, config)
+        from sora_bilingual.localization.model_worker import preparation_lock
+
+        # Offline UI preparation may still be compiling the same resources.
+        # Wait for its atomic cache publication, then recheck rather than build twice.
+        with preparation_lock(ROOT / "generated"):
+            model, signature, entries = ready_model(game, config)
         model_seconds = time.monotonic() - model_started
         applied_config = dict(config)
         # A cached locale needs no catalog load. Keep all preparation, including
@@ -492,6 +497,7 @@ def run(game=None, duration=0):
                     "game_not_running" if native is not None else source_language_status
                 ),
                 "last_detected_game_language": detected_game_language,
+                "game_directory": str(game.resolve()) if game is not None else None,
             },
             ROOT / "generated" / "native-status.json",
         )

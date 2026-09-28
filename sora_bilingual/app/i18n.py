@@ -20,6 +20,39 @@ _ROWS = """
 选择界面语言|Choose interface language|画面言語を選択
 初始语言设置|Initial language setup|初期言語設定
 选择游戏当前的文本语言|Choose the game's current text language|ゲームの現在の表示言語を選択
+启动前准备|Before starting the game|ゲーム起動前の準備
+请先完成启动前准备|Complete preparation before starting the game|ゲーム起動前の準備を完了してください
+正在准备语言资源|Preparing language resources|言語リソースを準備中
+正在准备语言映射|Preparing language mappings|言語マッピングを準備中
+语言映射已准备|Language mappings are ready|言語マッピングの準備完了
+语言资源已准备，启动游戏后自动检测文字语言|Language resources are ready; text language will be detected after launch|言語リソースの準備完了。起動後に表示言語を検出します
+未找到游戏目录，请在启动前准备中选择|Game folder not found; choose it under Before starting the game|ゲームフォルダーが見つかりません。「ゲーム起動前の準備」で選択してください
+启动前准备完成，可以启动游戏|Preparation complete; you can start the game|準備完了。ゲームを起動できます
+请选择游戏当前的文字语言|Choose the game's current text language|ゲームの現在の表示言語を選択してください
+请选择包含 sora_2nd.exe 和 pac/steam 的游戏目录|Choose a game folder containing sora_2nd.exe and pac/steam|sora_2nd.exe と pac/steam を含むゲームフォルダーを選択してください
+游戏目录|Game folder|ゲームフォルダー
+未找到游戏目录|Game folder not found|ゲームフォルダーが見つかりません
+选择游戏目录|Choose game folder|ゲームフォルダーを選択
+选择包含 sora_2nd.exe 和 pac/steam 的游戏目录。|Choose the game folder containing sora_2nd.exe and pac/steam.|sora_2nd.exe と pac/steam を含むゲームフォルダーを選択してください。
+游戏当前文字语言（提前准备）|Current game text language (prepare ahead)|ゲームの現在の表示言語（事前準備）
+请选择游戏当前文字语言|Choose the current game text language|ゲームの現在の表示言語を選択してください
+只用于启动前准备；游戏启动后仍会自动检测当前文字语言。|Used only for preparation before starting; the game text language is still detected automatically after launch.|起動前の準備にのみ使います。起動後もゲームの表示言語は自動検出されます。
+字体状态|Font status|フォントの状態
+语言映射状态|Language mapping status|言語マッピングの状態
+正在切换到所选游戏目录|Switching to the selected game folder|選択したゲームフォルダーに切り替え中
+等待所选游戏的语言映射|Waiting for language mappings for the selected game|選択したゲームの言語マッピングを待機中
+开始准备|Start preparation|準備を開始
+正在准备…|Preparing…|準備中…
+准备字体和语言映射，不会启动游戏。|Prepare fonts and language mappings without starting the game.|ゲームを起動せずにフォントと言語マッピングを準備します。
+请选择游戏目录和文字语言，再开始准备。|Choose a game folder and text language, then start preparation.|ゲームフォルダーと言語を選択してから準備を開始してください。
+字体与语言映射已就绪，可以启动游戏。|Fonts and language mappings are ready. You can start the game.|フォントと言語マッピングの準備ができました。ゲームを起動できます。
+字体和语言映射准备完成后再启动游戏。|Wait for fonts and language mappings to finish before starting the game.|フォントと言語マッピングの準備が完了してからゲームを起動してください。
+字体未就绪：|Fonts are not ready: |フォントの準備ができていません：
+语言映射未就绪：|Language mappings are not ready: |言語マッピングの準備ができていません：
+请查看字体状态。|Check the font status.|フォントの状態を確認してください。
+请重试准备。|Retry preparation.|準備を再試行してください。
+选择游戏目录失败：|Could not choose game folder: |ゲームフォルダーを選択できませんでした：
+开始准备失败：|Could not start preparation: |準備を開始できませんでした：
 默认副语言|Default secondary language|既定の副言語
 继续|Continue|続ける
 退出|Exit|終了

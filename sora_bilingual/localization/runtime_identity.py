@@ -176,17 +176,32 @@ def _compile_history_markers(game, entries):
     from sora_bilingual.localization.speaker_context import read_speaker_names
 
     catalog = _history_marker_catalog_records(entries)
+    # A marker only becomes usable when an exact catalog record already maps
+    # this locale, script function and called-record ordinal.  Parsing every
+    # installed script cannot add a candidate: those records would be rejected
+    # below.  Keep the physical call set so source checks and conflicts remain
+    # exactly as strict after skipping unrelated files and functions.
+    wanted = defaultdict(lambda: defaultdict(lambda: defaultdict(set)))
+    for locale, path, function, called in catalog:
+        wanted[locale][path][function].add(called)
     buckets = defaultdict(set)
     names = {}
     for locale in LANGUAGES:
         archive = FpacArchive(Path(game) / "pac/steam" / _ARCHIVES[locale])
         try:
-            for path, archive_path in sorted(_logical_script_entries(archive).items()):
-                if not path.endswith(".dat"):
+            logical = _logical_script_entries(archive)
+            for path in sorted(wanted[locale]):
+                archive_path = logical.get(path)
+                if archive_path is None:
                     continue
                 script = parse_scp(archive.read(archive_path))
                 for function_name, function in script.functions.items():
+                    calls = wanted[locale][path].get(function_name)
+                    if not calls:
+                        continue
                     for called, call in enumerate(function.called):
+                        if called not in calls:
+                            continue
                         source = assembled_dialogue(call)
                         if source is None:
                             continue

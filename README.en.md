@@ -41,7 +41,7 @@ Field interactions and notifications:
 
 1. Download `bilingual-sora-2nd-VERSION-windows-x64-setup.exe` from the [latest release](https://github.com/Llugaes/bilingual-sora-2nd/releases/latest) and run the installer.
 2. Open **Bilingual Sora 2nd** from the Start menu or desktop shortcut. Choose the interface language and your primary/secondary languages on first launch.
-3. Start the game normally. The tool connects to a running game or waits for it to start; it does not launch the game itself.
+3. Keep the game closed. Under **Before starting the game**, confirm its folder, choose its current text language, and start preparation. Wait until both language mappings and multilingual fonts are ready, then start the game normally. The tool connects automatically; it does not launch the game itself.
 
 Supports Windows 10/11 x64 without administrator rights. Python and runtime dependencies are bundled, so the downloaded installer works offline with no separate environment setup. The interface supports English, Japanese, and Simplified Chinese. Updates retain existing settings.
 
@@ -57,11 +57,11 @@ The primary language defaults to the game's text language. The secondary default
 
 These are initial preferences, not restrictions on language pairs. Existing settings survive restarts and updates unchanged. Choose English, Simplified Chinese, or Japanese for the interface on first launch; **Interface language** changes it live or follows the system. UI language, source matching, and display languages are independent.
 
-The first load parses your local game resources and builds a cache, which can take time. Text is then rendered by native game controls; the Qt interface provides configuration and status. Use windowed or borderless mode; the settings overlay is not guaranteed to appear over exclusive fullscreen.
+First preparation parses your local game resources and builds a reusable cache before you start the game. The tool searches Steam installations; you can select the folder if it is not found. The selected game text language is only a preparation hint: the running game is still detected and checked, without changing its language setting. Text is rendered by native game controls; the Qt interface provides configuration and status. Use windowed or borderless mode; the settings overlay is not guaranteed to appear over exclusive fullscreen.
 
 ### Fonts for additional languages
 
-Some language pairs need an expanded game font to avoid missing characters appearing as question marks. Once the tool finds the game directory, it automatically prepares fonts from your local game resources. While the game is running, files are only staged; they are safely installed after it exits and take effect after the next launch. Game fonts are not distributed here; two supplementary glyphs are bundled under the OFL.
+Some language pairs need an expanded game font to avoid missing characters appearing as question marks. Once the tool finds the game directory, it prepares fonts from local game resources and installs them while the game is closed. Complete preparation before the first game launch to use them immediately. If the game is already running, fonts are staged, installed after it exits, and loaded on its next launch. Font readiness, conflicts, and failures are shown separately. Game fonts are not distributed here; two supplementary glyphs are bundled under the OFL.
 
 ## Controls and configuration
 

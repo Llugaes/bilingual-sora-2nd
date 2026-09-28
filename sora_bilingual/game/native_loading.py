@@ -16,7 +16,12 @@ def prepare_fresh(game, config, *, cache_only=False):
     with tempfile.TemporaryDirectory(prefix="sora-prepare-") as tmp:
         request = Path(tmp) / "request.json"
         result = Path(tmp) / "result.json"
-        request.write_text(json.dumps({"game": str(game), "config": config}), "utf-8")
+        request.write_text(
+            json.dumps(
+                {"game": str(game), "config": config, "catalog_only": cache_only == "catalog"}
+            ),
+            "utf-8",
+        )
         process = subprocess.run(
             [
                 sys.executable,
@@ -36,6 +41,8 @@ def prepare_fresh(game, config, *, cache_only=False):
                 process.stderr.decode("utf-8", errors="replace")[-1500:] or "索引准备进程失败"
             )
         prepared = json.loads(result.read_text("utf-8"))
+        if cache_only == "catalog":
+            return prepared
         path = prepared["path"]
         if cache_only == "summary":
             # The worker has already validated and packed this model.  The
