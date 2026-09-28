@@ -1,9 +1,12 @@
 import struct
+import json
+from pathlib import Path
+import subprocess
 import unittest
 
 from sora_bilingual.config.locales import LANGUAGES
 from sora_bilingual.localization.item_help_composition import (
-    _read_effect_groups,
+    _iter_effect_groups,
     compile_item_help_grammar,
 )
 from sora_bilingual.localization.menu_text import MenuTranslator
@@ -293,12 +296,12 @@ class ItemHelpAggregateTests(unittest.TestCase):
         for slot, values in enumerate(expected):
             struct.pack_into("<4I", raw, start + 0x30 + slot * 16, *values)
         self.assertEqual(
-            _read_effect_groups(bytes(raw), "table/t_skill.tbl", "SkillParam", 0x30, 5),
-            (expected,),
+            tuple(_iter_effect_groups(bytes(raw), "table/t_skill.tbl", "SkillParam", 0x30, 5)),
+            ((start, expected),),
         )
         self.assertNotEqual(
-            _read_effect_groups(bytes(raw), "table/t_skill.tbl", "SkillParam", 0x3C, 5),
-            (expected,),
+            tuple(_iter_effect_groups(bytes(raw), "table/t_skill.tbl", "SkillParam", 0x3C, 5)),
+            ((start, expected),),
         )
 
     def test_compiles_only_verified_status_and_detail_families(self):
@@ -501,6 +504,15 @@ class ItemHelpAggregateTests(unittest.TestCase):
             "key": "table/t_skill.tbl/cp-context/description",
             "texts": texts(("技能说明", "Skill description", "技の説明")),
         }
+        entries.append(
+            {
+                "key": "table/t_itemhelp.tbl/header/label",
+                "texts": texts(("属性值", "Value", "属性値")),
+                "detail_only": True,
+                "detail_authority": True,
+                "detail_header_templates": texts(("属性值【%s】", "Value [%s]", "属性値【%s】")),
+            }
+        )
         grammar = compile_item_help_grammar(
             entries + [description],
             "en",
@@ -529,6 +541,41 @@ class ItemHelpAggregateTests(unittest.TestCase):
             translator.translate(source, "primary"),
             "<c698>CP逐渐上升</C>\n<C0><C9>技能说明",
         )
+        # The weaker header anchor must not discard the exact description ID
+        # needed by an ambiguous effect on the next line.
+        headed = "Value [<I42>×3]\n" + source
+        expected = "属性值 [<I42>×3]\n<c698>CP逐渐上升</C>\n<C0><C9>技能说明"
+        self.assertEqual(translator.translate(headed, "primary"), expected)
+        replay = subprocess.run(
+            [
+                "node",
+                "-e",
+                "const fs=require('fs'),{RuntimeText}=require('./sora_bilingual/game/scripts/runtime_text.js');const d=JSON.parse(fs.readFileSync(0,'utf8'));process.stdout.write(new RuntimeText(d.model).translate(d.source,'primary'));",
+            ],
+            input=json.dumps({"model": translator.runtime_model(), "source": headed}),
+            text=True,
+            encoding="utf8",
+            capture_output=True,
+            check=True,
+        )
+        self.assertEqual(replay.stdout, expected)
+        plan = translator.render(headed)
+        self.assertEqual(plan["text"].count("<I42>"), 1)
+        self.assertTrue(plan["layers"], "the ambiguous effect body still owns a complete lane")
+        self.assertNotIn("<I", "".join(layer["text"] for layer in plan["layers"]))
+        replay = subprocess.run(
+            [
+                "node",
+                "-e",
+                "const fs=require('fs'),{RuntimeText}=require('./sora_bilingual/game/scripts/runtime_text.js');const d=JSON.parse(fs.readFileSync(0,'utf8'));process.stdout.write(JSON.stringify(new RuntimeText(d.model).render(d.source)));",
+            ],
+            input=json.dumps({"model": translator.runtime_model(), "source": headed}),
+            text=True,
+            encoding="utf8",
+            capture_output=True,
+            check=True,
+        )
+        self.assertEqual(json.loads(replay.stdout), plan)
         self.assertEqual(
             translator.translate("<c698>CP Regen</C>", "primary"), "<c698>CP Regen</C>"
         )
@@ -549,7 +596,7 @@ class ItemHelpAggregateTests(unittest.TestCase):
         )
         self.assertIn("<c698>CP Regen</C>", translator.translate(malformed_ruby, "primary"))
 
-    def test_element_title_uses_only_the_raw_category_icon_contract(self):
+    def test_element_title_localizes_labels_without_duplicating_icon_arguments(self):
         entries, metadata, groups = fixture()
         number = {"key": "table/t_text.tbl/TXT_HUD_ITEM_NUM", "texts": texts(("×%d", "x%d", "×%d"))}
         entries.append({"key": "script/numeric-literal", "texts": texts(("2", "two", "２"))})
@@ -610,49 +657,60 @@ class ItemHelpAggregateTests(unittest.TestCase):
             groups,
             element_titles=tuple(contract),
         )
-        generated = [
-            row
-            for row in grammar["detail_entries"]
-            if row.get("dynamic_producer", {}).get("family") == "item_help_element_title"
-        ]
-        self.assertEqual(len(generated), 7)
         translator = MenuTranslator(
             entries + [number] + grammar["status_entries"] + grammar["detail_entries"],
             "en",
             "ja",
             "zh-Hans",
         )
-        self.assertEqual(
-            translator.translate(source, "primary"),
-            "Mirage Element [Elemental Value: <I48>x2]",
-        )
-        self.assertEqual(
-            translator.translate(source, "secondary"),
-            "幻属性【 属性値：<I48>×2 】",
-        )
-        self.assertNotIn(
-            "Mirage Element",
-            translator.translate("幻属性【 属性值：<I47>×2 】", "primary"),
-        )
-        plan = translator.render(source, "annotation")
-        self.assertEqual(plan["kind"], "layered")
-        self.assertIn("Mirage Element", plan["text"])
-        self.assertIn("幻属性", "".join(layer["text"] for layer in plan["layers"]))
-        # The real UI submits the header AND description, not an isolated title.
-        # Exercise both the anchored detail path and an unrecognised suffix.
+        runtime_cases = []
+        # Only the two text labels are localized. Icon count and punctuation
+        # stay in the source envelope, regardless of how many icons it has.
         for attribute, (zh, ja, en) in enumerate(templates, start=1):
-            for suffix, expected_suffix in (
-                ("<c698>攻击时有45％概率造成解除驱动", "<c698>Cancel Arts (45% chance)"),
-                ("UNKNOWN", "UNKNOWN"),
-            ):
-                full = f"<S32>{zh}【 属性值：<I{41 + attribute}>×2 】\n" + suffix
-                expected = f"<S32>{en} [Elemental Value: <I{41 + attribute}>x2]\n" + expected_suffix
-                with self.subTest(attribute=attribute, suffix=suffix):
-                    self.assertEqual(translator.translate(full, "primary"), expected)
-                    rendered = translator.render(full, "annotation")
-                    self.assertEqual(rendered["kind"], "layered")
-                    self.assertIn(en, rendered["text"])
-                    self.assertIn(ja, "".join(layer["text"] for layer in rendered["layers"]))
+            for payload in (f"<I{41 + attribute}>×2", "<I42>×3<I45>×3", "<I999>×12"):
+                for suffix, expected_suffix in (
+                    ("", ""),
+                    ("\n<c698>攻击时有45％概率造成解除驱动", "\n<c698>Cancel Arts (45% chance)"),
+                    ("\nUNKNOWN", "\nUNKNOWN"),
+                ):
+                    full = f"<S32>{zh}【 属性值：{payload} 】" + suffix
+                    expected = f"<S32>{en}【 Elemental Value：{payload} 】" + expected_suffix
+                    with self.subTest(attribute=attribute, payload=payload, suffix=suffix):
+                        self.assertEqual(translator.translate(full, "primary"), expected)
+                        rendered = translator.render(full, "annotation")
+                        runtime_cases.append(
+                            {"source": full, "expected": expected, "plan": rendered}
+                        )
+                        secondary_text = "".join(layer["text"] for layer in rendered["layers"])
+                        self.assertNotIn("<I", secondary_text)
+                        self.assertNotIn("×", secondary_text)
+                        self.assertIn(en, rendered["text"])
+                        self.assertIn(ja, rendered["text"] + secondary_text)
+                        self.assertEqual(rendered["text"].count("<I"), payload.count("<I"))
+                        self.assertEqual(rendered["text"].count("×"), payload.count("×"))
+
+        subprocess.run(
+            [
+                "node",
+                "-e",
+                """
+const assert=require('node:assert/strict');
+const {RuntimeText}=require('./sora_bilingual/game/scripts/runtime_text.js');
+const data=JSON.parse(require('node:fs').readFileSync(0,'utf8'));
+const runtime=new RuntimeText(data.model);
+for(const c of data.cases) {
+    assert.equal(runtime.translate(c.source,'primary'),c.expected);
+    assert.deepEqual(runtime.render(c.source),c.plan);
+}
+""",
+            ],
+            input=json.dumps({"model": translator.runtime_model(), "cases": runtime_cases}),
+            text=True,
+            encoding="utf8",
+            check=True,
+            cwd=Path(__file__).resolve().parents[1],
+            capture_output=True,
+        )
 
     def test_menu_translator_keeps_typed_aggregates_inside_anchored_details(self):
         entries, metadata, groups = fixture()

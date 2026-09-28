@@ -1,6 +1,9 @@
 import hashlib
 import binascii
+import base64
+import json
 import struct
+import subprocess
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
@@ -9,9 +12,11 @@ from sora_bilingual.localization.runtime_identity import (
     _dedupe_call_entries,
     _history_marker,
     compile_script_identities,
+    compile_table_identities,
     script_signature,
 )
 from sora_bilingual.localization.resources import Called
+from sora_bilingual.localization.menu_text import MenuTranslator
 from sora_bilingual.config.locales import LANGUAGES
 
 
@@ -31,7 +36,136 @@ class FakeArchive:
         pass
 
 
+class FakeTableArchive:
+    entries = {"table_sc/t_text.tbl": (0, 0)}
+    data = None
+
+    def __init__(self, *args):
+        pass
+
+    def read(self, path):
+        if path != "table_sc/t_text.tbl":
+            raise AssertionError(path)
+        return self.data
+
+    def close(self):
+        pass
+
+
+def text_table(rows):
+    """Build the exact TextTableData pointer layout used by t_text.tbl."""
+    head = 88 + 16 * len(rows)
+    data = bytearray(head)
+    struct.pack_into("<4sI64sIIII", data, 0, b"#TBL", 1, b"TextTableData", 0, 88, 16, len(rows))
+    cursor = head
+    for number, (key, value) in enumerate(rows):
+        for field, text in enumerate((key, value)):
+            encoded = text.encode("utf-8") + b"\0"
+            struct.pack_into("<Q", data, 88 + number * 16 + field * 8, cursor)
+            data.extend(encoded)
+            cursor += len(encoded)
+    return bytes(data)
+
+
 class RuntimeIdentityTests(unittest.TestCase):
+    def test_text_table_pointer_identities_keep_stable_keys_and_same_source_variants(self):
+        FakeTableArchive.data = text_table(
+            (
+                ("TXT_USE_HEAL_MACHINE", "休息"),
+                ("TXT_TEST_A", "同文"),
+                ("TXT_TEST_B", "同文"),
+            )
+        )
+        entries = [
+            {
+                "key": "table/t_text.tbl/TXT_USE_HEAL_MACHINE",
+                "texts": {"zh-Hans": "休息", "en": "Rest", "ja": "休憩する"},
+            },
+            {
+                "key": "table/t_text.tbl/TXT_TEST_A",
+                "texts": {"zh-Hans": "同文", "en": "First", "ja": "甲"},
+            },
+            {
+                "key": "table/t_text.tbl/TXT_TEST_B",
+                "texts": {"zh-Hans": "同文", "en": "Second", "ja": "乙"},
+            },
+            {
+                "key": "script/scena/unpaired_rest/code/0",
+                "texts": {"zh-Hans": "休息"},
+            },
+        ]
+        global_model = MenuTranslator(entries, "en", "ja", "zh-Hans")
+        self.assertNotIn("休息", global_model.pairs, "a source-only fallback must not guess")
+        with patch("sora_bilingual.localization.runtime_identity.FpacArchive", FakeTableArchive):
+            model = compile_table_identities(
+                "unused", entries, "en", "ja", "zh-Hans", resolved_pairs=global_model.pairs
+            )
+        rest = "table/t_text.tbl/TXT_USE_HEAL_MACHINE"
+        self.assertEqual(model["models"][rest]["model"]["pairs"]["休息"], ("Rest", "休憩する"))
+        self.assertEqual(
+            {row["key"] for row in model["sources"]["同文"]},
+            {"table/t_text.tbl/TXT_TEST_A", "table/t_text.tbl/TXT_TEST_B"},
+        )
+        self.assertEqual(
+            model["models"]["table/t_text.tbl/TXT_TEST_A"]["model"]["pairs"]["同文"],
+            ("First", "甲"),
+        )
+        self.assertEqual(
+            model["models"]["table/t_text.tbl/TXT_TEST_B"]["model"]["pairs"]["同文"],
+            ("Second", "乙"),
+        )
+        runner = r"""
+const fs=require('fs');
+const {TableIdentities}=require('./sora_bilingual/game/scripts/runtime_identity.js');
+const {RuntimeText}=require('./sora_bilingual/game/scripts/runtime_text.js');
+const input=JSON.parse(fs.readFileSync(0,'utf8')),base=0x10000000,data=Buffer.from(input.data,'base64');
+for(let at=88;at<88+16*input.rows;at+=16)for(const field of [0,8]) {
+  const offset=Number(data.readBigUInt64LE(at+field));data.writeBigUInt64LE(BigInt(base+offset),at+field);
+}
+class P {
+  constructor(address){this.address=address;}
+  add(value){return new P(this.address+value);}
+  equals(other){return this.address===other.address;}
+  toString(){return this.address.toString(16);}
+  readByteArray(size){const at=this.address-base;if(at<0||at+size>data.length)throw Error('unmapped');return Uint8Array.from(data.subarray(at,at+size)).buffer;}
+  readPointer(){return new P(Number(data.readBigUInt64LE(this.address-base)));}
+}
+const ids=new TableIdentities(input.model),out={};
+for(const {source,key} of input.checks) {
+  const candidate=input.model.sources[source].find(row=>row.key===key);
+  const context=ids.select(new P(base+candidate.offset),source);
+  if(!context)throw Error('missing '+key);
+  const tr=new RuntimeText(context.model);out[key]=[tr.translate(source,'primary'),tr.translate(source,'secondary'),tr.render(source,'annotation').text];
+}
+process.stdout.write(JSON.stringify(out));
+"""
+        completed = subprocess.run(
+            ["node", "-e", runner],
+            input=json.dumps(
+                {
+                    "model": model,
+                    "data": base64.b64encode(FakeTableArchive.data).decode(),
+                    "rows": 3,
+                    "checks": [
+                        {"source": "休息", "key": rest},
+                        {"source": "同文", "key": "table/t_text.tbl/TXT_TEST_A"},
+                        {"source": "同文", "key": "table/t_text.tbl/TXT_TEST_B"},
+                    ],
+                },
+                ensure_ascii=False,
+            ),
+            text=True,
+            encoding="utf-8",
+            capture_output=True,
+            check=True,
+        )
+        resolved = json.loads(completed.stdout)
+        self.assertEqual(resolved[rest], ["Rest", "休憩する", "<R>Rest</R休憩する>"])
+        self.assertEqual(resolved["table/t_text.tbl/TXT_TEST_A"], ["First", "甲", "<R>First</R甲>"])
+        self.assertEqual(
+            resolved["table/t_text.tbl/TXT_TEST_B"], ["Second", "乙", "<R>Second</R乙>"]
+        )
+
     def test_history_marker_compiler_keeps_operator_12_and_dynamic_speakers(self):
         static = Called(
             None,

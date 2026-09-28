@@ -257,10 +257,17 @@ def element_detail_cases(catalog, language, titles, source_language):
     description = "<c698>" + re.sub(r"<[^<>]*>", "", descriptions[language])
     if descriptions[source_language].endswith("</C>"):
         description += "</C>"
-    number = catalog["table/t_text.tbl/TXT_HUD_ITEM_NUM"][language] % 2
+    number = catalog["table/t_text.tbl/TXT_HUD_ITEM_NUM"][source_language] % 2
     result = {}
     for title in titles:
-        header = catalog[title["description_key"]][language] % (f"<I{title['icon']}>" + number)
+        source_template = catalog[title["description_key"]][source_language]
+        target_template = catalog[title["description_key"]][language]
+        label_pattern = r"^(.*?)[ \u3000]*[【\[(][ \u3000]*(.*?)[ \u3000]*[:：]"
+        source_labels = re.match(label_pattern, source_template).groups()
+        target_labels = re.match(label_pattern, target_template).groups()
+        header = source_template % (f"<I{41 + title['attribute']}>" + number)
+        for before, after in zip(source_labels, target_labels):
+            header = header.replace(before, after, 1)
         for kind, suffix in (
             ("alone", ""),
             ("anchored", "\n<C0>" + description),
@@ -431,7 +438,7 @@ def main():
                                 (primary[name].split("\n")[0], secondary[name].split("\n")[0])
                             ]
                         }
-                        if name.startswith(("reported_element_", "reported_help_status_"))
+                        if name.startswith("reported_help_status_")
                         else {}
                     ),
                 }

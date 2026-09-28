@@ -13,7 +13,7 @@ STYLE = re.compile(r"</?[Cc][0-9a-fA-F]*>|<s\d+>")
 FORMAT = re.compile(r"%(?:\d+\$)?[-+0 #]*(?:\d+)?(?:\.\d+)?[dius]")
 FORMAT_TOKEN = re.compile(r"%%|" + FORMAT.pattern)
 SEPARATORS = re.compile(
-    r"(\r\n|\n|\\n|[【】「」：:／/]| - |[ \u3000]{2,}|^[ \u3000]*[·・][ \u3000]*)"
+    r"(\r\n|\n|\\n|[【】「」：:／/\[\]()]| - |[ \u3000]{2,}|^[ \u3000]*[·・][ \u3000]*)"
 )
 LINE_BREAK = re.compile(r"\r\n|\n|\\n")
 LINE_START_PUNCTUATION = frozenset("、。！？）】》〉」』〕］｝")
@@ -755,16 +755,16 @@ class MenuTranslator:
         self, entries, primary, secondary, source_language=DEFAULT_PRIMARY, _details_only=False
     ):
         entries = list(entries)
-        # These seven producers are complete header lines. The game submits
-        # them together with a description, so matching only the whole label
-        # (or splitting its icon first) loses their resource identity.
-        line_producers = [
-            e
-            for e in entries
-            if e.get("dynamic_producer", {}).get("family") == "item_help_element_title"
-        ]
-        self.producer_lines = _producer_numeric_rules(
-            line_producers, primary, secondary, source_language
+        # A resource-identified menu header authorizes the same detail scope
+        # as a full description. Its arguments remain opaque native data.
+        self.detail_headers = sorted(
+            {
+                tuple(template.split("%s"))
+                for entry in entries
+                if not _details_only
+                and (template := entry.get("detail_header_templates", {}).get(source_language))
+                and template.count("%s") == 1
+            }
         )
         self.detail_inline_icons = (
             _detail_inline_icon_rules(entries, primary, secondary, source_language)
@@ -846,7 +846,7 @@ class MenuTranslator:
                     and e.get("texts", {}).get(source_language) in item_help_headers
                 )
             ]
-            detail_entries += detail_aliases + line_producers
+            detail_entries += detail_aliases
             descriptions = {
                 e["texts"][source_language]
                 for e in detail_entries
@@ -1053,8 +1053,10 @@ class MenuTranslator:
         return source
 
     def _anchored_details(self, source):
-        if not self.details or "\n" not in source:
+        if not self.details:
             return None
+        # A full description supplies a more specific effect-record context
+        # than the header alone; preserve it when both anchors are present.
         for at, character in enumerate(source):
             if character != "\n":
                 continue
@@ -1066,6 +1068,23 @@ class MenuTranslator:
                 if not control:
                     break
                 suffix = suffix[control.end() :]
+        return (self.details, "") if self._detail_header(source) is not None else None
+
+    def _detail_header(self, source):
+        original = LINE_BREAK.split(source)[0]
+        header = re.sub(r"(?:</[Cc]>|</B>)+$", "", original)
+        for _ in range(16):
+            if any(
+                header.startswith(prefix)
+                and header.endswith(suffix)
+                and len(header) >= len(prefix) + len(suffix)
+                for prefix, suffix in self.detail_headers
+            ):
+                return original
+            control = re.match(r"</?[Cc][0-9a-fA-F]*>|</?B>|<[sS]\d+>", header)
+            if not control:
+                break
+            header = header[control.end() :]
         return None
 
     def raw_pair(self, source):
@@ -1147,27 +1166,11 @@ class MenuTranslator:
             )
         return next(iter(matches)) if len(matches) == 1 else None
 
-    def producer_line_pairs(self, source):
-        if not self.producer_lines or "<I" not in source:
-            return []
-        ranges = _ruby_ranges(source)
-        if ranges is None:
-            return []
-        result, at = [], 0
-        for i, line in enumerate(re.split(r"(\r\n|\n|\\n)", source)):
-            end = at + len(line)
-            if not i % 2 and not _overlaps((at, end), ranges):
-                wrapped = re.fullmatch(
-                    r"((?:</?[Cc][0-9a-fA-F]*>|</?B>|<[sS]\d+>)*)(.*?)((?:</[Cc]>|</B>)*)", line
-                )
-                if wrapped and (pair := self.producer_pair(wrapped[2], self.producer_lines)):
-                    result.append(
-                        ((at, end), tuple(wrapped[1] + text + wrapped[3] for text in pair))
-                    )
-            at = end
-        return result
-
     def component(self, source, mode):
+        # A numeric run between native controls is presentation data, not a
+        # translatable label. In particular, keep icon multipliers verbatim.
+        if any(c.isdigit() for c in source) and not any(c.isalpha() for c in source):
+            return source
         pair = self.pair(source)
         if pair:
             a, b = pair
@@ -1204,16 +1207,6 @@ class MenuTranslator:
         if anchored := self._anchored_details(source):
             details, context = anchored
             return details.translate(source, mode, detail_context=context)
-        if mode in ("primary", "secondary"):
-            spans = self.producer_line_pairs(source)
-            if spans:
-                result, at = [], 0
-                for (start, end), pair in spans:
-                    result.append(self.translate(source[at:start], mode, detail_context))
-                    result.append(pair[0 if mode == "primary" else 1])
-                    at = end
-                result.append(self.translate(source[at:], mode, detail_context))
-                return "".join(result)
         if detail_context:
             source = self._replace_detail_context(source, mode, detail_context)
         if self.detail_inline_icons:
@@ -1259,6 +1252,29 @@ class MenuTranslator:
             mode = "annotation"
         if self.same_language and mode == "annotation":
             mode = "primary"
+        header = self._detail_header(source) if self.details else None
+        if mode == "annotation" and header is not None:
+            # The two header labels own their annotations; opaque arguments
+            # must not enter the body's rich-text annotation/reflow lane.
+            text = self.details.translate(header, mode)
+            rest = source[len(header) :]
+            separator = LINE_BREAK.match(rest)
+            if separator:
+                text += separator[0]
+                body = self.render(rest[separator.end() :], mode)
+                offset = len(text.encode("utf8"))
+                return {
+                    "text": text + body["text"],
+                    "layers": [
+                        dict(layer, offset=layer["offset"] + offset) for layer in body["layers"]
+                    ],
+                    "kind": "layered"
+                    if body["layers"]
+                    else "ruby"
+                    if "<R>" in text + body["text"]
+                    else "plain",
+                }
+            return {"text": text, "layers": [], "kind": "ruby" if "<R>" in text else "plain"}
         a = self.translate(source, "primary")
         b = self.translate(source, "secondary")
         if mode == "annotation" and (
@@ -1270,7 +1286,6 @@ class MenuTranslator:
         known = (
             self.raw_pair(source) is not None
             or self.raw_pair(display_text(source)) is not None
-            or bool(self.producer_line_pairs(source))
             or bool(anchored and anchored[0].has_detail_inline_icon(source))
             or bool(anchored and anchored[0].has_detail_context(source, anchored[1]))
         )
@@ -1357,9 +1372,6 @@ class MenuTranslator:
             "producer_numeric": [
                 (pattern.pattern, pair, styles) for pattern, pair, styles in self.producer_numeric
             ],
-            "producer_lines": [
-                (pattern.pattern, pair, styles) for pattern, pair, styles in self.producer_lines
-            ],
             "detail_numeric": [(pattern.pattern, pair) for pattern, pair in self.detail_numeric],
             "detail_inline_icons": [
                 (pattern.pattern, pair) for pattern, pair in self.detail_inline_icons
@@ -1369,6 +1381,7 @@ class MenuTranslator:
             "ambiguous_display": sorted(self.ambiguous_display),
             "keyed": keyed,
             "detail_sources": sorted(self.detail_sources),
+            "detail_headers": self.detail_headers,
             "details": self.details.runtime_model() if self.details else None,
             "scoped": {k: v.runtime_model() for k, v in self.scoped.items()},
         }

@@ -42,14 +42,11 @@ MAX_RAW_GROUP_SLOTS = 5
 MAX_TYPED_GROUP_SLOTS = 3
 
 # In ItemKindHelpData, the high word of the first scalar selects the item
-# category.  The seven elemental quartz rows use categories 20..26 and the
-# same ordinal is stored as AttrData ID 1..7.  The bounded relation is admitted
-# only with the complete raw templates and the captured native title shape;
-# AttrData +4 supplies the icon retained in that shape.
+# category. The seven elemental quartz label templates use categories 20..26.
+# Their dynamic icon/count arguments remain owned by the native formatter.
 ELEMENT_TITLE_KIND_BASE = 19
 ELEMENT_TITLE_SELECTOR_MODE = 0x12
 ELEMENT_TITLE_FLAGS = 8
-ELEMENT_TITLE_NUMBER_KEY = "table/t_text.tbl/TXT_HUD_ITEM_NUM"
 
 
 def _normalise_metadata(metadata):
@@ -365,64 +362,39 @@ def _add_unique(target, texts, family, ids, languages, **contract):
 
 
 def _element_title_entries(catalogue, element_titles, languages):
-    """Compile the seven audited element-header formatters without free `%s`."""
-    if not element_titles:
-        return []
-    number = catalogue.get(ELEMENT_TITLE_NUMBER_KEY)
-    if not number or any(
-        not (value := number.get(language))
-        or value.count("%d") != 1
-        or "%" in value.replace("%d", "")
-        for language in languages
-    ):
-        raise ItemHelpContractError("element title count formatter changed")
+    """Extract the two literal labels; the native formatter owns its arguments.
+
+    Labels are taken from aligned resource fields, not invented translations.
+    Delimiter structure is checked for every locale before any row is emitted.
+    Icon IDs, their count and ordering are irrelevant to translating these labels.
+    """
     result = []
+    template_shape = re.compile(
+        r"(?P<element>[^【\[(:：<>%]+?)[ \t\u3000]*"
+        r"(?P<opening>[【\[(])[ \t\u3000]*"
+        r"(?P<value>[^:：<>%]+?)[ \t\u3000]*[:：][ \t\u3000]*"
+        r"%s[ \t\u3000]*(?P<closing>[】\])])"
+    )
+    closing = {"【": "】", "[": "]", "(": ")"}
     for row in element_titles:
-        if not isinstance(row, dict):
-            raise ItemHelpContractError("invalid element title contract")
-        key, category, attribute, icon = (
-            row.get("description_key"),
-            row.get("category"),
-            row.get("attribute"),
-            row.get("icon"),
-        )
-        if (
-            not isinstance(key, str)
-            or not all(
-                isinstance(value, int) and value > 0 for value in (category, attribute, icon)
+        key = row["description_key"]
+        labels = {}
+        for language in languages:
+            template = catalogue.get(key, {}).get(language, "")
+            match = template_shape.fullmatch(template)
+            if match is None or closing[match["opening"]] != match["closing"]:
+                raise ItemHelpContractError("element label template changed: " + key)
+            labels[language] = (match["element"].strip(), match["value"].strip())
+        for index, field in enumerate(("element", "value")):
+            result.append(
+                {
+                    "key": key + "/label/" + field,
+                    "texts": {language: labels[language][index] for language in languages},
+                    "detail_only": True,
+                    "detail_authority": True,
+                    "detail_header_templates": catalogue[key],
+                }
             )
-            or category != ELEMENT_TITLE_KIND_BASE + attribute
-        ):
-            raise ItemHelpContractError("invalid element title selector")
-        template = catalogue.get(key)
-        if not template or any(
-            not (value := template.get(language))
-            or value.count("%s") != 1
-            or "%" in value.replace("%s", "")
-            for language in languages
-        ):
-            raise ItemHelpContractError("element title template changed: " + str(key))
-        texts = {
-            language: template[language].replace("%s", f"<I{icon}>" + number[language])
-            for language in languages
-        }
-        result.append(
-            {
-                "key": key + "/generated/element-title",
-                "texts": texts,
-                "producer_origin": {
-                    "family": "item_help_element_title",
-                    "category": category,
-                    "attribute": attribute,
-                    "icon": icon,
-                },
-                "dynamic_producer": {
-                    "family": "item_help_element_title",
-                    "numbers": {language: ["ascii"] for language in languages},
-                    "slots": [{"source": ELEMENT_TITLE_NUMBER_KEY, "kind": "int32"}],
-                },
-            }
-        )
     return result
 
 
@@ -840,7 +812,8 @@ def compile_item_help_grammar(
             "turn_stat_inline_icon_templates": len(inline_turn_icon_records)
             * len(INLINE_TURN_ICONS),
             "raw_description_contexts": len(context_entries),
-            "element_title_templates": len(element_entries),
+            "element_title_templates": len(element_titles),
+            "element_title_labels": len(element_entries),
             "detail_templates": len(detail_entries),
             "raw_slot_groups": len(raw_groups),
             "actual_groups": len(groups),
@@ -855,12 +828,11 @@ def compile_item_help_grammar(
     }
 
 
-def _read_effect_groups(data, path, kind, offset, count):
+def _iter_effect_groups(data, path, kind, offset, count):
     section = next(row for row in sections(data) if row[0] == kind)
     _, start, size, rows = section
     if size != schema_for(path, kind).size or offset + count * 16 > size:
         raise ItemHelpContractError(f"{kind} effect slot layout changed")
-    result = []
     for index in range(rows):
         group = []
         for slot in range(count):
@@ -869,61 +841,28 @@ def _read_effect_groups(data, path, kind, offset, count):
                 continue
             group.append(values)
         if group:
-            result.append(tuple(group))
-    return tuple(result)
+            yield start + index * size, tuple(group)
 
 
 def _read_effect_contexts(data, path, kind, offset, count):
     """Keep a raw effect group attached to its stable description resource ID."""
-    section = next(row for row in sections(data) if row[0] == kind)
-    _, start, size, rows = section
     schema = schema_for(path, kind)
-    if size != schema.size or offset + count * 16 > size:
-        raise ItemHelpContractError(f"{kind} effect slot layout changed")
     text_floor = max(at + stride * total for _, at, stride, total in sections(data))
-    result = []
-    for index in range(rows):
-        at = start + index * size
-        group = []
-        for slot in range(count):
-            values = struct.unpack_from("<4I", data, at + offset + slot * 16)
-            if values[0]:
-                group.append(values)
-        if group:
-            identity = record_identity(data, at, kind, schema, text_floor)
-            result.append(
-                {
-                    "description_key": f"{path}/{identity}/description",
-                    "group": [list(values) for values in group],
-                }
-            )
-    return tuple(result)
+    return tuple(
+        {
+            "description_key": f"{path}/{record_identity(data, at, kind, schema, text_floor)}/description",
+            "group": [list(values) for values in group],
+        }
+        for at, group in _iter_effect_groups(data, path, kind, offset, count)
+    )
 
 
-def _read_element_title_contract(item_help, item_table, orbment):
-    """Join the raw seven-category selector to AttrData's native icon ID."""
+def _read_element_title_contract(item_help, item_table):
+    """Identify label templates by the item category, independent of icon data."""
     help_sections = sections(item_help)
     item_sections = sections(item_table)
-    orbment_sections = sections(orbment)
     help_floor = max(start + size * count for _, start, size, count in help_sections)
-    orbment_floor = max(start + size * count for _, start, size, count in orbment_sections)
-    _kind, attr_start, attr_size, attr_count = next(
-        row for row in orbment_sections if row[0] == "AttrData"
-    )
-    attr_schema = schema_for("table/t_orbment.tbl", "AttrData")
-    if attr_size != attr_schema.size:
-        raise ItemHelpContractError("AttrData stride changed")
-    attributes = {}
-    for index in range(attr_count):
-        at = attr_start + index * attr_size
-        attribute, icon = struct.unpack_from("<II", orbment, at)
-        identity = record_identity(orbment, at, "AttrData", attr_schema, orbment_floor)
-        if attribute in attributes or not attribute or not icon:
-            raise ItemHelpContractError("invalid AttrData element row")
-        attributes[attribute] = {"icon": icon, "identity": identity}
-    expected_categories = {ELEMENT_TITLE_KIND_BASE + attribute for attribute in attributes}
-    if set(attributes) != set(range(1, 8)) or expected_categories != set(range(20, 27)):
-        raise ItemHelpContractError("element AttrData domain changed")
+    expected_categories = set(range(20, 27))
 
     _kind, category_start, category_size, category_count = next(
         row for row in item_sections if row[0] == "ItemKindParam2"
@@ -962,8 +901,6 @@ def _read_element_title_contract(item_help, item_table, orbment):
             "description_key": f"table/t_itemhelp.tbl/ItemKindHelpData/{identity}/description",
             "category": category,
             "attribute": attribute,
-            "icon": attributes[attribute]["icon"],
-            "attribute_key": f"table/t_orbment.tbl/AttrData/{attributes[attribute]['identity']}/name",
         }
     if set(result) != expected_categories:
         raise ItemHelpContractError("incomplete element title selectors")
@@ -1007,17 +944,15 @@ def read_item_help_contract(game, languages=None):
                 logical = _logical_tables(archive)
                 item_help = archive.read(logical["table/t_itemhelp.tbl"])
                 item_table = archive.read(logical["table/t_item.tbl"])
-                orbment = archive.read(logical["table/t_orbment.tbl"])
                 help_titles[language] = _read_help_titles(archive.read(logical["table/t_help.tbl"]))
-                element_titles = _read_element_title_contract(item_help, item_table, orbment)
+                element_titles = _read_element_title_contract(item_help, item_table)
                 effect_groups, effect_contexts = [], []
                 for table_path, (kind, offset, count) in EFFECT_LAYOUTS.items():
                     table = archive.read(logical[table_path])
+                    contexts = _read_effect_contexts(table, table_path, kind, offset, count)
+                    effect_contexts.extend(contexts)
                     effect_groups.extend(
-                        _read_effect_groups(table, table_path, kind, offset, count)
-                    )
-                    effect_contexts.extend(
-                        _read_effect_contexts(table, table_path, kind, offset, count)
+                        tuple(tuple(slot) for slot in context["group"]) for context in contexts
                     )
             table_sections = sections(item_help)
             text_floor = max(start + size * count for _, start, size, count in table_sections)

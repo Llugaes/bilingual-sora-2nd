@@ -673,7 +673,13 @@ def compile_table_identities(game, entries, primary, secondary, language, *, res
     arbitrarily assigned to the first record that happens to use it.
     """
     from sora_bilingual.localization.tables import _TABLE_ARCHIVES, _logical_tables
-    from sora_bilingual.localization.menu_tables import sections, schema_for, SCHEMAS
+    from sora_bilingual.localization.menu_tables import (
+        sections,
+        schema_for,
+        record_identity,
+        spec,
+        SCHEMAS,
+    )
 
     if resolved_pairs is None:
         resolved_pairs = MenuTranslator(entries, primary, secondary, language).pairs
@@ -705,27 +711,35 @@ def compile_table_identities(game, entries, primary, secondary, language, *, res
                 "pool_sha256": hashlib.sha256(data[floor:]).hexdigest(),
             }
             for index, (kind, start, stride, count) in enumerate(headers):
-                if kind not in SCHEMAS:
-                    continue  # t_text already has native hash keys
-                schema = schema_for(path, kind)
-                if stride != schema.size:
-                    continue
                 occurrence = sum(s[0] == kind for s in headers[:index])
                 prefix = (
                     path
                     if index == 0
                     else path + "/" + kind + (f"/{occurrence}" if occurrence else "")
                 )
+                keyed_text = kind == "TextTableData"
+                if not keyed_text and kind not in SCHEMAS:
+                    continue
+                # t_text has an explicit string key and a text pointer, rather
+                # than scalar ID fields. Both use the same pointer validation,
+                # conflict handling and native resolver as every other table.
+                schema = spec(16, [("", 8)], [0]) if keyed_text else schema_for(path, kind)
+                if stride != schema.size:
+                    continue
                 for number in range(count):
                     at = start + number * stride
                     record = bytearray(data[at : at + stride])
                     for offset in schema.pointers:
                         record[offset : offset + 8] = b"\0" * 8
-                    from sora_bilingual.localization.menu_tables import record_identity
-
-                    stable = record_identity(data, at, kind, schema, floor)
+                    if keyed_text:
+                        key_pointer = struct.unpack_from("<Q", data, at)[0]
+                        if not floor <= key_pointer < len(data):
+                            continue
+                        stable = _utf8z(data, key_pointer)
+                    else:
+                        stable = record_identity(data, at, kind, schema, floor)
                     for field, offset in schema.fields:
-                        key = f"{prefix}/{stable}/{field}"
+                        key = f"{prefix}/{stable}" + (f"/{field}" if field else "")
                         if key not in needed:
                             continue
                         entry = needed[key]

@@ -74,52 +74,29 @@ test('numeric candidate index avoids a full authoritative scan and keeps exact o
     assert.ok(attempts < 10, `expected a bounded candidate bucket, got ${attempts} regex attempts`);
 });
 
-test('element-title producer keeps the native icon and count singular', () => {
-    const runtime = new RuntimeText(baseModel({
-        producer_numeric: [[
-            '幻属性【 属性值：<I48>×(-?(?:0|[1-9][0-9]{0,9})) 】',
-            ['Mirage Element [Elemental Value: <I48>x%d]', '幻属性【 属性値：<I48>×%d 】'],
-            [['ascii'], ['ascii']],
-        ]],
-    }));
-    const source = '幻属性【 属性值：<I48>×2 】';
-    assert.equal(runtime.translate(source, 'primary'), 'Mirage Element [Elemental Value: <I48>x2]');
-    assert.equal(runtime.translate(source, 'secondary'), '幻属性【 属性値：<I48>×2 】');
-    const plan = runtime.render(source, 'annotation');
-    assert.equal(plan.kind, 'layered');
-    assert.equal(plan.text.split('<I48>').length - 1, 1);
-    assert.equal(plan.layers.reduce((total, layer) => total + layer.text.split('<I48>').length - 1, 0), 1);
-    assert.equal(plan.text.split('2').length - 1, 1);
-    assert.equal(plan.layers.reduce((total, layer) => total + layer.text.split('2').length - 1, 0), 1);
-    assert.equal(runtime.translate('幻属性【 属性值：<I47>×2 】', 'primary'), '幻属性【 属性值：<I47>×2 】');
-    assert.equal(runtime.translate('幻属性【 属性值：<I48>×2147483647 】', 'primary'), 'Mirage Element [Elemental Value: <I48>x2147483647]');
-    assert.equal(runtime.translate('幻属性【 属性值：<I48>×2147483648 】', 'primary'), '幻属性【 属性值：<I48>×2147483648 】');
-});
-
-test('element title survives a full detail label without loosening icon or line boundaries', () => {
-    const rule = ['幻属性【 属性值：<I48>×(-?(?:0|[1-9][0-9]{0,9})) 】',
-        ['Mirage Element [Elemental Value: <I48>x%d]', '幻属性【 属性値：<I48>×%d 】'], [['ascii'], ['ascii']]];
-    const local = baseModel({producer_numeric: [rule], producer_lines: [rule],
-        pairs: {'说明': ['Description', '説明']}, plain_pairs: {'说明': ['Description', '説明']}});
-    const runtime = new RuntimeText(baseModel({producer_numeric: [rule], producer_lines: [rule],
-        plain_pairs: {'2': ['two', '２']}, detail_sources: ['说明'], details: local}));
-    for (const [suffix, expected] of [['说明', 'Description'], ['UNKNOWN', 'UNKNOWN']]) {
-        const source = '<S32><C1>幻属性【 属性值：<I48>×2 】</C>\n' + suffix;
-        assert.equal(runtime.translate(source, 'primary'), '<S32><C1>Mirage Element [Elemental Value: <I48>x2]</C>\n' + expected);
-        const plan = runtime.render(source, 'annotation');
-        assert.equal(plan.kind, 'layered');
-        assert.match(plan.text, /Mirage Element/);
-        assert.match(plan.layers.map(x => x.text).join(''), /幻属性【 属性値：<I48>×2 】/);
+test('resource label components leave icons, counts and punctuation out of secondary text', () => {
+    const pairs={'幻属性':['Mirage Element','幻屬性'],'属性值':['Elemental Value','屬性值']};
+    const runtime=new RuntimeText(baseModel({pairs,plain_pairs:pairs,
+        numeric:[['×([+-]?\\d+)',['x%d','×%d']]]}));
+    for(const payload of ['<I48>×2','<I42>×3<I45>×3']) {
+        const source='<S32>幻属性【 属性值：'+payload+' 】';
+        assert.equal(runtime.translate(source,'primary'),'<S32>Mirage Element【 Elemental Value：'+payload+' 】');
+        const plan=runtime.render(source);
+        assert.equal(plan.kind,'ruby');
+        assert.equal(plan.layers.length,0);
+        const ruby=[...plan.text.matchAll(/<R>(.*?)<\/R([^<>]*)>/g)];
+        assert.deepEqual(ruby.map(m=>m[2]),['幻屬性','屬性值']);
+        assert.equal(plan.text.split('<I').length,source.split('<I').length);
+        assert.ok(plan.text.endsWith(payload+' 】'));
     }
-    for (const title of ['幻属性【 属性值：<I47>×2 】', '幻属性【 属性值：<I48>×2147483648 】',
-        '前缀幻属性【 属性值：<I48>×2 】', '幻属性【 属性值：<I48>×2 】后缀',
-        '<R>幻属性【 属性值：<I48>×2 】</R注解>', '<R>幻属性【 属性值：<I48>×2 】']) {
-        const source = title + '\n说明';
-        assert.equal(runtime.producerLinePairs(source).length, 0);
-        assert.doesNotMatch(runtime.translate(source, 'primary'), /Mirage Element/);
-    }
-    const conflict = new RuntimeText(baseModel({producer_lines: [rule, [rule[0], ['OTHER %d', 'OTHER %d'], rule[2]]]}));
-    assert.equal(conflict.producerLinePairs('幻属性【 属性值：<I48>×2 】').length, 0);
+    const englishPairs={'Mirage Element':['幻属性','幻屬性'],'Elemental Value':['属性值','屬性值']};
+    const english=new RuntimeText(baseModel({pairs:englishPairs,plain_pairs:englishPairs}));
+    assert.equal(english.translate('Mirage Element [Elemental Value: <I48>x2]','primary'),
+        '幻属性 [属性值: <I48>x2]');
+    const spanishPairs={'Elemento espejismo':['幻属性','幻屬性'],'valor elemental':['属性值','屬性值']};
+    const spanish=new RuntimeText(baseModel({pairs:spanishPairs,plain_pairs:spanishPairs}));
+    assert.equal(spanish.translate('Elemento espejismo (valor elemental: <I48>×2)','primary'),
+        '幻属性 (属性值: <I48>×2)');
 });
 
 test('indexed resolver matches the old linear oracle for conflicts, fallback and neighbours', () => {
