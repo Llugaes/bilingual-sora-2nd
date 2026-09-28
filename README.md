@@ -44,23 +44,15 @@
 
 ## 安装和启动
 
-**推荐安装版：** 下载 [最新版本](https://github.com/Llugaes/bilingual-sora-2nd/releases/latest) 的 `bilingual-sora-2nd-版本-windows-x64-setup.exe`，运行中／英／日文安装向导。默认安装到当前用户目录，无需管理员权限，创建开始菜单入口，可选桌面快捷方式。所有依赖内置，支持离线安装；Windows“已安装的应用”中可卸载，配置保留。覆盖安装或卸载前，请从托盘退出工具并结束游戏连接；安装器不会强行关闭游戏。
+1. 从 [最新 Release](https://github.com/Llugaes/bilingual-sora-2nd/releases/latest) 下载 `bilingual-sora-2nd-版本-windows-x64-setup.exe`，双击完成安装。
+2. 从开始菜单或桌面快捷方式打开 **Bilingual Sora 2nd**，首次选择界面语言并设置主、副语言。
+3. 正常启动游戏。工具会自动连接已运行的游戏，或等待游戏启动；不会替你启动游戏。
 
-**便携版：** 希望自行管理目录时，使用下面的 ZIP 方式。
+适用于 Windows 10/11 x64，无需管理员权限。Python 和运行依赖已内置，下载安装包后可离线安装，无需另外配置环境。界面支持中文、英文、日文，已有设置在升级时保留。
 
-1. 从 [Releases](https://github.com/Llugaes/bilingual-sora-2nd/releases/latest) 下载 **bilingual-sora-2nd-版本-windows-x64.zip**，完整解压到有写权限的独立文件夹。
-2. 双击 **BilingualSora2nd.exe**。包内已带 Python 和全部运行依赖，无需安装 Python、运行 CMD 或首次联网安装依赖。适用于 Windows 10/11 x64。
-3. 首次选择插件界面语言，随后进入设置；游戏原文语言由连接后的只读检测确定。工具自动关联正在运行的游戏，也会等待游戏启动；它不会替你启动游戏。
+便携版、旧版迁移及排障步骤见下方 [常见问题](#常见问题faq)。
 
-“更新”页提供使用说明和发行说明；更新失败时显示下载与日志入口。再次双击 EXE 会打开已有界面，不会重复启动后台。界面支持中文、英文、日文。
-
-Release 中只需下载 ZIP；`bilingual-sora-2nd-update.json` 给自动更新使用，GitHub 的 Source code 附件给开发者使用。请保留解压后的完整目录，不要单独移动 EXE。
-
-请选不带 `app` 或 `runtime` 的完整 ZIP。这两个组件包供更新器使用：从 **0.3.4** 起，依赖未变时只下载较小的程序包，依赖变化时才下载运行环境。程序包包含界面、Python 逻辑与原生接入脚本，无需按历史版本逐级升级。0.3.0–0.3.3 首次升级仍下载完整包，升级后启用组件更新。
-
-**0.2.2 提示“更新未完成：更新包文件过多”怎么办？** 这是旧更新器的文件数量限制，无法直接安装内置依赖的新版本。请按下方 0.2.x 迁移步骤下载完整包；不需要反复重试。新更新器失败时提供“下载完整包（含 EXE）”与迁移说明，详细原因写入日志，设置不会被主动清空。
-
-从 **0.2.x** 升级：旧版更新器无法安装内置运行环境，需要一次手动迁移。退出旧工具，将新包解压到新目录，复制旧目录的 `generated/native-control.json` 和 `generated/overlay-window.ini`（不要复制 `.venv/`、`generated/updates/` 或旧热加载清单），再运行新 EXE。之后便携版的程序和依赖都支持自动更新。开发目录继续保留，不覆盖其源码。
+“更新”页提供使用说明和发行说明。再次打开程序会显示已有界面，不会重复启动后台。
 
 设置分为“语言”“文字排版”“快捷键”“更新”四页。主、副语言可在“语言”页自由搭配。“游戏内文字语言”由后端自动检测，只展示状态，不能编辑。主语言只决定 Mod 显示的正文，不会修改游戏设置。连接失败时会自动重试，也可点击语言页的连接按钮重试。
 
@@ -75,15 +67,6 @@ Release 中只需下载 ZIP；`bilingual-sora-2nd-update.json` 给自动更新�
 ### 多语言字库
 
 某些跨语言组合需要补充游戏字库，否则游戏原字体没有的字符可能显示为问号。工具发现游戏目录后会从本机游戏资源自动准备字库；游戏运行期间只暂存，退出后安全安装，重启游戏后生效。游戏字库不随本项目分发；程序另附 OFL 许可的两个补充字形。
-
-通常无需手动操作。仅在自动准备失败时，可用下列命令排查或重试：
-
-```powershell
-$runtime = Get-Content runtime/current.txt
-& ".\runtime\$runtime\python.exe" -m sora_bilingual.fonts.install_font_patch --game "你的游戏安装目录" --install
-```
-
-安装器随程序附带经过审计的 [sora2looseload](https://github.com/lmaple0/sora2looseload) 加载器，SHA-256 为 `e08a18068a482bb5d187a62023759c0e14ab69d76395b773ef0405d35e2ac8c7`。摘要不匹配时不会跳过校验或覆盖其他 Mod 的文件。
 
 ## 配置和快捷键
 
@@ -100,7 +83,7 @@ $runtime = Get-Content runtime/current.txt
 | 展开／隐藏界面 | Ctrl + Shift + F9 |
 | 当前模式的语言切换 | Ctrl + Shift + F10 |
 
-“快捷键”中录制一组键盘或 SDL 手柄组合；切换模式后仍使用这组绑定。旧版已有的自定义绑定会迁移，旧的 F11/F12 不再作为独立动作同时监听。默认在游戏前台响应。
+“快捷键”中录制一组键盘或 SDL 手柄组合；切换模式后仍使用这组绑定。已有自定义绑定会保留。默认在游戏前台响应。
 
 - **双语模式**：利用游戏的原生注音布局同时显示两种语言，快捷键开关副语言。
 - **单语言模式**：选择“按一下切换语言”或“按住显示副语言”。按一下切换不会因持续按住而重复触发；按住显示会在松开或失去游戏焦点后恢复主语言。
@@ -111,7 +94,7 @@ $runtime = Get-Content runtime/current.txt
 
 ## 推荐用法与已知限制
 
-优先流畅度时，选择 **单语言模式 → 按住显示副语言**（旧版对应“按住模式”），在快捷键页绑定一个方便按住的键盘或手柄组合。平时只显示主语言；需要对照时按住切换，松开恢复。此方式不持续同屏排版两种语言，是目前推荐的日常用法；切换时仍可能有短暂重排，不保证完全没有延迟。
+优先流畅度时，选择 **单语言模式 → 按住显示副语言**，在快捷键页绑定一个方便按住的键盘或手柄组合。平时只显示主语言；需要对照时按住切换，松开恢复。此方式不持续同屏排版两种语言，是目前推荐的日常用法；切换时仍可能有短暂重排，不保证完全没有延迟。
 
 - **双语对话日志的性能问题尚未消除。** 打开日志可能明显停顿，停留时帧率也可能低于单语言模式；实机反馈中出现过约 **700 ms** 的开页停顿，重复打开也可能发生。实际表现随历史记录量、语言组合和设备而变化。已有缓存与原生优化降低了部分耗时，但不保证消除卡顿，不应视为已经修复。遇到此问题可用上述单语言按住切换方式查看日志。
 - **原因涉及排版和解析，不只是字体绘制。** 双语使用游戏的原生注音布局，日志会集中处理历史文本，并在显示期间反复解析部分控件。改变副语言颜色或透明度不会移除这些工作。
@@ -121,13 +104,64 @@ $runtime = Get-Content runtime/current.txt
 
 ## 自动更新
 
-“更新”页只保留 **自动更新** 开关，默认开启：启动时和每 6 小时检查本仓库稳定版。关闭后不自动检查或安装，仍可手动检查版本。旧的“仅检查并提示”设置按关闭处理，不自动授权安装。
+“更新”页的 **自动更新** 默认开启：启动时和每 6 小时检查稳定版，在后台下载并校验，游戏连接结束后安装。完成后界面自动重载，保留设置、缓存及窗口状态。关闭自动更新后，仍可手动检查版本。
+
+## 常见问题（FAQ）
+
+<details>
+<summary>不想安装，怎样使用便携版？Release 里其他文件是什么？</summary>
+
+从 Release 下载不带 `app` 或 `runtime` 后缀的完整 `bilingual-sora-2nd-版本-windows-x64.zip`，解压到有写权限的独立文件夹，双击 **BilingualSora2nd.exe**。保留完整目录，不要单独移动 EXE。
+
+`app`、`runtime` ZIP 和 `bilingual-sora-2nd-update.json` 供自动更新使用，GitHub 的 Source code 附件供开发者使用。更新器会复用未变化的运行环境，无需逐级升级。
+
+</details>
+
+<details>
+<summary>旧版升级失败，或提示“更新包文件过多”怎么办？</summary>
+
+从 **0.2.x** 升级：旧版更新器无法安装内置运行环境，需要一次手动迁移。退出旧工具，将新包解压到新目录，复制旧目录的 `generated/native-control.json` 和 `generated/overlay-window.ini`（不要复制 `.venv/`、`generated/updates/` 或旧热加载清单），再运行新 EXE。之后便携版的程序和依赖都支持自动更新。开发目录继续保留，不覆盖其源码。
+
+0.2.2 的“更新包文件过多”也是旧更新器限制，请按上述步骤迁移。0.3.0–0.3.3 首次自动升级仍下载完整包，之后使用组件更新。
+
+</details>
+
+<details>
+<summary>如何覆盖安装或卸载？</summary>
+
+覆盖安装或卸载前，从托盘退出工具并结束游戏连接。重新运行最新版安装器即可覆盖安装；也可从 Windows“已安装的应用”中卸载。个人配置保留，安装器不会强行关闭游戏。
+
+</details>
+
+<details>
+<summary>字库自动准备失败，怎样排查？</summary>
+
+通常无需手动操作。仅在自动准备失败时，可用下列命令排查或重试：
+
+```powershell
+$runtime = Get-Content runtime/current.txt
+& ".\runtime\$runtime\python.exe" -m sora_bilingual.fonts.install_font_patch --game "你的游戏安装目录" --install
+```
+
+安装器随程序附带经过审计的 [sora2looseload](https://github.com/lmaple0/sora2looseload) 加载器，SHA-256 为 `e08a18068a482bb5d187a62023759c0e14ab69d76395b773ef0405d35e2ac8c7`。摘要不匹配时不会跳过校验或覆盖其他 Mod 的文件。
+
+</details>
+
+<details>
+<summary>自动更新失败后怎样恢复？配置保存在什么位置？</summary>
+
+更新失败时，“更新”页提供下载与日志入口，可下载最新安装 EXE 重新安装。
 
 更新包在后台下载并核验仓库、版本、文件清单及 SHA-256。游戏连接期间等待，连接结束后安装；完成后控制界面自动重载，恢复位置和展开／隐藏状态。配置和缓存保留在 `generated/`，内置依赖位于 `runtime/`。安装发生中断时，下次从快捷方式启动会先完成提交或恢复旧文件。备份在 `generated/updates/backup-*`。
 
 自动更新只适用于带 `installed-manifest.json` 的发行包安装。Git 开发目录及被手工改动的软件文件不会被覆盖。运行环境更新会写入新的版本目录，界面重载后切换；不覆盖正在使用的 Python/DLL。旧运行环境保留供恢复，可能占用额外磁盘空间。预发布、草稿和旧版本不会自动安装。
 
+</details>
+
 ## 开发和发布
+
+<details>
+<summary>开发环境、测试与发布命令</summary>
 
 ```powershell
 py -3.14 -m venv .venv
@@ -141,13 +175,16 @@ py -3.14 -m venv .venv
 
 工程布局与依赖规则见 [架构说明](https://github.com/Llugaes/bilingual-sora-2nd/blob/main/docs/ARCHITECTURE.md)，日常修改流程见 [贡献指南](https://github.com/Llugaes/bilingual-sora-2nd/blob/main/CONTRIBUTING.md)。
 
-维护者同步修改 distribution.json 和 pyproject.toml 版本后推送 `vX.Y.Z` 标签。GitHub Actions 在 Windows 上验证测试，从明确的文件白名单构建 ZIP 和更新清单，上传到草稿 Release 后一起公开；后续客户端自动发现。手动构建：
+维护者同步修改 distribution.json 和 pyproject.toml 版本后推送 `vX.Y.Z` 标签。GitHub Actions 在 Windows 上验证测试，从明确的文件白名单构建完整 ZIP、更新组件及离线安装器，通过便携版启动和安装器检查后，上传到草稿 Release 并一起公开；后续客户端自动发现。手动构建：
 
 ```powershell
-.venv\Scripts\python.exe -m tools.build_portable --version 0.3.9 --repository Llugaes/bilingual-sora-2nd
+$distribution = Get-Content distribution.json | ConvertFrom-Json
+.venv\Scripts\python.exe -m tools.build_portable --version $distribution.version --repository $distribution.repository
 ```
 
 仓库仅在文档中收录精选演示截图；发行包不附带这些图片。发布包和仓库不包含游戏资源包、从游戏生成的字库、完整文本索引、日志或用户配置。报告问题时请附工具版本、游戏版本、语言组合与精简错误信息，避免上传完整游戏数据。
+
+</details>
 
 ## 许可
 
