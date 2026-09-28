@@ -234,6 +234,8 @@ class OverlayUiTests(unittest.TestCase):
         self.assertEqual(read_config(self.control)["secondary_color"], [0.2, 0.4, 0.6])
 
     def test_startup_preparation_selects_only_a_hint_and_requires_font_and_mapping_ready(self):
+        # Exercise the translated UI even on a Chinese developer machine.
+        self.window.ui_language.setCurrentIndex(self.window.ui_language.findData("en"))
         game = Path(self.temp.name) / "Game"
         other_game = Path(self.temp.name) / "OtherGame"
         game.mkdir()
@@ -260,14 +262,18 @@ class OverlayUiTests(unittest.TestCase):
         self.window._auto_connector = connector
         self.window._present_startup_preparation()
         self.assertEqual(self.window.preparation_language.currentData(), "zh-Hans")
-        self.assertIn(tr("可以启动游戏"), self.window.preparation_notice.text())
+        self.assertIn(
+            tr("字体与语言映射已就绪，可以启动游戏。"), self.window.preparation_notice.text()
+        )
 
         self.window.preparation_language.setCurrentIndex(
             self.window.preparation_language.findData("en")
         )
         self.window._present_startup_preparation()
         self.assertEqual(self.window.preparation_language.currentData(), "en")
-        self.assertNotIn(tr("可以启动游戏"), self.window.preparation_notice.text())
+        self.assertNotIn(
+            tr("字体与语言映射已就绪，可以启动游戏。"), self.window.preparation_notice.text()
+        )
 
         connector.preparation_status = {"state": "preparing", "message": "正在准备语言映射"}
         self.window._present_startup_preparation()
@@ -281,7 +287,9 @@ class OverlayUiTests(unittest.TestCase):
         self.assertEqual(connector.selected, [other_game])
         self.assertEqual(self.window.preparation_game.text(), str(other_game))
         self.assertTrue(self.window.prepare_game.isEnabled())
-        self.assertNotIn(tr("可以启动游戏"), self.window.preparation_notice.text())
+        self.assertNotIn(
+            tr("字体与语言映射已就绪，可以启动游戏。"), self.window.preparation_notice.text()
+        )
         self.assertEqual(self.window.detected_game_language.text(), tr("等待检测"))
 
         self.window.prepare_game.click()
@@ -292,11 +300,15 @@ class OverlayUiTests(unittest.TestCase):
         connector.preparation_source = "en"
         connector.preparation_status = {"state": "ready", "message": "语言映射已准备"}
         self.window._present_startup_preparation()
-        self.assertIn(tr("可以启动游戏"), self.window.preparation_notice.text())
+        self.assertIn(
+            tr("字体与语言映射已就绪，可以启动游戏。"), self.window.preparation_notice.text()
+        )
 
         connector.font_status = {"state": "error", "message": "字体准备失败"}
         self.window._present_startup_preparation()
-        self.assertNotIn(tr("可以启动游戏"), self.window.preparation_notice.text())
+        self.assertNotIn(
+            tr("字体与语言映射已就绪，可以启动游戏。"), self.window.preparation_notice.text()
+        )
         self.assertIn(tr("字体未就绪："), self.window.preparation_notice.text())
 
         self.window.show()
@@ -306,6 +318,8 @@ class OverlayUiTests(unittest.TestCase):
         self.assertGreater(screenshot.height(), 0)
 
     def test_recovered_preparation_waits_for_the_matching_discovered_game(self):
+        # Exercise the translated UI even on a Chinese developer machine.
+        self.window.ui_language.setCurrentIndex(self.window.ui_language.findData("en"))
         game = Path(self.temp.name) / "Game"
         other_game = Path(self.temp.name) / "OtherGame"
         game.mkdir()
@@ -324,15 +338,21 @@ class OverlayUiTests(unittest.TestCase):
         self.window._auto_connector = connector
         self.window._present_startup_preparation()
         self.assertEqual(self.window.preparation_language.currentData(), "zh-Hans")
-        self.assertNotIn(tr("可以启动游戏"), self.window.preparation_notice.text())
+        self.assertNotIn(
+            tr("字体与语言映射已就绪，可以启动游戏。"), self.window.preparation_notice.text()
+        )
 
         connector.game_path = str(game)
         self.window._present_startup_preparation()
-        self.assertIn(tr("可以启动游戏"), self.window.preparation_notice.text())
+        self.assertIn(
+            tr("字体与语言映射已就绪，可以启动游戏。"), self.window.preparation_notice.text()
+        )
 
         connector.game_path = str(other_game)
         self.window._present_startup_preparation()
-        self.assertNotIn(tr("可以启动游戏"), self.window.preparation_notice.text())
+        self.assertNotIn(
+            tr("字体与语言映射已就绪，可以启动游戏。"), self.window.preparation_notice.text()
+        )
 
     def test_display_mode_controls_preserve_the_existing_interaction_contract(self):
         label = self.window.display_form.labelForField(self.window.single_options)
