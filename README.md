@@ -109,6 +109,13 @@
 ## 常见问题（FAQ）
 
 <details>
+<summary>已经退出工具，安装器为什么仍提示正在运行？</summary>
+
+工具界面与游戏连接是独立进程。退出界面后，已经建立的双语连接仍保留到游戏退出；安装器因此仍会检测到占用。请先保存并退出游戏，再从托盘退出工具后重试。不要在游戏运行时通过任务管理器强杀双语后端。
+
+</details>
+
+<details>
 <summary>不想安装，怎样使用便携版？Release 里其他文件是什么？</summary>
 
 从 Release 下载不带 `app` 或 `runtime` 后缀的完整 `bilingual-sora-2nd-版本-windows-x64.zip`，解压到有写权限的独立文件夹，双击 **BilingualSora2nd.exe**。保留完整目录，不要单独移动 EXE。

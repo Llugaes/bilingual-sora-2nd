@@ -103,6 +103,13 @@ For smoother play, select **Single-language mode → Hold for secondary language
 ## Frequently asked questions (FAQ)
 
 <details>
+<summary>Why does Setup report the tool is running after I exit it?</summary>
+
+The interface and game connection are separate processes. An established bilingual connection stays alive until the game exits, even after the interface closes. Save and exit the game, then quit the tool from its tray menu and retry Setup. Do not force-terminate the bilingual backend while the game is running.
+
+</details>
+
+<details>
 <summary>How do I use the portable edition, and what are the other release files?</summary>
 
 Download the complete `bilingual-sora-2nd-VERSION-windows-x64.zip` without `app` or `runtime` in its name. Extract it into a separate writable folder and open **BilingualSora2nd.exe**. Keep the entire folder intact; do not move only the EXE.

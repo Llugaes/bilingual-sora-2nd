@@ -36,9 +36,9 @@ Name: "chinesesimplified"; MessagesFile: "installer-language\ChineseSimplified.i
 Name: "japanese"; MessagesFile: "compiler:Languages\Japanese.isl"
 
 [CustomMessages]
-english.ExitTool=Please exit Bilingual Sora 2nd from its tray menu and end the game connection before continuing. Setup will not close the game.
-chinesesimplified.ExitTool=请先从托盘退出双语工具，并结束游戏连接，再继续。安装程序不会强行关闭游戏。
-japanese.ExitTool=トレイからツールを終了し、ゲームとの接続を終了してから続行してください。ゲームを強制終了することはありません。
+english.ExitTool=Bilingual Sora 2nd or its game connection is still running. Exit the tool from its tray menu. If the game is open, save and exit the game too: the connection stays active after the tool window closes. Then retry. Setup will not close the game.
+chinesesimplified.ExitTool=双语工具或游戏连接仍在运行。请从托盘退出工具；若游戏仍开着，请保存并退出游戏后重试。关闭工具窗口不会结束已建立的游戏连接。安装程序不会强行关闭游戏。
+japanese.ExitTool=ツールまたはゲームとの接続が動作中です。トレイからツールを終了してください。ゲームも起動中の場合は、セーブしてゲームを終了してから再試行してください。ツールの画面を閉じても接続は残ります。インストーラーがゲームを強制終了することはありません。
 english.RecoverFirst=An interrupted update needs recovery. Run the existing BilingualSora2nd.exe once, exit it, then retry; or select a new folder.
 chinesesimplified.RecoverFirst=上次更新尚未恢复。请运行原目录的 BilingualSora2nd.exe 完成恢复，退出后重试；也可以选择新的安装目录。
 japanese.RecoverFirst=中断した更新を復旧する必要があります。既存の BilingualSora2nd.exe を一度実行して終了後に再試行するか、新しいフォルダーを選択してください。
