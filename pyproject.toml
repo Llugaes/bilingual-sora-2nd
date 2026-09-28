@@ -17,7 +17,7 @@ Repository = "https://github.com/Llugaes/bilingual-sora-2nd"
 Issues = "https://github.com/Llugaes/bilingual-sora-2nd/issues"
 
 [project.optional-dependencies]
-dev = ["ruff>=0.12,<1", "build>=1.2,<2"]
+dev = ["ruff>=0.12,<1", "build>=1.2,<2", "capstone==5.0.9"]
 
 [tool.setuptools.dynamic]
 dependencies = {file = ["requirements.txt"]}
