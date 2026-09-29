@@ -71,6 +71,7 @@ from sora_bilingual.config.locales import (
 )
 
 
+from sora_bilingual.platform.runtime_process import runtime_executable
 from sora_bilingual.paths import ROOT
 
 CONTROL_PATH = ROOT / "generated" / "native-control.json"
@@ -737,7 +738,7 @@ class NativeSettingsWindow(QWidget):
             self.backend_label.setText("后端已连接，直接调整设置即可")
             return
         self._connection_error = None
-        executable = Path(sys.executable).with_name("pythonw.exe")
+        executable = runtime_executable("backend")
         self._connect_process = subprocess.Popen(
             [str(executable), "-m", "sora_bilingual.game.native_probe"],
             cwd=ROOT,

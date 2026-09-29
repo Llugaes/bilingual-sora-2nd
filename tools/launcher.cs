@@ -37,7 +37,9 @@ static class Launcher {
                 if (state.TryGetValue("recovery_runtime", out recovery) && recovery is string) id = (string)recovery;
             }
             if (!Regex.IsMatch(id, "\\A[0-9a-f]{16}\\z")) throw new IOException("Invalid runtime selector");
-            string python = Path.Combine(root, "runtime", id, "pythonw.exe");
+            string python = Path.Combine(root, "runtime", id, "BilingualSora2nd.UI.exe");
+            // Recovery may need a runtime released before named hosts existed.
+            if (!File.Exists(python)) python = Path.Combine(root, "runtime", id, "pythonw.exe");
             string entry = Path.Combine(root, "launch.py");
             if (!File.Exists(python) || !File.Exists(entry)) throw new FileNotFoundException("Incomplete package");
             Directory.CreateDirectory(Path.Combine(root, "generated"));

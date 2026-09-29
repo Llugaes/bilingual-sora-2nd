@@ -8,11 +8,12 @@ import time
 
 def prepare_fresh(game, config, *, cache_only=False, cancel=None):
     """Isolate compiler updates from already-imported resident Python modules."""
-    import json, sys, tempfile
+    import json, tempfile
     from pathlib import Path
     from sora_bilingual.localization.cache_io import read_model
     from sora_bilingual.paths import ROOT as root
     from sora_bilingual.platform.worker_process import run_worker
+    from sora_bilingual.platform.runtime_process import runtime_executable
 
     with tempfile.TemporaryDirectory(prefix="sora-prepare-") as tmp:
         request = Path(tmp) / "request.json"
@@ -31,7 +32,7 @@ def prepare_fresh(game, config, *, cache_only=False, cancel=None):
         )
         process = run_worker(
             [
-                sys.executable,
+                runtime_executable("worker"),
                 "-m",
                 "sora_bilingual.preparation_worker",
                 "--request",

@@ -20,13 +20,21 @@ kernel32.QueryFullProcessImageNameW.argtypes = [
     ctypes.POINTER(wintypes.DWORD),
 ]
 kernel32.GetProcessTimes.argtypes = [wintypes.HANDLE] + [ctypes.POINTER(wintypes.FILETIME)] * 4
+kernel32.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+kernel32.WaitForSingleObject.restype = wintypes.DWORD
 
 
 def process_identity(pid):
-    handle = kernel32.OpenProcess(0x1000, False, pid)
+    """Creation time of a running process, even if an exited PID still has handles."""
+    handle = kernel32.OpenProcess(0x1000 | 0x100000, False, pid)
     if not handle:
         raise ctypes.WinError(ctypes.get_last_error())
     try:
+        state = kernel32.WaitForSingleObject(handle, 0)
+        if state == 0:
+            raise ProcessLookupError(f"Process {pid} has exited")
+        if state != 0x102:
+            raise ctypes.WinError(ctypes.get_last_error())
         times = [wintypes.FILETIME() for _ in range(4)]
         if not kernel32.GetProcessTimes(handle, *(ctypes.byref(t) for t in times)):
             raise ctypes.WinError(ctypes.get_last_error())

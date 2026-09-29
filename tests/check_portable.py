@@ -70,7 +70,7 @@ def check(package):
         with zipfile.ZipFile(package) as archive:
             archive.extractall(root)
         runtime_id = (root / "runtime/current.txt").read_text().strip()
-        python = root / "runtime" / runtime_id / "python.exe"
+        python = root / "runtime" / runtime_id / "BilingualSora2nd.Worker.exe"
         environment = {
             **os.environ,
             "PATH": os.environ["SystemRoot"] + r"\System32",
@@ -86,6 +86,9 @@ def check(package):
                 "-c",
                 """
 import sys, frida, lz4.frame, pygame, pefile
+assert sys.executable.endswith('BilingualSora2nd.Worker.exe'), sys.executable
+from sora_bilingual.platform.runtime_process import runtime_executable
+assert runtime_executable('backend').endswith('BilingualSora2nd.Backend.exe')
 from PySide6 import QtWidgets, QtNetwork
 from PySide6.QtCore import QByteArray
 from PySide6.QtGui import QImage, QImageReader, QIcon
@@ -183,6 +186,9 @@ print(sys.version)
         )
         try:
             before = wait_for(lambda state: state["expanded"])
+            from sora_bilingual.platform.win32 import process_path, process_identity
+
+            assert process_path(before["pid"]).name == "BilingualSora2nd.UI.exe"
             print("started", before, flush=True)
             seconds = time.monotonic() - started
             assert not before["auto_connect"]
@@ -254,6 +260,13 @@ print(sys.version)
             request("quit")
             # Windows releases loaded Qt/runtime DLLs asynchronously at process exit.
             time.sleep(2)
+            if "after" in locals():
+                try:
+                    process_identity(after["pid"])
+                except OSError:
+                    pass
+                else:
+                    raise AssertionError("Tray exit left the named UI process running")
 
 
 if __name__ == "__main__":

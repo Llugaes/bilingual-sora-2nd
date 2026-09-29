@@ -35,6 +35,7 @@ from sora_bilingual.app.native_settings import (
     ROOT,
 )
 from sora_bilingual.platform.win32 import foreground_rect
+from sora_bilingual.platform.runtime_process import runtime_executable
 from sora_bilingual.app.presentation import describe_state, with_font_status, STATUS_COLORS
 from sora_bilingual.app.i18n import set_language, tr
 from sora_bilingual.app.ui_widgets import NATIVE_THEME, QLabel, QPushButton, retranslate
@@ -528,7 +529,7 @@ class OverlayController(QObject):
         self.save_position()
         self.preferences.sync()
         command = [
-            str(Path(sys.executable).with_name("pythonw.exe")),
+            runtime_executable("ui"),
             "-m",
             "sora_bilingual.app.overlay_reloader",
             "--pid",

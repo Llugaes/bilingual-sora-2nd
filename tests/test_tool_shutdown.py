@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 import sys
+import subprocess
 import tempfile
 import threading
 import time
@@ -11,10 +12,34 @@ from unittest.mock import patch
 
 from sora_bilingual.platform.worker_process import run_worker
 from sora_bilingual.platform.win32 import process_identity
-from sora_bilingual.game.tool_shutdown import ExitSignal, reset_exit, shutdown
+from sora_bilingual.game.tool_shutdown import ExitSignal, backend_alive, reset_exit, shutdown
 
 
 class ShutdownTests(unittest.TestCase):
+    @unittest.skipUnless(os.name == "nt", "Windows terminated process handles")
+    def test_exited_backend_is_not_alive_while_parent_retains_process_handle(self):
+        # Popen keeps its Windows process HANDLE after wait(). GetProcessTimes
+        # still succeeds, but this must not prevent a complete tool exit.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            child = subprocess.Popen(
+                [sys.executable, "-c", "import sys;sys.stdin.read()"],
+                stdin=subprocess.PIPE,
+                creationflags=subprocess.CREATE_NO_WINDOW,
+            )
+            try:
+                (root / "native-owner.json").write_text(
+                    json.dumps({"pid": child.pid, "created": process_identity(child.pid)})
+                )
+                self.assertTrue(backend_alive(root))
+                child.communicate(timeout=5)
+                self.assertFalse(backend_alive(root))
+                shutdown(root, timeout=0.1)
+            finally:
+                if child.poll() is None:
+                    child.kill()
+                    child.wait(timeout=5)
+
     def test_exit_request_is_separate_from_user_configuration(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

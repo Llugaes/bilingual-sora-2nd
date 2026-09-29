@@ -15,6 +15,7 @@ import zipfile
 
 from sora_bilingual.paths import ROOT
 from tools.build_release import build
+from tools.runtime_branding import branded_hosts
 
 PYTHON_VERSION = "3.14.7"
 # https://www.python.org/downloads/release/python-3147/
@@ -129,7 +130,9 @@ def runtime_files(cache):
     cache = Path(cache)
     cache.mkdir(parents=True, exist_ok=True)
     cache_key = hashlib.sha256(
-        Path(__file__).read_bytes() + (ROOT / "requirements.txt").read_bytes()
+        Path(__file__).read_bytes()
+        + (ROOT / "tools/runtime_branding.py").read_bytes()
+        + (ROOT / "requirements.txt").read_bytes()
     ).hexdigest()[:16]
     cached_runtime = cache / ("runtime-" + cache_key + ".zip")
     if cached_runtime.exists():
@@ -175,6 +178,7 @@ def runtime_files(cache):
             and p.relative_to(stage).parts[:3] != ("Lib", "site-packages", "bin")
         }
     files = runtime_payload(files)
+    files.update(branded_hosts(files))
     canonical_records(files)
     signature = hashlib.sha256()
     for name, data in files.items():

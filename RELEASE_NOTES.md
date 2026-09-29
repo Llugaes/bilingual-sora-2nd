@@ -1,31 +1,25 @@
-# Bilingual Sora 2nd v0.3.21
+# Bilingual Sora 2nd v0.3.22
 
 ## 简体中文
 
-- 手柄绑定自动使用 PlayStation、Xbox、Nintendo Switch 的按键名称，区分肩键、扳机、摇杆按下、方向和面键。
-- 按设备的 SDL 映射识别原始按钮与轴，不再把已识别的 L2/R2 显示成“轴 5/6”。兼容分离／共享轴扳机、反向轴、十字键和 Joy-Con 横／竖握名称。
-- 快捷键页新增“手柄按键名称”，可为 Steam Input 等虚拟手柄选择显示样式。仅改变名称，保留已有组合键与触发阈值。
-- 较大系统字号或窄窗口下，标签与录制按钮自动换行，避免英文界面出现横向滚动。
-- 新录制的绑定保存设备名称映射，断开手柄或重启工具后仍可显示；旧绑定连接对应手柄即可识别。未提供 SDL 映射的输入保留原始编号。
+- 修复托盘退出误报“后端尚未安全退出”：Windows 保留已结束进程的句柄时，仍能正确确认进程结束，关闭工具并允许重新打开连接。
+- 任务管理器中使用明确的进程名：`BilingualSora2nd.UI.exe`、`BilingualSora2nd.Backend.exe`、`BilingualSora2nd.Worker.exe`，描述中也显示工具名称，方便识别。
+- 保留设置、语言缓存及正常退出时的效果恢复。不会关闭游戏。
 
-已核对 DualSense 实际设备映射，完成自动化回归和中英日界面排版检查。Xbox、Switch 的映射语义通过自动化检查，尚未用对应实体手柄验收。设置与缓存保留。
+本版是退出问题的加急修复。首次免重启安装的 HUD 乱码、游玩卡顿及设置页调整仍在调查，不包含在本版修复声明中。
 
 ## English
 
-- Automatically display PlayStation, Xbox and Nintendo Switch button names, including bumpers, triggers, stick clicks, directions and face buttons.
-- Resolve raw inputs through each device's SDL mapping, including shared or inverted trigger axes, hats and Joy-Con orientation-specific labels.
-- Add a per-action **Controller button labels** selector for virtual-controller setups such as Steam Input. Labels do not change existing bindings or thresholds.
-- Wrap labels and recording controls on narrow pages or with larger system text to avoid horizontal scrolling.
-- Retain newly recorded labels after disconnecting or restarting. Older bindings are identified when the matching controller is connected. Inputs without an SDL mapping retain their raw numbers.
+- Fix tray exit incorrectly reporting that the backend has not stopped when Windows retains a handle to an already terminated process. The tool can exit and reconnect after reopening.
+- Use identifiable Task Manager process names and descriptions: `BilingualSora2nd.UI.exe`, `BilingualSora2nd.Backend.exe`, and `BilingualSora2nd.Worker.exe`.
+- Preserve settings, language caches and normal effect restoration on exit. The game is not closed.
 
-Verified the connected DualSense mapping, automated regressions and Chinese, English and Japanese layouts. Xbox and Switch mapping semantics have automated coverage; physical-device acceptance remains outstanding. Settings and caches are preserved.
+This is an urgent exit fix. First-install HUD corruption without a game restart, gameplay stuttering and settings-page changes remain under investigation and are not claimed as fixed in this release.
 
 ## 日本語
 
-- PlayStation・Xbox・Nintendo Switch に合わせて、ショルダーボタン、トリガー、スティック押し込み、方向、フェイスボタンの名前を表示します。
-- SDL のデバイス別対応表を使用し、共有軸・反転軸のトリガー、方向キー、Joy-Con の横持ち・縦持ちに対応します。
-- Steam Input などの仮想コントローラー向けに、操作ごとの「コントローラーのボタン名」を追加。表示のみを変更し、既存の割り当てやしきい値は保持します。
-- 狭い画面や大きなシステム文字ではラベルと登録ボタンを折り返し、横スクロールを防ぎます。
-- 新しい登録は切断・再起動後もボタン名を保持します。既存の割り当ては該当するコントローラーの接続時に判別します。SDL 対応表のない入力は元の番号で表示します。
+- 終了済みプロセスのハンドルを Windows が保持している場合に、バックエンドが終了していないと誤判定する問題を修正。トレイから終了し、再起動後に再接続できます。
+- タスクマネージャーで識別しやすいプロセス名と説明を使用します：`BilingualSora2nd.UI.exe`、`BilingualSora2nd.Backend.exe`、`BilingualSora2nd.Worker.exe`。
+- 設定と言語キャッシュ、終了時の表示復元を維持します。ゲームは終了しません。
 
-接続中の DualSense の対応表、自動回帰テスト、中英日の画面レイアウトを確認しました。Xbox・Switch の対応は自動検証済みですが、各実機での確認は未実施です。設定とキャッシュは保持します。
+本版は終了問題の緊急修正版です。ゲーム起動中の初回導入時に発生する HUD 表示異常、プレイ中の処理停止、設定画面の変更は引き続き調査中で、本版の修正対象には含みません。

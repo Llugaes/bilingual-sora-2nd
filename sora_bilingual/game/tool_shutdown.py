@@ -50,14 +50,15 @@ def shutdown(state, connector=None, timeout=20):
         connector.close()
     deadline = time.monotonic() + timeout
     while True:
+        child = getattr(connector, "process", None)
+        child_exited = child is None or child.poll() is not None
         try:
             lock = BackendLock(state / "native-backend.lock")
         except RuntimeError:
             lock = None
         if lock is not None:
             lock.close()
-            child = getattr(connector, "process", None)
-            if not backend_alive(state) and (child is None or child.poll() is not None):
+            if not backend_alive(state) and child_exited:
                 return
         if time.monotonic() >= deadline:
             raise RuntimeError("后端尚未安全退出；若当前游戏连接来自旧版本，请退出游戏后重试。")

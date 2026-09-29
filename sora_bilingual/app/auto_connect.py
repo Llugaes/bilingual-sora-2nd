@@ -8,6 +8,7 @@ import threading
 import time
 import frida
 
+from sora_bilingual.platform.runtime_process import runtime_executable
 from sora_bilingual.paths import ROOT
 
 
@@ -364,7 +365,7 @@ class AutoConnector:
                 elif selected is not None:
                     self.error = None
                     self.message = "已发现游戏，正在自动连接…"
-                    executable = Path(sys.executable).with_name("pythonw.exe")
+                    executable = runtime_executable("backend")
                     self.process = subprocess.Popen(
                         [str(executable), "-m", "sora_bilingual.game.native_probe"],
                         cwd=ROOT,

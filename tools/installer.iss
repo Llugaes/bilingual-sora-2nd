@@ -87,6 +87,9 @@ begin
   if LoadStringFromFile(ExpandConstant('{app}\runtime\current.txt'), Runtime) then begin
     Result := Result or InUse(ExpandConstant('{app}\runtime\') + Trim(String(Runtime)) + '\pythonw.exe', $40000000, 7);
     Result := Result or InUse(ExpandConstant('{app}\runtime\') + Trim(String(Runtime)) + '\python.exe', $40000000, 7);
+    Result := Result or InUse(ExpandConstant('{app}\runtime\') + Trim(String(Runtime)) + '\BilingualSora2nd.UI.exe', $40000000, 7);
+    Result := Result or InUse(ExpandConstant('{app}\runtime\') + Trim(String(Runtime)) + '\BilingualSora2nd.Backend.exe', $40000000, 7);
+    Result := Result or InUse(ExpandConstant('{app}\runtime\') + Trim(String(Runtime)) + '\BilingualSora2nd.Worker.exe', $40000000, 7);
   end;
 end;
 

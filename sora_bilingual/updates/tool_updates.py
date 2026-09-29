@@ -13,6 +13,7 @@ GROUPS = {
     "ui": (
         "sora_bilingual/game/tool_shutdown.py",
         "sora_bilingual/platform/worker_process.py",
+        "sora_bilingual/platform/runtime_process.py",
         "sora_bilingual/preparation_worker.py",
         "sora_bilingual/__init__.py",
         "sora_bilingual/__main__.py",
@@ -67,6 +68,7 @@ GROUPS = {
     ),
     "catalog": (
         "sora_bilingual/platform/worker_process.py",
+        "sora_bilingual/platform/runtime_process.py",
         "sora_bilingual/preparation_worker.py",
         "sora_bilingual/localization/__init__.py",
         "sora_bilingual/config/__init__.py",
@@ -92,6 +94,7 @@ GROUPS = {
         "sora_bilingual/game/scripts/native_control.js",
         "sora_bilingual/game/tool_shutdown.py",
         "sora_bilingual/platform/worker_process.py",
+        "sora_bilingual/platform/runtime_process.py",
         "sora_bilingual/preparation_worker.py",
         "sora_bilingual/game/hooks.py",
         "sora_bilingual/game/__init__.py",
