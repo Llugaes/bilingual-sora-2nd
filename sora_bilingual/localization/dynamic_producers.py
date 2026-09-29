@@ -10,6 +10,8 @@ record, and the corresponding raw table row.
 from __future__ import annotations
 
 from collections import Counter, defaultdict
+import hashlib
+import json
 from pathlib import Path
 import struct
 from typing import Any, Iterable
@@ -20,6 +22,7 @@ from sora_bilingual.localization.resources import (
     FpacArchive,
     FormatError,
     Script,
+    PANEL_FLAGS,
     _logical_script_entries,
     parse_scp,
 )
@@ -42,6 +45,120 @@ _ITEM_RENDER = "<C0><I%d></C><C5>{name}</C>"
 _ITEM_SINGLE_CALLEES = frozenset(("ITEM_ADD_MESSAGE_EV", "ITEM_ADD_MESSAGE_TK"))
 _ITEM_SPLIT_CALLEES = frozenset(("ITEM_ADD_MESSAGE2_EV", "ITEM_ADD_MESSAGE2_TK"))
 _ITEM_CALLEES = _ITEM_SINGLE_CALLEES | _ITEM_SPLIT_CALLEES
+
+
+def _popup_lines(call):
+    """Preserve complete literal lines around typed item insertions.
+
+    A color literal split across arguments is still one line. An item opcode
+    consumes its operand and invalidates only its own line, never the preceding
+    complete line. Unknown opcodes reject the contract rather than guessing an
+    operand width. The normalized shape keeps every non-text argument.
+    """
+    if (
+        call.kind != 3
+        or call.args[:2] != (("int", 5), ("int", 8))
+        or len(call.args) < 4
+        or call.args[2][0] != "int"
+    ):
+        return None
+    shape, lines, text, dynamic, has_item = list(call.args[:3]), [], [], False, False
+    i = 3
+    while i < len(call.args):
+        kind, value = call.args[i]
+        if kind == "string":
+            if not shape or shape[-1] != ("string", None):
+                shape.append(("string", None))
+            text.append(str(value))
+        elif kind == "int" and value == 10:
+            shape.append((kind, value))
+            lines.append(None if dynamic else "".join(text))
+            text, dynamic = [], False
+        elif kind == "int" and value in PANEL_FLAGS:
+            shape.append((kind, value))
+        elif kind == "int" and value in (11, 12, 17):
+            if i + 1 >= len(call.args) or call.args[i + 1][0] != "int":
+                return None
+            shape.extend(call.args[i : i + 2])
+            i += 1
+            if value == 17:
+                dynamic = True
+                has_item = True
+        else:
+            return None
+        i += 1
+    lines.append(None if dynamic else "".join(text))
+    return (tuple(shape), tuple(lines)) if has_item else None
+
+
+def _popup_line_entries(scripts, audit):
+    buckets = defaultdict(dict)
+    origins = defaultdict(dict)
+    for language, paths in scripts.items():
+        for path, script in paths.items():
+            for function, body in script.functions.items():
+                decoded = [_popup_lines(call) for call in body.called]
+                if not any(decoded):
+                    continue
+                shape = tuple(
+                    (call.target, call.kind, value[0]) if value else call.shape()
+                    for call, value in zip(body.called, decoded)
+                )
+                signature = hashlib.sha256(repr(shape).encode()).hexdigest()
+                call_shapes = [
+                    (call.target, call.kind, value[0]) if value else None
+                    for call, value in zip(body.called, decoded)
+                ]
+                counts = Counter(s for s in call_shapes if s is not None)
+                for called, value in enumerate(decoded):
+                    if value is None:
+                        continue
+                    audit["counters"]["popup_item_calls"] += 1
+                    # A unique item/control stream identifies this popup even
+                    # if unrelated calls differ between localized functions.
+                    # Repeated streams still require the full function shape
+                    # and physical call index; never align by translated text.
+                    call_shape = call_shapes[called]
+                    identity = (
+                        "unique/" + hashlib.sha256(repr(call_shape).encode()).hexdigest()
+                        if counts[call_shape] == 1
+                        else f"called/{called}/{signature}"
+                    )
+                    # A visual newline is not a translation boundary. Keep
+                    # consecutive static lines together: localized sentences
+                    # may distribute their words differently across those lines.
+                    start, block = 0, []
+                    for line, text in enumerate((*value[1], None)):
+                        if text is not None:
+                            if not block:
+                                start = line
+                            block.append(text)
+                            continue
+                        if block and any(t.strip() for t in block):
+                            key = (path, function, identity, start)
+                            buckets[key][language] = "\n".join(block)
+                            origins[key][language] = called
+                        block = []
+                        if line < len(value[1]):
+                            audit["counters"]["popup_dynamic_lines"] += 1
+    result = []
+    for key, texts in sorted(buckets.items()):
+        path, function, identity, line = key
+        audit["counters"]["popup_literal_lines"] += 1
+        result.append(
+            {
+                "key": f"popup/{path}/{function}/{identity}/line/{line}",
+                "texts": texts,
+                "display_role": "popup_line",
+                "popup_origin": {
+                    "path": path,
+                    "function": function,
+                    "calls_by_language": origins[key],
+                    "line": line,
+                },
+            }
+        )
+    return result
 
 
 def _audit(reason: str, **detail: object) -> dict[str, object]:
@@ -534,6 +651,7 @@ def build_dynamic_entries(
     )
     result += _recipe_entries(scripts, items, audit)
     result += _item_entries(scripts, items, audit)
+    result += _popup_line_entries(scripts, audit)
     result = _audit_source_conflicts(result, audit)
     audit["counters"] = dict(sorted(audit["counters"].items()))
     return result, audit

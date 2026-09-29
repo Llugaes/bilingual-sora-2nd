@@ -493,6 +493,7 @@ def _reported_visible_cases(catalogue, source, primary, secondary):
                 "primary": primary_text,
                 "secondary": secondary_text,
                 "verification": "screenshot_visible_text; not a captured_complete_control_input",
+                "allow_target_ascii_width": name == "hp_absorb",
             }
         )
     return cases, gaps
@@ -594,7 +595,10 @@ def _typed_bare_actual_cases(grammar, contexts, source, primary, secondary):
     """
     entries_by_ids = defaultdict(list)
     for entry in grammar["detail_entries"]:
-        ids = tuple(entry.get("item_help_contract", {}).get("record_ids", ()))
+        contract = entry.get("item_help_contract", {})
+        if contract.get("resource_kind") not in (None, "SkillEffectHelpData"):
+            continue
+        ids = tuple(contract.get("record_ids", ()))
         if ids:
             entries_by_ids[ids].append(entry)
     cases, gaps = [], []
@@ -605,7 +609,12 @@ def _typed_bare_actual_cases(grammar, contexts, source, primary, secondary):
             contract = entry["item_help_contract"]
             token_count = len(_tokens(entry["texts"][source]))
             native_values = tuple(slot[1] for slot in slots)
-            if token_count == 0:
+            if token_count == 1 and contract.get("turn_argument") == "slot2":
+                if len({slot[2] for slot in slots}) != 1:
+                    raise AssertionError("turn constructor has no shared duration")
+                values = (slots[0][2],)
+                projection = "verified_turn_argument_slot2"
+            elif token_count == 0:
                 values = ()
                 projection = "literal"
             elif token_count == len(native_values):
@@ -737,7 +746,10 @@ def _effect_texts(metadata, catalogue, record_ids, source):
 def _uncovered_source_groups(grammar, contexts, connect_groups, metadata, catalogue, source):
     known = defaultdict(list)
     for entry in grammar["detail_entries"]:
-        ids = tuple(entry.get("item_help_contract", {}).get("record_ids", ()))
+        contract = entry.get("item_help_contract", {})
+        if contract.get("resource_kind") not in (None, "SkillEffectHelpData"):
+            continue
+        ids = tuple(contract.get("record_ids", ()))
         if ids:
             known[ids].append(entry["key"])
     connection_kinds = defaultdict(set)
@@ -820,6 +832,12 @@ def _run_runtime(model, cases):
         raise AssertionError("runtime response row count changed")
     rows = []
     for case, result in zip(cases, output, strict=True):
+
+        def compare(value):
+            if case.get("allow_target_ascii_width"):
+                return value.translate({i: i - 0xFEE0 for i in range(0xFF01, 0xFF5F)})
+            return value
+
         row = {
             **case,
             "actual_primary": result["primary"],
@@ -834,9 +852,9 @@ def _run_runtime(model, cases):
                 and case["required_secondary"] in result["secondary"]
             )
         else:
-            row["pass"] = (
-                result["primary"] == case["primary"] and result["secondary"] == case["secondary"]
-            )
+            row["pass"] = compare(result["primary"]) == compare(case["primary"]) and compare(
+                result["secondary"]
+            ) == compare(case["secondary"])
         expected_secondary = (
             case["required_secondary"] if "required_secondary" in case else case["secondary"]
         )
@@ -844,7 +862,7 @@ def _run_runtime(model, cases):
         row["annotation_payload"] = annotation_payload
         row["annotation_needed"] = result["annotation_needed"]
         row["annotation_pass"] = (
-            _visible(expected_secondary) in _visible(annotation_payload)
+            compare(_visible(expected_secondary)) in compare(_visible(annotation_payload))
             if result["annotation_needed"]
             else (
                 result["annotation"]["kind"] == "plain"

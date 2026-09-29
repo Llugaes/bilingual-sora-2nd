@@ -426,6 +426,18 @@ def display_text(text):
     return re.sub(r"^(?:<#[^<>]*>)+", "", text)
 
 
+_ASCII_WIDTH_FOLD = {i: i - 0xFEE0 for i in range(0xFF01, 0xFF5F)}
+
+
+def _fold_ascii_width(text):
+    """Compare ASCII/fullwidth glyphs without rewriting the chosen resource.
+
+    Do not use NFKC: it also folds kana, ligatures and numeral symbols. This
+    comparison only resolves competing translations differing in ASCII width.
+    """
+    return text.translate(_ASCII_WIDTH_FOLD)
+
+
 def _without_line_padding(text):
     """Compare full display records without their line-edge alignment spaces.
 
@@ -878,13 +890,13 @@ class MenuTranslator:
         for entry in entries:
             texts = entry["texts"]
             pair = complete_pair(texts, primary, secondary)
-            display_record = entry.get("display_role") in ("dialogue", "speaker")
+            display_record = entry.get("display_role") in ("dialogue", "speaker", "popup_line")
             fragment = "/code/" in entry.get("key", "") and "/alignment/" in entry.get("key", "")
             prefix = "table/t_text.tbl/"
             if pair and source_language in texts and entry.get("key", "").startswith(prefix):
                 self.keyed.append((entry["key"][len(prefix) :], texts[source_language], pair))
             sources = {texts[source_language]} if source_language in texts else set()
-            if entry.get("item_help_scope") == "status":
+            if entry.get("source_variants"):
                 # Resource-proven presentation variants share the identified
                 # stat's target pair. Do not create competing target spellings
                 # when another locale has an unchanged source label.
@@ -982,6 +994,14 @@ class MenuTranslator:
         for source, pairs in detail_authority.items():
             if len(pairs) == 1:
                 candidates[source] = pairs
+                self.ambiguous_display.discard(source)
+        for source, pairs in candidates.items():
+            if len(pairs) < 2 or None in pairs:
+                continue
+            if len({tuple(_fold_ascii_width(t) for t in pair) for pair in pairs}) == 1:
+                # Select an existing complete pair; never manufacture a target
+                # or collapse genuinely different words into one translation.
+                candidates[source] = {min(pairs)}
                 self.ambiguous_display.discard(source)
         self.pairs = {
             s: next(iter(p))

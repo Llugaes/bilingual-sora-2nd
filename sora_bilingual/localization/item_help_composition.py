@@ -347,6 +347,7 @@ def _add_unique(target, texts, family, ids, languages, **contract):
     if identity in target:
         return
     detail_inline_icon = bool(contract.pop("detail_inline_icon", False))
+    source_variants = contract.pop("source_variants", None)
     identity_contract = {"family": family, "record_ids": list(ids), **contract}
     digest = hashlib.sha256(
         json.dumps(identity_contract, sort_keys=True, separators=(",", ":")).encode()
@@ -365,6 +366,7 @@ def _add_unique(target, texts, family, ids, languages, **contract):
         "detail_only": True,
         "item_help_contract": identity_contract,
         **({"detail_inline_icon": True} if detail_inline_icon else {}),
+        **({"source_variants": source_variants} if source_variants else {}),
     }
 
 
@@ -514,8 +516,7 @@ def compile_item_help_grammar(
     proven_literal_clusters = [
         cluster
         for cluster in literal_clusters.values()
-        if len(cluster) >= 2
-        and any(sum(slot[0] in cluster for slot in group) >= 2 for group in groups)
+        if any(any(slot[0] in cluster for slot in group) for group in groups)
     ]
     timed_labels = {
         value["id"]: identity
@@ -700,7 +701,9 @@ def compile_item_help_grammar(
             )
             unique.setdefault(stat_identity, (record_id, identity))
         records = list(unique.values())
-        for length in range(2, min(max_group_slots, len(records)) + 1):
+        # The native connection formatter also handles one member. Its display
+        # is stat + format, which need not equal the record's name (HP absorb).
+        for length in range(1, min(max_group_slots, len(records)) + 1):
             for selected in permutations(records, length):
                 ids = tuple(row[0] for row in selected)
                 _add_unique(
@@ -802,6 +805,96 @@ def compile_item_help_grammar(
                 inline_icons=[icon],
                 detail_inline_icon=True,
             )
+
+    # Connection kind 2 joins each record's format (the stat name), then uses
+    # the first record's stat template. Native 0x34bd71..0x34c20e passes turns,
+    # joined names and the arrow in locale-dependent order. Bind string slots
+    # now so the runtime only substitutes the numeric duration.
+    for connection in connect_groups or ():
+        if connection["kind"] != 2:
+            continue
+        members = set(connection["ids"])
+        sequences = {
+            tuple(slot[0] for slot in group if slot[0] in members) for group in raw_groups
+        } - {()}
+        for ids in sorted(sequences):
+            rows = [fields[by_id[i][0]] for i in ids]
+            if any(by_id[i][1]["parameter_types"] != (9,) for i in ids):
+                raise ItemHelpContractError("critical connection parameter changed")
+            for level in range(1, 4):
+                for arrow in ("↑" * level, f"<I{269 + level}>"):
+                    values = {}
+                    for language in languages:
+                        template = rows[0]["stat"][language]
+                        if template.count("%d") != 1 or template.count("%s") != 2:
+                            raise ItemHelpContractError("critical connection template changed")
+                        joined = _constant(catalogue, "LINK", languages)[language].join(
+                            row["format"][language] for row in rows
+                        )
+                        values[language] = (
+                            template.replace("%s", joined, 1).replace("%s", arrow, 1).rstrip()
+                        )
+                    icon = arrow.startswith("<I")
+                    _add_unique(
+                        generated,
+                        {l: f"<c698>{v}</C>" for l, v in values.items()} if icon else values,
+                        "critical_turn_group",
+                        ids,
+                        languages,
+                        turn_argument="slot2",
+                        strength_level=level,
+                        detail_inline_icon=icon,
+                        **({"inline_icons": [arrow]} if icon else {}),
+                    )
+
+    # Status-panel/detail values use name + value, whereas the format field
+    # omits the percentage suffix. Compile every numeric status row, not a
+    # list of four labels from a screenshot.
+    for identity, row in metadata["SkillItemStatusData"].items():
+        names = _field(
+            catalogue, "SkillItemStatusData", identity, "name", languages, required=False
+        )
+        values = _field(
+            catalogue, "SkillItemStatusData", identity, "value", languages, required=False
+        )
+        if names and values and all(_one_field(values[l], "d") for l in languages):
+            _add_unique(
+                generated,
+                {l: names[l] + values[l] for l in languages},
+                "status_value",
+                [row["id"]],
+                languages,
+                resource_kind="SkillItemStatusData",
+                # Percentage glyph width does not change the status or its
+                # value. Keep the official target glyph and admit the narrow
+                # spelling only for this numeric percentage constructor.
+                source_variants={
+                    l: [(names[l] + values[l]).replace("％", "%%")]
+                    for l in languages
+                    if "％" in values[l]
+                },
+            )
+
+    # The engine's explicit effect-97 branch appends its format to the shared
+    # cure-debuff label with LINK (0x34e638..0x34e693). Keep the resource ID and
+    # locale-owned strings; no translated-word exception belongs in the resolver.
+    immune = by_id.get(97)
+    cancel = catalogue.get("table/t_text.tbl/TXT_ITEM_HELP_DEBUFF_CANCEL")
+    if (
+        immune
+        and cancel
+        and all(l in cancel for l in languages)
+        and any({96, 97}.issubset({s[0] for s in group}) for group in raw_groups)
+    ):
+        formats = fields[immune[0]]["format"]
+        link = _constant(catalogue, "LINK", languages)
+        _add_unique(
+            generated,
+            {l: cancel[l] + link[l] + formats[l] for l in languages},
+            "debuff_cancel_immunity",
+            [96, 97],
+            languages,
+        )
 
     status_entries = _status_fragments(
         catalogue, metadata["SkillItemStatusData"], languages, help_titles
