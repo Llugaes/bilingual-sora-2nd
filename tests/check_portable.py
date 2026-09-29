@@ -102,6 +102,10 @@ pygame.display.init()
 pygame.joystick.init()
 pygame.event.pump()
 pygame.joystick.get_count()
+from sora_bilingual.platform.gamepad_labels import _sdl, make_profile, binding_labels
+assert _sdl() is not None, 'Packaged SDL controller metadata API is unavailable'
+profile = make_profile(7, {'lefttrigger': 'a4', 'rightshoulder': 'b10'})
+assert binding_labels({'profile': profile, 'buttons': [10], 'axes': [{'index': 4, 'direction': 1}]}) == ['R1', 'L2']
 pygame.quit()
 print(ROOT)
 print(sys.version)

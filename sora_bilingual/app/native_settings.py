@@ -39,6 +39,7 @@ from PySide6.QtWidgets import (
 )
 
 from sora_bilingual.platform.inputs import vk_for_key, InputManager
+from sora_bilingual.platform.gamepad_labels import binding_labels
 from sora_bilingual.app.i18n import UI_LANGUAGES, set_language, tr
 from sora_bilingual.app.presentation import connection_activity, STATUS_COLORS, CONNECTION_PHASES
 from sora_bilingual.app.ui_widgets import (
@@ -272,7 +273,8 @@ class NativeSettingsWindow(QWidget):
         set_language(read_control(self.control_path)["ui_language"])
         self._updating = False
         self._recording_keyboard = False
-        self._controller = InputManager()
+        self._controller = InputManager(describe_devices=True)
+        self._label_devices = []
         self._capture_action = None
         self._keyboard_action = None
         self._loaded = {}
@@ -507,6 +509,15 @@ class NativeSettingsWindow(QWidget):
             self.binding_action.addItem(title, action)
         binding_form = QFormLayout()
         binding_form.addRow("操作", self.binding_action)
+        self.controller_style = QComboBox()
+        for title, style in (
+            ("自动识别", "auto"),
+            ("PlayStation", "playstation"),
+            ("Xbox", "xbox"),
+            ("Nintendo Switch", "switch"),
+        ):
+            self.controller_style.addItem(title, style)
+        binding_form.addRow("手柄按键名称", self.controller_style)
         binding_layout.addLayout(binding_form)
         self.hotkey_label = QLabel()
         self.binding_label = QLabel()
@@ -521,6 +532,12 @@ class NativeSettingsWindow(QWidget):
             row.addWidget(label, 1)
             row.addWidget(button)
             binding_layout.addLayout(row)
+        style_help = QLabel(
+            "自动按手柄显示键名；Steam Input 转接后可手动选择。仅改变名称，不改变绑定。"
+        )
+        style_help.setObjectName("helpText")
+        style_help.setWordWrap(True)
+        binding_layout.addWidget(style_help)
         self.capture_help = QLabel()
         self.capture_help.setObjectName("helpText")
         self.capture_help.setWordWrap(True)
@@ -572,6 +589,7 @@ class NativeSettingsWindow(QWidget):
         self.record_keyboard.clicked.connect(self._begin_keyboard_capture)
         self.record_controller.clicked.connect(self._request_controller_capture)
         self.binding_action.currentIndexChanged.connect(self.reload_control)
+        self.controller_style.currentIndexChanged.connect(self._save_controller_style)
         self.reload_control()
         self._status_timer = QTimer(self)
         self._status_timer.timeout.connect(self.refresh_status)
@@ -620,6 +638,28 @@ class NativeSettingsWindow(QWidget):
     def _clear_controller(self):
         self._save_binding(self.binding_action.currentData(), {"gamepad": {}})
 
+    def _save_controller_style(self):
+        if self._updating or self.capturing:
+            return
+        action = self.binding_action.currentData()
+        pad = deepcopy(self._binding(read_control(self.control_path), action).get("gamepad", {}))
+        if not (pad.get("buttons") or pad.get("axes")):
+            return
+        pad["label_style"] = self.controller_style.currentData()
+        try:
+            self._save_binding(action, {"gamepad": pad})
+        except (ValueError, OSError) as exc:
+            self._binding_error("未保存：" + str(exc))
+
+    def _present_controller_binding(self, control):
+        pad = self._binding(control, self.binding_action.currentData()).get("gamepad", {})
+        self.binding_label.setText(
+            "手柄：" + (" + ".join(binding_labels(pad, self._label_devices)) or "未绑定")
+        )
+        self.controller_style.setEnabled(
+            not self.capturing and bool(pad.get("buttons") or pad.get("axes"))
+        )
+
     def _cancel_capture(self):
         self._recording_keyboard = False
         self._capture_action = None
@@ -634,6 +674,7 @@ class NativeSettingsWindow(QWidget):
         self.record_keyboard.setEnabled(not self.capturing)
         self.record_controller.setEnabled(not self.capturing)
         self.clear_controller.setEnabled(not self.capturing)
+        self._present_controller_binding(read_control(self.control_path))
 
     def _reset_layout(self):
         update_control(
@@ -821,6 +862,9 @@ class NativeSettingsWindow(QWidget):
         self.clear_controller.setVisible(
             bool(self._binding(control, self.binding_action.currentData()).get("gamepad"))
         )
+        pad = self._binding(control, self.binding_action.currentData()).get("gamepad", {})
+        self._set_combo(self.controller_style, pad.get("label_style", "auto"))
+        self._present_controller_binding(control)
         self._updating = False
         self._loaded = control
 
@@ -968,6 +1012,11 @@ class NativeSettingsWindow(QWidget):
             return
         binding = self._controller.poll_capture()
         if binding:
+            previous = self._binding(read_control(self.control_path), self._capture_action).get(
+                "gamepad", {}
+            )
+            if "label_style" in previous:
+                binding["gamepad"]["label_style"] = previous["label_style"]
             try:
                 self._save_binding(self._capture_action, binding)
             except (ValueError, OSError) as exc:
@@ -1000,14 +1049,11 @@ class NativeSettingsWindow(QWidget):
             self.backend_label.setText("配置读取失败：" + str(exc))
             return
         self._present_font_preparation()
-        action = self.binding_action.currentData()
-        pad = self._binding(control, action).get("gamepad", {})
-        buttons = ["按钮 " + str(b + 1) for b in pad.get("buttons", [])]
-        axes = [
-            "轴 " + str(a["index"] + 1) + (" 正向" if a["direction"] > 0 else " 反向")
-            for a in pad.get("axes", [])
-        ]
-        self.binding_label.setText("手柄：" + (" + ".join(buttons + axes) or "未绑定"))
+        if self.isVisible() and self.tabs.currentIndex() == 2:
+            self._label_devices = self._controller.devices()
+            names = [device.name for device in self._label_devices]
+            self.device_label.setText("设备：" + ("；".join(names) or "未检测到手柄，可使用键盘"))
+        self._present_controller_binding(control)
         try:
             status = _read_json_object(self.status_path)
         except (OSError, ValueError, json.JSONDecodeError) as exc:
@@ -1018,10 +1064,7 @@ class NativeSettingsWindow(QWidget):
             return
         source_fresh = status.get("running") and 0 <= time.time() - status.get("updated_at", 0) < 5
         self._present_source_language(status if source_fresh else {})
-        if self.isVisible() and self.tabs.currentIndex() == 2:
-            devices = [device.name for device in self._controller.devices()]
-            self.device_label.setText("设备：" + ("；".join(devices) or "未检测到手柄，可使用键盘"))
-        else:
+        if not (self.isVisible() and self.tabs.currentIndex() == 2):
             devices = status.get("devices", [])
             if devices:
                 self.device_label.setText("设备：" + "；".join(map(str, devices)))

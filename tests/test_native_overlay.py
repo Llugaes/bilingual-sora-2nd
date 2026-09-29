@@ -206,6 +206,81 @@ class OverlayUiTests(unittest.TestCase):
         self.app.processEvents()
         self.temp.cleanup()
 
+    def test_controller_styles_preserve_raw_binding_and_are_per_action(self):
+        from sora_bilingual.platform.gamepad_labels import make_profile
+
+        pad = {
+            "guid": "controller",
+            "buttons": [9],
+            "axes": [{"index": 5, "direction": 1, "threshold": 0.25}],
+            "profile": make_profile(7, {"leftshoulder": "b9", "righttrigger": "a5"}),
+        }
+        update_control({"switch_binding": {"gamepad": pad}}, self.control)
+        self.window.reload_control()
+        self.assertEqual(self.window.binding_label.text(), tr("手柄：L1 + R2"))
+        self.assertTrue(self.window.controller_style.isEnabled())
+        self.window.controller_style.setCurrentIndex(self.window.controller_style.findData("xbox"))
+        saved = read_config(self.control)["switch_binding"]["gamepad"]
+        self.assertEqual(saved, {**pad, "label_style": "xbox"})
+        self.assertEqual(self.window.binding_label.text(), tr("手柄：LB + RT"))
+        before = self.control.read_bytes()
+        self.window.binding_action.setCurrentIndex(self.window.binding_action.findData("overlay"))
+        self.assertEqual(self.window.controller_style.currentData(), "auto")
+        self.assertFalse(self.window.controller_style.isEnabled())
+        self.assertEqual(self.control.read_bytes(), before)
+        self.window.binding_action.setCurrentIndex(self.window.binding_action.findData("switch"))
+        self.assertEqual(self.window.controller_style.currentData(), "xbox")
+        self.assertEqual(self.control.read_bytes(), before)
+        self.window._clear_controller()
+        self.assertFalse(self.window.controller_style.isEnabled())
+
+    def test_controller_capture_saves_profile_and_preserves_style(self):
+        from sora_bilingual.platform.gamepad_labels import make_profile
+
+        update_control(
+            {"switch_binding": {"gamepad": {"buttons": [1], "label_style": "switch"}}}, self.control
+        )
+        self.window.reload_control()
+        self.window._capture_action = "switch"
+        self.window._update_capture_controls()
+        self.assertFalse(self.window.controller_style.isEnabled())
+        captured = {
+            "gamepad": {"guid": "pad", "buttons": [2], "profile": make_profile(2, {"a": "b2"})}
+        }
+        with patch.object(self.window._controller, "poll_capture", return_value=captured):
+            self.window._poll_controller()
+        self.assertEqual(
+            read_config(self.control)["switch_binding"]["gamepad"],
+            {**captured["gamepad"], "label_style": "switch"},
+        )
+        self.assertEqual(self.window.binding_label.text(), tr("手柄：B"))
+        self.assertTrue(self.window.controller_style.isEnabled())
+
+    def test_legacy_controller_label_resolves_before_game_status_is_available(self):
+        from sora_bilingual.platform.gamepad_labels import make_profile
+        from sora_bilingual.platform.inputs import GamepadState
+
+        update_control(
+            {"switch_binding": {"gamepad": {"guid": "pad", "buttons": [8]}}}, self.control
+        )
+        self.window.reload_control()
+        device = GamepadState(
+            "1", "pad", "DualSense", frozenset(), profile=make_profile(7, {"rightstick": "b8"})
+        )
+        self.window.tabs.setCurrentIndex(2)
+        # An invalid status file must not block offline device discovery.
+        self.status.write_text("{", encoding="utf-8")
+        with (
+            patch.object(self.window, "isVisible", return_value=True),
+            patch.object(self.window._controller, "devices", return_value=[device]) as read_devices,
+        ):
+            before = self.control.read_bytes()
+            self.window.refresh_status()
+            read_devices.assert_called_once()
+        self.assertEqual(self.window.binding_label.text(), tr("手柄：R3"))
+        self.assertEqual(self.window.device_label.text(), tr("设备：DualSense"))
+        self.assertEqual(self.control.read_bytes(), before)
+
     def test_layout_update_preserves_external_language_and_backend_state(self):
         update_control({"primary": "en"}, self.control)
         self.window.ruby_offset_x.setValue(7)

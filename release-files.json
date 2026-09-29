@@ -76,6 +76,7 @@
   "sora_bilingual/paths.py",
   "sora_bilingual/platform/__init__.py",
   "sora_bilingual/platform/inputs.py",
+  "sora_bilingual/platform/gamepad_labels.py",
   "sora_bilingual/game/install.py",
   "sora_bilingual/platform/win32.py",
   "sora_bilingual/updates/__init__.py",

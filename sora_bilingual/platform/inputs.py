@@ -16,6 +16,8 @@ import sys
 import time
 from typing import Any, Callable, Iterable
 
+from sora_bilingual.platform.gamepad_labels import read_profile
+
 # SDL normally ignores controller changes while a different application owns
 # focus. This only requests ordinary background joystick events; it neither
 # installs a hook nor changes Steam Input/OS device configuration.
@@ -73,6 +75,7 @@ class GamepadState:
     name: str
     buttons: frozenset[int]
     axes: tuple[float, ...] = ()
+    profile: dict | None = None
 
 
 @dataclass(frozen=True)
@@ -114,10 +117,13 @@ class InputManager:
         *,
         key_state: Callable[[int], bool] | None = None,
         joystick_provider: Callable[[], Iterable[GamepadState | dict[str, Any]]] | None = None,
+        describe_devices: bool = False,
     ) -> None:
         self.config = config or {}
         self._key_state = key_state or _windows_key_down
         self._joystick_provider = joystick_provider
+        self._describe_devices = describe_devices
+        self._profiles: dict[str, dict | None] = {}
         # SDL indices are unstable after hot-unplug. Cache only by the SDL
         # instance id and rebuild the index->device view on every poll.
         self._joysticks: dict[str, Any] = {}
@@ -182,12 +188,17 @@ class InputManager:
             for index in range(pygame.joystick.get_count()):
                 stick = pygame.joystick.Joystick(index)
                 stick.init()
-                current[str(stick.get_instance_id())] = stick
+                instance_id = str(stick.get_instance_id())
+                current[instance_id] = stick
+                if self._describe_devices and instance_id not in self._profiles:
+                    self._profiles[instance_id] = read_profile(index)
             # Replacing rather than index-muting makes A-unplug/B-reindex work
             # and drops stale disconnected devices immediately.
             self._joysticks = current
+            self._profiles = {key: value for key, value in self._profiles.items() if key in current}
         except pygame.error:
             self._joysticks.clear()
+            self._profiles.clear()
 
     def devices(self) -> list[GamepadState]:
         if self._joystick_provider is not None:
@@ -210,6 +221,7 @@ class InputManager:
                         name=str(stick.get_name()),
                         buttons=frozenset(buttons),
                         axes=tuple(stick.get_axis(i) for i in range(stick.get_numaxes())),
+                        profile=self._profiles.get(str(stick.get_instance_id())),
                     )
                 )
             except pygame.error:
@@ -226,6 +238,7 @@ class InputManager:
             name=str(item.get("name", "Unknown controller")),
             buttons=frozenset(int(button) for button in item.get("buttons", [])),
             axes=tuple(float(value) for value in item.get("axes", [])),
+            profile=item.get("profile"),
         )
 
     def device_status(self) -> list[str]:
@@ -373,5 +386,7 @@ class InputManager:
                 }
                 if self._capture_axes:
                     binding["axes"] = list(self._capture_axes.values())
+                if self._capture_device.profile:
+                    binding["profile"] = self._capture_device.profile
                 return {"gamepad": binding}
         return None

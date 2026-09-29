@@ -13,6 +13,33 @@ _language = "zh-Hans"
 
 # Chinese source messages are stable UI keys. Do not put game text in this catalog.
 _ROWS = """
+自动识别|Automatic|自動判別
+手柄按键名称|Controller button labels|コントローラーのボタン名
+自动按手柄显示键名；Steam Input 转接后可手动选择。仅改变名称，不改变绑定。|Button names follow your controller. With Steam Input, you can select a style manually. This changes labels only.|手元のコントローラーに合わせて表示します。Steam Input 経由の場合は手動で選択できます。割り当ては変わりません。
+无效手柄按键样式|Invalid controller label style|コントローラーの表示形式が無効です
+左摇杆按下|Left stick click|左スティック押し込み
+右摇杆按下|Right stick click|右スティック押し込み
+左摇杆|Left stick|左スティック
+右摇杆|Right stick|右スティック
+（按下）| (click)|（押し込み）
+十字键|D-pad|方向キー
+触摸板按下|Touchpad click|タッチパッド押し込み
+麦克风键|Mic button|マイクボタン
+截图键|Capture|キャプチャーボタン
+背键|Paddle|背面ボタン
+左侧|Left|左側
+右侧|Right|右側
+下方面键|Bottom face button|下側のボタン
+右侧面键|Right face button|右側のボタン
+左侧面键|Left face button|左側のボタン
+上方面键|Top face button|上側のボタン
+左肩键|Left bumper|左ショルダーボタン
+右肩键|Right bumper|右ショルダーボタン
+左扳机|Left trigger|左トリガー
+右扳机|Right trigger|右トリガー
+返回键|Back|戻るボタン
+菜单键|Menu|メニューボタン
+主菜单键|Home|ホームボタン
 正在识别游戏语言|Detecting game language|ゲーム言語を確認中
 等待游戏文字资源就绪，尚未启用双语。|Waiting for game text resources; bilingual display is not enabled yet.|ゲームのテキストを待っています。二言語表示はまだ有効ではありません。
 等待游戏文字资源|Waiting for game text|ゲームのテキストを待機中

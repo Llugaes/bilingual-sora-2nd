@@ -15,6 +15,7 @@ from sora_bilingual.config.locales import (
 )
 
 from sora_bilingual.paths import ROOT
+from sora_bilingual.platform.gamepad_labels import LABEL_STYLES
 
 CONTROL = ROOT / "generated" / "native-control.json"
 LANGUAGE_DEFAULTS_PENDING = "language_defaults_pending"
@@ -149,6 +150,8 @@ def normalize_config(value):
             raise ValueError("手柄配置必须是对象")
         buttons = pad.get("buttons", [])
         axes = pad.get("axes", [])
+        if pad.get("label_style", "auto") not in LABEL_STYLES:
+            raise ValueError("无效手柄按键样式")
         if not isinstance(buttons, list) or any(type(b) is not int or b < 0 for b in buttons):
             raise ValueError("无效手柄按钮列表")
         if not isinstance(axes, list) or any(not isinstance(a, dict) for a in axes):

@@ -80,6 +80,8 @@ Click **Settings** on the status bar to open or close the panel. Drag the bar's 
 
 Record one keyboard or SDL controller combination under **Shortcuts**. The same binding follows the selected mode. Existing custom bindings are retained. By default, bindings respond while the game is in the foreground.
 
+Bindings use device-specific names: L1/R1, L2/R2 and L3/R3 for PlayStation; LB/RB, LT/RT and LS/RS (click) for Xbox; L/R, ZL/ZR and stick clicks for Nintendo Switch. Face buttons, the D-pad and stick directions also follow the device mapping. If Steam Input exposes your controller as Xbox, select a style under **Controller button labels**; this changes names only. Newly recorded bindings retain their names when disconnected; reconnect the matching controller to identify older bindings. Inputs without an SDL mapping retain their raw numbers.
+
 - **Bilingual mode**: shows both languages using the game's native annotation layout. The shortcut turns the secondary language on/off.
 - **Single-language mode**: choose **press to switch** or **hold to show secondary**. Holding does not repeatedly toggle; releasing a hold or losing focus restores primary text.
 
