@@ -59,6 +59,7 @@ def run(game=None, duration=0):
     heartbeat = None
     detected_game_language = None
     source_language_status = "game_not_running"
+    run_error = None
     try:
         if exit_signal.is_set():
             return
@@ -136,6 +137,7 @@ def run(game=None, duration=0):
         # change. The resident model alone always uses the verified source.
         config = {**config, "game_language": detected_game_language}
         model_started = time.monotonic()
+        heartbeat.loading("preparing")
         model = prepare_fresh(game, config, cache_only="summary", cancel=exit_signal)
         if exit_signal.is_set():
             return
@@ -189,6 +191,7 @@ def run(game=None, duration=0):
                 out.flush()
 
             native = NativeLabels(log)
+            heartbeat.loading("connecting")
             log({"type": "run_start", "pid": pid, "exact_sources": model.get("pair_count", 0)})
             native.attach(
                 pid,
@@ -475,6 +478,9 @@ def run(game=None, duration=0):
                     time.sleep(0.25)
     except CancelledError:
         pass
+    except Exception as exc:
+        run_error = str(exc)
+        raise
     finally:
         cleanup_error = None
         if preparation is not None:
@@ -493,7 +499,7 @@ def run(game=None, duration=0):
         ):
             try:
                 parked = native.park()
-            except OSError, ValueError, frida.RPCException:
+            except OSError, ValueError, frida.RPCException, frida.InvalidOperationError:
                 # Closing the authenticated owner also disables the agent.
                 # park() always closes that owner, even when its ACK is lost.
                 parked = True
@@ -529,6 +535,7 @@ def run(game=None, duration=0):
         write_telemetry(
             {
                 "running": False,
+                "error": run_error,
                 "updated_at": time.time(),
                 "detected_game_language": None,
                 "source_language_status": (

@@ -389,11 +389,29 @@ class OverlayUiTests(unittest.TestCase):
         self.window.connection_button.click()
         self.assertEqual(connector.calls, 1)
         self.assertFalse(self.window.connection_button.isEnabled())
-        self.window._update_connection_action({"phase": "connecting"}, False)
+        self.window._update_connection_action({"phase": "connecting"}, True)
         self.assertFalse(self.window.connection_button.isHidden())
         self.assertFalse(self.window.connection_button.isEnabled())
         self.window._update_connection_action({"running": True, "updated_at": time.time()}, True)
         self.assertTrue(self.window.connection_button.isHidden())
+
+    def test_old_connecting_phase_cannot_disable_reconnect_or_claim_work(self):
+        stale = {"phase": "connecting", "running": True, "updated_at": 1}
+        self.window._update_connection_action(stale, False)
+        self.window._present_connection_state(stale, False)
+        self.assertTrue(self.window.connection_button.isEnabled())
+        self.assertNotEqual(self.window.connection_state.text(), tr("正在连接游戏"))
+
+    def test_connected_backend_process_is_not_a_pending_connection(self):
+        from unittest.mock import Mock
+
+        connector = Mock(process=Mock(poll=Mock(return_value=None)), error=None, game_running=True)
+        self.window._auto_connector = connector
+        ready = {"running": True, "phase": "ready", "updated_at": time.time()}
+        self.window._update_connection_action(ready, True)
+        self.window._present_connection_state(ready, True)
+        self.assertTrue(self.window.connection_button.isHidden())
+        self.assertEqual(self.window.connection_state.text(), tr("已连接"))
 
     def test_fractional_spacing_survives_reload_and_an_unrelated_setting_change(self):
         update_control({"ruby_gap": 2.35, "line_gap": 7.65}, self.control)

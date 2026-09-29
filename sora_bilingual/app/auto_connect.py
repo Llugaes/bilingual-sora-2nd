@@ -104,6 +104,7 @@ class AutoConnector:
             lambda c: c,
         )
         self.preparations = [preparation, font_preparation, font_apply]
+        self.game_running = None
         preparing_key = None
         preparation_error = None
         installed_game = None
@@ -132,6 +133,7 @@ class AutoConnector:
                             games.add((p.pid, process_identity(p.pid)))
                         except OSError:
                             pass
+                self.game_running = bool(games)
                 try:
                     status = json.loads(self.status_path.read_text("utf-8"))
                 except OSError, ValueError:

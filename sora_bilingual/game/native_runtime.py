@@ -263,16 +263,14 @@ class NativeLabels:
                 self.session.detach()
                 self.session = None
                 raise
-            try:
-                self.script.load()
-            finally:
-                # Even partial initialization must not tie hook lifetime to the
-                # backend. A failed endpoint remains reserved until game exit.
-                self.script.eternalize()
-                self.eternalized = True
+            self.script.load()
             if startup_errors:
                 raise RuntimeError(startup_errors[0])
             self.control = publish(self.script, pid, exe, revision=revision, eternalize=False)
+            # Eternalize invalidates this Python Script's RPC handle. Establish
+            # the replacement control channel before handing ownership over.
+            self.script.eternalize()
+            self.eternalized = True
             # Subsequent calls use the same channel across tool lifetimes.
             self.script = SimpleNamespace(exports_sync=self.control)
             if model is not None or cache_path is not None:
@@ -280,12 +278,18 @@ class NativeLabels:
             else:
                 self.script.exports_sync.configure(dictionary or {}, False, 1)
         except Exception:
-            # The caller keeps this session alive, disabled, until process exit.
-            # Even startup failure must not hot-unload installed trampolines.
             try:
                 self.disable()
             except Exception:
                 pass
+            if self.session is not None and not self.eternalized:
+                try:
+                    self.script.eternalize()
+                    self.eternalized = True
+                except Exception:
+                    pass  # Keep the session alive if ownership could not move.
+            if self.control is not None and self.eternalized:
+                self.script = SimpleNamespace(exports_sync=self.control)
             raise
 
     def configure(self, dictionary, enabled, annotation_scale=0.9):
@@ -405,10 +409,13 @@ class NativeLabels:
 
     def park(self):
         """Stop effects before releasing every external tool connection."""
+        if self.session is not None and not self.eternalized:
+            return False
         if self.control is None and not self.eternalized:
             return self.exited.is_set()
         try:
-            self.disable()
+            if self.control is not None:
+                self.control.disable()
         finally:
             try:
                 if self.control is not None:

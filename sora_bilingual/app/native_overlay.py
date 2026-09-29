@@ -21,6 +21,8 @@ from PySide6.QtWidgets import (
     QSystemTrayIcon,
     QMenu,
     QMessageBox,
+    QFrame,
+    QProgressBar,
 )
 
 from sora_bilingual.platform.inputs import InputManager
@@ -33,7 +35,7 @@ from sora_bilingual.app.native_settings import (
     ROOT,
 )
 from sora_bilingual.platform.win32 import foreground_rect
-from sora_bilingual.app.presentation import describe_state, with_font_status
+from sora_bilingual.app.presentation import describe_state, with_font_status, STATUS_COLORS
 from sora_bilingual.app.i18n import set_language, tr
 from sora_bilingual.app.ui_widgets import NATIVE_THEME, QLabel, QPushButton, retranslate
 
@@ -144,6 +146,7 @@ class StatusBar(QWidget):
         row.addWidget(self.marker)
         self.status = QLabel()
         self.status.setObjectName("status")
+        self.status.setWordWrap(True)
         row.addWidget(self.status, 1)
         self.open_button = QPushButton("设置")
         self.open_button.setAccessibleName("打开或关闭设置")
@@ -175,8 +178,15 @@ class StatusBar(QWidget):
         self.marker.setStyleSheet("color:" + state["color"])
         self.marker.setAccessibleName(marker_name)
         self.marker.setToolTip(marker_hint)
-        self.status.setText(state.get("short_pair", state["pair"]))
+        activity = state.get("activity", {})
+        self.status.setText(
+            activity["title"]
+            if activity and activity["tone"] != "ready"
+            else state.get("short_pair", state["pair"])
+        )
         self.status.setAccessibleName(tr("语言组合：") + tr(state["pair"]))
+        if activity and activity["tone"] != "ready":
+            self.status.setAccessibleName(tr(activity["title"]))
         self.status.setToolTip(tr(detail) + " · " + tr("快捷键：") + hint)
         self.open_button.setToolTip(tr("打开或关闭设置。") + tr("快捷键：") + hint)
 
@@ -207,27 +217,71 @@ class OverlayPanel(QWidget):
         self.hide_button.clicked.connect(self.collapse)
         header.addWidget(self.hide_button)
         outer.addLayout(header)
+        self.phase_card = QFrame()
+        self.phase_card.setObjectName("phaseCard")
+        phase_layout = QVBoxLayout(self.phase_card)
+        phase_layout.setContentsMargins(14, 10, 12, 10)
+        phase_layout.setSpacing(6)
+        self.phase_title = QLabel()
+        self.phase_title.setWordWrap(True)
+        phase_layout.addWidget(self.phase_title)
         self.detail = QLabel()
         self.detail.setWordWrap(True)
         self.detail.setObjectName("detail")
-        outer.addWidget(self.detail)
+        phase_layout.addWidget(self.detail)
+        self.phase_progress = QProgressBar()
+        self.phase_progress.setTextVisible(False)
+        self.phase_progress.setFixedHeight(4)
+        self.phase_progress.setAccessibleName("当前阶段正在进行")
+        phase_layout.addWidget(self.phase_progress)
+        outer.addWidget(self.phase_card)
         self.settings = NativeSettingsWindow(control, status)
         self.settings.status_footer.hide()
         outer.addWidget(self.settings, 1)
         self.setMinimumWidth(620)
-        self.resize(620, 580)
+        self.resize(620, 650)
         self.settings.layout().setContentsMargins(0, 0, 0, 0)
         footer = QLabel("修改自动保存  ·  Esc 收起设置")
         footer.setObjectName("detail")
         outer.addWidget(footer)
 
     def present(self, state):
-        detail = state["detail"]
+        activity = state.get("activity")
+        title = activity["title"] if activity else state["title"]
+        tone = activity["tone"] if activity else "ready" if state["connected"] else "waiting"
+        working = bool(activity and activity["working"])
+        detail = activity["detail"] if activity else state["detail"]
+        if tone == "ready":
+            title = "已连接" + " · " + state["title"]
+            detail = state["detail"]
+        if tone == "waiting" and state.get("font_state") in (
+            "preparing",
+            "prepared",
+            "restart-required",
+            "error",
+            "conflict",
+        ):
+            font_state = state["font_state"]
+            title = "正在准备字体" if font_state == "preparing" else "字体需要处理"
+            tone = "error" if font_state in ("error", "conflict") else "preparing"
+            working = font_state == "preparing"
+            detail = ""
         if state.get("font_notice"):
-            detail += "\n" + state["font_notice"]
+            detail += ("\n" if detail else "") + state["font_notice"]
             if state.get("font_detail"):
                 detail += "\n" + state["font_detail"]
+        marker = "!" if tone == "error" else "…" if working else "●"
+        self.phase_title.setText(marker + "  " + title)
         self.detail.setText(detail)
+        self.phase_progress.setRange(0, 0 if working else 1)
+        self.phase_progress.setValue(0)
+        if self.phase_card.property("tone") != tone:
+            foreground, background = STATUS_COLORS[tone]
+            self.phase_card.setProperty("tone", tone)
+            self.phase_card.setStyleSheet(
+                f"QFrame#phaseCard {{background:{background};border:1px solid {foreground};border-left:6px solid {foreground};border-radius:8px;}} QLabel {{color:{foreground};}} QProgressBar {{border:0;background:transparent;}} QProgressBar::chunk {{background:{foreground};}}"
+            )
+            self.phase_title.setStyleSheet(f"color:{foreground};font-size:18px;font-weight:700;")
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_Escape and not self.settings.capturing:
@@ -537,6 +591,19 @@ class OverlayController(QObject):
             state["detail"] = auto.message
         if auto:
             state = with_font_status(state, getattr(auto, "font_status", {}))
+        activity = self.panel.settings.connection_activity(
+            backend,
+            bool(backend.get("running") and 0 <= time.time() - backend.get("updated_at", 0) < 5),
+        )
+        state["activity"] = activity
+        if activity["tone"] in ("waiting", "error"):
+            state["connected"] = False
+        if activity["tone"] != "ready":
+            state.update(
+                color=STATUS_COLORS[activity["tone"]][0],
+                marker="▲" if activity["tone"] == "error" else "○",
+                title=activity["title"],
+            )
         self._last_state = state
         now = time.time()
         source = (

@@ -9,6 +9,62 @@ from sora_bilingual.game.native_loading import ConnectionHeartbeat, ModelPrepara
 
 
 class LoadingTests(unittest.TestCase):
+    def test_failed_attach_and_destroyed_cleanup_always_clear_connecting_heartbeat(self):
+        from unittest.mock import Mock
+        from sora_bilingual.game import native_probe as probe
+        from sora_bilingual.config.native_config import read_config, write_config
+
+        native = Mock(session=None, eternalized=True)
+        native.exited = threading.Event()
+        native.attach.side_effect = probe.frida.InvalidOperationError("script has been destroyed")
+        native.park.side_effect = probe.frida.InvalidOperationError("script has been destroyed")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "generated").mkdir()
+            control = root / "control.json"
+            write_config({}, control)
+            lock = Mock()
+            telemetry = []
+            with (
+                patch.multiple(
+                    probe,
+                    ROOT=root,
+                    CONTROL=control,
+                    InputManager=lambda *a, **k: SimpleNamespace(),
+                    BackendLock=lambda: lock,
+                    NativeLabels=lambda _: native,
+                    native_report=lambda _: {},
+                    detect_current_language=lambda *a, **k: SimpleNamespace(
+                        language="zh-Hans", reason="matched"
+                    ),
+                    prepare_fresh=lambda *a, **k: {"path": "fixture.json"},
+                    read_config=lambda: read_config(control),
+                    write_config=lambda v, p=None: write_config(v, p or control),
+                    write_telemetry=lambda value, path: telemetry.append((value, path)),
+                    process_path=lambda _: root / "sora_2nd.exe",
+                ),
+                patch.object(
+                    probe.frida,
+                    "get_local_device",
+                    return_value=SimpleNamespace(
+                        enumerate_processes=lambda: [SimpleNamespace(pid=42, name="sora_2nd.exe")]
+                    ),
+                ),
+                patch.object(probe.signal, "signal"),
+                patch("sora_bilingual.game.install.remember_game"),
+            ):
+                with self.assertRaisesRegex(probe.frida.InvalidOperationError, "destroyed"):
+                    probe.run(root)
+            for filename in ("native-live.json", "native-status.json"):
+                final = [v for v, p in telemetry if p.name == filename][-1]
+                self.assertFalse(final["running"])
+                self.assertNotIn("phase", final)
+            self.assertIn(
+                "destroyed",
+                [v for v, p in telemetry if p.name == "native-status.json"][-1]["error"],
+            )
+            lock.close.assert_called_once()
+
     def test_cache_summary_does_not_read_prepared_model(self):
         def worker(command, **_):
             result = Path(command[command.index("--result") + 1])

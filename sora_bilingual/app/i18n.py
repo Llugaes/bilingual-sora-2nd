@@ -13,6 +13,26 @@ _language = "zh-Hans"
 
 # Chinese source messages are stable UI keys. Do not put game text in this catalog.
 _ROWS = """
+正在识别游戏语言|Detecting game language|ゲーム言語を確認中
+等待游戏文字资源就绪，尚未启用双语。|Waiting for game text resources; bilingual display is not enabled yet.|ゲームのテキストを待っています。二言語表示はまだ有効ではありません。
+等待游戏文字资源|Waiting for game text|ゲームのテキストを待機中
+游戏仍在初始化，资源就绪后会自动继续。|The game is initializing. Connection will continue automatically when ready.|ゲームの初期化中です。準備ができると自動的に続行します。
+正在构建语言映射|Preparing language mapping|言語マッピングを準備中
+首次准备可能需要数分钟；已有有效缓存会自动复用。|First-time preparation may take a few minutes. Valid caches are reused automatically.|初回は数分かかる場合があります。有効なキャッシュは自動で再利用します。
+正在关联游戏进程|Connecting to the game|ゲームに接続中
+正在建立双语连接并加载映射，完成后自动生效。|Connecting and loading the mapping. Bilingual display will start automatically.|接続とマッピングの読み込み中です。完了すると二言語表示が始まります。
+正在应用语言映射|Applying language mapping|言語マッピングを適用中
+映射已准备好，正在交给游戏中的文本模块。|The mapping is ready and is being applied to the game's text module.|準備済みのマッピングをゲームのテキストに適用しています。
+连接失败|Connection failed|接続に失敗しました
+连接失败，请重新连接。|Connection failed. Please reconnect.|接続に失敗しました。再接続してください。
+双语连接已就绪，设置实时生效。|Connected. Settings take effect immediately.|接続済みです。設定はすぐに反映されます。
+正在启动连接|Starting connection|接続を開始中
+正在等待连接进程报告状态。|Waiting for the connection process to report its status.|接続プロセスからの応答を待っています。
+等待游戏启动；也可以点击连接游戏重试。|Waiting for the game. You can also click Connect to retry.|ゲームの起動を待っています。「接続」から再試行もできます。
+当前阶段正在进行|Current stage in progress|現在の処理を実行中
+正在准备字体|Preparing fonts|フォントを準備中
+字体需要处理|Font setup needs attention|フォントの確認が必要です
+正在准备多语言字体，完成后即可启动游戏。|Preparing multilingual fonts. You can start the game when ready.|多言語フォントを準備しています。完了後にゲームを起動できます。
 跟随系统|Follow system|システムに従う
 语言|Language|言語
 文字排版|Text layout|文字レイアウト

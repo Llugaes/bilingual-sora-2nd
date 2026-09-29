@@ -40,6 +40,7 @@ from PySide6.QtWidgets import (
 
 from sora_bilingual.platform.inputs import vk_for_key, InputManager
 from sora_bilingual.app.i18n import UI_LANGUAGES, set_language, tr
+from sora_bilingual.app.presentation import connection_activity, STATUS_COLORS
 from sora_bilingual.app.ui_widgets import (
     QLabel,
     QPushButton,
@@ -729,16 +730,12 @@ class NativeSettingsWindow(QWidget):
 
     def _update_connection_action(self, status: dict[str, Any], fresh: bool) -> None:
         connector = self._auto_connector
-        phase = str(status.get("phase") or "")
-        process = getattr(connector, "process", None)
-        connecting = phase in ("connecting", "preparing", "applying") or (
-            process is not None and process.poll() is None
-        )
-        if fresh and not connecting:
+        activity = self.connection_activity(status, fresh)
+        if activity["connected"]:
             self.connection_button.hide()
             return
         self.connection_button.show()
-        if connecting:
+        if activity["working"]:
             self.connection_button.setText("正在连接…")
             self.connection_button.setEnabled(False)
         else:
@@ -746,6 +743,17 @@ class NativeSettingsWindow(QWidget):
                 "重新连接" if connector and connector.error else "连接游戏"
             )
             self.connection_button.setEnabled(True)
+
+    def connection_activity(self, status, fresh):
+        connector = self._auto_connector
+        process = getattr(connector, "process", None)
+        return connection_activity(
+            status,
+            fresh,
+            process_running=process is not None and process.poll() is None,
+            error=self._connection_error or getattr(connector, "error", None),
+            game_running=getattr(connector, "game_running", None),
+        )
 
     def enable_auto_connect(self):
         from sora_bilingual.app.auto_connect import AutoConnector
@@ -757,6 +765,22 @@ class NativeSettingsWindow(QWidget):
         self.font_card.setVisible(self._auto_connector is not None)
         fonts = getattr(self._auto_connector, "font_status", {}) or {}
         state = fonts.get("state", "idle")
+        tone = (
+            "error"
+            if state in ("error", "conflict")
+            else "ready"
+            if state in ("healthy", "installed")
+            else "preparing"
+        )
+        if self.font_card.property("tone") != tone:
+            self.font_card.setProperty("tone", tone)
+            foreground, background = STATUS_COLORS[tone]
+            self.font_card.setStyleSheet(
+                f"QWidget#statusFooter {{background:{background};border:1px solid {foreground};border-left:4px solid {foreground};border-radius:7px;}}"
+            )
+            self.font_preparation_status.setStyleSheet(
+                f"color:{foreground};font-size:14px;font-weight:700;"
+            )
         self.font_preparation_status.setText(
             "字体已就绪，可以启动游戏"
             if state in ("healthy", "installed")
@@ -878,27 +902,13 @@ class NativeSettingsWindow(QWidget):
 
     def _present_connection_state(self, status: dict[str, Any], fresh: bool) -> None:
         """Keep the connection truth beside the read-only source detection."""
-        connector = self._auto_connector
-        process = getattr(connector, "process", None)
-        phase = str(status.get("phase") or "")
-        connecting = phase in ("connecting", "preparing", "applying") or (
-            process is not None and process.poll() is None
+        activity = self.connection_activity(status, fresh)
+        self.connection_state.setText(activity["title"])
+        self.connection_state.setToolTip(tr(activity["detail"]))
+        foreground, background = STATUS_COLORS[activity["tone"]]
+        self.connection_state.setStyleSheet(
+            f"color:{foreground};background:{background};border:1px solid {foreground};border-radius:7px;padding:4px 8px;font-weight:700;"
         )
-        failed = bool(status.get("failed") or status.get("error") or self._connection_error)
-        if connecting:
-            text = "正在连接游戏"
-            tooltip = "正在连接已有游戏进程，请稍候。"
-        elif fresh:
-            text = "已连接"
-            tooltip = "已连接到游戏，设置会实时同步。"
-        elif failed:
-            text = "连接异常"
-            tooltip = "连接未完成；可使用下方按钮重新连接。"
-        else:
-            text = "未连接游戏"
-            tooltip = "等待已有游戏进程；可离线调整设置。"
-        self.connection_state.setText(text)
-        self.connection_state.setToolTip(tr(tooltip))
 
     def _begin_keyboard_capture(self) -> None:
         self._cancel_capture()
@@ -1006,7 +1016,8 @@ class NativeSettingsWindow(QWidget):
             self._update_connection_action({}, False)
             self.backend_label.setText("后端状态：状态文件读取失败：" + str(exc))
             return
-        self._present_source_language(status)
+        source_fresh = status.get("running") and 0 <= time.time() - status.get("updated_at", 0) < 5
+        self._present_source_language(status if source_fresh else {})
         if self.isVisible() and self.tabs.currentIndex() == 2:
             devices = [device.name for device in self._controller.devices()]
             self.device_label.setText("设备：" + ("；".join(devices) or "未检测到手柄，可使用键盘"))

@@ -11,6 +11,8 @@ class NativeDictionaryTests(unittest.TestCase):
 
         native = NativeLabels(lambda _: None)
         native.control = Mock()
+        native.eternalized = True
+        native.control.disable.side_effect = OSError("lost ACK")
         native.session = Mock()
         client, session = native.control, native.session
         native.script = SimpleNamespace(

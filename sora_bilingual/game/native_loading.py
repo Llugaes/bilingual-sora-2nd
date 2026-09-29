@@ -167,7 +167,7 @@ class ConnectionHeartbeat:
             {"running": True, "pid": pid, "enabled": False},
             {"running": True, "pid": pid},
         ]
-        self.phase = "connecting"
+        self.phase = "detecting"
         self.reload_error = None
         self.thread = threading.Thread(target=self._run, name="connection-heartbeat", daemon=True)
         self.thread.start()

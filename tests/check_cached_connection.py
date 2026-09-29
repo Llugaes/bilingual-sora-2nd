@@ -66,6 +66,7 @@ rpc.exports={load(model){
             native = NativeLabels(lambda _: None)
             native.session = session
             native.control = publish(script, pid, sys.executable, output / "benchmark-agent.json")
+            native.eternalized = True
             native.script = SimpleNamespace(exports_sync=native.control)
             native.load(model, config, "annotation", cache_path=cache)
             end = time.perf_counter()

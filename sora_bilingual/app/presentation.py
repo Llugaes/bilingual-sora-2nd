@@ -20,6 +20,65 @@ LANG_CODES = {
     "es": "ES",
 }
 
+STATUS_COLORS = {
+    "waiting": ("#4f6270", "#edf1f4"),
+    "preparing": ("#805200", "#fff2cf"),
+    "connecting": ("#195ca0", "#e5f0fc"),
+    "ready": ("#086b68", "#def3ea"),
+    "error": ("#a32b22", "#ffebe7"),
+}
+CONNECTION_PHASES = {
+    "detecting": ("正在识别游戏语言", "等待游戏文字资源就绪，尚未启用双语。", "connecting"),
+    "waiting_source_language": (
+        "等待游戏文字资源",
+        "游戏仍在初始化，资源就绪后会自动继续。",
+        "connecting",
+    ),
+    "preparing": (
+        "正在构建语言映射",
+        "首次准备可能需要数分钟；已有有效缓存会自动复用。",
+        "preparing",
+    ),
+    "connecting": (
+        "正在关联游戏进程",
+        "正在建立双语连接并加载映射，完成后自动生效。",
+        "connecting",
+    ),
+    "applying": ("正在应用语言映射", "映射已准备好，正在交给游戏中的文本模块。", "connecting"),
+}
+
+
+def connection_activity(status, fresh, *, process_running=False, error=None, game_running=None):
+    """One phase contract for buttons, badges and prominent progress notices."""
+    if game_running is False:
+        fresh, process_running = False, False
+    failure = (
+        (status.get("error") or status.get("failed")) if fresh else error or status.get("error")
+    )
+    phase = status.get("phase") if fresh else None
+    if failure:
+        title, detail, tone = "连接失败", str(failure), "error"
+        working = False
+    elif phase in CONNECTION_PHASES:
+        title, detail, tone = CONNECTION_PHASES[phase]
+        working = True
+    elif fresh:
+        title, detail, tone = "已连接", "双语连接已就绪，设置实时生效。", "ready"
+        working = False
+    elif process_running:
+        title, detail, tone = "正在启动连接", "正在等待连接进程报告状态。", "connecting"
+        working = True
+    else:
+        title, detail, tone = "未连接游戏", "等待游戏启动；也可以点击连接游戏重试。", "waiting"
+        working = False
+    return dict(
+        title=title,
+        detail=detail,
+        tone=tone,
+        working=working,
+        connected=fresh and not failure and not working,
+    )
+
 
 def _short_pair(primary, secondary):
     return f"{LANG_CODES.get(primary, primary)} → {LANG_CODES.get(secondary, secondary)}"
@@ -35,12 +94,19 @@ def with_font_status(state, fonts):
         "error": "字体准备或安装失败，请查看详情",
     }
     notice = notices.get(fonts.get("state"))
+    if fonts.get("state") == "preparing" and not state.get("connected"):
+        notice = "正在准备多语言字体，完成后即可启动游戏。"
     if not notice:
         return state
     detail = fonts.get("detail")
     if isinstance(detail, list):
         detail = "\n".join(str(item) for item in detail)
-    return {**state, "font_notice": notice, "font_detail": str(detail or "")}
+    return {
+        **state,
+        "font_notice": notice,
+        "font_detail": str(detail or ""),
+        "font_state": fonts.get("state"),
+    }
 
 
 def describe_state(config, live, backend, now=None):
