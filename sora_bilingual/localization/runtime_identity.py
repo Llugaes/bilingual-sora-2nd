@@ -841,7 +841,8 @@ def compile_table_identities(game, entries, primary, secondary, language, *, res
                     continue
                 physical_keys = defaultdict(list)
                 for key, entry in needed.items():
-                    if not key.startswith(prefix + "/") or "table_rows" not in entry:
+                    owner = key.split("/group:", 1)[0].split("/topic:", 1)[0]
+                    if owner != prefix or "table_rows" not in entry:
                         continue
                     rows = entry["table_rows"].get(language, [])
                     # A paragraph spanning several native controls cannot be

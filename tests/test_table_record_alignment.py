@@ -21,6 +21,21 @@ def table(kind, size, rows):
     return bytes(data)
 
 
+def help_sections(language):
+    # Two sections sharing a visible label, but owning different translations.
+    start = 168
+    data = bytearray(start + 24 + 56)
+    struct.pack_into("<4sI", data, 0, b"#TBL", 2)
+    for i, (kind, at, size) in enumerate(
+        (("HelpTitle", start, 24), ("HelpIconList", start + 24, 56))
+    ):
+        struct.pack_into("<64sIIII", data, 8 + i * 80, kind.encode(), 0, at, size, 1)
+        value = "重复名称" if language == "zh-Hans" else ("Other" if i == 0 else "Right")
+        struct.pack_into("<Q", data, at + 8, len(data))
+        data.extend(value.encode() + b"\0")
+    return bytes(data)
+
+
 class TableRecordAlignmentTests(unittest.TestCase):
     def game(self, root, files):
         folder = root / "pac/steam"
@@ -166,6 +181,18 @@ class TableRecordAlignmentTests(unittest.TestCase):
             entries, audit = build_table_entries(root)
             self.assertEqual(entries, [])
             self.assertTrue(audit["diagnostics"])
+
+    def test_physical_provenance_cannot_leak_into_another_section(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            self.game(
+                root, {l: {"table/t_help.tbl": help_sections(l)} for l in ("zh-Hans", "en", "ja")}
+            )
+            entries, _ = build_table_entries(root)
+            models = compile_table_identities(root, entries, "en", "ja", "zh-Hans")
+            candidates = [r for r in models["sources"]["重复名称"] if "/topic:" in r["key"]]
+            self.assertEqual(len(candidates), 1)
+            self.assertEqual(candidates[0]["record_at"], 192)
 
     def test_raw_audit_checks_physical_row_even_when_another_row_has_same_text(self):
         from unittest.mock import patch
