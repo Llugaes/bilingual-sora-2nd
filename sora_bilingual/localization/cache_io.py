@@ -48,11 +48,15 @@ def read_model(path):
         ):
             return None
         for key in ("pairs", "plain_pairs"):
+            # Raw translations must be complete, but their normalized forms
+            # may be empty after stripping formatting (e.g. colour controls).
+            # The compiler emits both dictionaries; rejecting a valid normalized
+            # value invalidated the entire disk model on every later launch.
             if any(
                 not isinstance(s, str)
                 or not isinstance(pair, list)
                 or len(pair) != 2
-                or any(not isinstance(t, str) or not t.strip() for t in pair)
+                or any(not isinstance(t, str) or (key == "pairs" and not t.strip()) for t in pair)
                 for s, pair in value[key].items()
             ):
                 return None
