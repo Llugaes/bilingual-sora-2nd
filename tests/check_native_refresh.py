@@ -23,7 +23,7 @@ def update_callback_source() -> str:
     restore_start = AGENT_SOURCE.index("function restoreTextProjection(")
     restore_end = AGENT_SOURCE.index("\nfunction newLogContributions(", restore_start)
     start = AGENT_SOURCE.index(
-        "Interceptor.attach(base.add(REPORT.native.update.rva), {onEnter(args) {"
+        "labelHooks.attach(base.add(REPORT.native.update.rva), {onEnter(args) {"
     )
     return (
         AGENT_SOURCE[restore_start:restore_end]
@@ -32,9 +32,14 @@ def update_callback_source() -> str:
     )
 
 
-def script_source() -> str:
+def script_source(timed=False) -> str:
     update_callbacks = update_callback_source()
-    return r"""
+    timing = (
+        (ROOT / "sora_bilingual/game/scripts/native_timing.js").read_text("utf-8") if timed else ""
+    )
+    return (
+        timing
+        + r"""
 const native=new CModule(`
 int measure(char *label) {
     int contribution=0;
@@ -97,9 +102,10 @@ const attach=Interceptor.attach.bind(Interceptor);
 attach(native.setter,{onEnter(){setterEnters++;},onLeave(){setterLeaves++;}});
 attach(native.measure,{onEnter(args){measureEnters++;args[0].add(0x6b0).writeU8(7);},onLeave(){measureLeaves++;}});
 attach(native.draw,{onEnter(){drawEnters++;},onLeave(){drawLeaves++;}});
-(function(Interceptor){
+const labelTimingHooks=__TIMING_HOOKS__;
+(function(labelHooks){
 __UPDATE_CALLBACKS__
-})(Interceptor);
+})(labelTimingHooks);
 Interceptor.flush();
 function check(value,message){if(!value)throw new Error(message);}
 function counters(){return {setter:{enter:setterEnters,leave:setterLeaves},measure:{enter:measureEnters,leave:measureLeaves,body:label.add(0x6d4).readS32(),setterPass:label.add(0x6e4).readS32(),formalPass:label.add(0x6e8).readS32(),setterContribution:label.add(0x6ec).readS32(),formalContribution:label.add(0x6f0).readS32(),formalTotal:label.add(0x6f4).readS32(),setterTotal:label.add(0x6f8).readS32()},draw:{enter:drawEnters,leave:drawLeaves,body:label.add(0x6d8).readS32()},reset:label.add(0x6dc).readS32()};}
@@ -171,7 +177,13 @@ rpc.exports={run(){
     fixture_boundary:'CModule models a dirty-gated outer measure/draw and configurable ruby/newline/layered contribution; it is not a game renderer.',
     cold,cases,contract_failures:failures,all_passed:failures.length===0};
 }};
-""".replace("__UPDATE_CALLBACKS__", update_callbacks)
+""".replace("__UPDATE_CALLBACKS__", update_callbacks).replace(
+            "__TIMING_HOOKS__",
+            "createNativeLabelTiming({setter:native.setter,update:native.update})"
+            if timed
+            else "Interceptor",
+        )
+    )
 
 
 def main() -> None:

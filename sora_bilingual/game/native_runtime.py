@@ -185,6 +185,7 @@ class NativeLabels:
                 "sora_bilingual/game/scripts/native_geometry.js",
                 "sora_bilingual/game/scripts/native_parser.js",
                 "sora_bilingual/game/scripts/native_measure.js",
+                "sora_bilingual/game/scripts/native_timing.js",
                 "sora_bilingual/game/scripts/native_agent.js",
                 "sora_bilingual/game/scripts/native_transport.js",
                 "sora_bilingual/game/scripts/native_control.js",
@@ -216,6 +217,7 @@ class NativeLabels:
         # report during the short, hook-free startup probe.
         report = native_report(exe) if report is None else dict(report)
         report["diagnostics"] = bool((config or {}).get("diagnostics", False))
+        report["performance_diagnostics"] = (config or {}).get("performance_diagnostics") is True
         self.session = frida.attach(pid)
 
         def detached(reason, *args):

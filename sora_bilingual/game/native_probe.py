@@ -48,6 +48,40 @@ def model_identity(config):
     )
 
 
+class PerformanceJournal:
+    """Persist new bounded native samples outside the game process, without text."""
+
+    def __init__(self, directory, pid, created):
+        self.path = directory / "native-performance.jsonl"
+        self.session = {"pid": pid, "created": created}
+        self.sequence = 0
+
+    def append(self, state):
+        timing = state.get("nativeLabelTiming")
+        if not timing:
+            return
+        recent = [row for row in timing.get("recent", []) if row["sequence"] > self.sequence]
+        if not recent:
+            return
+        payload = {
+            **self.session,
+            "recorded_at": time.time(),
+            "mode": state.get("renderMode"),
+            "enabled": state.get("enabled"),
+            "dropped": timing.get("dropped", 0),
+            "missed": max(0, recent[0]["sequence"] - self.sequence - 1),
+            "events": recent,
+        }
+        try:
+            if self.path.exists() and self.path.stat().st_size >= 512 * 1024:
+                self.path.replace(self.path.with_suffix(".previous.jsonl"))
+            with self.path.open("a", encoding="utf-8") as stream:
+                stream.write(json.dumps(payload, separators=(",", ":")) + "\n")
+        except OSError:
+            return
+        self.sequence = recent[-1]["sequence"]
+
+
 def run(game=None, duration=0):
     connection_started = time.monotonic()
     lock = BackendLock()
@@ -73,6 +107,7 @@ def run(game=None, duration=0):
         pid = processes[0].pid
         exe = process_path(pid)
         created = process_identity(pid)
+        performance = PerformanceJournal(state_dir, pid, created)
         game = exe.parent if game is None else Path(game)
         if exe.resolve() != (game / "sora_2nd.exe").resolve():
             raise RuntimeError("运行中的游戏路径与配置不符")
@@ -451,6 +486,7 @@ def run(game=None, duration=0):
                         live_key = next_live
                     if now - last_status >= 1:
                         state = native.status()
+                        performance.append(state)
                         fonts = state.get("runtimeFonts")
                         if fonts and fonts.get("state") != last_font_state:
                             last_font_state = fonts.get("state")

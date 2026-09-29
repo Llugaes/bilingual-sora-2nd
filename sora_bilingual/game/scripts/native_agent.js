@@ -65,6 +65,10 @@ const geometryStyle=adjustStaticRuby?Memory.alloc(7*4):null;
 const nativeParser=typeof createNativeParser==='function'&&REPORT.native.parse_text
     ?createNativeParser(auxiliaryContexts,fail):null;
 let nativeMeasure=null;
+const nativeLabelTiming=REPORT.performance_diagnostics&&typeof createNativeLabelTiming==='function'?createNativeLabelTiming({
+    setter:base.add(REPORT.native.set_text.rva),update:base.add(REPORT.native.update.rva)
+}):null;
+const labelHooks=nativeLabelTiming||Interceptor;
 const textKeys = new Map();
 if (REPORT.text_table_global) {
     const manager=base.add(REPORT.text_table_global).readPointer();
@@ -1546,7 +1550,7 @@ if(REPORT.native.log_measure_row_end) Interceptor.attach(base.add(REPORT.native.
         }catch(_){logMeasureStats.fallbacks++;}
     }
 });
-Interceptor.attach(base.add(REPORT.native.set_text.rva), {onEnter(args) {
+labelHooks.attach(base.add(REPORT.native.set_text.rva), {onEnter(args) {
     this.row=null;this.lease=null;
     if (activeRewrite(args[0])) return;
     try {
@@ -1581,7 +1585,7 @@ Interceptor.attach(base.add(REPORT.native.set_text.rva), {onEnter(args) {
         this.row.displayed=this.wanted;this.row.epoch=this.renderEpoch;captureMetadata(this.row);
     }catch(e){fail(e);}finally{recordTiming('setter',this.started);leaveLabel(this.lease);}
 }});
-Interceptor.attach(base.add(REPORT.native.update.rva), {onEnter(args) {
+labelHooks.attach(base.add(REPORT.native.update.rva), {onEnter(args) {
     this.lease=null;
     this.pausedReveal=null;
     if (activeRewrite(args[0])) return;
@@ -1723,7 +1727,7 @@ rpc.exports = {
     status() {
         const parser=nativeParser?.status();
         const measured=parser?{...timings,parse:{count:parser.count,totalMs:parser.totalMs,maxMs:parser.maxMs,over8Ms:parser.over8Ms}}:timings;
-        return {enabled,failed,failureReason,runtimeFonts:runtimeFonts?.status(),timings:measured,nativeParser:parser,nativeMeasure:nativeMeasure?.status(),logMeasureStats,logOriginStats,logOriginSlots:logOrigins?.entries.size||0,logHeightCacheSize:logHeightCache.size,nativeSizeFallbacks:[...nativeSizeFallbacks.keys()],epoch,labels:labels.size,updates,writes,destroyed,threads:[...threads],
+        return {enabled,failed,failureReason,runtimeFonts:runtimeFonts?.status(),timings:measured,nativeLabelTiming:nativeLabelTiming?.status(),nativeParser:parser,nativeMeasure:nativeMeasure?.status(),logMeasureStats,logOriginStats,logOriginSlots:logOrigins?.entries.size||0,logHeightCacheSize:logHeightCache.size,nativeSizeFallbacks:[...nativeSizeFallbacks.keys()],epoch,labels:labels.size,updates,writes,destroyed,threads:[...threads],
         immediateWrites,identityHits,identityMisses,tableIdentityHits,renderMode,matched:[...labels.values()].filter(r=>r.matched).length,
         modified:[...labels.values()].filter(r=>r.displayed!==r.original).length};}
 };

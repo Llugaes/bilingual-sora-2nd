@@ -123,7 +123,7 @@ def clone_spec() -> dict:
 def production_hook_source() -> str:
     source = AGENT.read_text("utf-8")
     start = source.index("function logMeasureKey(")
-    end = source.index("Interceptor.attach(base.add(REPORT.native.set_text.rva)", start)
+    end = source.index("labelHooks.attach(base.add(REPORT.native.set_text.rva)", start)
     block = source[start:end]
     required = (
         "log_measure_row",
@@ -191,6 +191,9 @@ const cloneMeasure=new NativeFunction(arena,'void',['pointer'],'win64');
 let enabled=true,failed=false,epoch=1,logFontGeneration=0,logCacheBytes=0,layerVersion=0,translationEnabled=true,setTextCallbacks=0;
 let annotationScale=.85,rubyScale=.9,rubyLineGap=6;
 const labels=new Map(),logMeasureFrames=new Map(),logHeightCache=new Map(),logNameCache=new Map();
+// This fixture owns no font manager. The production hook still invalidates
+// the log caches, exactly as it does without a runtime-font owner.
+const runtimeFonts=null;
 const logMeasureStats={runs:0,totalMs:0,hits:0,misses:0,nameHits:0,fixedRows:0,fallbacks:0,lastFallback:null};
 const fixture={name:NULL,body:NULL,window:NULL};
 function isLabel(p){return p.readPointer().equals(base.add(REPORT.vtable));}

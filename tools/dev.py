@@ -54,6 +54,7 @@ def main():
             run(sys.executable, "-X", "utf8", "tests/check_native_log_commit.py")
             run(sys.executable, "-X", "utf8", "tests/check_native_dynamic_identity.py")
             run(sys.executable, "-X", "utf8", "tests/check_native_refresh.py")
+            run(sys.executable, "-X", "utf8", "tests/check_native_timing.py")
     elif command == "publish-local":
         run(sys.executable, "-m", "sora_bilingual.updates.tool_updates")
     elif command == "preview":

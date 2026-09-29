@@ -112,6 +112,7 @@ GROUPS = {
         "sora_bilingual/game/scripts/native_geometry.js",
         "sora_bilingual/game/scripts/native_parser.js",
         "sora_bilingual/game/scripts/native_measure.js",
+        "sora_bilingual/game/scripts/native_timing.js",
         "sora_bilingual/game/scripts/native_hash.js",
         "sora_bilingual/game/scripts/runtime_fonts.js",
         "sora_bilingual/game/scripts/native_fonts.js",
