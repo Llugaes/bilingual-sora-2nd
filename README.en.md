@@ -107,7 +107,7 @@ For smoother play, select **Single-language mode → Hold for secondary language
 
 In 0.3.15 and earlier, the game connection remains alive until the game exits, so Setup may still detect it. Save and exit the game, then quit the tool from its tray menu and retry.
 
-The development implementation for the next version changes tray **Exit tool** to disable bilingual effects and wait for all UI, backend, and preparation processes to finish before removing the tray icon. The game keeps running; reopening the tool restores bilingual display. Hiding or collapsing the interface keeps the connection. A connection established by an older version needs one normal game exit before the new exit mechanism can be used.
+Starting with 0.3.16, tray **Exit tool** disables bilingual effects and waits for all UI, backend, and preparation processes to finish before removing the tray icon. The game keeps running; reopening the tool restores bilingual display. Hiding or collapsing the interface keeps the connection. A connection established by an older version needs one normal game exit before the new exit mechanism can be used.
 
 </details>
 
