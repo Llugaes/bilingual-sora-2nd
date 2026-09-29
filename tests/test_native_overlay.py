@@ -678,7 +678,14 @@ class OverlayUiTests(unittest.TestCase):
             socket.write(b"quit\n")
             socket.flush()
             socket.waitForBytesWritten(1000)
-            socket.disconnectFromServer()
+            # Let the server consume and acknowledge the command by closing
+            # its endpoint, as the portable handoff test does. Closing this
+            # short-lived client immediately can race delivery on CI pipes.
+            self.assertTrue(
+                socket.state() == QLocalSocket.LocalSocketState.UnconnectedState
+                or socket.waitForDisconnected(2000),
+                "Quit command was not consumed",
+            )
             self.assertEqual(first.wait(timeout=8), 0)
             socket = QLocalSocket()
             socket.connectToServer(name)

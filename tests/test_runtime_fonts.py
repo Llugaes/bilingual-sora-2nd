@@ -16,7 +16,9 @@ import test_font_delivery as fixtures
 class RuntimeFontTests(unittest.TestCase):
     def test_complete_packet_reads_only_small_source_font_archives(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
+            # Windows runners may supply an 8.3 TEMP path (RUNNER~1).
+            # Production emits resolved paths; compare the same path form.
+            root = Path(tmp).resolve()
             _candidate(root, 0x42)
             with patch("sora_bilingual.fonts.runtime_fonts.FpacArchive") as archive:
                 archive.return_value.read.return_value = _fnt(0x41)
