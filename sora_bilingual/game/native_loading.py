@@ -24,6 +24,7 @@ def prepare_fresh(game, config, *, cache_only=False, cancel=None):
                     "config": config,
                     "catalog_only": cache_only == "catalog",
                     "fonts_only": cache_only == "fonts",
+                    "runtime_fonts": cache_only == "runtime_fonts",
                 }
             ),
             "utf-8",
@@ -46,7 +47,7 @@ def prepare_fresh(game, config, *, cache_only=False, cancel=None):
                 process.stderr.decode("utf-8", errors="replace")[-1500:] or "索引准备进程失败"
             )
         prepared = json.loads(result.read_text("utf-8"))
-        if cache_only == "catalog":
+        if cache_only in ("catalog", "runtime_fonts"):
             return prepared
         path = prepared["path"]
         if cache_only == "summary":

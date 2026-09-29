@@ -40,7 +40,7 @@ from PySide6.QtWidgets import (
 
 from sora_bilingual.platform.inputs import vk_for_key, InputManager
 from sora_bilingual.app.i18n import UI_LANGUAGES, set_language, tr
-from sora_bilingual.app.presentation import connection_activity, STATUS_COLORS
+from sora_bilingual.app.presentation import connection_activity, STATUS_COLORS, CONNECTION_PHASES
 from sora_bilingual.app.ui_widgets import (
     QLabel,
     QPushButton,
@@ -1044,14 +1044,8 @@ class NativeSettingsWindow(QWidget):
             "updated_at" in status and time.time() - status["updated_at"] > 5
         ):
             self.backend_label.setText("后端状态：未运行或连接已中断")
-        elif status.get("phase") in ("connecting", "preparing", "applying"):
-            self.backend_label.setText(
-                "正在连接并准备索引…"
-                if status["phase"] == "connecting"
-                else "正在准备语言索引，当前语言继续显示…"
-                if status["phase"] == "preparing"
-                else "正在应用语言索引…"
-            )
+        elif status.get("phase") in CONNECTION_PHASES:
+            self.backend_label.setText(connection_activity(status, True)["title"])
         elif status.get("reload_error"):
             self.backend_label.setText(status["reload_error"])
         elif status.get("update_notice"):

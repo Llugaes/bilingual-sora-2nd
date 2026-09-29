@@ -257,7 +257,7 @@ class OverlayPanel(QWidget):
         if tone == "waiting" and state.get("font_state") in (
             "preparing",
             "prepared",
-            "restart-required",
+            "runtime-required",
             "error",
             "conflict",
         ):

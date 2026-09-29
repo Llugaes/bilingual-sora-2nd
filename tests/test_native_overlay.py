@@ -25,12 +25,12 @@ from sora_bilingual.app.presentation import with_font_status
 
 
 class OverlayStatusTests(unittest.TestCase):
-    def test_font_restart_notice_does_not_claim_connection_failed(self):
+    def test_runtime_font_notice_does_not_claim_connection_failed(self):
         state = {"title": "双语同时显示", "connected": True, "detail": "设置实时生效"}
-        value = with_font_status(state, {"state": "restart-required"})
+        value = with_font_status(state, {"state": "runtime-required"})
         self.assertTrue(value["connected"])
         self.assertEqual(value["title"], state["title"])
-        self.assertIn("退出游戏后自动安装", value["font_notice"])
+        self.assertIn("无需重启", value["font_notice"])
         self.assertNotIn("font_notice", state)
         self.assertEqual(with_font_status(state, {"state": "healthy"}), state)
 
@@ -430,9 +430,7 @@ class OverlayUiTests(unittest.TestCase):
         )
         self.window.refresh_status()
         self.assertIsNone(self.window._connection_error)
-        self.assertEqual(
-            tr("正在准备语言索引，当前语言继续显示…"), self.window.backend_label.text()
-        )
+        self.assertEqual(tr("正在构建语言映射"), self.window.backend_label.text())
 
     def test_reselecting_same_mode_issues_a_new_request_not_backend_restart(self):
         with patch(

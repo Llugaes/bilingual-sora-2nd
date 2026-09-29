@@ -15,10 +15,14 @@ if __name__ == "__main__":
     parser.add_argument("--result", type=Path, required=True)
     args = parser.parse_args()
     request = json.loads(args.request.read_text("utf-8"))
-    if request.get("fonts_only"):
+    if request.get("fonts_only") or request.get("runtime_fonts"):
         from sora_bilingual.fonts.font_delivery import prepare
 
         result = {"path": str(prepare(Path(request["game"])))}
+        if request.get("runtime_fonts"):
+            from sora_bilingual.fonts.runtime_fonts import runtime_manifest
+
+            result["runtime_fonts"] = runtime_manifest(Path(request["game"]), Path(result["path"]))
     else:
         from sora_bilingual.localization.model_worker import prepare_request
 

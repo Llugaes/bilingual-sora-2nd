@@ -31,6 +31,7 @@ def main():
             "tests/test_runtime_identity.js",
             "tests/test_runtime_text.js",
             "tests/test_runtime_paragraph.js",
+            "tests/test_runtime_fonts.js",
             "tests/test_native_transport.js",
         )
         if sys.platform == "win32":
@@ -38,6 +39,7 @@ def main():
             # process. This must never attach to a running game.
             run(sys.executable, "-X", "utf8", "tests/check_runtime_text_engine.py")
             run(sys.executable, "-X", "utf8", "tests/check_native_control.py")
+            run(sys.executable, "-X", "utf8", "tests/check_native_fonts.py")
             run(sys.executable, "-X", "utf8", "tests/check_native_geometry.py")
             run(sys.executable, "-X", "utf8", "tests/check_native_parser.py")
             run(sys.executable, "-X", "utf8", "tests/check_native_size_hook.py")

@@ -32,8 +32,8 @@ def main():
         is_game_running=_game_running if args.install else None,
         loader=args.loader,
     )
-    if args.install and result["state"] == "restart-required":
-        raise RuntimeError("请先正常退出游戏，再安装字库文件。")
+    if result["state"] == "runtime-required":
+        result["message"] = "字体已准备，双语工具连接后在游戏内加载，无需重启。"
     print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
 
 

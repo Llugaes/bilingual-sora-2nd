@@ -3,7 +3,7 @@
 (() => {
     let listener=null,owner=null,secret=null;
     const limit=16*1024*1024;
-    const methods=new Set(['modelpackedfile','select','style','configure','reloadlogic','disable','replay','status','snapshot']);
+    const methods=new Set(['modelpackedfile','fonts','select','style','configure','reloadlogic','disable','replay','status','snapshot']);
     const encode=value=>{
         const text=JSON.stringify(value).replace(/[^\x00-\x7f]/g,c=>'\\u'+c.charCodeAt(0).toString(16).padStart(4,'0'));
         if(text.length>limit)throw Error('Control response too large');

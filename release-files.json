@@ -91,5 +91,9 @@
   "sora_bilingual/game/scripts/native_control.js",
   "sora_bilingual/platform/worker_process.py",
   "sora_bilingual/game/tool_shutdown.py",
-  "sora_bilingual/preparation_worker.py"
+  "sora_bilingual/preparation_worker.py",
+  "sora_bilingual/game/scripts/runtime_fonts.js",
+  "sora_bilingual/game/scripts/native_fonts.js",
+  "sora_bilingual/fonts/runtime_fonts.py",
+  "sora_bilingual/platform/file_lock.py"
 ]

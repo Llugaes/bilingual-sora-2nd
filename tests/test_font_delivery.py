@@ -154,7 +154,7 @@ class FontDeliveryTests(unittest.TestCase):
             result = font_delivery.ensure(
                 game, self.prepare(game, state), game_running=True, root=state
             )
-            self.assertEqual(result["state"], "restart-required")
+            self.assertEqual(result["state"], "runtime-required")
             self.assertTrue(result["staged"])
             self.assertFalse((game / "xinput1_4.dll").exists())
 
@@ -175,7 +175,7 @@ class FontDeliveryTests(unittest.TestCase):
                     is_game_running=lambda: started[0],
                     root=state,
                 )
-            self.assertEqual(result["state"], "restart-required")
+            self.assertEqual(result["state"], "runtime-required")
             self.assertFalse((game / "xinput1_4.dll").exists())
 
     def test_partial_new_file_write_is_rolled_back(self):

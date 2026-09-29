@@ -45,6 +45,7 @@ POINTS = {
     "dialogue_message": 0x4AE990,
     "dialogue_bubble": 0x4AEE20,
     "dialogue_builder": 0x4AD670,
+    "actor_name_set": 0x217F90,
     "log_write": 0x43DFB0,
     # Both copy branches have written the complete 0x188-byte payload here.
     # RCX is the actual destination +0x180. R8 is the previous record on the
@@ -76,6 +77,12 @@ POINTS = {
     "log_measure_row_end": 0x362E40,
     "font_reset": 0x5BF8F0,
     "font_load": 0x5BF350,
+    # Font reader/image-cache contracts: tests/check_native_fonts.py and
+    # docs/verification/runtime-fonts.md. No late loose-file DLL injection.
+    "font_read": 0x5BFA10,
+    "font_allocate": 0x5CA0C0,
+    "font_image_acquire": 0x38AE0,
+    "font_image_read_call": 0x5C6103,
 }
 
 
@@ -92,6 +99,12 @@ def native_report(exe):
         report["node_names"] = True
         report["layout_manager_global"] = 0xC60E88
         report["font_manager_global"] = 0xC60ED0
+        report["font_allocator_global"] = 0xC60E78
+        report["image_cache_global"] = 0xC60EF0
+        report["runtime_fonts"] = True
+        # Call through the game's existing reader (including its loose-file
+        # loader detour), without installing a hook or asserting pristine bytes.
+        report["font_file_read"] = 0x654640
         report["log_owner_global"] = 0xC60E50
     finally:
         pe.close()
@@ -166,6 +179,8 @@ class NativeLabels:
                 "sora_bilingual/game/scripts/runtime_paragraph.js",
                 "sora_bilingual/game/scripts/runtime_identity.js",
                 "sora_bilingual/game/scripts/native_hash.js",
+                "sora_bilingual/game/scripts/runtime_fonts.js",
+                "sora_bilingual/game/scripts/native_fonts.js",
                 "sora_bilingual/game/scripts/native_geometry.js",
                 "sora_bilingual/game/scripts/native_parser.js",
                 "sora_bilingual/game/scripts/native_measure.js",

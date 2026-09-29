@@ -1,5 +1,6 @@
 'use strict';
-// No RPC/native calls to UI methods. RPC only changes JS configuration.
+// UI mutations run on UI callbacks. Font RPC stages independent resources;
+// publication and reflow happen at Update, never during background loading.
 const base = Process.getModuleByName('sora_2nd.exe').base;
 const labels = new Map();
 const threads = new Set();
@@ -39,12 +40,18 @@ const logMeasureStats={runs:0,totalMs:0,hits:0,misses:0,nameHits:0,fixedRows:0,f
 const resourceHash=typeof createNativeSha256==='function'?createNativeSha256():scriptSha256;
 const auxiliaryContexts=new Map(), compensation=new Map(), rubyPermissions=new Map();
 const annotationMetrics=new Map();
-const subtitleRoots=new Set(),layoutRoots=new Map();let scannedLayouts=false;
+const subtitleRoots=new Set(),activeVoiceRoots=new Set(),layoutRoots=new Map();let scannedLayouts=false;
 for (const [name, point] of Object.entries(REPORT.native)) {
     const actual = Array.from(new Uint8Array(base.add(point.rva).readByteArray(16)))
         .map(x => x.toString(16).padStart(2, '0')).join('');
     if (actual !== point.bytes) throw Error('Native runtime code changed at '+name+'; remove other probes before attaching');
 }
+let fontGeneration=0,fontsWereReady=!REPORT.runtime_fonts;
+function invalidateFontGeometry(){
+    fontGeneration++;epoch++;logFontGeneration++;
+    logHeightCache.clear();logNameCache.clear();logCacheBytes=0;
+}
+const runtimeFonts=REPORT.runtime_fonts?createNativeFonts(base,REPORT,resourceHash,invalidateFontGeometry):null;
 const setter = new NativeFunction(base.add(REPORT.native.set_text.rva), 'void', ['pointer','pointer']);
 const resetText = new NativeFunction(base.add(REPORT.native.reset_text.rva), 'void', ['pointer']);
 const cloneIconCallback = REPORT.native.icon_callback_clone
@@ -82,8 +89,12 @@ function registerLayout(layout) {
     const root=layout.add(0xa8).readPointer();
     if(root.isNull())return;
     const id=layout.add(0x80).readU32(),key=String(root);
+    const previous=layoutRoots.get(String(layout));
+    if(previous){subtitleRoots.delete(previous);activeVoiceRoots.delete(previous);}
     layoutRoots.set(String(layout),key);
     if(id===7)subtitleRoots.add(key);else subtitleRoots.delete(key);
+    // 0x26402..0x26414 creates ActiveVoice layout 32; 0x25b29 selects text.
+    if(id===32)activeVoiceRoots.add(key);else activeVoiceRoots.delete(key);
 }
 function scanLayouts() {
     if(scannedLayouts||!REPORT.layout_manager_global)return;
@@ -103,20 +114,24 @@ function translationKey(row) {
     const keyed=row.textKey ? '\x01'+row.textKey+'\x00'+row.original : '';
     if(keyed && Object.hasOwn(dictionary,keyed))return keyed;
     row.scope=null;
-    row.surface='standard';
+    row.surface='standard';row.surfaceRoot=null;
     row.dialogueSpeaker=false;
     if(REPORT.node_names) {
         let p=row.pointer;
         const names=[];
-        let subtitle=false;
+        let subtitle=false,activeVoice=null;
         for(let i=0;i<12&&!p.isNull();i++) {
             if(subtitleRoots.has(String(p)))subtitle=true;
+            if(activeVoiceRoots.has(String(p)))activeVoice=String(p);
             const np=p.add(0x88).readPointer();
             const name=np.isNull()?'':np.readUtf8String();
             if(name.length>256)throw Error('Unvalidated node name');
             names.push(name);p=p.add(0x80).readPointer();
         }
         if(subtitle&&names[0]==='text')row.surface='subtitle';
+        if(activeVoice&&names[0]==='text'&&names[1]==='item'&&names[2]==='items') {
+            row.surface='active_voice';row.surfaceRoot=activeVoice;
+        }
         row.dialogueSpeaker=subtitle&&['name_text','prev_name_text'].includes(names[0]);
         if(names[0]==='name'&&names.includes('item_template'))row.scope='item_name';
         if(names[0]==='name' && names.includes('skill_template')) {
@@ -169,7 +184,7 @@ function wantedText(row,allocateLayers=true) {
     row.nativeRanges=null;
     row.animated=!!(p.add(0x2e8).readU32()&4);
     row.plan={text:wanted,layers:[],kind:'plain'};
-    if(enabled&&!failed) {
+    if(enabled&&!failed&&(!runtimeFonts||runtimeFonts.isReady())) {
         if(resolver) {
             const mode=renderMode==='bilingual'?'annotation':renderMode;
             const strictDialogue=Number.isInteger(row.scriptIdentity?.callId);
@@ -257,6 +272,7 @@ function captureMetadata(row) {
     // Read native fields only while this object's own callback is active.
     const p=row.pointer;
     row.metadata={size:p.add(0x304).readU32(),flags:p.add(0x2e8).readU32()};
+    row.fontGeneration=fontGeneration;
 }
 function fail(error) {
     if (!failed) {failureReason=String(error);send({type:'error', message:failureReason});}
@@ -327,7 +343,7 @@ function finishAnnotationLanes(row) {
         }
     }
     row.offsetPositions=null;
-    const scaleRun=(lane,start,end,includeIcons=false)=>{
+    const scalePrimaryRun=(lane,start,end)=>{
         if(!row.preservePrimaryLayout||annotationScale===1)return;
         // Reuse the original local matrices when typewriter output adds glyphs.
         // A new native parse creates fresh lanes; repeated frames never compound.
@@ -345,7 +361,7 @@ function finishAnnotationLanes(row) {
         };
         for(let i=start;i<end;i++) {
             const g=glyph(i),q=g.q;
-            if(!includeIcons&&g.kind===1){flush();continue;}
+            if(g.kind===1){flush();continue;}
             let v=saved.get(i);
             if(!v||!v.q.equals(q)) {
                 v={q,x:g.x,y:g.y,w:g.w,h:g.h};
@@ -373,8 +389,13 @@ function finishAnnotationLanes(row) {
         const primaryEnd=lane.layer?(lane.primaryEnd??lanes[i+1]?.primaryStart??count):lane.start;
         if(!(lane.start>=0&&lane.start<lane.end&&lane.end<=count))continue;
         const hasPrimary=primaryStart>=0&&primaryStart<primaryEnd&&primaryEnd<=count;
-        if(hasPrimary)scaleRun(lane,primaryStart,primaryEnd);
-        scaleRun(lane,lane.start,lane.end,true);
+        if(hasPrimary)scalePrimaryRun(lane,primaryStart,primaryEnd);
+        // The secondary parser already applies native ruby size, ruby_scale
+        // and the source's absolute S/s emphasis. Ordinary ruby keeps those
+        // metrics when primary text is shrunk with <s>. Preserve the same
+        // secondary metrics when primary shrinking instead happens here
+        // (explicit sizes, original readings, mixed runs). Shrinking this
+        // lane again made enlarged dialogue annotations smaller than normal.
         const secondary=bounds(lane.start,lane.end,true),primary=hasPrimary?bounds(primaryStart,primaryEnd):null;
         const dx=primary?primary.left+rubyOffsetX-secondary.left:0,dy=primary?primary.top-rubyGap-secondary.bottom:0;
         if(!Number.isFinite(dx)||!Number.isFinite(dy))continue;
@@ -544,7 +565,7 @@ if(REPORT.native.layout_ready) Interceptor.attach(base.add(REPORT.native.layout_
     onEnter(){try{
         const p=this.context.rsi;
         if(labels.get(String(p))?.glyphLanes?.length)finishAnnotationLanes(ownedRow(p));
-        offsetLogProjection(p);
+        offsetTextProjection(p);
     }catch(e){fail(e);}}
 });
 // Align owned annotations with the measured primary run's left edge.
@@ -723,7 +744,7 @@ if(REPORT.native.layout_create) Interceptor.attach(base.add(REPORT.native.layout
     onLeave(value){try{registerLayout(value);}catch(e){fail(e);}}
 });
 if(REPORT.native.layout_release) Interceptor.attach(base.add(REPORT.native.layout_release.rva),{
-    onEnter(args){const k=String(args[1]);const root=layoutRoots.get(k);if(root)subtitleRoots.delete(root);layoutRoots.delete(k);}
+    onEnter(args){const k=String(args[1]);const root=layoutRoots.get(k);if(root){subtitleRoots.delete(root);activeVoiceRoots.delete(root);}layoutRoots.delete(k);}
 });
 // An empty annotation anchor must not contribute an invalid empty bounding
 // box or the engine's one-time ruby baseline compensation. These sites are
@@ -755,7 +776,7 @@ if(REPORT.native.ruby_compensate) Interceptor.attach(base.add(REPORT.native.ruby
             const key=String(p),metrics=annotationMetrics.get(key);
             if(metrics?.layer===layer.layer) {
                 annotationMetrics.delete(key);
-                const reserve=(metrics.primary+metrics.secondary)*(row.preservePrimaryLayout?annotationScale:1);
+                const reserve=metrics.primary*(row.preservePrimaryLayout?annotationScale:1)+metrics.secondary;
                 const origin=p.add(4).readFloat(),next=origin+reserve;
                 if(!Number.isFinite(next)||reserve<0||reserve>65536)throw Error('Invalid native reading reserve');
                 if(reserve) {
@@ -851,6 +872,45 @@ Interceptor.attach(base.add(REPORT.native.destroy.rva), {onEnter(args) {
     if(group){group.retired=true;logTextGroups.delete(String(group.name));logTextGroups.delete(String(group.body));}
     if (labels.delete(String(args[0]))) destroyed++;
 }});
+// actor_name_set copies a script literal into actor+2c0; actor_name_get
+// returns that owned buffer when +2cc is nonzero. Preserve the script key
+// across this copy, validating the current owner and bytes at consumption.
+const actorNames=new Map(),ownedNames=new Map();
+if(REPORT.native.actor_name_set)Interceptor.attach(base.add(REPORT.native.actor_name_set.rva),{
+    onEnter(args){
+        this.actor=args[0];this.entry=null;
+        // Native null input changes only +25c6, preserving the owned name.
+        if(args[1].isNull())return;
+        const previous=actorNames.get(String(this.actor));
+        if(previous)ownedNames.delete(String(previous.buffer));
+        actorNames.delete(String(this.actor));
+        try {
+            if(args[1].isNull()||!scriptIdentities)return;
+            const source=args[1].readUtf8String();
+            if(!source||RuntimeText.byteLength(source)>=256)return;
+            const entry=scriptIdentities.pointerSelect(args[1],source);
+            if(entry)this.entry={source,key:entry.key};
+        }catch(_){/* Unverified names retain their original lookup path. */}
+    },
+    onLeave(){
+        if(!this.entry)return;
+        try {
+            const buffer=this.actor.add(0x2c0).readPointer(),length=this.actor.add(0x2cc).readU32();
+            if(buffer.isNull()||length!==RuntimeText.byteLength(this.entry.source)||buffer.readUtf8String()!==this.entry.source)return;
+            if(actorNames.size>=4096){actorNames.clear();ownedNames.clear();}
+            const row={...this.entry,actor:this.actor,buffer};
+            actorNames.set(String(this.actor),row);ownedNames.set(String(buffer),row);
+        }catch(_){/* Failed or empty native copies have no provenance. */}
+    }
+});
+function ownedNameIdentity(input,source) {
+    const row=ownedNames.get(String(input));if(!row||row.source!==source)return null;
+    try {
+        if(row.actor.add(0x2c0).readPointer().equals(input)&&
+                row.actor.add(0x2cc).readU32()===RuntimeText.byteLength(source)&&input.readUtf8String()===source)return row.key;
+    }catch(_){}
+    ownedNames.delete(String(input));actorNames.delete(String(row.actor));return null;
+}
 // Carry provenance only along the verified native dialogue call stack and
 // its exact output buffer. Never rewrite the builder's fixed 0x800-byte buffer.
 for(const name of ['dialogue_popup','dialogue_message','dialogue_bubble']) {
@@ -950,6 +1010,14 @@ function rememberLogTextGroup(controller) {
     const group={name,body,parent,room,retired:false};
     logTextGroups.set(String(name),group);logTextGroups.set(String(body),group);
 }
+function offsetTextProjection(p) {
+    const row=labels.get(String(p));
+    if(row?.surface==='active_voice'&&activeVoiceRoots.has(row.surfaceRoot)&&row.epoch===epoch&&['ruby','layered'].includes(row.plan?.kind)) {
+        projectTextInset(p,p.add(0x80).readPointer(),8);
+        return;
+    }
+    offsetLogProjection(p);
+}
 function offsetLogProjection(p) {
     const lease=labelCallbacks.get(String(p)),group=logTextGroups.get(String(p));
     if(!lease||lease.depth!==1||lease.projection||!group||group.retired||!enabled||failed||
@@ -959,17 +1027,22 @@ function offsetLogProjection(p) {
         return row?.epoch===epoch&&['ruby','layered'].includes(row.plan?.kind);
     }))return;
     const delta=Math.max(0,Math.min(8,group.room-Math.max(0,bilingualOffsetY)));
-    if(!delta)return;
+    projectTextInset(p,group.parent,delta);
+}
+function projectTextInset(p,parent,delta) {
+    const lease=labelCallbacks.get(String(p));
+    if(!delta||parent.isNull()||!lease||lease.depth!==1||lease.projection||!enabled||failed||
+            !['annotation','bilingual'].includes(renderMode))return;
     // Update projects glyphs through label+08 after layout_ready. Temporarily
     // translate that matrix, then restore it on Update return: unchanged
     // frames, repeated parses and controller reuse never accumulate offsets.
     const offsets=[0x38,0x3c,0x40],axis=[0x18,0x1c,0x20];
-    const original=offsets.map(off=>p.add(off).readFloat()),direction=axis.map(off=>group.parent.add(off).readFloat());
+    const original=offsets.map(off=>p.add(off).readFloat()),direction=axis.map(off=>parent.add(off).readFloat());
     if(![...original,...direction].every(Number.isFinite))return;
     lease.projection={p,offsets,original};
     offsets.forEach((off,i)=>p.add(off).writeFloat(original[i]+direction[i]*delta));
 }
-function restoreLogProjection(lease) {
+function restoreTextProjection(lease) {
     const saved=lease?.projection;if(!saved)return;
     saved.offsets.forEach((off,i)=>saved.p.add(off).writeFloat(saved.original[i]));
     lease.projection=null;
@@ -1259,6 +1332,7 @@ function identifyInput(row,input,caller) {
     const frame=dialogueFrames.get(Process.getCurrentThreadId())?.at(-1);
     const origin=frame?.outputs.get(String(input));
     if(origin&&origin.source===row.original){row.scriptIdentity=origin.identity;identityHits++;}
+    row.scriptPointer=ownedNameIdentity(input,row.original)||row.scriptPointer;
     const needsIdentity=!resolver||!Object.hasOwn(resolver.model.pairs,row.original);
     const started=needsIdentity?Date.now():undefined;
     // Preserve copied provenance even when today's global translation is unique;
@@ -1277,7 +1351,7 @@ function identifyInput(row,input,caller) {
         const entry=tableIdentities.select(input,row.original);
         if(entry){row.tableIdentity=entry.key;tableIdentityHits++;}
     }
-    if(needsIdentity&&!row.scriptIdentity&&!row.tableIdentity&&scriptIdentities) {
+    if(needsIdentity&&!row.scriptIdentity&&!row.scriptPointer&&!row.tableIdentity&&scriptIdentities) {
         const entry=scriptIdentities.pointerSelect(input,row.original);
         if(entry){row.scriptPointer=entry.key;identityHits++;}
     }
@@ -1361,9 +1435,13 @@ function installLogMeasureGate(callback) {
     return {gate,listener}; // retain executable memory for the resident lifetime
 }
 for(const point of ['font_reset','font_load'])if(REPORT.native[point])
-    Interceptor.attach(base.add(REPORT.native[point].rva),{onEnter(){
+    Interceptor.attach(base.add(REPORT.native[point].rva),{onEnter(args){
+        this.fontOwner=runtimeFonts?.isManager(args[0]);
+        if(this.fontOwner&&point==='font_reset')runtimeFonts.beforeReset();
         logHeightCache.clear();logNameCache.clear();logCacheBytes=0;logFontGeneration++;
-    }});
+    },onLeave(){if(this.fontOwner&&point==='font_load'){
+        invalidateFontGeometry();runtimeFonts.loaded();
+    }}});
 if(REPORT.native.log_measure) Interceptor.attach(base.add(REPORT.native.log_measure.rva),{
     onEnter(args) {
         this.thread=Process.getCurrentThreadId();
@@ -1501,6 +1579,11 @@ Interceptor.attach(base.add(REPORT.native.update.rva), {onEnter(args) {
     if (activeRewrite(args[0])) return;
     updates++;
     try {
+        if(runtimeFonts){
+            runtimeFonts.tick();
+            const ready=runtimeFonts.isReady();
+            if(ready!==fontsWereReady){fontsWereReady=ready;epoch++;}
+        }
         const p=args[0];
         if (!isLabel(p)) return;
         this.lease=enterLabel(p);if(!this.lease)return;
@@ -1517,14 +1600,15 @@ Interceptor.attach(base.add(REPORT.native.update.rva), {onEnter(args) {
         const renderEpoch=epoch,wanted=wantedText(row);
         const replay = epoch === replayEpoch && Object.hasOwn(dictionary,row.original);
         const changed=wanted!==row.displayed||replay;
-        const geometry=!changed&&(row.plan.kind==='ruby'||row.plan.kind==='layered');
+        const fontChanged=!!runtimeFonts&&row.fontGeneration!==fontGeneration;
+        const geometry=fontChanged||(!changed&&(row.plan.kind==='ruby'||row.plan.kind==='layered'));
         // SetText's animated branch clears glyphs without reinitializing the
         // persistent parser. Snapshot BEFORE the setter, then use the game's
         // initializer to replace its stale cursor/buffer on this UI callback.
         const reveal=(changed||geometry)&&(p.add(0x2e8).readU32()&4)?{
             progress:p.add(0x378).readFloat(),total:p.add(0x334).readU32()
         }:null;
-        if (wanted !== row.displayed || replay) {
+        if (wanted !== row.displayed || replay || fontChanged) {
             copyOwnedText(row,wanted);
             if(REPORT.diagnostics||replay)send({type:replay ? 'native_replay' : 'native_text', original:row.original, displayed:wanted,
                   glyphs:p.add(0x330).readU32(), fontSize:p.add(0x304).readU32(), thread:Process.getCurrentThreadId()});
@@ -1555,12 +1639,16 @@ Interceptor.attach(base.add(REPORT.native.update.rva), {onEnter(args) {
     } catch(e) {fail(e);}
 },onLeave(){
     try {
-        restoreLogProjection(this.lease);
+        restoreTextProjection(this.lease);
         if(this.pausedReveal){const p=this.pausedReveal;p.add(0x2e8).writeU32(p.add(0x2e8).readU32()|0x10);}
     }
     catch(e){fail(e);}finally{leaveLabel(this.lease);}
 }});
 rpc.exports = {
+    fonts(manifest) {
+        if(!runtimeFonts)throw Error('This resident does not support runtime fonts');
+        runtimeFonts.select(enabled);return runtimeFonts.configure(manifest);
+    },
     load(model, mode, active, scale=0.9, layout={}) {
         if(!['annotation','primary','secondary','bilingual'].includes(mode))throw Error('Unknown render mode');
         if(!Number.isFinite(scale)||scale<.7||scale>1)throw Error('Annotation scale must be 0.7..1');
@@ -1611,21 +1699,22 @@ rpc.exports = {
     select(mode,active) {
         if(!['annotation','primary','secondary','bilingual'].includes(mode))throw Error('Unknown render mode');
         if(renderMode!==mode||enabled!==!!active) {renderMode=mode;enabled=!!active;epoch++;}
+        runtimeFonts?.select(enabled);
         return true;
     },
     configure(values, active, scale=1) {
         if (scale == null) scale=1; // Frida pads omitted RPC arguments with null.
         if (!Number.isFinite(scale) || scale<0.7 || scale>1) throw Error('Annotation scale must be 0.7..1');
-        resolver=null;activeModel=null;scriptIdentities=null;tableIdentities=null;paragraphs=null;dictionary=Object.assign(Object.create(null),values);enabled=!!active;annotationScale=scale;epoch++;return true;
+        resolver=null;activeModel=null;scriptIdentities=null;tableIdentities=null;paragraphs=null;dictionary=Object.assign(Object.create(null),values);enabled=!!active;runtimeFonts?.select(enabled);annotationScale=scale;epoch++;return true;
     },
-    disable() {if(enabled){enabled=false;epoch++;}return true;},
+    disable() {if(enabled){enabled=false;epoch++;}runtimeFonts?.select(false);return true;},
     replay() {enabled=false;replayEpoch=++epoch;return true;},
     snapshot() {return [...labels.values()].map(r=>({original:r.original,displayed:r.displayed,text_key:r.textKey,scope:r.scope,
         script_identity:r.scriptIdentity,log_identity:r.logIdentity,log_kind:r.logKind,script_pointer_key:r.scriptPointer,table_identity:r.tableIdentity,presentation:r.plan?.kind,surface:r.surface,layers:r.layerBuffers?.map(v=>v.layer),...r.metadata}));},
     status() {
         const parser=nativeParser?.status();
         const measured=parser?{...timings,parse:{count:parser.count,totalMs:parser.totalMs,maxMs:parser.maxMs,over8Ms:parser.over8Ms}}:timings;
-        return {enabled,failed,failureReason,timings:measured,nativeParser:parser,nativeMeasure:nativeMeasure?.status(),logMeasureStats,logOriginStats,logOriginSlots:logOrigins?.entries.size||0,logHeightCacheSize:logHeightCache.size,nativeSizeFallbacks:[...nativeSizeFallbacks.keys()],epoch,labels:labels.size,updates,writes,destroyed,threads:[...threads],
+        return {enabled,failed,failureReason,runtimeFonts:runtimeFonts?.status(),timings:measured,nativeParser:parser,nativeMeasure:nativeMeasure?.status(),logMeasureStats,logOriginStats,logOriginSlots:logOrigins?.entries.size||0,logHeightCacheSize:logHeightCache.size,nativeSizeFallbacks:[...nativeSizeFallbacks.keys()],epoch,labels:labels.size,updates,writes,destroyed,threads:[...threads],
         immediateWrites,identityHits,identityMisses,tableIdentityHits,renderMode,matched:[...labels.values()].filter(r=>r.matched).length,
         modified:[...labels.values()].filter(r=>r.displayed!==r.original).length};}
 };

@@ -28,6 +28,16 @@ STATUS_COLORS = {
     "error": ("#a32b22", "#ffebe7"),
 }
 CONNECTION_PHASES = {
+    "fonts_preparing": (
+        "正在准备多语言字体",
+        "可继续游玩，准备完成后自动加载，无需重启游戏。",
+        "preparing",
+    ),
+    "fonts_applying": (
+        "正在加载游戏内字体",
+        "字库与贴图就绪后自动启用双语，无需重启游戏。",
+        "connecting",
+    ),
     "detecting": ("正在识别游戏语言", "等待游戏文字资源就绪，尚未启用双语。", "connecting"),
     "waiting_source_language": (
         "等待游戏文字资源",
@@ -56,7 +66,14 @@ def connection_activity(status, fresh, *, process_running=False, error=None, gam
         (status.get("error") or status.get("failed")) if fresh else error or status.get("error")
     )
     phase = status.get("phase") if fresh else None
-    if failure:
+    if phase == "fonts_error":
+        title, detail, tone = (
+            "字体加载失败",
+            str(status.get("reload_error") or "请查看字体状态详情。"),
+            "error",
+        )
+        working = False
+    elif failure:
         title, detail, tone = "连接失败", str(failure), "error"
         working = False
     elif phase in CONNECTION_PHASES:
@@ -76,7 +93,7 @@ def connection_activity(status, fresh, *, process_running=False, error=None, gam
         detail=detail,
         tone=tone,
         working=working,
-        connected=fresh and not failure and not working,
+        connected=fresh and not failure and not working and tone == "ready",
     )
 
 
@@ -89,13 +106,13 @@ def with_font_status(state, fonts):
     notices = {
         "preparing": "正在准备多语言字体，当前连接继续运行",
         "prepared": "字体已准备，等待安全安装",
-        "restart-required": "字体待安装：退出游戏后自动安装，下次启动生效",
+        "runtime-required": "字体已准备，连接后在游戏内加载，无需重启",
         "conflict": "字体安装遇到已有 MOD 文件，请查看详情",
         "error": "字体准备或安装失败，请查看详情",
     }
     notice = notices.get(fonts.get("state"))
     if fonts.get("state") == "preparing" and not state.get("connected"):
-        notice = "正在准备多语言字体，完成后即可启动游戏。"
+        notice = "正在准备多语言字体，可以先启动游戏，完成后自动生效。"
     if not notice:
         return state
     detail = fonts.get("detail")
@@ -137,6 +154,17 @@ def describe_state(config, live, backend, now=None):
             "title": "正在连接游戏",
             "detail": "正在准备语言索引…",
             "color": "#4f6270",
+            "marker": "○",
+            "connected": False,
+            "pair": pair,
+            "short_pair": short_pair,
+        }
+    if connection and backend.get("phase") in ("fonts_preparing", "fonts_applying", "fonts_error"):
+        activity = connection_activity(backend, True)
+        return {
+            "title": activity["title"],
+            "detail": activity["detail"],
+            "color": STATUS_COLORS[activity["tone"]][0],
             "marker": "○",
             "connected": False,
             "pair": pair,

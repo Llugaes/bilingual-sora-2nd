@@ -291,6 +291,17 @@ idle|idle|待機中
 recording|recording|登録中
 release_to_save|release to save|離すと保存
 complete|complete|完了
+正在准备多语言字体|Preparing multilingual fonts|多言語フォントを準備中
+可继续游玩，准备完成后自动加载，无需重启游戏。|Keep playing; fonts will load automatically without restarting the game.|プレイを続けられます。準備後に自動で読み込み、ゲームの再起動は不要です。
+正在加载游戏内字体|Loading fonts into the game|ゲーム内フォントを読み込み中
+字库与贴图就绪后自动启用双语，无需重启游戏。|Bilingual text will activate when the fonts and textures are ready. No restart needed.|フォントとテクスチャの準備ができると二言語表示が有効になります。再起動は不要です。
+字体加载失败|Font loading failed|フォントの読み込みに失敗しました
+请查看字体状态详情。|See font status details.|フォントの状態の詳細をご確認ください。
+字体已准备，连接后在游戏内加载，无需重启|Fonts are prepared and will load on connection. No restart needed.|フォントの準備ができました。接続後に読み込みます。再起動は不要です。
+字体已准备，连接后将在游戏内加载，无需重启|Fonts are prepared and will load on connection. No restart needed.|フォントの準備ができました。接続後に読み込みます。再起動は不要です。
+正在准备多语言字体，可以先启动游戏，完成后自动生效。|Preparing fonts. You can start the game now; fonts will activate automatically.|フォントを準備中です。先にゲームを起動しても、準備後に自動で反映されます。
+游戏内多语言字体已就绪|Multilingual fonts are ready in the game|ゲーム内の多言語フォントが使用可能です
+游戏内字体加载失败|In-game font loading failed|ゲーム内フォントの読み込みに失敗しました
 """
 MESSAGES = {
     parts[0]: {"en": parts[1], "ja": parts[2]}

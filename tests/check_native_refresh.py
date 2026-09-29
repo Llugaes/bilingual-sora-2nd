@@ -20,7 +20,7 @@ DESTINATION = ROOT / "generated/diagnostic-094-native-refresh.json"
 
 
 def update_callback_source() -> str:
-    restore_start = AGENT_SOURCE.index("function restoreLogProjection(")
+    restore_start = AGENT_SOURCE.index("function restoreTextProjection(")
     restore_end = AGENT_SOURCE.index("\nfunction newLogContributions(", restore_start)
     start = AGENT_SOURCE.index(
         "Interceptor.attach(base.add(REPORT.native.update.rva), {onEnter(args) {"
@@ -73,6 +73,7 @@ int update(char *label) {
 const label=Memory.alloc(0x800),errors=[],labels=new Map();
 const base=ptr(0),REPORT={native:{update:{rva:native.update}},diagnostics:false};
 let epoch=100,replayEpoch=-1,updates=0,failed=false,writes=0,immediateWrites=0,wanted='';
+let runtimeFonts=null,fontGeneration=0,fontsWereReady=true;
 let setterEnters=0,setterLeaves=0,measureEnters=0,measureLeaves=0,drawEnters=0,drawLeaves=0;
 const setter=new NativeFunction(native.setter,'void',['pointer','pointer']);
 const resetText=new NativeFunction(native.reset_text,'void',['pointer']);
@@ -89,7 +90,7 @@ function copyOwnedText(row,text){
   if(readText(row.pointer)!==text)throw Error('fixture setter did not retain text');
   row.displayed=text;writes++;
 }
-function captureMetadata(row){row.renderSize=row.pointer.add(0x304).readU32();row.metadata={flags:row.pointer.add(0x2e8).readU32()};}
+function captureMetadata(row){row.fontGeneration=fontGeneration;row.renderSize=row.pointer.add(0x304).readU32();row.metadata={flags:row.pointer.add(0x2e8).readU32()};}
 function fail(error){failed=true;errors.push(String(error));}
 const dictionary=Object.create(null);
 const attach=Interceptor.attach.bind(Interceptor);
@@ -104,6 +105,8 @@ function check(value,message){if(!value)throw new Error(message);}
 function counters(){return {setter:{enter:setterEnters,leave:setterLeaves},measure:{enter:measureEnters,leave:measureLeaves,body:label.add(0x6d4).readS32(),setterPass:label.add(0x6e4).readS32(),formalPass:label.add(0x6e8).readS32(),setterContribution:label.add(0x6ec).readS32(),formalContribution:label.add(0x6f0).readS32(),formalTotal:label.add(0x6f4).readS32(),setterTotal:label.add(0x6f8).readS32()},draw:{enter:drawEnters,leave:drawLeaves,body:label.add(0x6d8).readS32()},reset:label.add(0x6dc).readS32()};}
 function zero(){setterEnters=setterLeaves=measureEnters=measureLeaves=drawEnters=drawLeaves=0;}
 function prepare(config){
+  runtimeFonts=config.fontChange?{tick(){},isReady(){return true;}}:null;
+  fontGeneration=config.fontChange?1:0;
   zero();labels.clear();Object.keys(dictionary).forEach(key=>delete dictionary[key]);
   epoch=100;replayEpoch=-1;wanted=config.wanted;writes=0;immediateWrites=0;errors.length=0;failed=false;
   label.add(0x318).writePointer(Memory.allocUtf8String(config.current));
@@ -113,7 +116,7 @@ function prepare(config){
   label.add(0x6d4).writeS32(0);label.add(0x6d8).writeS32(0);label.add(0x6dc).writeS32(0);
   label.add(0x6e0).writeU8(0);label.add(0x6e4).writeS32(0);label.add(0x6e8).writeS32(0);
   for(const off of [0x6ec,0x6f0,0x6f4,0x6f8])label.add(off).writeS32(-1);
-  const row={pointer:label,original:config.original||'source',displayed:config.displayed??config.current,epoch:-1,plan:{kind:config.kind||'plain'}};
+  const row={pointer:label,original:config.original||'source',displayed:config.displayed??config.current,fontGeneration:0,epoch:-1,plan:{kind:config.kind||'plain'}};
   labels.set(String(label),row);
   if(config.replay){dictionary[row.original]=[row.original,wanted];replayEpoch=epoch;}
   return row;
@@ -151,9 +154,11 @@ rpc.exports={run(){
     runCase({name:'replay',current:'translated',displayed:'translated',wanted:'translated',replay:true,kind:'ruby'}),
     runCase({name:'geometry-ruby',current:'translated',displayed:'translated',wanted:'translated',kind:'ruby'}),
     runCase({name:'geometry-layered',current:'translated',displayed:'translated',wanted:'translated',kind:'layered'}),
-    runCase({name:'changed-animated-paused',current:'old',displayed:'old',wanted:'new',kind:'ruby',flags:0x14,total:90,progress:45,expandTotal:true})
+    runCase({name:'changed-animated-paused',current:'old',displayed:'old',wanted:'new',kind:'ruby',flags:0x14,total:90,progress:45,expandTotal:true}),
+    runCase({name:'unchanged-primary-new-font',current:'original',displayed:'original',wanted:'original',fontChange:true})
   ],cold=runCold(),failures=[];
   contract(cases[0],true,failures);contract(cases[1],true,failures);contract(cases[2],false,failures);contract(cases[3],false,failures);contract(cases[4],true,failures);
+  contract(cases[5],true,failures);
   const animated=cases[4];
   if(animated.firstProgress!==90||animated.totalAfterFirst!==180||animated.firstProgress/animated.totalAfterFirst!==animated.beforeProgress/90||(animated.firstFlags&0x10)===0||animated.afterFirst.measure.formalTotal!==180)
     failures.push({case:animated.name,assertion:'paused_animation_fraction_restored_after_synthetic_total_growth',before:animated.beforeProgress,beforeTotal:90,after:animated.firstProgress,afterTotal:animated.totalAfterFirst,flags:animated.firstFlags,measure:animated.afterFirst.measure});

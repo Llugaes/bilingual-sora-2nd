@@ -78,6 +78,29 @@ def update_contract(pe: pefile.PE) -> list[dict[str, str]]:
     ]
 
 
+def active_voice_contract(pe: pefile.PE) -> list[dict[str, str]]:
+    """Verify the resource-independent native surface discriminator."""
+    required = {
+        0x26402: "mov edx, 0x20",
+        0x26414: "call 0x58fc80",
+    }
+    result = []
+    for address, expected in required.items():
+        item = decoded(pe, address, address + 16)[0]
+        actual = f"{item.mnemonic} {item.op_str}"
+        assert actual == expected, (hex(address), actual, expected)
+        result.append({"address": hex(address), "instruction": actual})
+    for address, name in ((0x26459, b"items"), (0x264A9, b"item"), (0x25B29, b"text")):
+        item = decoded(pe, address, address + 16)[0]
+        operand = item.operands[1]
+        assert item.mnemonic == "lea" and operand.type == X86_OP_MEM
+        assert operand.mem.base == X86_REG_RIP
+        actual = pe.get_data(item.address + item.size + operand.mem.disp, len(name) + 1)
+        assert actual == name + b"\0", (hex(address), actual, name)
+        result.append({"address": hex(address), "node": name.decode("ascii")})
+    return result
+
+
 def anchor_spec(pe: pefile.PE) -> dict[str, object]:
     code = pe.get_data(ANCHOR_START, ANCHOR_END - ANCHOR_START)
     assert len(code) == ANCHOR_END - ANCHOR_START
@@ -130,7 +153,7 @@ def multiply_bytes(pe: pefile.PE) -> list[int]:
 def script_source(spec: dict[str, object], methods: str) -> str:
     return r"""
 const SPEC=__SPEC__;
-const logTextGroups=new Map(),labelCallbacks=new Map(),labels=new Map(),labelSet=new Set(),errors=[];
+const activeVoiceRoots=new Set(['voice-root']),logTextGroups=new Map(),labelCallbacks=new Map(),labels=new Map(),labelSet=new Set(),errors=[];
 let enabled=true,failed=false,renderMode='annotation',epoch=7,bilingualOffsetY=0;
 function isLabel(pointer){return labelSet.has(String(pointer));}
 function fail(error){errors.push(String(error));}
@@ -186,14 +209,25 @@ rpc.exports={run(){
   check(close(during[1],before[1]+8),'parent-axis inset was not 8');check(close(projected[1],glyphBefore[1]+8),'actual label+08 projection did not move by 8');
   check(JSON.stringify(floats(state.name,offsets))===JSON.stringify(nameBefore),'name local matrix changed');
   check(JSON.stringify(Array.from(new Uint8Array(state.glyph.readByteArray(16))))===JSON.stringify(glyphLocal),'glyph-local coordinates changed');
-  restoreLogProjection(state.lease);const restored=floats(state.body,offsets),restoredProjection=project(state.body,state.glyph,native);
+  restoreTextProjection(state.lease);const restored=floats(state.body,offsets),restoredProjection=project(state.body,state.glyph,native);
   check(JSON.stringify(restored)===JSON.stringify(before),'body local matrix did not restore');check(close(restoredProjection[1],glyphBefore[1]),'restored final projection changed');
-  offsetLogProjection(state.body);const repeat=floats(state.body,offsets),repeatProjection=project(state.body,state.glyph,native);restoreLogProjection(state.lease);
+  offsetLogProjection(state.body);const repeat=floats(state.body,offsets),repeatProjection=project(state.body,state.glyph,native);restoreTextProjection(state.lease);
   check(close(repeat[1],before[1]+8)&&close(repeatProjection[1],glyphBefore[1]+8),'repeat projection accumulated or lost inset');
   check(close(state.frame.add(0xf4).readFloat(),0),'frame local Y was written');
+  const voice=setup(0);Object.assign(labels.get(String(voice.body)),{surface:'active_voice',surfaceRoot:'voice-root'});
+  const voiceBefore=project(voice.body,voice.glyph,native);
+  for(let repeat=0;repeat<3;repeat++) {
+    offsetTextProjection(voice.body);
+    check(close(project(voice.body,voice.glyph,native)[1],voiceBefore[1]+8),'active voice native projection did not move by 8');
+    restoreTextProjection(voice.lease);
+    check(close(project(voice.body,voice.glyph,native)[1],voiceBefore[1]),'active voice native projection did not restore');
+  }
+  renderMode='primary';offsetTextProjection(voice.body);
+  check(close(project(voice.body,voice.glyph,native)[1],voiceBefore[1]),'single language voice moved');
+  renderMode='annotation';
   check(!errors.length,'production callback errors: '+errors.join(';'));
   return {all_passed:true,game_attached:false,game_started:false,host:'self-created-hidden-python',anchor_cases:anchorCases,
-    projection:{room:group.room,before,during,projected_y:projected[1],restored,restored_y:restoredProjection[1],repeat,repeat_y:repeatProjection[1]}};
+    active_voice_projection:true,projection:{room:group.room,before,during,projected_y:projected[1],restored,restored_y:restoredProjection[1],repeat,repeat_y:repeatProjection[1]}};
 }};
 """.replace("__SPEC__", json.dumps(spec)).replace("__METHODS__", methods)
 
@@ -224,9 +258,16 @@ def main(exe: Path | None = None) -> None:
         spec = anchor_spec(pe)
         spec["multiply"] = multiply_bytes(pe)
         update = update_contract(pe)
+        voice_contract = active_voice_contract(pe)
     finally:
         pe.close()
-    names = ("rememberLogTextGroup", "offsetLogProjection", "restoreLogProjection")
+    names = (
+        "rememberLogTextGroup",
+        "offsetTextProjection",
+        "offsetLogProjection",
+        "projectTextInset",
+        "restoreTextProjection",
+    )
     methods = "\n".join(extract_function(name) for name in names)
     host = subprocess.Popen(
         [sys.executable, "-c", "import time; time.sleep(60)"],
@@ -250,6 +291,7 @@ def main(exe: Path | None = None) -> None:
         "exe": str(exe),
         "sha256": digest,
         "update_projection": update,
+        "active_voice_surface": voice_contract,
         "anchor_table": spec["table"],
         "y_factors": Y_FACTORS,
     }

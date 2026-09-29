@@ -7,10 +7,10 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 # Dependencies flow from application orchestration towards data/platform modules.
 ALLOWED = {
-    "localization": {"localization", "config"},
+    "localization": {"localization", "config", "platform"},
     "platform": set(),
     "config": {"config", "platform"},
-    "fonts": {"fonts", "localization", "game", "config"},
+    "fonts": {"fonts", "localization", "game", "config", "platform"},
     "game": {"game", "localization", "platform", "config", "updates"},
     "updates": {"updates", "config"},
     "app": {"app", "game", "localization", "platform", "config", "updates", "fonts"},

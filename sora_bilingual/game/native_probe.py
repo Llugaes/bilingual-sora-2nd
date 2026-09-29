@@ -142,6 +142,8 @@ def run(game=None, duration=0):
         if exit_signal.is_set():
             return
         model_seconds = time.monotonic() - model_started
+        heartbeat.loading("fonts_preparing")
+        font_packet = prepare_fresh(game, config, cache_only="runtime_fonts", cancel=exit_signal)
         applied_config = dict(config)
         # A cached locale needs no catalog load. Keep all preparation, including
         # first-time catalog compilation, away from the input/status loop.
@@ -205,16 +207,24 @@ def run(game=None, duration=0):
             )
             if getattr(native, "resident_changed", False):
                 update_notice = "底层更新将在游戏下次启动时自动应用；当前连接保持运行"
+            if native.status().get("runtimeFonts") is not None:
+                native.script.exports_sync.fonts(font_packet["runtime_fonts"])
+                heartbeat.loading("fonts_applying")
             log(
                 {
-                    "type": "connection_ready",
+                    "type": "connection_attached",
                     "model_seconds": round(model_seconds, 3),
                     "total_seconds": round(time.monotonic() - connection_started, 3),
                 }
             )
-            heartbeat.loading("ready")
-            print("双语已连接；从托盘退出将关闭效果并结束工具进程。", flush=True)
+            if native.status().get("runtimeFonts", {}).get("ready", True):
+                heartbeat.loading("ready")
+            print(
+                "已连接游戏；字体和映射就绪后自动启用双语。从托盘退出会关闭效果并结束工具进程。",
+                flush=True,
+            )
             start = time.monotonic()
+            last_font_state = None
             while not native.exited.is_set():
                 if exit_signal.is_set():
                     break
@@ -434,6 +444,25 @@ def run(game=None, duration=0):
                         live_key = next_live
                     if now - last_status >= 1:
                         state = native.status()
+                        fonts = state.get("runtimeFonts")
+                        if fonts and fonts.get("state") != last_font_state:
+                            last_font_state = fonts.get("state")
+                            log(
+                                {
+                                    "type": "runtime_fonts",
+                                    **fonts,
+                                    "total_seconds": round(
+                                        time.monotonic() - connection_started, 3
+                                    ),
+                                }
+                            )
+                        if fonts and not preparation.active:
+                            if fonts.get("state") == "error":
+                                heartbeat.loading("fonts_error", fonts.get("error"))
+                            elif fonts.get("ready") or not config["enabled"]:
+                                heartbeat.loading("ready")
+                            else:
+                                heartbeat.loading("fonts_applying")
                         if state["failed"]:
                             error = (
                                 "原生处理已停用："

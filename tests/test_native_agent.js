@@ -169,6 +169,7 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
             ruby_end:{rva:0xc00,bytes:'00000000000000000000000000000000'},
             parse_text:{rva:0xd00,bytes:'00000000000000000000000000000000'},
             icon_callback_clone:{rva:0xd10,bytes:'00000000000000000000000000000000'},
+            actor_name_set:{rva:0xdd0,bytes:'00000000000000000000000000000000'},
             dialogue_popup:{rva:0xe00,bytes:'00000000000000000000000000000000'},
             dialogue_builder:{rva:0xf00,bytes:'00000000000000000000000000000000'},
             log_write:{rva:0xf10,bytes:'00000000000000000000000000000000'},
@@ -401,6 +402,14 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
             assert.equal(sandbox.rpc.exports.status().failed,false,JSON.stringify(sandbox.rpc.exports.status()));
             return result;
         },
+        actorName(actorAddress,data,offset,source,oldActor=null) {
+            const actor=oldActor||new ScratchPointer(actorAddress), input=data?new RegionPointer(data).add(offset):allocate(source);
+            const leave=invoke(base.add(0xdd0),[actor,input,new Pointer(0)]);
+            const copy=allocate(source);actor.add(0x2c0).writePointer(copy);actor.add(0x2cc).writeS32(Buffer.byteLength(source));
+            leave();return {actor,copy};
+        },
+        actorNameFlags(actor){invoke(base.add(0xdd0),[actor,nullPointer,new Pointer(1)])();},
+        setFromPointer(label,input){const args=[label,input],leave=invoke(base.add(0x100),args);copyIntoLabel(label,args[1]);leave();},
         dialogueSet(label,text,data,functionName,values,logSlot,site) {
             const machine=new ScratchPointer(0x34000000),object=new ScratchPointer(0x35000000),stack=new ScratchPointer(0x36000000);
             object.values.set(0,new RegionPointer(data));machine.values.set(8,object);
@@ -463,6 +472,10 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
         logActivate(controller){invoke(base.add(0xf58),[controller])();},
         externalBuffer(label,buffer) {
             const args=[label,buffer],leave=invoke(base.add(0x100),args);copyIntoLabel(label,args[1]);leave();
+        },
+        registerLayout(root,id){
+            const layout=new ScratchPointer(0x718000);layout.add(0x80).writeS32(id);layout.add(0xa8).writePointer(root);
+            sandbox.testLayout=layout;vm.runInContext('registerLayout(testLayout)',context);delete sandbox.testLayout;
         },
         markSubtitle(root){vm.runInContext('subtitleRoots.add('+JSON.stringify(String(root))+');',context);},
         parseOrigin(label,measurement=false,delta=12) {
@@ -1127,7 +1140,7 @@ test('small and late-bound native sizes retain bilingual text without stopping o
         assert.deepEqual([...r.api.status().nativeSizeFallbacks],[size]);
         r.capturedRubyRuns(p,[[20,40,10,10],[20,18,6,6]],[[0,1,2]]);
         const scaled=r.glyphLayout(p);
-        assert.equal(scaled[0][2],8);assert.ok(Math.abs(scaled[1][2]-4.8)<.00001);
+        assert.equal(scaled[0][2],8);assert.equal(scaled[1][2],6,'secondary already has its parser scale');
         r.api.select('primary',true);r.update(p);assert.equal(p.text(),'Monster');
         r.api.select('annotation',true);r.update(p);assert.match(p.text(),/<R>/);
         p.fontSize=24;r.update(p);assert.match(p.text(),/^<s19>/);
@@ -1945,6 +1958,37 @@ test('absolute size commands use a relative ruby ratio when label and font sizes
     }
 });
 
+test('emphasis survives the complete annotation glyph pass at every size and reveal mode',()=>{
+    // 2026-09-29 layout 7 capture: label 33, font base 48, S5 primary 37,
+    // ruby 18, ruby_scale .9, annotation_scale .85. Testing only the size
+    // callback missed the second shrink in finishAnnotationLanes.
+    const commands=[... [12,24,28,33,37,48,64,96].map(pixels=>[`<s${pixels}>`,pixels]),['<S5>',37]];
+    for(const animated of [false,true])for(const labelSize of [26,32,33,48])
+        for(const fontBase of [32,48,64])for(const [command,pixels] of commands) {
+            const header='<#L[1#107w7]#G[6]#M_2#B_0#S[1]>';
+            const r=makeRuntime(),source=header+command+'……吵死了，闭嘴！',target=header+command+'……うるさい、黙れ！';
+            const label=r.label(0x467a,source,0,labelSize);
+            if(animated)label.flags|=4;
+            r.api.load({pairs:{[source]:[source,target]}},'annotation',true,.85,{ruby_scale:.9});
+            r.externalSet(label,source);
+            const metric=r.layerSizeContext(label,0,{fontBase,nativeScale:18/fontBase,
+                primaryScale:labelSize/fontBase,absoluteSize:pixels/fontBase});
+            // Feed the parser's resulting same-character geometry through the
+            // production layer registration and final glyph correction.
+            r.auxiliary(label,0,{secondaryCount:1,primaryUnits:1,glyphQuads:[
+                [10,0,metric.emphasized*fontBase,metric.emphasized*fontBase],
+                [10,40,pixels,pixels],
+            ]});
+            label.revealUnits=1;
+            const output=r.glyphLayout(label),secondary=output[0][2],primary=output[1][2];
+            const expected=18*.9*pixels/labelSize;
+            assert.ok(Math.abs(secondary-expected)<.0001,
+                `animated=${animated}, label=${labelSize}, font=${fontBase}, pixels=${pixels}: ${secondary} != ${expected}`);
+            assert.ok(Math.abs(primary-pixels*.85)<.0001,'primary retains configured shrink');
+            assert.deepEqual(r.glyphLayout(label),output,'repeat frames never compound either scale');
+        }
+});
+
 test('native readings reserve a plus a-prime above every owned line including the first',()=>{
     const a='<R>刺激</R香辛料>是首行。\n再来<R>刺激</R香辛料>。',b='<R>刺激</Rスパイス>だ。\nまた<R>刺激</Rスパイス>。';
     for(const measuring of [false,true]) {
@@ -1953,7 +1997,7 @@ test('native readings reserve a plus a-prime above every owned line including th
         for(const index of [0,1])for(let rebuild=0;rebuild<3;rebuild++) {
             const origin=100+index*80;
             const out=r.auxiliary(p,index,{origin,measuring,primaryReadingHeight:18,secondaryReadingHeight:5});
-            const expected=origin+(18+5)*.85;
+            const expected=origin+18*.85+5;
             assert.ok(Math.abs(out.primaryY-expected)<1e-4,`line ${index}, measuring=${measuring}: ${out.primaryY} != ${expected}`);
             assert.equal(out.reservedTop,origin,'leading reserve belongs to the measured paragraph even on its first line');
             assert.equal(out.reservedBottom,Math.ceil(expected));
@@ -1971,7 +2015,7 @@ test('primary and secondary reading reserves are independent and absent readings
         const out=r.auxiliary(p,0,{origin:100,measuring,primaryReadingHeight:mainReading?18:0,secondaryReadingHeight:secondaryReading?5:0});
         // Primary native ruby selects post-geometry scale. Secondary-only ruby
         // keeps the existing main <s> path, so its measured reading is final.
-        const extra=((mainReading?18:0)+(secondaryReading?5:0))*(mainReading?.85:1);
+        const extra=(mainReading?18*.85:0)+(secondaryReading?5:0);
         assert.ok(Math.abs(out.primaryY-(100+extra))<1e-4,`${mainReading}/${secondaryReading}/${measuring}`);
         assert.equal(r.api.status().failed,false);
     }
@@ -2368,8 +2412,8 @@ test('repeated native parser rebuilds replace an offset owned ruby lane without 
     // glyphs are scaled post-layout. The annotation is placed once from its
     // scaled primary edge; stale lanes would repeat the transform.
     assert.equal(geometry[1][2],16);assert.equal(geometry[2][2],16);
-    for(const [actual,expected] of geometry[3].map((value,index)=>[value,[30.6,5.4,11.2,11.2][index]]))
-        assert.ok(Math.abs(actual-expected)<1e-6);
+    for(const [actual,expected] of geometry[3].map((value,index)=>[value,[32,4,14,14][index]]))
+        assert.ok(Math.abs(actual-expected)<1e-6,`${actual} != ${expected}`);
     r.finishLayout(label);assert.deepEqual(r.glyphGeometry(label),geometry,'a completed parser pass cannot reuse stale lane geometry');
     assert.deepEqual(geometry[4],quads[4].slice(0,4),'untranslated trailing number stays native');
     assert.deepEqual(geometry[5],quads[5].slice(0,4),'native icon stays native');
@@ -2485,7 +2529,7 @@ test('animated layered rebuilds keep scale stable while reveal progress changes'
         if(!expected.has(label.revealUnits))expected.set(label.revealUnits,actual);
         assert.deepEqual(actual,expected.get(label.revealUnits),'progress may change alpha, never accumulate scale');
         assert.equal(r.laneCount(label),1);
-        assert.ok(Math.abs(actual.geometry[1][2]-11.9)<1e-5);
+        assert.equal(actual.geometry[1][2],14,'secondary parser size is not shrunk a second time');
         assert.equal(actual.geometry[3][2],17);
     }
     assert.equal(expected.get(1).colors[1][3],0);
@@ -2551,4 +2595,50 @@ test('native ruby measurement scope only surrounds owned simple log template mea
     r.inlinedSet(r.label(0xdb0000,''),'言'); // the shared measuring entry outside MessageLog
     assert.equal(r.measureScopes.pushes.length,before);
     assert.equal(r.api.status().failed,false);
+});
+
+
+test('actor-owned copied names retain their physical script setter identity, including equal source names',()=>{
+    const r=makeRuntime(),source='女子的声音',data=Buffer.alloc(160);
+    data.write(source,48);data.write(source,96);
+    const {scriptSha256}=require('../sora_bilingual/game/scripts/runtime_identity.js');
+    const keys=['script/a.dat/Talk/called/1/arg/1','script/a.dat/Talk/called/2/arg/1'];
+    const pairs=keys.map((key,i)=>({key,source,model:{pairs:{[source]:[source,['女性の声','女の声'][i]]},plain_pairs:{}}}));
+    r.api.load({pairs:{},plain_pairs:{},script_identities:{pointers:{[source]:[48,96].map((offset,i)=>({offset,key:keys[i],size:data.length,sha256:scriptSha256(data),header:data.subarray(0,24).toString('hex')}))},pointer_models:Object.fromEntries(pairs.map(row=>[row.key,row]))}},'secondary',true,1);
+    const label=r.label(0x9190,''),first=r.actorName(0x610000,data,48,source);
+    r.actorNameFlags(first.actor);
+    r.setFromPointer(label,first.copy);assert.equal(label.text(),'女性の声');
+    r.api.select('primary',true);r.update(label);assert.equal(label.text(),source);
+    r.api.select('secondary',true);r.update(label);assert.equal(label.text(),'女性の声');
+    const second=r.actorName(0x610000,data,96,source,first.actor);
+    r.setFromPointer(label,second.copy);assert.equal(label.text(),'女の声');
+    r.setFromPointer(label,first.copy);assert.equal(label.text(),source,'retired owned buffer cannot retain a setter');
+    const unknown=r.actorName(0x610000,null,0,source,first.actor);
+    r.setFromPointer(label,unknown.copy);assert.equal(label.text(),source,'unknown heap source cannot borrow the previous identity');
+});
+
+
+test('active voice projection is scoped to its native layout and restored on every Update',()=>{
+    const r=makeRuntime(),source='不过，你也别那么灰心。',target='まあ、そう気ぃ落とさんと。';
+    const pairs={[source]:[source,target]};r.api.load({pairs,plain_pairs:pairs},'annotation',true,1);
+    for(const id of [32,7,8,0])for(const node of ['text','name']) {
+        const root=r.label(0xe010,'');root.name='root';r.registerLayout(root,id);
+        const items=r.label(0xe020,'');items.name='items';items.parent=root;
+        const item=r.label(0xe030,'');item.name='item';item.parent=items;
+        item.add(0x1c).writeFloat(2);
+        const label=r.label(0xe040,source);label.name=node;label.parent=item;
+        label.add(0x3c).writeFloat(400);
+        for(let frame=0;frame<4;frame++) {
+            assert.equal(r.projectedUpdate(label),400+(id===32&&node==='text'?16:0),`${id}/${node}`);
+            assert.equal(label.add(0x3c).readFloat(),400,'restore before the next native Update');
+        }
+        r.registerLayout(root,7);assert.equal(r.projectedUpdate(label),400,'retired voice root loses its inset even with unchanged text');
+        r.registerLayout(root,id);
+        for(const mode of ['primary','secondary']) {
+            r.api.select(mode,true);assert.equal(r.projectedUpdate(label),400);
+        }
+        r.api.select('annotation',true);r.api.disable();assert.equal(r.projectedUpdate(label),400);
+        r.api.select('annotation',true);r.destroy(label);
+    }
+    assert.equal(r.api.status().failed,false,r.api.status().failureReason);
 });

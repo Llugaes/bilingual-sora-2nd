@@ -186,6 +186,13 @@ def _replace_candidate(stage: Path, candidate: Path, root: Path) -> None:
 
 def prepare(game: Path, *, root: Path = DELIVERY_ROOT, builder=build) -> Path:
     """Build once per local source fingerprint, without touching the game directory."""
+    from sora_bilingual.platform.file_lock import preparation_lock
+
+    with preparation_lock(root / _path_key(Path(game)), "font-preparation.lock"):
+        return _prepare_locked(game, root=root, builder=builder)
+
+
+def _prepare_locked(game: Path, *, root: Path, builder) -> Path:
     game = Path(game).resolve()
     fingerprint = source_fingerprint(game)
     candidate = root / _path_key(game) / fingerprint
@@ -357,7 +364,7 @@ def ensure(
             return True
 
     if game_is_running():
-        return {**report, "state": "restart-required", "staged": True}
+        return {**report, "state": "runtime-required", "staged": True}
 
     from sora_bilingual.game.hooks import verify_target
 
@@ -365,7 +372,7 @@ def ensure(
     # `health` and executable validation can take time. Query immediately
     # before opening the transaction instead of trusting an earlier snapshot.
     if game_is_running():
-        return {**report, "state": "restart-required", "staged": True}
+        return {**report, "state": "runtime-required", "staged": True}
     created: list[Path] = []
     originals: dict[Path, bytes] = {}
     replaceable = set(report["replaceable"])

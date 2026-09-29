@@ -223,16 +223,16 @@ class AutoConnector:
                         messages = {
                             "healthy": "多语言字体已就绪",
                             "installed": "多语言字体已安装",
-                            "restart-required": "字体已准备；请退出并重启游戏后生效",
+                            "runtime-required": "字体已准备，连接后将在游戏内加载，无需重启",
                             "conflict": "字体安装与已有 MOD 文件冲突",
                         }
                         self.font_status = {
                             "state": state,
                             "message": messages.get(state, "字体状态未知"),
                             "detail": result.get("conflicts") or result.get("missing") or [],
-                            "restart_required": state == "restart-required",
+                            "restart_required": False,
                         }
-                        if state == "restart-required":
+                        if state == "runtime-required":
                             # The fresh pre-write query can see a game that
                             # started after the snapshot. Treat it as the
                             # running action until the process later exits.
@@ -376,8 +376,26 @@ class AutoConnector:
                     self.message = "正在后台准备语言缓存，可直接启动游戏"
                 elif preparation_error and not games:
                     self.message = preparation_error
-                elif self.font_status.get("state") == "restart-required":
+                elif self.font_status.get("state") == "runtime-required":
                     self.message = self.font_status["message"]
+                runtime_fonts = status.get("runtimeFonts")
+                if (
+                    runtime_fonts
+                    and status.get("running")
+                    and 0 <= time.time() - status.get("updated_at", 0) < 5
+                    and any(pid == status.get("pid") for pid, _ in games)
+                ):
+                    if runtime_fonts.get("ready"):
+                        self.font_status = {
+                            "state": "runtime-ready",
+                            "message": "游戏内多语言字体已就绪",
+                        }
+                    elif runtime_fonts.get("state") == "error":
+                        self.font_status = {
+                            "state": "error",
+                            "message": "游戏内字体加载失败",
+                            "detail": runtime_fonts.get("error"),
+                        }
             except Exception as exc:
                 device = None
                 self.message = "自动检测暂不可用：" + str(exc)

@@ -346,6 +346,9 @@ class LoadingTests(unittest.TestCase):
                 self.config = config
                 self.exited.set()
 
+            def status(self):
+                return {}
+
             def disable(self):
                 pass
 
