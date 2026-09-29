@@ -508,6 +508,7 @@ class NativeSettingsWindow(QWidget):
         ]:
             self.binding_action.addItem(title, action)
         binding_form = QFormLayout()
+        binding_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         binding_form.addRow("操作", self.binding_action)
         self.controller_style = QComboBox()
         for title, style in (
@@ -528,9 +529,9 @@ class NativeSettingsWindow(QWidget):
             (self.binding_label, self.record_controller),
         ):
             label.setWordWrap(True)
-            row = QHBoxLayout()
-            row.addWidget(label, 1)
-            row.addWidget(button)
+            row = QFormLayout()
+            row.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+            row.addRow(label, button)
             binding_layout.addLayout(row)
         style_help = QLabel(
             "自动按手柄显示键名；Steam Input 转接后可手动选择。仅改变名称，不改变绑定。"

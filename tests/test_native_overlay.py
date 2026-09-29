@@ -281,6 +281,18 @@ class OverlayUiTests(unittest.TestCase):
         self.assertEqual(self.window.device_label.text(), tr("设备：DualSense"))
         self.assertEqual(self.control.read_bytes(), before)
 
+    def test_controller_label_selector_fits_narrow_page_with_larger_system_text(self):
+        self.window.setStyleSheet("QWidget { font-size: 17px; }")
+        self.window.resize(620, 560)
+        self.window.tabs.setCurrentIndex(2)
+        self.window.show()
+        for locale in ("en", "ja", "zh-Hans"):
+            with self.subTest(locale=locale):
+                self.window.ui_language.setCurrentIndex(self.window.ui_language.findData(locale))
+                self.app.processEvents()
+                page = self.window.pages[2]
+                self.assertEqual(page.horizontalScrollBar().maximum(), 0)
+
     def test_layout_update_preserves_external_language_and_backend_state(self):
         update_control({"primary": "en"}, self.control)
         self.window.ruby_offset_x.setValue(7)
