@@ -1,4 +1,4 @@
-# Bilingual Sora 2nd v0.3.22
+# Bilingual Sora 2nd v0.3.23
 
 ## 简体中文
 
