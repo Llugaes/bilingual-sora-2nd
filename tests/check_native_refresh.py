@@ -90,7 +90,7 @@ function copyOwnedText(row,text){
   if(readText(row.pointer)!==text)throw Error('fixture setter did not retain text');
   row.displayed=text;writes++;
 }
-function captureMetadata(row){row.fontGeneration=fontGeneration;row.renderSize=row.pointer.add(0x304).readU32();row.metadata={flags:row.pointer.add(0x2e8).readU32()};}
+function captureMetadata(row){row.renderSize=row.pointer.add(0x304).readU32();row.metadata={flags:row.pointer.add(0x2e8).readU32()};}
 function fail(error){failed=true;errors.push(String(error));}
 const dictionary=Object.create(null);
 const attach=Interceptor.attach.bind(Interceptor);
@@ -105,7 +105,7 @@ function check(value,message){if(!value)throw new Error(message);}
 function counters(){return {setter:{enter:setterEnters,leave:setterLeaves},measure:{enter:measureEnters,leave:measureLeaves,body:label.add(0x6d4).readS32(),setterPass:label.add(0x6e4).readS32(),formalPass:label.add(0x6e8).readS32(),setterContribution:label.add(0x6ec).readS32(),formalContribution:label.add(0x6f0).readS32(),formalTotal:label.add(0x6f4).readS32(),setterTotal:label.add(0x6f8).readS32()},draw:{enter:drawEnters,leave:drawLeaves,body:label.add(0x6d8).readS32()},reset:label.add(0x6dc).readS32()};}
 function zero(){setterEnters=setterLeaves=measureEnters=measureLeaves=drawEnters=drawLeaves=0;}
 function prepare(config){
-  runtimeFonts=config.fontChange?{tick(){},isReady(){return true;}}:null;
+  runtimeFonts=config.fontChange?{tick(){},isReady(){return true;},refreshLabel(){return true;}}:null;
   fontGeneration=config.fontChange?1:0;
   zero();labels.clear();Object.keys(dictionary).forEach(key=>delete dictionary[key]);
   epoch=100;replayEpoch=-1;wanted=config.wanted;writes=0;immediateWrites=0;errors.length=0;failed=false;

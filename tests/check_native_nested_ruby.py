@@ -102,7 +102,7 @@ function auxiliaryLayer(p,parser,r){{return p.equals(label)&&parser.equals(rootP
 function beginAnnotationLane(){{}}
 function inheritAuxiliaryIcons(){{}}
 {CALLBACK}
-const nativeMeasure=createNativeMeasure(rubyContextCallbacks,{{measurement:cOuterMeasure,baseMeasurement:cNestedMeasure}},fail,nativeParser);
+const nativeMeasure=createNativeMeasure(rubyContextCallbacks,{{measurement:cOuterMeasure,baseMeasurement:cNestedMeasure,placement:cOuterPlace}},fail,nativeParser);
 const prepareLabel=Memory.alloc(Process.pointerSize),prepareParent=Memory.alloc(Process.pointerSize),prepareFrame=Memory.alloc(Process.pointerSize);
 prepareLabel.writePointer(label);prepareParent.writePointer(rootParser);prepareFrame.writePointer(frame);
 const prepare=new CModule(`

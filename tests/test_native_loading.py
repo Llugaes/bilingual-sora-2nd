@@ -42,6 +42,7 @@ class LoadingTests(unittest.TestCase):
                     write_config=lambda v, p=None: write_config(v, p or control),
                     write_telemetry=lambda value, path: telemetry.append((value, path)),
                     process_path=lambda _: root / "sora_2nd.exe",
+                    process_identity=lambda _: 123,
                 ),
                 patch.object(
                     probe.frida,
@@ -211,6 +212,7 @@ class LoadingTests(unittest.TestCase):
                         write_telemetry=publish,
                         foreground_rect=lambda _: None,
                         process_path=lambda _: root / "sora_2nd.exe",
+                        process_identity=lambda _: 123,
                     ),
                     patch.object(
                         probe.frida,
@@ -246,7 +248,7 @@ class LoadingTests(unittest.TestCase):
 
             def attach(self, *_, **__):
                 changed = read_config(control)
-                changed["primary"] = "en"
+                changed["primary"] = "fr"
                 write_config(changed, control)
 
             def load(self, model, _config, _mode, *, cache_path=None):
@@ -311,6 +313,7 @@ class LoadingTests(unittest.TestCase):
                     write_telemetry=lambda *_: True,
                     foreground_rect=lambda _: None,
                     process_path=lambda _: root / "sora_2nd.exe",
+                    process_identity=lambda _: 123,
                 ),
                 patch.object(
                     probe.frida,
@@ -392,6 +395,7 @@ class LoadingTests(unittest.TestCase):
                     write_telemetry=lambda *_: True,
                     foreground_rect=lambda _: None,
                     process_path=lambda _: root / "sora_2nd.exe",
+                    process_identity=lambda _: 123,
                 ),
                 patch.object(
                     probe.frida,
@@ -436,6 +440,7 @@ class LoadingTests(unittest.TestCase):
                     write_config=lambda v, p=None: write_config(v, p or control),
                     write_telemetry=lambda value, _path: telemetry.append(value) or True,
                     process_path=lambda _: root / "sora_2nd.exe",
+                    process_identity=lambda _: 123,
                 ),
                 patch.object(
                     probe.frida,

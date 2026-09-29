@@ -140,19 +140,19 @@ class UiLanguageTests(unittest.TestCase):
                 for code, tabs, system_label, opacity_label in (
                     (
                         "en",
-                        ("Language", "Text layout", "Shortcuts", "Updates"),
+                        ("Language", "Text layout", "Shortcuts", "Settings and updates"),
                         "Follow system",
                         "Secondary text opacity",
                     ),
                     (
                         "ja",
-                        ("言語", "文字レイアウト", "ショートカット", "更新"),
+                        ("言語", "文字レイアウト", "ショートカット", "設定と更新"),
                         "システムに従う",
                         "副言語の不透明度",
                     ),
                     (
                         "zh-Hans",
-                        ("语言", "文字排版", "快捷键", "更新"),
+                        ("语言", "文字排版", "快捷键", "设置和更新"),
                         "跟随系统",
                         "副语言透明度",
                     ),

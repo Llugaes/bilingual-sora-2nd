@@ -40,22 +40,22 @@ Field interactions and notifications:
 ## Installation
 
 1. Download `bilingual-sora-2nd-VERSION-windows-x64-setup.exe` from the [latest release](https://github.com/Llugaes/bilingual-sora-2nd/releases/latest) and run the installer.
-2. Open **Bilingual Sora 2nd** from the Start menu or desktop shortcut. Choose the interface language and your primary/secondary languages on first launch.
+2. Open **Bilingual Sora 2nd** from the Start menu or desktop shortcut. Choose the interface language on first launch. The primary language syncs when connecting to a new game process; you can then change either display language.
 3. The tool automatically finds the game and prepares multilingual fonts. No folder or game-language selection is needed. You can start the game before preparation finishes; fonts load into the running game when ready. First-time language mapping may take a few minutes, and valid caches are reused.
 
 Supports Windows 10/11 x64 without administrator rights. Python and runtime dependencies are bundled, so the downloaded installer works offline with no separate environment setup. The interface supports English, Japanese, and Simplified Chinese. Updates retain existing settings.
 
 See the [FAQ](#frequently-asked-questions-faq) for portable use, older-version migration, and troubleshooting.
 
-The Updates page links to the user guide and release notes. Opening the application again shows the existing interface without starting another backend.
+The Settings and updates page links to the user guide and release notes. Opening the application again shows the existing interface without starting another backend.
 
-Settings are grouped into Language, Text layout, Shortcuts, and Updates. Choose any primary/secondary pair under Language. In-game text language is a read-only detection status, not an editable setting. Failed connections retry automatically; the Language page also offers a manual connection button. The Mod's primary language controls displayed text without changing the game's setting.
+Settings are grouped into Language, Text layout, Shortcuts, and Settings and updates. Choose any primary/secondary pair under Language. In-game text language is a read-only detection status, not an editable setting. Failed connections retry automatically; the Language page also offers a manual connection button. The Mod's primary language controls displayed text without changing the game's setting.
 
 ### First-run defaults
 
 The primary language defaults to the game's text language. The secondary defaults to Japanese, or English when the game is in Japanese.
 
-These are initial preferences, not restrictions on language pairs. Existing settings survive restarts and updates unchanged. Choose English, Simplified Chinese, or Japanese for the interface on first launch; **Interface language** changes it live or follows the system. UI language, source matching, and display languages are independent.
+The primary language syncs once from the actual game text language each time a new game process starts. You can then change it; reconnecting to that same game process preserves your choice. Secondary language and other preferences survive restarts and updates. Choose English, Simplified Chinese, or Japanese for the interface on first launch, or change **Interface language** under **Settings and updates**. The Language page places the enable switch first, with primary and secondary choices side by side. Scrolling over a closed dropdown does not change its selection.
 
 The tool automatically finds Steam installations. After the first game launch, it detects the actual text language and builds a cache from local resources. Valid caches are reused; the game language setting is never changed. Text is rendered by native game controls; the Qt interface provides configuration and status. Use windowed or borderless mode; the settings overlay is not guaranteed to appear over exclusive fullscreen.
 
@@ -100,7 +100,7 @@ For smoother play, select **Single-language mode → Hold for secondary language
 
 ## Automatic updates
 
-**Automatic updates** is enabled by default on the Updates page. It checks stable releases on startup and every six hours, downloads and verifies updates in the background, and installs after the game connection ends. The interface reloads with settings, caches, and window state preserved. Manual checks remain available when automatic updates are off.
+**Automatic updates** is enabled by default on the Settings and updates page. It checks stable releases on startup and every six hours, downloads and verifies updates in the background, and installs after the game connection ends. The interface reloads with settings, caches, and window state preserved. Manual checks remain available when automatic updates are off.
 
 ## Frequently asked questions (FAQ)
 
@@ -155,7 +155,7 @@ The installer includes the audited [sora2looseload](https://github.com/lmaple0/s
 <details>
 <summary>How do I recover from an update failure, and where are my settings?</summary>
 
-If an update fails, use the download and log actions on the Updates page. You can reinstall using the latest setup EXE.
+If an update fails, use the download and log actions on the Settings and updates page. You can reinstall using the latest setup EXE.
 
 Downloads are verified against the repository, version, file list, and SHA-256 hashes. Installation waits until the game connection ends. The interface then reloads automatically, restoring its position and expanded/hidden state. Settings and caches stay in **generated/**; bundled dependencies stay in **runtime/**. If installation is interrupted, the next shortcut launch completes it or restores the old files. Backups live under **generated/updates/backup-***.
 

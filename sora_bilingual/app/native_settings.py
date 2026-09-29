@@ -36,6 +36,7 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QFrame,
     QButtonGroup,
+    QGridLayout,
 )
 
 from sora_bilingual.platform.inputs import vk_for_key, InputManager
@@ -122,6 +123,7 @@ def configure_first_run(path: Path = CONTROL_PATH) -> bool:
     ui_dialog.setLabelText("选择界面语言 / Choose interface language / 画面言語を選択")
     ui_dialog.setComboBoxItems([label for _, label in ui_choices])
     ui_dialog.setComboBoxEditable(False)
+    ui_dialog.setOption(QInputDialog.InputDialogOption.UseListViewForComboBoxItems)
     ui_dialog.setOkButtonText("OK")
     ui_dialog.setCancelButtonText("Cancel")
     if ui_dialog.exec() != QDialog.DialogCode.Accepted:
@@ -308,7 +310,7 @@ class NativeSettingsWindow(QWidget):
         from sora_bilingual.app.update_ui import UpdatePage
 
         self.updates = UpdatePage()
-        add_page(self.updates, "更新")
+        add_page(self.updates, "设置和更新")
         layout.addWidget(self.tabs, 1)
         self.save_notice = QLabel()
         self.save_notice.setWordWrap(True)
@@ -332,11 +334,9 @@ class NativeSettingsWindow(QWidget):
         font_layout.addWidget(self.font_preparation_status)
         font_layout.addWidget(self.font_preparation_detail)
         language_layout.addWidget(self.font_card)
-        form = QFormLayout()
         style_form = QFormLayout()
         # English labels are wider than the compact panel.  Wrap the field
         # below its label instead of forcing a horizontal scroll area.
-        form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         style_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         self.primary = QComboBox()
         self.secondary = QComboBox()
@@ -354,6 +354,7 @@ class NativeSettingsWindow(QWidget):
             self.primary.addItem(label, code)
             self.secondary.addItem(label, code)
         self.enabled = QCheckBox("启用双语 Mod")
+        language_layout.insertWidget(0, self.enabled)
         self.bilingual_mode = QRadioButton("双语模式")
         self.single_mode = QRadioButton("单语言模式")
         self.mode_group = QButtonGroup(self)
@@ -387,10 +388,26 @@ class NativeSettingsWindow(QWidget):
         self.secondary_opacity.setAccessibleName(tr("副语言透明度"))
         self.secondary_opacity.setToolTip(tr("拖动滑块，实时保存副语言透明度。"))
         self.secondary_opacity.valueChanged.connect(self._set_secondary_opacity)
-        form.addRow("界面语言", self.ui_language)
-        form.addRow("主语言", self.primary)
-        form.addRow("副语言", self.secondary)
-        language_layout.addLayout(form)
+        interface_form = QFormLayout()
+        interface_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+        interface_form.addRow("界面语言", self.ui_language)
+        self.updates.layout().insertLayout(0, interface_form)
+        languages = QGridLayout()
+        for column, (title, control) in enumerate(
+            (("主语言", self.primary), ("副语言", self.secondary))
+        ):
+            label = QLabel(title)
+            label.setBuddy(control)
+            control.setProperty("ui_accessible_name", title)
+            control.setAccessibleName(tr(title))
+            languages.addWidget(label, 0, column)
+            languages.addWidget(control, 1, column)
+            languages.setColumnStretch(column, 1)
+        language_layout.addLayout(languages)
+        language_note = QLabel("每次游戏启动时同步主语言；本次运行中可自行调整。")
+        language_note.setWordWrap(True)
+        language_note.setObjectName("helpText")
+        language_layout.addWidget(language_note)
         self.connection_button = QPushButton("连接游戏")
         self.connection_button.setObjectName("primaryAction")
         self.connection_button.setAccessibleName("手动连接游戏")
@@ -411,7 +428,6 @@ class NativeSettingsWindow(QWidget):
         language_layout.addWidget(display_heading)
         self.display_form = display_form = QFormLayout()
         display_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
-        display_form.addRow(self.enabled)
         mode_row = QWidget()
         mode_layout = QHBoxLayout(mode_row)
         mode_layout.setContentsMargins(0, 0, 0, 0)

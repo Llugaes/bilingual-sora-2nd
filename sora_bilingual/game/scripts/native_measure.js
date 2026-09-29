@@ -1,7 +1,7 @@
 'use strict';
 // Native fast path for the two already-verified ruby measurement returns.
-// Every condition that is not explicitly represented in the per-thread scope
-// stays on the original JavaScript ruby_context_init listener.
+// Only the three annotation callers enter JavaScript. All other initializer
+// callers already return immediately in rubyContextCallbacks.onEnter.
 function createNativeMeasure(callbacks, addresses, onError, scaleTracker=null) {
     const THREADS = 32, DEPTH = 16;
     // Includes alignment/padding before the 64-bit counters in State.
@@ -74,7 +74,7 @@ typedef struct {
     void *return_address;
     void *r15, *rbx, *rbp;
     uint64_t tid, token;
-    uint32_t fast, branch;
+    uint32_t fast, branch, ordinary;
     double factor;
 } Invocation;
 extern State measure_state;
@@ -156,6 +156,9 @@ bad:
 }
 void measure_on_enter(GumInvocationContext *ic) {
     State *s=&measure_state; Invocation *v=GUM_IC_GET_INVOCATION_DATA(ic,Invocation); GumCpuContext *cpu=ic->cpu_context;
+    v->return_address=gum_invocation_context_get_return_address(ic);
+    v->ordinary=v->return_address!=(void *)${addresses.measurement} && v->return_address!=(void *)${addresses.baseMeasurement} && v->return_address!=(void *)${addresses.placement};
+    if (v->ordinary) return;
     v->args[0]=gum_invocation_context_get_nth_argument(ic,0); v->args[1]=gum_invocation_context_get_nth_argument(ic,1); v->args[2]=gum_invocation_context_get_nth_argument(ic,2);
     v->return_value=0; v->return_address=gum_invocation_context_get_return_address(ic); v->r15=(void *)cpu->r15; v->rbx=(void *)cpu->rbx; v->rbp=(void *)cpu->rbp; v->tid=gum_invocation_context_get_thread_id(ic); v->factor=0;
     v->branch=evaluate(s,v->tid,v->return_address,v->r15,v->rbx,1,&v->factor); v->fast=v->branch!=0;
@@ -166,6 +169,7 @@ void measure_on_enter(GumInvocationContext *ic) {
 }
 void measure_on_leave(GumInvocationContext *ic) {
     Invocation *v=GUM_IC_GET_INVOCATION_DATA(ic,Invocation);
+    if (v->ordinary) return;
     if (v->fast) { if (v->branch==MEASURE && measure_apply_fast(v->args[0],v->factor)) { ${trackerCall} } return; }
     v->return_value=gum_invocation_context_get_return_value(ic); measure_slow_leave(v); gum_invocation_context_replace_return_value(ic,v->return_value);
 }

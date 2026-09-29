@@ -64,6 +64,8 @@ _ROWS = """
 语言|Language|言語
 文字排版|Text layout|文字レイアウト
 更新|Updates|更新
+设置和更新|Settings and updates|設定と更新
+每次游戏启动时同步主语言；本次运行中可自行调整。|Primary language follows the game at startup. You can change it during this session.|ゲーム起動時に主言語を合わせます。起動後は自由に変更できます。
 选择界面语言|Choose interface language|画面言語を選択
 初始语言设置|Initial language setup|初期言語設定
 选择游戏当前的文本语言|Choose the game's current text language|ゲームの現在の表示言語を選択

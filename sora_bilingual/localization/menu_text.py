@@ -834,13 +834,28 @@ class MenuTranslator:
                 ("support", "table/t_support_ability.tbl/"),
                 ("overdrive", "table/t_condition_info.tbl/OverDriveEffect/"),
                 ("item_name", "table/t_item.tbl/"),
+                ("map_spot", "table/t_mapjump.tbl/MapJumpSpotData/"),
             ]:
                 selected = [
                     e
                     for e in entries
                     if e.get("key", "").startswith(prefix)
-                    and (scope != "item_name" or e["key"].endswith("/name"))
+                    and (scope not in ("item_name", "map_spot") or e["key"].endswith("/name"))
                 ]
+                if scope == "map_spot":
+                    # Both native spot_name builders remove LF from a copied
+                    # name (0x3ddf3b..0x3de01d / 0x3eaf34..0x3eb01d). Keep
+                    # complete resource records and their genuine conflicts.
+                    selected = [
+                        {
+                            **e,
+                            "texts": {
+                                language: text.replace("\n", "")
+                                for language, text in e["texts"].items()
+                            },
+                        }
+                        for e in selected
+                    ]
                 if selected:
                     self.scoped[scope] = MenuTranslator(
                         selected, primary, secondary, source_language, True

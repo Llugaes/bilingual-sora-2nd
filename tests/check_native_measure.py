@@ -82,9 +82,12 @@ const callbacks={
    value.replace(ptr(value.toInt32()+1000));
  }
 };
-const addresses={measurement:fixture.measurement_return,baseMeasurement:fixture.base_measurement_return};
-function makeMeasure(errorSink=errors,points=addresses){return createNativeMeasure(callbacks,points,error=>errorSink.push(String(error)),scaleTracker);}
-function makeMeasureWithTracker(tracker,errorSink,points=addresses){return createNativeMeasure(callbacks,points,error=>errorSink.push(String(error)),tracker);}
+// Identify both fixture call sites before installing the production listener.
+const initialCapture=Interceptor.attach(fixture.ruby_context_init_fixture,{onEnter:capture.capture_on_enter});
+Interceptor.flush();invoke(ptr(0),2,3);const directCaller=capturedCaller.readPointer();run(ptr(0),1);const loopCaller=capturedCaller.readPointer();initialCapture.detach();Interceptor.flush();
+const addresses={measurement:directCaller,baseMeasurement:fixture.base_measurement_return,placement:loopCaller};
+function makeMeasure(errorSink=errors,points=addresses){return createNativeMeasure(callbacks,{placement:addresses.placement,...points},error=>errorSink.push(String(error)),scaleTracker);}
+function makeMeasureWithTracker(tracker,errorSink,points=addresses){return createNativeMeasure(callbacks,{placement:addresses.placement,...points},error=>errorSink.push(String(error)),tracker);}
 function makeMeasureWithoutTracker(errorSink=[]){return createNativeMeasure(callbacks,addresses,error=>errorSink.push(String(error)));}
 function labelAndParser(){const label=Memory.alloc(0x500),parser=Memory.alloc(0x300),owned=Memory.allocUtf8String('owned');label.add(0x318).writePointer(owned);parser.add(0x1ab).writeU8(1);return {label,parser,owned};}
 function target(){const p=Memory.alloc(0x200);p.writeFloat(13.25);p.add(0x158).writeFloat(1.234567);p.add(0x15c).writeFloat(7.654321);return p;}

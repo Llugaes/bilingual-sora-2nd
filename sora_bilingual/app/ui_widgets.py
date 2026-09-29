@@ -111,6 +111,11 @@ class QRadioButton(Text, Qt.QRadioButton):
 
 
 class QComboBox(Qt.QComboBox):
+    def wheelEvent(self, event):
+        # Scrolling a settings page must not change a saved selection, even
+        # when this combo has focus. Its opened popup still scrolls normally.
+        event.ignore()
+
     def addItem(self, text, userData=None):
         super().addItem(tr(text), userData)
         self.setItemData(self.count() - 1, text, SOURCE_ROLE)

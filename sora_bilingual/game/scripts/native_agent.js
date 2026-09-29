@@ -138,6 +138,9 @@ function translationKey(row) {
         }
         row.dialogueSpeaker=subtitle&&['name_text','prev_name_text'].includes(names[0]);
         if(names[0]==='name'&&names.includes('item_template'))row.scope='item_name';
+        // Both engine spot-name builders copy and join the original table
+        // string before SetText, so its native table pointer is no longer here.
+        if(names[0]==='spot_name')row.scope='map_spot';
         if(names[0]==='name' && names.includes('skill_template')) {
             if(names.includes('ability_list')||names.includes('temp_ability_list'))row.scope='support';
             if(names.includes('overdrive_list')||names.includes('temp_overdrive_list'))row.scope='overdrive';
@@ -157,7 +160,8 @@ function readText(p) {
 function remember(p, text) {
     const key = String(p);
     if (!labels.has(key) && labels.size >= 10000) throw Error('Label tracking limit');
-    const row = {pointer:p, original:text, displayed:text, epoch:-1};
+    const row = {pointer:p, original:text, displayed:text, epoch:-1,
+        fontGeneration:labels.get(key)?.fontGeneration};
     labels.set(key,row);
     return row;
 }
@@ -276,7 +280,6 @@ function captureMetadata(row) {
     // Read native fields only while this object's own callback is active.
     const p=row.pointer;
     row.metadata={size:p.add(0x304).readU32(),flags:p.add(0x2e8).readU32()};
-    row.fontGeneration=fontGeneration;
 }
 function fail(error) {
     if (!failed) {failureReason=String(error);send({type:'error', message:failureReason});}
@@ -739,7 +742,8 @@ const rubyContextCallbacks={
 };
 if(typeof createNativeMeasure==='function')nativeMeasure=createNativeMeasure(rubyContextCallbacks,{
     measurement:base.add(REPORT.native.ruby_measure_return.rva),
-    baseMeasurement:base.add(REPORT.native.ruby_base_measure_return.rva)
+    baseMeasurement:base.add(REPORT.native.ruby_base_measure_return.rva),
+    placement:base.add(REPORT.native.ruby_place_return.rva)
 },fail,nativeParser);
 Interceptor.attach(base.add(REPORT.native.ruby_context_init.rva),nativeMeasure?{
     onEnter:nativeMeasure.onEnter,onLeave:nativeMeasure.onLeave
@@ -1596,7 +1600,7 @@ Interceptor.attach(base.add(REPORT.native.update.rva), {onEnter(args) {
         // Those flags change the parser and its Y origin, even at equal text
         // and font size. Reconcile once at Update, as on a hot mode switch.
         // Exclude pause (0x10): pausing must never restart the reveal lifecycle.
-        if (row.epoch === epoch&&row.renderSize===p.add(0x304).readU32()
+        if (row.epoch === epoch&&(!runtimeFonts||row.fontGeneration===fontGeneration)&&row.renderSize===p.add(0x304).readU32()
             &&(row.metadata?.flags&0x0c)===(p.add(0x2e8).readU32()&0x0c)) return;
         // A text write bypassing SetText invalidates our remembered source.
         const current=readText(p);
@@ -1604,7 +1608,7 @@ Interceptor.attach(base.add(REPORT.native.update.rva), {onEnter(args) {
         const renderEpoch=epoch,wanted=wantedText(row);
         const replay = epoch === replayEpoch && Object.hasOwn(dictionary,row.original);
         const changed=wanted!==row.displayed||replay;
-        const fontChanged=!!runtimeFonts&&row.fontGeneration!==fontGeneration;
+        const fontChanged=!!runtimeFonts&&row.fontGeneration!==fontGeneration&&runtimeFonts.refreshLabel(p);
         const geometry=fontChanged||(!changed&&(row.plan.kind==='ruby'||row.plan.kind==='layered'));
         // SetText's animated branch clears glyphs without reinitializing the
         // persistent parser. Snapshot BEFORE the setter, then use the game's
@@ -1640,6 +1644,7 @@ Interceptor.attach(base.add(REPORT.native.update.rva), {onEnter(args) {
         }
         row.epoch=renderEpoch;
         captureMetadata(row);
+        row.fontGeneration=fontGeneration;
     } catch(e) {fail(e);}
 },onLeave(){
     try {

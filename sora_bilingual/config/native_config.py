@@ -203,6 +203,19 @@ def apply_pending_language_defaults(config, game_language):
     return result
 
 
+def apply_startup_language(config, game_language, session, *, previous_primary):
+    """Sync once per game process; reconnects and later user edits retain their choice."""
+    if game_language not in LOCALES:
+        raise ValueError("未检测到游戏文字语言")
+    if config.get("language_startup_session") == session:
+        return config
+    result = deepcopy(apply_pending_language_defaults(config, game_language))
+    if config["primary"] == previous_primary:
+        result["primary"] = game_language
+    result["language_startup_session"] = session
+    return result
+
+
 def replace_file(source, destination):
     # Windows readers may briefly omit FILE_SHARE_DELETE. Retry the atomic
     # replacement, never truncate a status/config file that another reader uses.

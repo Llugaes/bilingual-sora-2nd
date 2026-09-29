@@ -986,6 +986,16 @@ test('inventory name ownership disambiguates a copied item name without translat
     assert.equal(r.api.status().failed,false);
 });
 
+test('copied map spot labels resolve across modes without changing unrelated names',()=>{
+    const r=makeRuntime(),label=r.label(0x4344,'神秘森林');label.name='spot_name';
+    r.api.load({pairs:{},plain_pairs:{},scoped:{map_spot:{pairs:{'神秘森林':['神秘森林','ミストヴァルト']},plain_pairs:{'神秘森林':['神秘森林','ミストヴァルト']}}}},'annotation',true,1);
+    r.externalSet(label,'神秘森林');assert.equal(label.text(),'<R>神秘森林</Rミストヴァルト>');
+    const other=r.label(0x4345,'神秘森林');r.externalSet(other,'神秘森林');assert.equal(other.text(),'神秘森林');
+    r.api.select('secondary',true);r.update(label);assert.equal(label.text(),'ミストヴァルト');
+    r.api.disable();r.update(label);assert.equal(label.text(),'神秘森林');
+    assert.equal(r.api.status().failed,false);
+});
+
 test('ruby measurement and drawing share scale without a second parser gap adjustment', () => {
     for(const measurement of [false,true]) {
         const sample={x:10,measurement};const runtime=makeRuntime(sample);

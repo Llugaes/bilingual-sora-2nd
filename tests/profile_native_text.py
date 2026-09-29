@@ -1,6 +1,6 @@
 import os
 
-"""Real catalogue render timings in Frida's default runtime, outside the game."""
+"""Real catalogue render timings in production Frida V8, outside the game."""
 from pathlib import Path
 import sys
 
@@ -20,6 +20,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", type=Path, help="reuse an exact compiled model checkpoint")
     parser.add_argument("--sources", type=Path, help="JSON array of complete cold-render inputs")
+    parser.add_argument(
+        "--mode", choices=("annotation", "primary", "secondary"), default="annotation"
+    )
     parser.add_argument(
         "--output", type=Path, default=ROOT / "generated/frida-text-performance.json"
     )
@@ -43,7 +46,7 @@ def main():
             tr = MenuTranslator(
                 [{"texts": {"s": source, "a": pair[0], "b": pair[1]}}], "a", "b", "s", True
             )
-            cases.append({"source": source, "expected": tr.render(source)})
+            cases.append({"source": source, "expected": tr.render(source, args.mode)})
         else:
             cases.append({"source": source})
     source = (
@@ -58,11 +61,11 @@ const qpc=new NativeFunction(kernel.getExportByName('QueryPerformanceCounter'),'
 new NativeFunction(kernel.getExportByName('QueryPerformanceFrequency'),'int',['pointer'])(freq);
 const frequency=freq.readU64().toNumber();
 function now(){qpc(counter);return counter.readU64().toNumber()*1000/frequency;}
-rpc.exports={profile(cases){
+rpc.exports={profile(cases,mode){
   const setup=now(),tr=new RuntimeText(profileModel),setupMs=now()-setup;
   const times=[],outputs=[];
-  for(const c of cases){const start=now();outputs.push(tr.render(c.source));times.push(now()-start);}
-  const start=now();for(const c of cases)tr.render(c.source);const warmMs=now()-start;
+  for(const c of cases){const start=now();outputs.push(tr.render(c.source,mode));times.push(now()-start);}
+  const start=now();for(const c of cases)tr.render(c.source,mode);const warmMs=now()-start;
   times.sort((a,b)=>a-b);
   return {cases:cases.length,setupMs,coldP95Ms:times[Math.floor(times.length*.95)],coldMaxMs:times[times.length-1],warmMeanMs:warmMs/cases.length,outputs};
 }};
@@ -77,16 +80,17 @@ rpc.exports={profile(cases){
     session = None
     try:
         session = frida.attach(host.pid)
-        agent = session.create_script(source)
+        agent = session.create_script(source, runtime="v8")
         agent.load()
-        result = agent.exports_sync.profile(cases)
+        result = agent.exports_sync.profile(cases, args.mode)
         for case, plan in zip(cases, result.pop("outputs")):
             if "expected" in case:
                 assert plan == case["expected"], case["source"]
         result.update(
             game_started=False,
             game_attached=False,
-            runtime="frida-default",
+            runtime="frida-v8",
+            mode=args.mode,
             includes_game_layout=False,
         )
         args.output.parent.mkdir(parents=True, exist_ok=True)

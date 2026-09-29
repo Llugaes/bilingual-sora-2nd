@@ -186,6 +186,41 @@ class OverlayStatusTests(unittest.TestCase):
 
 
 class OverlayUiTests(unittest.TestCase):
+    def test_language_settings_grouping_and_wheel_does_not_change_saved_selection(self):
+        from PySide6.QtCore import QPointF
+        from PySide6.QtGui import QWheelEvent
+
+        window = self.window
+        window.show()
+        self.app.processEvents()
+        self.assertTrue(window.updates.isAncestorOf(window.ui_language))
+        self.assertFalse(window.language_page.isAncestorOf(window.ui_language))
+        self.assertEqual(window.primary.y(), window.secondary.y())
+        self.assertLess(window.primary.x(), window.secondary.x())
+        self.assertLess(window.enabled.y(), window.primary.y())
+        before = self.control.read_bytes()
+        for combo in (
+            window.primary,
+            window.secondary,
+            window.ui_language,
+            window.controller_style,
+        ):
+            selected = combo.currentIndex()
+            combo.setFocus()
+            event = QWheelEvent(
+                QPointF(4, 4),
+                QPointF(4, 4),
+                QPoint(),
+                QPoint(0, -120),
+                Qt.MouseButton.NoButton,
+                Qt.KeyboardModifier.NoModifier,
+                Qt.ScrollPhase.NoScrollPhase,
+                False,
+            )
+            self.app.sendEvent(combo, event)
+            self.assertEqual(combo.currentIndex(), selected)
+        self.assertEqual(self.control.read_bytes(), before)
+
     @classmethod
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])

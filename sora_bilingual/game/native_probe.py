@@ -23,12 +23,12 @@ from sora_bilingual.config.native_config import (
     write_config,
     ActionPolicy,
     BackendLock,
-    apply_pending_language_defaults,
+    apply_startup_language,
 )
 from sora_bilingual.platform.inputs import InputManager
 from sora_bilingual.game.native_loading import ModelPreparation, ConnectionHeartbeat, prepare_fresh
 from sora_bilingual.updates.tool_updates import ReleaseWatch
-from sora_bilingual.platform.win32 import process_path, foreground_rect
+from sora_bilingual.platform.win32 import process_path, process_identity, foreground_rect
 from sora_bilingual.game.tool_shutdown import ExitSignal, register_backend
 
 
@@ -72,6 +72,7 @@ def run(game=None, duration=0):
             raise RuntimeError("请先自行运行游戏，再启动双语工具。工具不会启动游戏。")
         pid = processes[0].pid
         exe = process_path(pid)
+        created = process_identity(pid)
         game = exe.parent if game is None else Path(game)
         if exe.resolve() != (game / "sora_2nd.exe").resolve():
             raise RuntimeError("运行中的游戏路径与配置不符")
@@ -125,16 +126,22 @@ def run(game=None, duration=0):
         if detected_game_language is None:
             heartbeat.loading("waiting_source_language")
             return
-        # Re-read after the asynchronous source probe. A user may have changed
-        # either display language while it waited; only an untouched new-user
-        # marker permits source-derived defaults to be persisted.
+        # Sync only once per OS process lifetime, not on a reconnect or a later
+        # source change. Do not overwrite a manual edit made during detection.
+        initial_primary = config["primary"]
         config = read_config()
-        configured = apply_pending_language_defaults(config, detected_game_language)
+        if process_identity(pid) != created:
+            return
+        configured = apply_startup_language(
+            config,
+            detected_game_language,
+            [str(exe.resolve()).casefold(), pid, created],
+            previous_primary=initial_primary,
+        )
         if configured is not config:
             write_config(configured)
             config = configured
-        # Existing user selections are never persisted as a source-language
-        # change. The resident model alone always uses the verified source.
+        # Source language is still detected independently of output settings.
         config = {**config, "game_language": detected_game_language}
         model_started = time.monotonic()
         heartbeat.loading("preparing")

@@ -4,6 +4,29 @@ import unittest
 from sora_bilingual.localization.menu_text import MenuTranslator
 
 
+class MapSpotNames(unittest.TestCase):
+    def test_copied_map_spot_names_keep_their_family_after_native_line_join(self):
+        entries = [
+            {
+                "key": "table/t_mapjump.tbl/MapJumpSpotData/id/name",
+                "texts": {"zh-Hans": "神秘森林", "ja": "ミストヴァルト"},
+            },
+            {
+                "key": "table/t_viewer.tbl/ViewerMapData/id/name",
+                "texts": {"zh-Hans": "神秘森林", "ja": "ミストヴァルド"},
+            },
+            {
+                "key": "table/t_mapjump.tbl/MapJumpSpotData/other/name",
+                "texts": {"zh-Hans": "塔\n入口", "ja": "塔の\n入口"},
+            },
+        ]
+        tr = MenuTranslator(entries, "zh-Hans", "ja")
+        mapping = tr.dictionary("annotation")
+        self.assertEqual(mapping.get("\x02map_spot\x00神秘森林"), "<R>神秘森林</Rミストヴァルト>")
+        self.assertEqual(mapping.get("\x02map_spot\x00塔入口"), "<R>塔入口</R塔の入口>")
+        self.assertNotIn("神秘森林", mapping, "viewer disagreement must remain separate")
+
+
 @unittest.skipUnless(Path("generated/table-next.json").exists(), "local game catalog required")
 class ReportedMenuGaps(unittest.TestCase):
     def test_overdrive_six_part_description_keeps_all_stats_and_translates_headers(self):

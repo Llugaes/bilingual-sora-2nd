@@ -40,6 +40,28 @@ function installFontImageBridge(entry,original,routes) {
     return {owners,table,count,bridge,listener}; // resident lifetime, never hot-unloaded
 }
 
+function createFontMaterialRefresh(base,report) {
+    const rebuild=new NativeFunction(base.add(report.native.font_rebind.rva),'void',['pointer']);
+    return label=>{
+        const manager=base.add(report.font_manager_global).readPointer(),index=label.add(0x300).readU32();
+        const count=manager.add(0x10).readU32();
+        if(count>1024)throw Error('Invalid font manager count');
+        // The engine explicitly supports an unbound index with a null image.
+        const image=index<count?manager.add(8).readPointer().add(index*8).readPointer().add(0x20).readPointer():ptr(0);
+        const material=label.add(0x650).readPointer();
+        const hasShadow=!label.add(0x680).readPointer().add(0x40).readPointer().isNull();
+        const shadow=hasShadow?label.add(0x658).readPointer():ptr(0);
+        if(!material.isNull()&&material.add(0x30).readPointer().equals(image)&&
+            (shadow.isNull()||shadow.add(0x30).readPointer().equals(image)))return false;
+        // Label vtable +0x28 rebuilds the normal material and all primitive
+        // references, retires icon batches and invalidates the shadow batch.
+        // Its released shadow handle remains in +0x658 until the next Draw;
+        // clear it so a second font switch/destruction cannot release it twice.
+        rebuild(label);label.add(0x658).writePointer(ptr(0));
+        return true;
+    };
+}
+
 function createNativeFonts(base,report,hash,onPublish) {
     const point=name=>base.add(report.native[name].rva);
     const manager=()=>base.add(report.font_manager_global).readPointer();
@@ -97,7 +119,8 @@ function createNativeFonts(base,report,hash,onPublish) {
             } catch(error) {reject(error);}
         }));}
     });
-    return {...session,
+    const refreshLabel=createFontMaterialRefresh(base,report);
+    return {...session,refreshLabel,
         configure(manifest) {
             if(!manifest||manifest.version!==1||!Array.isArray(manifest.faces)||manifest.faces.length!==4)
                 throw Error('Invalid runtime font manifest');

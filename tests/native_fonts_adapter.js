@@ -31,7 +31,7 @@ rpc.exports.adapter=async function(manifest,originalBytes,failUpload=false) {
         font_manager_global:16,font_allocator_global:24,image_cache_global:32,
         font_file_read:native.original_read.sub(root).toString(),
         native:{font_allocate:point(allocate),font_read:point(read),font_reset:point(reset),
-            font_image_acquire:point(acquire),font_image_read_call:point(entry)}
+            font_image_acquire:point(acquire),font_image_read_call:point(entry),font_rebind:point(reset)}
     };
     const runtime=createNativeFonts(root,report,createNativeSha256(),()=>{check(inTick,'publication outside UI tick');publishes++;});
     function tick(){inTick=true;try{return runtime.tick();}finally{inTick=false;}}

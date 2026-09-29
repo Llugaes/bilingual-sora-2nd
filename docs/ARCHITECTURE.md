@@ -26,6 +26,8 @@ launch.py 是稳定桌面入口，bootstrap.py 是组装入口：先恢复未完
 - 所有用户状态保存在 generated/；安装清单只管理明确拥有的程序文件。目录重构不移动配置、字体安装记录或索引缓存。
 - ActionPolicy 按选定模式处理同一个 switch_binding 的按下、按住和松开。Hold / Toggle 输出主或副语言单语；annotation 使用本游戏的原生注音能力。旧 hotkeys 仅作迁移来源，运行时不再同时监听三个动作。原生后端是“当前已生效模式”的事实来源。
 - `platform/gamepad_labels.py` 负责 SDL 设备映射到按键名称的转换。设置页发现设备时读取并缓存同一 pygame SDL 的类型与映射，录制时将 `profile` 元数据随原始绑定保存；后端轮询不查询这份元数据。`label_style` 只决定显示名称，触发仍使用原始 GUID、按钮、轴方向与阈值。Nintendo 面键在设备边界统一为位置语义，单只 Joy-Con 的横／竖握和成对模式分别命名；名称表不假设设备原始轴号。
+- “语言”页只放 MOD 配置，启用开关在首位，主副语言用两列；界面语言归入“设置和更新”。关闭的下拉框忽略滚轮，展开列表仍可滚动。
+- `apply_startup_language` 以 EXE 路径、PID、创建时间记录游戏会话；每个新进程按实际检测的文字语言同步主语言一次。相同进程重连不覆盖手动选择，检测期间用户改动也保留；副语言只在首次无配置时应用默认值。
 - ui_language 与游戏语言独立。app/i18n.py 保存中英日界面文本，app/ui_widgets.py 保留 Qt 控件的源文案并在语言改变时重新翻译；不改动游戏文本模型。app/presentation.py 只把状态转换成可显示内容，不创建 Qt 对象、不访问文件。
 - 资源缓存的语言依赖只包含档案名称映射，界面名称和默认偏好不参与失效判断。编译器代码及游戏资源变化仍使缓存失效；旧索引必须匹配资源和旧解析器指纹才能迁移。模型构建复用全局配对结果，缓存通过 C JSON 编码器原子写入。
 - 磁盘模型校验区分原始配对与去格式配对：`pairs` 的译文必须完整非空，`plain_pairs` 可因纯格式控制规范化为空字符串，不能因此整份失效并在每次启动重建。`tests/test_cache_io.py` 用正式编译器输出和三个独立进程验证后续启动不重新加载资源；本机完整缓存基准见 [后续启动检查](verification/warm-cache-loading.md)。
@@ -150,7 +152,7 @@ Update 回调内修改文本后，不能把嵌套 setter 的测量结果当成�
 
 原生 parse 计时使用 monotonic clock，起于 C enter 查表前，止于 C leave 清理前，不包含 aux 清理桥；与旧 JS 计时端点不完全相同。调用数与 outer 判定不变，不能直接将旧/新 parse.totalMs 相减当作优化收益。实机性能仍以同一日志页的完整打开时长和稳定帧率为准。
 
-日志隐藏模板的简单 ruby 测量可由 `native_measure.js` 在原生 initializer listener 中完成两处既有行为：正文测量上下文不改，副文测量上下文的两个字号系数在原函数返回后按 double 乘法再写 float。只有当前 MessageLog miss、隐藏控件一致、已验证文本所有权、simple ruby 且不含混排/动画/独立层时才建立按线程嵌套的短作用域；每次测量返回后必定退出。C 侧再核对 caller、label、owned pointer 与 measuring 标记。其他调用继续执行原 JS callbacks，保留参数修改、调用对象和清理；不改 parser 控制流或绘制时钟。作用域溢出或错配永久关闭该快路径，回到旧处理。独立宿主检查与根部 scope 合约检查互补，最终仍需新游戏进程的首次日志实测。
+日志隐藏模板的简单 ruby 测量可由 `native_measure.js` 在原生 initializer listener 中完成两处既有行为：正文测量上下文不改，副文测量上下文的两个字号系数在原函数返回后按 double 乘法再写 float。只有当前 MessageLog miss、隐藏控件一致、已验证文本所有权、simple ruby 且不含混排/动画/独立层时才建立按线程嵌套的短作用域；每次测量返回后必定退出。C 侧再核对 caller、label、owned pointer 与 measuring 标记。已验证的三个注解返回地址（正文测量、副文测量、副文放置）中不满足 fast 条件的调用继续执行原 JS callbacks，保留参数修改、调用对象和清理；普通 initializer 调用原本在 JS 立即返回，现在由 C 在进入 JS 前做相同判断，原函数始终照常执行；不改 parser 控制流或绘制时钟。作用域溢出或错配永久关闭该快路径，回到旧处理。独立宿主检查与根部 scope 合约检查互补，最终仍需新游戏进程的首次日志实测。
 
 ## 富文本比例与日志来源
 
@@ -225,3 +227,9 @@ VM 的 `+0x10` 是 system-call 消费操作码和参数数量后的 PC。仅当�
 无参数连接构造器同时覆盖单成员和多成员，不能以聚合长度排除实际 `stat + format` 输出。危机回合的 connection kind 2 使用资源成员、实际回合槽位及对应箭头构造完整模板，提前绑定字符串参数以保留不同语言的参数顺序。状态百分比使用 `name + value`，来源的百分号宽窄别名共享同一官方目标。
 
 含动态物品插入的 command-8 弹窗可保留连续静态说明块，物品所在动态行不冒充静态文本。跨语定位使用同函数内唯一的非文本调用参数序列；重复序列仍要求完整函数形状与调用位置。连续静态行作为整体配对，不把视觉换行当作翻译边界。反向检查入口及未验证过滤条件见 [详情与弹窗过滤反查](verification/detail-filter-reverse-audit.md)。
+
+## 已有标签字体材质与复制地点名
+
+字体 face 切换后，原生 SetText 和字形重测不会自动更换已存在标签的材质图集。Update 按 font generation 调用 `createFontMaterialRefresh`，比较 normal 和有效 shadow image，再按需调用标签虚函数 `+0x28`（`0x588B40`）更新普通字形 primitive、退休旧 icon/shadow batch。释放后的 shadow handle 清零；完成后才登记新代次，setter 元数据采集不能提前登记。稳定帧不重复检查，新标签已使用新图集时不重复重建。
+
+地图列表与详情的 `spot_name` builder 先复制 MapJumpSpotData 名称并删除 LF，SetText 时已丢失表指针。该控件家族使用由完整地点表生成的 `map_spot` 上下文；不按具体地名补词，不覆盖 ViewerMapData 的真实措辞差异。原始八语资源、完整目录与最终副文审计见 [字体、性能与地图地点检查](verification/hud-performance-and-map.md)。

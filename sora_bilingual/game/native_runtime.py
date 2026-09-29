@@ -83,6 +83,7 @@ POINTS = {
     "font_allocate": 0x5CA0C0,
     "font_image_acquire": 0x38AE0,
     "font_image_read_call": 0x5C6103,
+    "font_rebind": 0x588B40,
 }
 
 
