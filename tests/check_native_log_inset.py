@@ -153,7 +153,7 @@ def multiply_bytes(pe: pefile.PE) -> list[int]:
 def script_source(spec: dict[str, object], methods: str) -> str:
     return r"""
 const SPEC=__SPEC__;
-const activeVoiceRoots=new Set(['voice-root']),logTextGroups=new Map(),labelCallbacks=new Map(),labels=new Map(),labelSet=new Set(),errors=[];
+const insetRoots=new Map([['voice-root','active_voice'],['bubble-root','small_dialogue']]),logTextGroups=new Map(),labelCallbacks=new Map(),labels=new Map(),labelSet=new Set(),errors=[];
 let enabled=true,failed=false,renderMode='annotation',epoch=7,bilingualOffsetY=0;
 function isLabel(pointer){return labelSet.has(String(pointer));}
 function fail(error){errors.push(String(error));}
@@ -214,7 +214,8 @@ rpc.exports={run(){
   offsetLogProjection(state.body);const repeat=floats(state.body,offsets),repeatProjection=project(state.body,state.glyph,native);restoreTextProjection(state.lease);
   check(close(repeat[1],before[1]+8)&&close(repeatProjection[1],glyphBefore[1]+8),'repeat projection accumulated or lost inset');
   check(close(state.frame.add(0xf4).readFloat(),0),'frame local Y was written');
-  const voice=setup(0);Object.assign(labels.get(String(voice.body)),{surface:'active_voice',surfaceRoot:'voice-root'});
+  for(const [surfaceRoot,surface] of insetRoots) {
+  const voice=setup(0);Object.assign(labels.get(String(voice.body)),{surface,surfaceRoot});
   const voiceBefore=project(voice.body,voice.glyph,native);
   for(let repeat=0;repeat<3;repeat++) {
     offsetTextProjection(voice.body);
@@ -222,12 +223,17 @@ rpc.exports={run(){
     restoreTextProjection(voice.lease);
     check(close(project(voice.body,voice.glyph,native)[1],voiceBefore[1]),'active voice native projection did not restore');
   }
-  renderMode='primary';offsetTextProjection(voice.body);
-  check(close(project(voice.body,voice.glyph,native)[1],voiceBefore[1]),'single language voice moved');
+  for(const mode of ['primary','secondary']) {
+    renderMode=mode;offsetTextProjection(voice.body);
+    check(close(project(voice.body,voice.glyph,native)[1],voiceBefore[1]),surface+' '+mode+' moved');
+  }
+  renderMode='annotation';enabled=false;offsetTextProjection(voice.body);
+  check(close(project(voice.body,voice.glyph,native)[1],voiceBefore[1]),surface+' disabled moved');enabled=true;
   renderMode='annotation';
+  }
   check(!errors.length,'production callback errors: '+errors.join(';'));
   return {all_passed:true,game_attached:false,game_started:false,host:'self-created-hidden-python',anchor_cases:anchorCases,
-    active_voice_projection:true,projection:{room:group.room,before,during,projected_y:projected[1],restored,restored_y:restoredProjection[1],repeat,repeat_y:repeatProjection[1]}};
+    active_voice_projection:true,small_dialogue_projection:true,projection:{room:group.room,before,during,projected_y:projected[1],restored,restored_y:restoredProjection[1],repeat,repeat_y:repeatProjection[1]}};
 }};
 """.replace("__SPEC__", json.dumps(spec)).replace("__METHODS__", methods)
 

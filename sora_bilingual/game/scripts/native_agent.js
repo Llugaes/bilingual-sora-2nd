@@ -40,7 +40,7 @@ const logMeasureStats={runs:0,totalMs:0,hits:0,misses:0,nameHits:0,fixedRows:0,f
 const resourceHash=typeof createNativeSha256==='function'?createNativeSha256():scriptSha256;
 const auxiliaryContexts=new Map(), compensation=new Map(), rubyPermissions=new Map();
 const annotationMetrics=new Map();
-const subtitleRoots=new Set(),activeVoiceRoots=new Set(),layoutRoots=new Map();let scannedLayouts=false;
+const subtitleRoots=new Set(),insetRoots=new Map(),layoutRoots=new Map();let scannedLayouts=false;
 for (const [name, point] of Object.entries(REPORT.native)) {
     const actual = Array.from(new Uint8Array(base.add(point.rva).readByteArray(16)))
         .map(x => x.toString(16).padStart(2, '0')).join('');
@@ -90,11 +90,13 @@ function registerLayout(layout) {
     if(root.isNull())return;
     const id=layout.add(0x80).readU32(),key=String(root);
     const previous=layoutRoots.get(String(layout));
-    if(previous){subtitleRoots.delete(previous);activeVoiceRoots.delete(previous);}
+    if(previous){subtitleRoots.delete(previous);insetRoots.delete(previous);}
     layoutRoots.set(String(layout),key);
     if(id===7)subtitleRoots.add(key);else subtitleRoots.delete(key);
     // 0x26402..0x26414 creates ActiveVoice layout 32; 0x25b29 selects text.
-    if(id===32)activeVoiceRoots.add(key);else activeVoiceRoots.delete(key);
+    // Layout 6 root/text is the small dialogue body (read-only capture 153).
+    const insetSurface=id===32?'active_voice':id===6?'small_dialogue':null;
+    if(insetSurface)insetRoots.set(key,insetSurface);else insetRoots.delete(key);
 }
 function scanLayouts() {
     if(scannedLayouts||!REPORT.layout_manager_global)return;
@@ -119,18 +121,20 @@ function translationKey(row) {
     if(REPORT.node_names) {
         let p=row.pointer;
         const names=[];
-        let subtitle=false,activeVoice=null;
+        let subtitle=false,insetRoot=null;
         for(let i=0;i<12&&!p.isNull();i++) {
             if(subtitleRoots.has(String(p)))subtitle=true;
-            if(activeVoiceRoots.has(String(p)))activeVoice=String(p);
+            if(insetRoots.has(String(p)))insetRoot=String(p);
             const np=p.add(0x88).readPointer();
             const name=np.isNull()?'':np.readUtf8String();
             if(name.length>256)throw Error('Unvalidated node name');
             names.push(name);p=p.add(0x80).readPointer();
         }
         if(subtitle&&names[0]==='text')row.surface='subtitle';
-        if(activeVoice&&names[0]==='text'&&names[1]==='item'&&names[2]==='items') {
-            row.surface='active_voice';row.surfaceRoot=activeVoice;
+        const insetSurface=insetRoots.get(insetRoot);
+        if(names[0]==='text'&&((insetSurface==='active_voice'&&names[1]==='item'&&names[2]==='items')||
+                (insetSurface==='small_dialogue'&&names[1]==='root'))) {
+            row.surface=insetSurface;row.surfaceRoot=insetRoot;
         }
         row.dialogueSpeaker=subtitle&&['name_text','prev_name_text'].includes(names[0]);
         if(names[0]==='name'&&names.includes('item_template'))row.scope='item_name';
@@ -744,7 +748,7 @@ if(REPORT.native.layout_create) Interceptor.attach(base.add(REPORT.native.layout
     onLeave(value){try{registerLayout(value);}catch(e){fail(e);}}
 });
 if(REPORT.native.layout_release) Interceptor.attach(base.add(REPORT.native.layout_release.rva),{
-    onEnter(args){const k=String(args[1]);const root=layoutRoots.get(k);if(root){subtitleRoots.delete(root);activeVoiceRoots.delete(root);}layoutRoots.delete(k);}
+    onEnter(args){const k=String(args[1]);const root=layoutRoots.get(k);if(root){subtitleRoots.delete(root);insetRoots.delete(root);}layoutRoots.delete(k);}
 });
 // An empty annotation anchor must not contribute an invalid empty bounding
 // box or the engine's one-time ruby baseline compensation. These sites are
@@ -1012,7 +1016,7 @@ function rememberLogTextGroup(controller) {
 }
 function offsetTextProjection(p) {
     const row=labels.get(String(p));
-    if(row?.surface==='active_voice'&&activeVoiceRoots.has(row.surfaceRoot)&&row.epoch===epoch&&['ruby','layered'].includes(row.plan?.kind)) {
+    if(row&&insetRoots.get(row.surfaceRoot)===row.surface&&row.epoch===epoch&&['ruby','layered'].includes(row.plan?.kind)) {
         projectTextInset(p,p.add(0x80).readPointer(),8);
         return;
     }

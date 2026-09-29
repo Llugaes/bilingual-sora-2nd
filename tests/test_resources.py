@@ -9,6 +9,63 @@ from pathlib import Path
 from sora_bilingual.localization import resources
 
 
+class SpeakerRecordAlignmentTests(unittest.TestCase):
+    def test_speaker_keeps_each_locales_physical_called_id_across_proven_gap(self):
+        def function(text, extra=False):
+            calls = (resources.Called("chr_set_display_name", 0, (("int", 133), ("string", text))),)
+            if extra:
+                calls = (resources.Called("wait_prompt", 0, ()),) + calls
+            return resources.Function("Scene", 0, (), calls, (), ())
+
+        rows = resources.align_functions(
+            "script/a.dat",
+            "Scene",
+            {
+                "en": function("Man's Voice", True),
+                "ja": function("男性の声"),
+            },
+            {"counters": Counter()},
+        )
+        speaker = next(row for row in rows if row.get("display_role") == "speaker")
+        self.assertEqual(speaker["called_ids"], {"en": 1, "ja": 0})
+        self.assertIn("/called/1/arg/1", speaker["key"])
+
+    def test_proven_speaker_prefix_survives_later_unrelated_locale_difference(self):
+        def name(text, actor=133):
+            return resources.Called("chr_set_display_name", 0, (("int", actor), ("string", text)))
+
+        def function(*calls):
+            return resources.Function("Scene", 0, (), calls, (), ())
+
+        reward_a = resources.Called(
+            "ITEM_ADD_MESSAGE_EV", 0, (("int", 228), ("string", "を受け取った。"))
+        )
+        reward_b = resources.Called(
+            "ITEM_ADD_MESSAGE2_EV", 0, (("int", 228), ("string", "拿到了"), ("string", "。"))
+        )
+        rows = resources.align_functions(
+            "script/a.dat",
+            "Scene",
+            {
+                "ja": function(name("男性の声"), reward_a),
+                "zh-Hans": function(name("男子的声音"), reward_b),
+            },
+            {"counters": Counter()},
+        )
+        speakers = [row for row in rows if row.get("display_role") == "speaker"]
+        self.assertEqual(len(speakers), 1)
+        self.assertEqual(speakers[0]["texts"], {"ja": "男性の声", "zh-Hans": "男子的声音"})
+        self.assertEqual(speakers[0]["called_ids"], {"ja": 0, "zh-Hans": 0})
+        for left, right in [
+            (function(name("男性の声", 134), reward_a), function(name("男子的声音"), reward_b)),
+            (function(reward_a, name("男性の声")), function(reward_b, name("男子的声音"))),
+        ]:
+            rejected = resources.align_functions(
+                "script/a.dat", "Scene", {"ja": left, "zh-Hans": right}, {"counters": Counter()}
+            )
+            self.assertFalse([row for row in rejected if row.get("display_role") == "speaker"])
+
+
 def make_scp(
     text: str = "<b>Hello</b>",
     *,

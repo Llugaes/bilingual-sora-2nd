@@ -820,7 +820,9 @@ for(const c of data.cases) {
             ]
         )
         tr = MenuTranslator(conflicting, "en", "ja", "zh-Hans")
-        self.assertEqual(tr.translate(bare, "primary"), bare)
+        # Do not select either conflicting complete template. Independently
+        # known components may still render, preserving native separators.
+        self.assertEqual(tr.translate(bare, "primary"), "Confuse･Sleep･Blind 90%")
 
     def test_literal_stat_boundary_padding_selects_one_original_record(self):
         entries, metadata, groups = fixture()
@@ -951,7 +953,7 @@ for(const c of data.cases) {
         )
         self.assertEqual(
             translator.translate("HP回复25％･EP回复30％\n<C0>幸福扳机说明", "primary"),
-            "HP回复25％･EP回复30％\n<C0>Happy Trigger description",
+            "Recover 25% HP･Recover 30% EP\n<C0>Happy Trigger description",
         )
 
     def test_complete_native_recovery_header_beats_slash_fragmentation(self):

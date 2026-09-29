@@ -2,6 +2,8 @@
 // Shared pure resolver: runs synchronously inside the native label callback.
 // No RPC, timers, pointers, filesystem access, or fuzzy substring matching.
 const PRINTF_TOKEN=/%%|%(?:\d+\$)?[-+0 #]*\d*(?:\.\d+)?[diusg]/g;
+const COMPONENT_SEPARATORS=/(\r\n|\n|\\n|[【】「」：:／/\[\]()]| - |[ \u3000]{2,})/;
+const COMPONENT_LINKS=/([·・･])/;
 class RuntimeText {
     constructor(model) {
         this.model = model;
@@ -109,9 +111,26 @@ class RuntimeText {
         }
         return this.historyCache.get(key);
     }
+    literalArgument(source,side) {
+        // String slots may hold lists, but must never recursively match printf.
+        if(this.ambiguousDisplay.has(source))return source;
+        if(Object.hasOwn(this.model.pairs,source))return this.model.pairs[source][side];
+        const pairs=this.model.plain_pairs;
+        if(Object.hasOwn(pairs,source))return pairs[source][side];
+        let parts=source.split(COMPONENT_SEPARATORS);
+        if(parts.length===1)parts=source.split(COMPONENT_LINKS);
+        if(parts.length===1)return source;
+        return parts.map((part,i)=>i%2?part:this.literalArgument(part,side)).join('');
+    }
     pair(source) {
         const producer=this.producerPair(source);if(producer)return producer;
         if (Object.hasOwn(this.model.plain_pairs,source)) return this.model.plain_pairs[source];
+        const parts=source.split(COMPONENT_LINKS);
+        const pairs=parts.filter((_,i)=>!(i%2)).map(part=>
+            Object.hasOwn(this.model.pairs,part)?this.model.pairs[part]:
+            Object.hasOwn(this.model.plain_pairs,part)?this.model.plain_pairs[part]:null);
+        if(parts.length>1&&pairs.every(Boolean))
+            return [0,1].map(side=>parts.map((part,i)=>i%2?part:pairs[i/2][side]).join(''));
         let authoritative=null;
         for(const [pattern,pair] of RuntimeText.numericCandidates(source,this.detailNumericIndex,this.detailNumericCandidateCache)) {
             const m=pattern.exec(source);if(!m||m[0]!==source)continue;
@@ -127,7 +146,7 @@ class RuntimeText {
             const rendered=pair.map((target,side)=>{
                 let i=1;
                 return RuntimeText.renderFormat(target,token=>{
-                    const v=m[i++];return token.endsWith('s')&&Object.hasOwn(this.model.plain_pairs,v)?this.model.plain_pairs[v][side]:v;
+                    const v=m[i++];return token.endsWith('s')?this.literalArgument(v,side):v;
                 });
             });
             const stringSlots=(pair[0].match(PRINTF_TOKEN)||[]).some(token=>token.endsWith('s'));
@@ -254,7 +273,7 @@ class RuntimeText {
             const m=pattern.exec(source);if(!m||m[0]!==source)continue;
             const rendered=pair.map((target,side)=>{
                 let i=1;return RuntimeText.renderFormat(target,token=>{
-                    const v=m[i++];return token.endsWith('s')&&Object.hasOwn(this.model.plain_pairs,v)?this.model.plain_pairs[v][side]:v;
+                    const v=m[i++];return token.endsWith('s')?this.literalArgument(v,side):v;
                 });
             });
             if(found&&JSON.stringify(found)!==JSON.stringify(rendered))return null;found=rendered;
@@ -495,7 +514,10 @@ class RuntimeText {
             const inner=this.component(trimmed,mode);
             if(inner!==trimmed) {const at=source.indexOf(trimmed);return source.slice(0,at)+inner+source.slice(at+trimmed.length);}
         }
-        const parts=source.split(/(\r\n|\n|\\n|[【】「」：:／/\[\]()]| - |[ \u3000]{2,}|^[ \u3000]*[·・][ \u3000]*)/);
+        // Middle dots join inline lists of any length, not just bullets.
+        // Whole resource pairs above retain priority over decomposition.
+        let parts=source.split(COMPONENT_SEPARATORS);
+        if(parts.length===1)parts=source.split(COMPONENT_LINKS);
         if(parts.length>1)return parts.map((p,i)=>i%2?p:this.component(p,mode)).join('');
         return source;
     }

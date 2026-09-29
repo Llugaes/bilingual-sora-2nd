@@ -22,7 +22,8 @@ def main():
             source
             + """
 rpc.exports={run(){
-    const pairs={'幻属性':['Mirage Element','幻屬性'],'属性值':['Value','屬性值']};
+    const pairs={'幻属性':['Mirage Element','幻屬性'],'属性值':['Value','屬性值'],
+        '冻结':['冻结','凍結'],'中毒':['中毒','毒'],'炎伤':['炎伤','炎傷'],'延迟':['延迟','遅延']};
     const runtime=new RuntimeText({pairs,plain_pairs:pairs,
         numeric:[['×([0-9]+)',['x%d','×%d']]]});
     const input='幻属性【 属性值：<I42>×3<I45>×3 】';
@@ -30,6 +31,9 @@ rpc.exports={run(){
     if(runtime.translate(input,'primary')!==expected)throw Error('quartz labels or payload changed');
     for(const value of ['×2',' ×３ ','+25%'])
         if(runtime.component(value,'annotation')!==value)throw Error('numeric payload changed');
+    const composite='<c698>「冻结·中毒·炎伤·延迟」</C>';
+    if(runtime.translate(composite,'secondary')!=='<c698>「凍結·毒·炎傷·遅延」</C>')throw Error('compound labels omitted');
+    if(runtime.render(composite).kind==='plain')throw Error('compound annotation omitted');
     return {runtime:Script.runtime,game_attached:false,passed:true};
 }};
 """,

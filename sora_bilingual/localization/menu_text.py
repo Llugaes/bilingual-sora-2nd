@@ -12,9 +12,8 @@ TOKEN = re.compile(r"(<[^<>]*>|\r\n|\n|\\n)")
 STYLE = re.compile(r"</?[Cc][0-9a-fA-F]*>|<s\d+>")
 FORMAT = re.compile(r"%(?:\d+\$)?[-+0 #]*(?:\d+)?(?:\.\d+)?[diusg]")
 FORMAT_TOKEN = re.compile(r"%%|" + FORMAT.pattern)
-SEPARATORS = re.compile(
-    r"(\r\n|\n|\\n|[【】「」：:／/\[\]()]| - |[ \u3000]{2,}|^[ \u3000]*[·・][ \u3000]*)"
-)
+SEPARATORS = re.compile(r"(\r\n|\n|\\n|[【】「」：:／/\[\]()]| - |[ \u3000]{2,})")
+COMPONENT_LINKS = re.compile(r"([·・･])")
 LINE_BREAK = re.compile(r"\r\n|\n|\\n")
 LINE_START_PUNCTUATION = frozenset("、。！？）】》〉」』〕］｝")
 
@@ -1155,6 +1154,24 @@ class MenuTranslator:
             header = header[control.end() :]
         return None
 
+    def literal_argument(self, source, side):
+        """Resolve a string slot without re-entering numeric/printf matching."""
+        if source in self.ambiguous_display:
+            return source
+        if source in self.pairs:
+            return self.pairs[source][side]
+        if source in self.plain_pairs:
+            return self.plain_pairs[source][side]
+        parts = SEPARATORS.split(source)
+        if len(parts) == 1:
+            parts = COMPONENT_LINKS.split(source)
+        if len(parts) == 1:
+            return source
+        return "".join(
+            self.literal_argument(part, side) if i % 2 == 0 else part
+            for i, part in enumerate(parts)
+        )
+
     def raw_pair(self, source):
         if source in self.pairs:
             return self.pairs[source]
@@ -1177,7 +1194,7 @@ class MenuTranslator:
             rendered = []
             for side, target in enumerate(pair):
                 values = (
-                    self.plain_pairs.get(v, (v, v))[side] if field.group().endswith("s") else v
+                    self.literal_argument(v, side) if field.group().endswith("s") else v
                     for field, v in zip(_format_fields(target), m.groups())
                 )
                 rendered.append(_render_format(target, values))
@@ -1190,6 +1207,15 @@ class MenuTranslator:
             return producer
         if source in self.plain_pairs:
             return self.plain_pairs[source]
+        # A list of known labels is stronger evidence than a free-form %s
+        # template consuming the previous labels as part of its argument.
+        parts = COMPONENT_LINKS.split(source)
+        pairs = [self.pairs.get(part) or self.plain_pairs.get(part) for part in parts[::2]]
+        if len(parts) > 1 and all(pairs):
+            return tuple(
+                "".join(pairs[i // 2][side] if i % 2 == 0 else part for i, part in enumerate(parts))
+                for side in (0, 1)
+            )
         # An audited detail constructor is more precise than a free-form %s
         # name/format that can also consume the whole numeric effect phrase.
         authoritative = set()
@@ -1209,7 +1235,7 @@ class MenuTranslator:
                     # Name arguments are translated only by an exact known pair;
                     # unknown player-defined values are preserved verbatim.
                     values = (
-                        self.plain_pairs.get(v, (v, v))[side] if field.group().endswith("s") else v
+                        self.literal_argument(v, side) if field.group().endswith("s") else v
                         for field, v in zip(_format_fields(target), m.groups())
                     )
                     rendered.append(_render_format(target, values))
@@ -1268,6 +1294,8 @@ class MenuTranslator:
             if value is not None:
                 return value
         # Whitespace and punctuation delimit complete indexed components.
+        # Middle dots also join inline lists, not just leading bullets. Split
+        # any number of members; complete resource pairs above still win.
         stripped = source.strip()
         if stripped != source and stripped:
             inner = self.component(stripped, mode)
@@ -1275,6 +1303,11 @@ class MenuTranslator:
                 start = source.index(stripped)
                 return source[:start] + inner + source[start + len(stripped) :]
         parts = SEPARATORS.split(source)
+        if len(parts) > 1:
+            return "".join(
+                self.component(p, mode) if i % 2 == 0 else p for i, p in enumerate(parts)
+            )
+        parts = COMPONENT_LINKS.split(source)
         if len(parts) > 1:
             return "".join(
                 self.component(p, mode) if i % 2 == 0 else p for i, p in enumerate(parts)

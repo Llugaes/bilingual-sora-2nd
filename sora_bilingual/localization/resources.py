@@ -709,8 +709,8 @@ def _unique_non_display_gap(longer: Function, shorter: Function) -> tuple[int, i
     return candidates[0] if len(candidates) == 1 else None
 
 
-def _dialogue_call_map(reference: Function, candidate: Function) -> dict[int, int]:
-    """Map only statically proven dialogue records between two functions."""
+def _aligned_call_map(reference: Function, candidate: Function) -> dict[int, int]:
+    """Map proven physical calls; consumers select their display record types."""
     if reference.flags != candidate.flags or reference.arg_types != candidate.arg_types:
         return {}
     reference_shapes = tuple(call.dialogue_shape() for call in reference.called)
@@ -720,8 +720,7 @@ def _dialogue_call_map(reference: Function, candidate: Function) -> dict[int, in
         allow_default_speaker = _whole_sequence_allows_default_speaker(reference, candidate)
         for index, (left, right) in enumerate(zip(reference.called, candidate.called, strict=True)):
             if reference_shapes[index] == candidate_shapes[index]:
-                if assembled_dialogue(left) is not None and assembled_dialogue(right) is not None:
-                    mapped[index] = index
+                mapped[index] = index
                 continue
             if allow_default_speaker and _optional_default_speaker_equivalent(left, right):
                 mapped[index] = index
@@ -740,11 +739,7 @@ def _dialogue_call_map(reference: Function, candidate: Function) -> dict[int, in
         prefix < min(len(reference.called), len(candidate.called))
         and reference_shapes[prefix] == candidate_shapes[prefix]
     ):
-        if (
-            assembled_dialogue(reference.called[prefix]) is not None
-            and assembled_dialogue(candidate.called[prefix]) is not None
-        ):
-            mapped[prefix] = prefix
+        mapped[prefix] = prefix
         prefix += 1
 
     if len(reference.called) < len(candidate.called):
@@ -754,8 +749,7 @@ def _dialogue_call_map(reference: Function, candidate: Function) -> dict[int, in
             offset = end - start
             return {
                 index: index if index < start else index + offset
-                for index, call in enumerate(reference.called)
-                if assembled_dialogue(call) is not None
+                for index in range(len(reference.called))
             }
     else:
         gap = _unique_non_display_gap(reference, candidate)
@@ -764,8 +758,8 @@ def _dialogue_call_map(reference: Function, candidate: Function) -> dict[int, in
             offset = end - start
             return {
                 index: index if index < start else index - offset
-                for index, call in enumerate(reference.called)
-                if not start <= index < end and assembled_dialogue(call) is not None
+                for index in range(len(reference.called))
+                if not start <= index < end
             }
     return mapped
 
@@ -784,12 +778,12 @@ def _speaker_ids(functions, called_ids):
     return result
 
 
-def _aligned_dialogue_records(path, function_name, functions, called_shapes, audit):
-    """Join exact dialogue records across otherwise different function groups."""
+def _aligned_display_records(path, function_name, functions, called_shapes, audit):
+    """Join exact dialogue and speaker records across different function groups."""
     reference_language = min(functions)
     reference = functions[reference_language]
     mappings = {
-        language: _dialogue_call_map(reference, functions[language])
+        language: _aligned_call_map(reference, functions[language])
         for language in sorted(functions)
     }
     called_groups = defaultdict(set)
@@ -807,6 +801,41 @@ def _aligned_dialogue_records(path, function_name, functions, called_shapes, aud
     )
     entries = []
     for reference_called, reference_call in enumerate(reference.called):
+        if (
+            reference_call.target == "chr_set_display_name"
+            and len(reference_call.args) >= 2
+            and reference_call.args[1][0] == "string"
+        ):
+            called_ids = {
+                language: called
+                for language in sorted(functions)
+                if (called := mappings[language].get(reference_called)) is not None
+                and functions[language].called[called].shape() == reference_call.shape()
+            }
+            languages = set(called_ids)
+            if len(languages) >= 2 and not any(
+                languages <= group for group in called_groups.values()
+            ):
+                identity = (
+                    "speaker-record",
+                    reference_language,
+                    reference_called,
+                    tuple(sorted(called_ids.items())),
+                    reference_call.shape(),
+                )
+                suffix = "/alignment/" + hashlib.sha256(repr(identity).encode()).hexdigest()
+                entries.append(
+                    {
+                        "key": f"{path}/{function_name}/called/{reference_called}/arg/1{suffix}",
+                        "texts": {
+                            language: str(functions[language].called[called].args[1][1])
+                            for language, called in called_ids.items()
+                        },
+                        "display_role": "speaker",
+                        "called_ids": called_ids,
+                    }
+                )
+                _add_counter(audit, "speaker_record_alignments")
         reference_text = assembled_dialogue(reference_call)
         if reference_text is None:
             continue
@@ -967,7 +996,7 @@ def align_functions(path, function_name, functions, audit):
                         {l: str(functions[l].called[index].args[slot][1]) for l in languages},
                         "speaker" if call.target == "chr_set_display_name" and slot == 1 else None,
                     )
-    entries.extend(_aligned_dialogue_records(path, function_name, functions, called_shapes, audit))
+    entries.extend(_aligned_display_records(path, function_name, functions, called_shapes, audit))
     return entries
 
 

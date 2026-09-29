@@ -2642,3 +2642,28 @@ test('active voice projection is scoped to its native layout and restored on eve
     }
     assert.equal(r.api.status().failed,false,r.api.status().failureReason);
 });
+
+test('small dialogue body uses the shared inset without moving its speaker name',()=>{
+    const r=makeRuntime(),source='各位，身为亲卫队，',pairs={[source]:[source,'皆さん、親衛隊として']};
+    r.api.load({pairs,plain_pairs:pairs},'annotation',true,1);
+    for(const id of [6,7,8,32])for(const name of ['text','Text','name_text']) {
+        const root=r.label(0xea010,'');root.name='root';r.registerLayout(root,id);
+        root.add(0x1c).writeFloat(2);
+        const label=r.label(0xea040,source);label.name=name;label.parent=root;
+        label.add(0x3c).writeFloat(400);
+        for(let i=0;i<3;i++) {
+            assert.equal(r.projectedUpdate(label),400+(id===6&&name==='text'?16:0),`${id}/${name}`);
+            assert.equal(label.add(0x3c).readFloat(),400);
+        }
+        for(const mode of ['primary','secondary']) {
+            r.api.select(mode,true);assert.equal(r.projectedUpdate(label),400,mode);
+        }
+        r.api.select('annotation',true);r.api.disable();assert.equal(r.projectedUpdate(label),400,'disabled');
+        r.api.select('annotation',true);r.registerLayout(root,8);assert.equal(r.projectedUpdate(label),400);
+        r.destroy(label);
+    }
+    const root=r.label(0xeb010,'');root.name='root';r.registerLayout(root,6);
+    const unknown=r.label(0xeb040,'unmapped text');unknown.name='text';unknown.parent=root;
+    unknown.add(0x3c).writeFloat(400);
+    assert.equal(r.projectedUpdate(unknown),400,'bilingual mode without secondary text retains native position');
+});
