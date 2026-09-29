@@ -21,7 +21,8 @@ class AutoConnectTests(unittest.TestCase):
             patch("sora_bilingual.game.install.find_game", return_value=Path(tmp)),
             patch("sora_bilingual.fonts.font_delivery.source_fingerprint", return_value="fonts"),
             patch(
-                "sora_bilingual.fonts.font_delivery.prepare", return_value=Path(tmp) / "fonts"
+                "sora_bilingual.game.native_loading.prepare_fonts_fresh",
+                return_value=Path(tmp) / "fonts",
             ) as fonts,
             patch(
                 "sora_bilingual.fonts.font_delivery.ensure", return_value={"state": "installed"}
@@ -42,7 +43,7 @@ class AutoConnectTests(unittest.TestCase):
                     time.sleep(0.01)
                 self.assertEqual(auto.font_status["state"], "installed")
                 self.assertEqual(auto.message, "字体已就绪，可以启动游戏")
-                fonts.assert_called_once_with(Path(tmp))
+                fonts.assert_called_once_with(Path(tmp), cancel=auto.stop)
                 self.assertFalse(install.call_args.kwargs["game_running"])
                 self.assertFalse(install.call_args.kwargs["is_game_running"]())
                 mappings.assert_not_called()
@@ -60,7 +61,7 @@ class AutoConnectTests(unittest.TestCase):
         entered, release = threading.Event(), threading.Event()
         ready = [False]
 
-        def prepare(game, config, *, cache_only):
+        def prepare(game, config, *, cache_only, cancel):
             self.assertTrue(cache_only)
             builds.append((game, config))
             entered.set()

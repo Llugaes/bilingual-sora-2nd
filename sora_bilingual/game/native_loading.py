@@ -6,35 +6,40 @@ import threading
 import time
 
 
-def prepare_fresh(game, config, *, cache_only=False):
+def prepare_fresh(game, config, *, cache_only=False, cancel=None):
     """Isolate compiler updates from already-imported resident Python modules."""
-    import json, subprocess, sys, tempfile
+    import json, sys, tempfile
     from pathlib import Path
     from sora_bilingual.localization.cache_io import read_model
     from sora_bilingual.paths import ROOT as root
+    from sora_bilingual.platform.worker_process import run_worker
 
     with tempfile.TemporaryDirectory(prefix="sora-prepare-") as tmp:
         request = Path(tmp) / "request.json"
         result = Path(tmp) / "result.json"
         request.write_text(
             json.dumps(
-                {"game": str(game), "config": config, "catalog_only": cache_only == "catalog"}
+                {
+                    "game": str(game),
+                    "config": config,
+                    "catalog_only": cache_only == "catalog",
+                    "fonts_only": cache_only == "fonts",
+                }
             ),
             "utf-8",
         )
-        process = subprocess.run(
+        process = run_worker(
             [
                 sys.executable,
                 "-m",
-                "sora_bilingual.localization.model_worker",
+                "sora_bilingual.preparation_worker",
                 "--request",
                 str(request),
                 "--result",
                 str(result),
             ],
             cwd=root,
-            capture_output=True,
-            creationflags=subprocess.CREATE_NO_WINDOW,
+            cancel=cancel,
         )
         if process.returncode:
             raise RuntimeError(
@@ -48,13 +53,23 @@ def prepare_fresh(game, config, *, cache_only=False):
             # The worker has already validated and packed this model.  The
             # resident process needs only a cache address and status metadata;
             # parsing the full model here used to duplicate a 100+ MiB read.
-            return {"path": path, "coverage": prepared.get("coverage", {})}
+            return {
+                "path": path,
+                "coverage": prepared.get("coverage", {}),
+                "pair_count": prepared.get("pair_count", 0),
+            }
         if cache_only:
             return path
         model = read_model(path)
         if model is None:
             raise ValueError("准备后的模型校验失败")
         return model
+
+
+def prepare_fonts_fresh(game, *, cancel=None):
+    from pathlib import Path
+
+    return Path(prepare_fresh(game, {}, cache_only="fonts", cancel=cancel))
 
 
 class ModelPreparation:
@@ -69,6 +84,7 @@ class ModelPreparation:
         self.active_generation = None
         self.results = Queue()
         self.generation = 0
+        self.thread = None
 
     def request(self, config, *, force=False):
         """Queue a locale build, retaining an equivalent in-flight result.
@@ -109,7 +125,14 @@ class ModelPreparation:
             except Exception as exc:
                 self.results.put((generation, config, None, exc))
 
-        threading.Thread(target=build, name="locale-prepare", daemon=True).start()
+        self.thread = threading.Thread(target=build, name="locale-prepare", daemon=True)
+        self.thread.start()
+
+    def close(self, timeout=10):
+        if self.thread is not None:
+            self.thread.join(timeout=timeout)
+            if self.thread.is_alive():
+                raise RuntimeError("后台准备尚未结束，请稍后重试退出")
 
     def poll(self):
         try:

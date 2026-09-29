@@ -64,7 +64,11 @@ def prepare_request(request, output=STATE):
         model, signature, _ = ready_model(game, config, output)
         path = model_path(signature, config, output)
         prepare_wire(path, model)
-        return {"path": str(path), "coverage": model.get("coverage", {})}
+        return {
+            "path": str(path),
+            "coverage": model.get("coverage", {}),
+            "pair_count": len(model.get("pairs", {})),
+        }
 
 
 if __name__ == "__main__":

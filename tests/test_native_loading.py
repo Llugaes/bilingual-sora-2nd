@@ -17,10 +17,10 @@ class LoadingTests(unittest.TestCase):
             )
             return SimpleNamespace(returncode=0, stderr=b"")
 
-        with patch("subprocess.run", side_effect=worker):
+        with patch("sora_bilingual.platform.worker_process.run_worker", side_effect=worker):
             self.assertEqual(
                 prepare_fresh("game", {"primary": "en"}, cache_only="summary"),
-                {"path": "prepared-model.json", "coverage": {"source_records": 3}},
+                {"path": "prepared-model.json", "coverage": {"source_records": 3}, "pair_count": 0},
             )
 
     def test_same_locale_new_release_discards_previous_compiler_result(self):
@@ -142,12 +142,14 @@ class LoadingTests(unittest.TestCase):
                         InputManager=FakeInput,
                         BackendLock=lambda: SimpleNamespace(close=lambda: None),
                         NativeLabels=lambda _: native,
-                        ready_model=prepare,
                         native_report=lambda _: {"text_table_global": 0x100},
                         detect_current_language=lambda *_args, **_kwargs: SimpleNamespace(
                             language="zh-Hans", reason="matched"
                         ),
-                        prepare_fresh=lambda g, c, **_: prepare(g, c)[0],
+                        prepare_fresh=lambda g, c, **_: {
+                            **prepare(g, c)[0],
+                            "path": "prepared-model.json",
+                        },
                         read_config=lambda: read_config(control),
                         write_config=lambda v, p=None: write_config(v, p or control),
                         write_telemetry=publish,
@@ -240,14 +242,13 @@ class LoadingTests(unittest.TestCase):
                     InputManager=FakeInput,
                     BackendLock=lambda: SimpleNamespace(close=lambda: None),
                     NativeLabels=lambda _: native,
-                    ready_model=ready,
                     native_report=lambda _: {"text_table_global": 0x100},
                     detect_current_language=lambda *_args, **_kwargs: SimpleNamespace(
                         language="en", reason="matched"
                     ),
-                    prepare_fresh=lambda *_args, **_kwargs: {
+                    prepare_fresh=lambda g, c, **_: {
+                        **ready(g, c)[0],
                         "path": "prepared-model.json",
-                        "coverage": {"source_records": 2},
                     },
                     read_config=lambda: read_config(control),
                     write_config=lambda v, p=None: write_config(v, p or control),
@@ -322,7 +323,7 @@ class LoadingTests(unittest.TestCase):
                     BackendLock=lambda: SimpleNamespace(close=lambda: None),
                     NativeLabels=lambda _: native,
                     InputManager=FakeInput,
-                    ready_model=lambda *_: ({"pairs": {}, "coverage": {}}, "signature", None),
+                    prepare_fresh=lambda *_, **kw: {"path": "prepared-model.json", "coverage": {}},
                     native_report=lambda _: {"text_table_global": 0x100},
                     detect_current_language=lambda *_args, **_kwargs: SimpleNamespace(
                         language="en", reason="matched"
@@ -368,7 +369,9 @@ class LoadingTests(unittest.TestCase):
                     detect_current_language=lambda *_args, **_kwargs: SimpleNamespace(
                         language=None, reason="table_unready"
                     ),
-                    ready_model=lambda *_: (_ for _ in ()).throw(AssertionError("model built")),
+                    prepare_fresh=lambda *_, **kw: (_ for _ in ()).throw(
+                        AssertionError("model built")
+                    ),
                     NativeLabels=lambda *_: (_ for _ in ()).throw(AssertionError("attached")),
                     read_config=lambda: read_config(control),
                     write_config=lambda v, p=None: write_config(v, p or control),

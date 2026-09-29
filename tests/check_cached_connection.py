@@ -7,7 +7,9 @@ from pathlib import Path
 import subprocess
 import sys
 import time
+from types import SimpleNamespace
 import frida
+from sora_bilingual.game.agent_control import publish
 from sora_bilingual.config.native_config import read_config
 from sora_bilingual.game.native_runtime import NativeLabels, native_report
 from sora_bilingual.localization.native_catalog import ready_model, model_path
@@ -35,9 +37,10 @@ rpc.exports={load(model){
     const r=new RuntimeText(model),s=new ScriptIdentities(model.script_identities),t=new TableIdentities(model.table_identities);
     const p=new RuntimeParagraphs(model,RuntimeText);
     current={model,r,s,t,p};return true;
-},check(){return {pairs:Object.keys(current.model.pairs).length, names:current.r.translate('　·艾丝蒂尔　　　Lv.39\\n　·克萝赛　　　Lv.38\\n　·雪拉扎德　　　Lv.39\\n　·奥利维尔　　　Lv.39','annotation')};}};
+},disable(){return true;},status(){return {pairs:Object.keys(current.model.pairs).length, names:current.r.translate('　·艾丝蒂尔　　　Lv.39\\n　·克萝赛　　　Lv.38\\n　·雪拉扎德　　　Lv.39\\n　·奥利维尔　　　Lv.39','annotation')};}};
 """
     source += (SCRIPTS / "native_transport.js").read_text("utf-8")
+    source += (SCRIPTS / "native_control.js").read_text("utf-8")
     runs = []
     for _ in range(3):
         start = time.perf_counter()
@@ -47,20 +50,26 @@ rpc.exports={load(model){
         native_report(game / "sora_2nd.exe")
         verified = time.perf_counter()
         helper = subprocess.Popen(
-            [sys.executable, "-c", "import time; time.sleep(60)"],
+            [sys.executable, "-c", "import os,sys;print(os.getpid(),flush=True);sys.stdin.read()"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
             creationflags=subprocess.CREATE_NO_WINDOW,
         )
+        pid = int(helper.stdout.readline())
         session = None
+        native = None
         try:
-            session = frida.attach(helper.pid)
+            session = frida.attach(pid)
             script = session.create_script(source, runtime="v8")
             script.load()
             attached = time.perf_counter()
             native = NativeLabels(lambda _: None)
-            native.script = script
+            native.session = session
+            native.control = publish(script, pid, sys.executable, output / "benchmark-agent.json")
+            native.script = SimpleNamespace(exports_sync=native.control)
             native.load(model, config, "annotation", cache_path=cache)
             end = time.perf_counter()
-            proof = script.exports_sync.check()
+            proof = native.status()
             assert proof["pairs"] == len(model["pairs"])
             assert all(
                 name in proof["names"]
@@ -78,10 +87,14 @@ rpc.exports={load(model){
                 }
             )
         finally:
-            if session is not None:
+            if native is not None and native.control is not None:
+                native.park()
+            elif session is not None:
                 session.detach()
-            helper.terminate()
+            helper.stdin.close()
             helper.wait(timeout=5)
+            helper.stdout.close()
+            (output / "benchmark-agent.json").unlink(missing_ok=True)
         del model
         gc.collect()
     report = {

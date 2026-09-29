@@ -86,5 +86,10 @@
   "sora_bilingual/platform/shortcuts.py",
   "licenses/GPL-3.0-only.txt",
   "licenses/LGPL-3.0-only.txt",
-  "licenses/Inno-Chinese-Translation-MIT.txt"
+  "licenses/Inno-Chinese-Translation-MIT.txt",
+  "sora_bilingual/game/agent_control.py",
+  "sora_bilingual/game/scripts/native_control.js",
+  "sora_bilingual/platform/worker_process.py",
+  "sora_bilingual/game/tool_shutdown.py",
+  "sora_bilingual/preparation_worker.py"
 ]

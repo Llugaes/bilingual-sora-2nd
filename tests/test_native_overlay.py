@@ -656,8 +656,20 @@ class OverlayUiTests(unittest.TestCase):
             self.assertEqual(second.returncode, 0, second.stderr.decode(errors="replace"))
             self.assertIsNone(first.poll())
             self.assertFalse(self.status.exists(), "Offline launch must never start the backend")
+            socket = QLocalSocket()
+            socket.connectToServer(name)
+            self.assertTrue(socket.waitForConnected(1000))
+            socket.write(b"quit\n")
+            socket.flush()
+            socket.waitForBytesWritten(1000)
+            socket.disconnectFromServer()
+            self.assertEqual(first.wait(timeout=8), 0)
+            socket = QLocalSocket()
+            socket.connectToServer(name)
+            self.assertFalse(socket.waitForConnected(100))
         finally:
-            first.terminate()
+            if first.poll() is None:
+                first.terminate()
             first.communicate(timeout=5)
 
 

@@ -42,6 +42,7 @@ class AutoConnector:
         self.stop = threading.Event()
         self.wake = threading.Event()
         self.retry_requested = threading.Event()
+        self.preparations = []
         self.thread = threading.Thread(target=self._run, name="auto-connect", daemon=True)
         self.thread.start()
 
@@ -61,20 +62,27 @@ class AutoConnector:
     def _run(self):
         from sora_bilingual.platform.win32 import process_identity, process_path
         from sora_bilingual.game.install import find_game
-        from sora_bilingual.game.native_loading import ModelPreparation, prepare_fresh
+        from sora_bilingual.game.native_loading import (
+            ModelPreparation,
+            prepare_fresh,
+            prepare_fonts_fresh,
+        )
         from sora_bilingual.config.locales import LOCALES
         from sora_bilingual.config.native_config import read_config
         from sora_bilingual.localization.native_catalog import fingerprint, model_path
         from sora_bilingual.localization.model_wire import wire_ready
         from sora_bilingual.updates.tool_updates import ReleaseWatch
-        from sora_bilingual.fonts.font_delivery import ensure, prepare, source_fingerprint
+        from sora_bilingual.fonts.font_delivery import ensure, source_fingerprint
 
         releases = ReleaseWatch()
         device = None
         preparation = ModelPreparation(
-            lambda c: prepare_fresh(c["game"], c["config"], cache_only=True), lambda c: c
+            lambda c: prepare_fresh(c["game"], c["config"], cache_only=True, cancel=self.stop),
+            lambda c: c,
         )
-        font_preparation = ModelPreparation(lambda c: prepare(c["game"]), lambda c: c)
+        font_preparation = ModelPreparation(
+            lambda c: prepare_fonts_fresh(c["game"], cancel=self.stop), lambda c: c
+        )
 
         def is_game_running():
             try:
@@ -95,6 +103,7 @@ class AutoConnector:
             ),
             lambda c: c,
         )
+        self.preparations = [preparation, font_preparation, font_apply]
         preparing_key = None
         preparation_error = None
         installed_game = None
@@ -377,3 +386,7 @@ class AutoConnector:
         self.stop.set()
         self.wake.set()
         self.thread.join(timeout=2)
+        if self.thread.is_alive():
+            raise RuntimeError("自动连接尚未停止，请稍后重试退出")
+        for preparation in self.preparations:
+            preparation.close()

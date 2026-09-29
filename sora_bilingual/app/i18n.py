@@ -121,7 +121,10 @@ Sora 双语控制台|Sora bilingual controls|Sora 二言語コントロール
 双语控制台|Bilingual controls|二言語コントロール
 打开设置|Open settings|設定を開く
 隐藏界面（后台继续运行）|Hide interface (keep running)|画面を隠す（動作は継続）
-退出界面程序（保留双语连接）|Exit interface (keep game connection)|画面を終了（接続は維持）
+退出工具|Exit tool|ツールを終了
+关闭双语效果并退出工具。|Disable bilingual effects and exit the tool.|二言語表示を無効にしてツールを終了します。
+正在退出…|Exiting…|終了しています…
+退出尚未完成|Exit is not complete|終了処理が完了していません
 隐藏界面，后台继续运行；可从托盘或快捷键打开|Hide interface; reopen from the tray or shortcut|画面を隠す。トレイまたはショートカットで再表示
 关闭设置，保留小状态条|Close settings; keep status bar|設定を閉じ、ステータスバーを残す
 拖动状态条|Drag the status bar|ステータスバーをドラッグ

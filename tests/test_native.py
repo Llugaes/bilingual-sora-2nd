@@ -5,6 +5,36 @@ from sora_bilingual.game.native_runtime import exact_dictionary
 
 
 class NativeDictionaryTests(unittest.TestCase):
+    def test_exit_closes_owner_and_detaches_eternalized_session_when_disable_ack_is_lost(self):
+        from sora_bilingual.game.native_runtime import NativeLabels
+        from unittest.mock import Mock
+
+        native = NativeLabels(lambda _: None)
+        native.control = Mock()
+        native.session = Mock()
+        client, session = native.control, native.session
+        native.script = SimpleNamespace(
+            exports_sync=SimpleNamespace(disable=Mock(side_effect=OSError("lost ACK")))
+        )
+        with self.assertRaisesRegex(OSError, "lost ACK"):
+            native.park()
+        client.close.assert_called_once()
+        session.detach.assert_called_once()
+        self.assertIsNone(native.control)
+        self.assertIsNone(native.session)
+
+    def test_cancelled_connection_never_attaches_to_game(self):
+        from sora_bilingual.game.native_runtime import NativeLabels
+        from concurrent.futures import CancelledError
+        import threading
+
+        cancel = threading.Event()
+        cancel.set()
+        with patch("sora_bilingual.game.native_runtime.frida.attach") as attach:
+            with self.assertRaises(CancelledError):
+                NativeLabels(lambda _: None).attach(42, "sora_2nd.exe", cancel=cancel)
+            attach.assert_not_called()
+
     def test_auto_attach_waits_for_text_manager_before_installing_hooks(self):
         from sora_bilingual.game.native_runtime import NativeLabels
 
@@ -23,6 +53,7 @@ class NativeDictionaryTests(unittest.TestCase):
         agent = SimpleNamespace(
             on=lambda *_: None,
             load=lambda: calls.append("agent_load"),
+            eternalize=lambda: calls.append("eternalize"),
             exports_sync=SimpleNamespace(configure=lambda *_: calls.append("configure")),
         )
         scripts = iter((probe, agent))
@@ -35,12 +66,47 @@ class NativeDictionaryTests(unittest.TestCase):
                 return_value={"text_table_global": 1},
             ),
             patch("sora_bilingual.game.native_runtime.frida.attach", return_value=session),
+            patch("sora_bilingual.game.agent_control.reconnect", return_value=None),
+            patch("sora_bilingual.game.agent_control.publish", return_value=agent.exports_sync),
+            patch("sora_bilingual.game.agent_control.reserve"),
         ):
             NativeLabels(lambda _: None).attach(42, "unused")
         self.assertEqual(
             calls,
-            ["probe_load", "ready", "ready", "ready", "probe_unload", "agent_load", "configure"],
+            [
+                "probe_load",
+                "ready",
+                "ready",
+                "ready",
+                "probe_unload",
+                "agent_load",
+                "eternalize",
+                "configure",
+            ],
         )
+
+    def test_partial_startup_releases_backend_without_unloading_resident_script(self):
+        from sora_bilingual.game.native_runtime import NativeLabels
+        from unittest.mock import Mock
+
+        script, session = Mock(), Mock()
+        session.create_script.return_value = script
+        native = NativeLabels(lambda _: None)
+        with (
+            patch("sora_bilingual.game.native_runtime.frida.attach", return_value=session),
+            patch("sora_bilingual.game.agent_control.reconnect", return_value=None),
+            patch("sora_bilingual.game.agent_control.reserve"),
+            patch(
+                "sora_bilingual.game.agent_control.publish", side_effect=OSError("endpoint failed")
+            ),
+        ):
+            with self.assertRaisesRegex(OSError, "endpoint failed"):
+                native.attach(42, "unused", report={})
+        script.eternalize.assert_called_once()
+        self.assertTrue(native.park())
+        script.exports_sync.disable.assert_called()
+        session.detach.assert_called_once()
+        script.unload.assert_not_called()
 
     def test_conflicting_translation_is_not_injected(self):
         entries = [{"texts": {"ja": "a", "zh-Hans": "一"}}, {"texts": {"ja": "b", "zh-Hans": "一"}}]

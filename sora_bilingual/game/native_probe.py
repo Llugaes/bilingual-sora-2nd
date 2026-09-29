@@ -8,12 +8,12 @@ import time
 import traceback
 import sys
 import frida
+from concurrent.futures import CancelledError
 from sora_bilingual.game.native_runtime import NativeLabels, native_report
 from sora_bilingual.game.source_language import SourceLanguageResult, detect_current_language
 from sora_bilingual.localization.native_catalog import (
     load_entries,
     load_model,
-    ready_model,
     model_path,
 )
 from sora_bilingual.config.native_config import (
@@ -29,6 +29,7 @@ from sora_bilingual.platform.inputs import InputManager
 from sora_bilingual.game.native_loading import ModelPreparation, ConnectionHeartbeat, prepare_fresh
 from sora_bilingual.updates.tool_updates import ReleaseWatch
 from sora_bilingual.platform.win32 import process_path, foreground_rect
+from sora_bilingual.game.tool_shutdown import ExitSignal, register_backend
 
 
 def write_telemetry(value, path):
@@ -50,11 +51,17 @@ def model_identity(config):
 def run(game=None, duration=0):
     connection_started = time.monotonic()
     lock = BackendLock()
+    state_dir = ROOT / "generated"
+    register_backend(state_dir)
+    exit_signal = ExitSignal(state_dir)
     native = None
+    preparation = None
     heartbeat = None
     detected_game_language = None
     source_language_status = "game_not_running"
     try:
+        if exit_signal.is_set():
+            return
         processes = [
             p
             for p in frida.get_local_device().enumerate_processes()
@@ -129,18 +136,16 @@ def run(game=None, duration=0):
         # change. The resident model alone always uses the verified source.
         config = {**config, "game_language": detected_game_language}
         model_started = time.monotonic()
-        from sora_bilingual.localization.model_worker import preparation_lock
-
-        # Offline UI preparation may still be compiling the same resources.
-        # Wait for its atomic cache publication, then recheck rather than build twice.
-        with preparation_lock(ROOT / "generated"):
-            model, signature, entries = ready_model(game, config)
+        model = prepare_fresh(game, config, cache_only="summary", cancel=exit_signal)
+        if exit_signal.is_set():
+            return
         model_seconds = time.monotonic() - model_started
         applied_config = dict(config)
         # A cached locale needs no catalog load. Keep all preparation, including
         # first-time catalog compilation, away from the input/status loop.
         preparation = ModelPreparation(
-            lambda c: prepare_fresh(game, c, cache_only="summary"), model_identity
+            lambda c: prepare_fresh(game, c, cache_only="summary", cancel=exit_signal),
+            model_identity,
         )
         releases = ReleaseWatch()
         last_release_check = 0
@@ -178,20 +183,25 @@ def run(game=None, duration=0):
         with (ROOT / "generated" / "native-probe.jsonl").open("a", encoding="utf-8") as out:
 
             def log(value):
+                if out.closed:
+                    return  # Session detach can notify after the run log closes.
                 out.write(json.dumps({"time": time.time(), **value}, ensure_ascii=False) + "\n")
                 out.flush()
 
             native = NativeLabels(log)
-            log({"type": "run_start", "pid": pid, "exact_sources": len(model["pairs"])})
+            log({"type": "run_start", "pid": pid, "exact_sources": model.get("pair_count", 0)})
             native.attach(
                 pid,
                 exe,
-                model=model,
+                model=None,
                 config=config,
                 mode=mode,
-                cache_path=model_path(signature, config),
+                cache_path=model["path"],
                 report=report,
+                cancel=exit_signal,
             )
+            if getattr(native, "resident_changed", False):
+                update_notice = "底层更新将在游戏下次启动时自动应用；当前连接保持运行"
             log(
                 {
                     "type": "connection_ready",
@@ -200,9 +210,11 @@ def run(game=None, duration=0):
                 }
             )
             heartbeat.loading("ready")
-            print("双语已连接；关闭双语后保留连接，游戏退出时自动结束。", flush=True)
+            print("双语已连接；从托盘退出将关闭效果并结束工具进程。", flush=True)
             start = time.monotonic()
             while not native.exited.is_set():
+                if exit_signal.is_set():
+                    break
                 try:
                     now = time.monotonic()
                     if now - last_release_check >= 1:
@@ -461,10 +473,36 @@ def run(game=None, duration=0):
                 except (ValueError, OSError) as exc:
                     log({"type": "config_error", "message": str(exc)})
                     time.sleep(0.25)
+    except CancelledError:
+        pass
     finally:
+        cleanup_error = None
+        if preparation is not None:
+            # Also cancel a locale build when the game itself closes.
+            exit_signal.requested = True
+            try:
+                preparation.close()
+            except Exception as exc:
+                cleanup_error = exc
         if heartbeat is not None:
             heartbeat.close()
-        if native is not None and native.session is not None and not native.exited.is_set():
+        parked = False
+        game_exited = native is not None and native.exited.is_set()
+        if native is not None and (
+            getattr(native, "control", None) is not None or getattr(native, "eternalized", False)
+        ):
+            try:
+                parked = native.park()
+            except OSError, ValueError, frida.RPCException:
+                # Closing the authenticated owner also disables the agent.
+                # park() always closes that owner, even when its ACK is lost.
+                parked = True
+        if (
+            not parked
+            and native is not None
+            and native.session is not None
+            and not native.exited.is_set()
+        ):
             failure = traceback.format_exc() if sys.exc_info()[0] else "后端停止，等待游戏退出"
             try:
                 (ROOT / "generated" / "native-error.log").write_text(failure, encoding="utf-8")
@@ -494,7 +532,11 @@ def run(game=None, duration=0):
                 "updated_at": time.time(),
                 "detected_game_language": None,
                 "source_language_status": (
-                    "game_not_running" if native is not None else source_language_status
+                    "game_not_running"
+                    if game_exited
+                    else "parked"
+                    if parked
+                    else source_language_status
                 ),
                 "last_detected_game_language": detected_game_language,
                 "game_directory": str(game.resolve()) if game is not None else None,
@@ -505,6 +547,8 @@ def run(game=None, duration=0):
             {"running": False, "updated_at": time.time()}, ROOT / "generated" / "native-live.json"
         )
         lock.close()
+        if cleanup_error is not None:
+            raise cleanup_error
 
 
 def main():

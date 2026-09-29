@@ -2,10 +2,12 @@
 
 from pathlib import Path
 import json
+import hashlib
 import pefile
 import frida
 import threading
 import uuid
+from concurrent.futures import CancelledError
 from sora_bilingual.game.hooks import verify_target
 
 from sora_bilingual.paths import ROOT
@@ -132,6 +134,9 @@ class NativeLabels:
         self.session = None
         self.script = None
         self.exited = threading.Event()
+        self.control = None
+        self.resident_changed = False
+        self.eternalized = False
 
     def attach(
         self,
@@ -144,13 +149,16 @@ class NativeLabels:
         mode="annotation",
         cache_path=None,
         report=None,
+        cancel=None,
     ):
-        if self.session is not None:
+        if self.session is not None or self.control is not None:
             raise RuntimeError("Native experiment is already attached")
-        # source_language may already have produced this version-verified
-        # report during the short, hook-free startup probe.
-        report = native_report(exe) if report is None else dict(report)
-        report["diagnostics"] = bool((config or {}).get("diagnostics", False))
+        if cancel is not None and cancel.is_set():
+            raise CancelledError("连接已取消")
+        from types import SimpleNamespace
+        from sora_bilingual.game.agent_control import reconnect, publish, reserve
+        from sora_bilingual.platform.win32 import process_identity
+
         source = "\n".join(
             (ROOT / name).read_text(encoding="utf-8")
             for name in (
@@ -163,8 +171,35 @@ class NativeLabels:
                 "sora_bilingual/game/scripts/native_measure.js",
                 "sora_bilingual/game/scripts/native_agent.js",
                 "sora_bilingual/game/scripts/native_transport.js",
+                "sora_bilingual/game/scripts/native_control.js",
             )
         )
+        revision = hashlib.sha256(
+            (json.dumps(POINTS, sort_keys=True) + source).encode()
+        ).hexdigest()
+        self.control = reconnect(pid, exe)
+        if self.control is not None:
+            self.resident_changed = self.control.revision != revision
+            self.script = SimpleNamespace(exports_sync=self.control)
+            created = process_identity(pid)
+
+            def observe():
+                while not self.exited.wait(0.5):
+                    try:
+                        if process_identity(pid) == created:
+                            continue
+                    except OSError:
+                        pass
+                    self.exited.set()
+
+            threading.Thread(target=observe, name="parked-game-watch", daemon=True).start()
+            if model is not None or cache_path is not None:
+                self.load(model, config, mode, cache_path=cache_path)
+            return
+        # source_language may already have produced this version-verified
+        # report during the short, hook-free startup probe.
+        report = native_report(exe) if report is None else dict(report)
+        report["diagnostics"] = bool((config or {}).get("diagnostics", False))
         self.session = frida.attach(pid)
 
         def detached(reason, *args):
@@ -194,9 +229,18 @@ class NativeLabels:
                 )
                 probe.load()
                 while not probe.exports_sync.ready():
+                    if cancel is not None and cancel.is_set():
+                        probe.unload()
+                        self.session.detach()
+                        self.session = None
+                        raise CancelledError("连接已取消")
                     if self.exited.wait(0.25):
                         raise RuntimeError("游戏在初始化期间退出")
                 probe.unload()
+            if cancel is not None and cancel.is_set():
+                self.session.detach()
+                self.session = None
+                raise CancelledError("连接已取消")
             self.script = self.session.create_script(
                 "const REPORT=" + json.dumps(report) + ";\n" + source, runtime="v8"
             )
@@ -212,10 +256,26 @@ class NativeLabels:
                 self.callback(value)
 
             self.script.on("message", on_message)
-            self.script.load()
+            try:
+                reserve(pid, exe)
+            except Exception:
+                # No hooked script has been loaded yet.
+                self.session.detach()
+                self.session = None
+                raise
+            try:
+                self.script.load()
+            finally:
+                # Even partial initialization must not tie hook lifetime to the
+                # backend. A failed endpoint remains reserved until game exit.
+                self.script.eternalize()
+                self.eternalized = True
             if startup_errors:
                 raise RuntimeError(startup_errors[0])
-            if model is not None:
+            self.control = publish(self.script, pid, exe, revision=revision, eternalize=False)
+            # Subsequent calls use the same channel across tool lifetimes.
+            self.script = SimpleNamespace(exports_sync=self.control)
+            if model is not None or cache_path is not None:
                 self.load(model, config, mode, cache_path=cache_path)
             else:
                 self.script.exports_sync.configure(dictionary or {}, False, 1)
@@ -342,6 +402,25 @@ class NativeLabels:
 
     def disable(self):
         return self.script.exports_sync.disable()
+
+    def park(self):
+        """Stop effects before releasing every external tool connection."""
+        if self.control is None and not self.eternalized:
+            return self.exited.is_set()
+        try:
+            self.disable()
+        finally:
+            try:
+                if self.control is not None:
+                    self.control.close()
+            finally:
+                self.control = None
+                if self.session is not None:
+                    # Only an eternalized agent reaches here. Its callbacks and
+                    # hidden-label restoration remain valid in the game.
+                    session, self.session = self.session, None
+                    session.detach()
+        return True
 
     def replay(self):
         return self.script.exports_sync.replay()

@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QSystemTrayIcon,
     QMenu,
+    QMessageBox,
 )
 
 from sora_bilingual.platform.inputs import InputManager
@@ -150,8 +151,8 @@ class StatusBar(QWidget):
         self.open_button.clicked.connect(self.expand)
         row.addWidget(self.open_button)
         self.exit_button = QPushButton("退出")
-        self.exit_button.setAccessibleName("退出界面程序")
-        self.exit_button.setToolTip("退出界面程序，保留双语连接。")
+        self.exit_button.setAccessibleName("退出工具")
+        self.exit_button.setToolTip("关闭双语效果并退出工具。")
         self.exit_button.clicked.connect(self.quit_requested)
         row.addWidget(self.exit_button)
         self.setFixedWidth(300)
@@ -255,6 +256,8 @@ def app_icon():
 
 
 class OverlayController(QObject):
+    exit_finished = Signal(object)
+
     def __init__(
         self, control=CONTROL_PATH, status=STATUS_PATH, *, start_timers=True, auto_connect=True
     ):
@@ -265,6 +268,8 @@ class OverlayController(QObject):
         self.backend = JsonSnapshot(status)
         self.auto_connect = auto_connect
         self._reload_started = False
+        self._exiting = False
+        self.exit_finished.connect(self._finish_exit)
         from sora_bilingual.updates.tool_updates import ReleaseWatch
 
         self.release_watch = ReleaseWatch()
@@ -297,7 +302,7 @@ class OverlayController(QObject):
         for title, callback in [
             ("打开设置", self.expand),
             ("隐藏界面（后台继续运行）", self.hide_interface),
-            ("退出界面程序（保留双语连接）", self.quit),
+            ("退出工具", self.quit),
         ]:
             action = QAction(tr(title), menu)
             action.setData(title)
@@ -411,14 +416,52 @@ class OverlayController(QObject):
         self.bar.hide()
 
     def quit(self):
-        # Only own Qt windows exit. Never signal, detach, or terminate backend.
+        if self._exiting:
+            return
+        import threading
+        from sora_bilingual.game.tool_shutdown import shutdown
+
+        self._exiting = True
         self.save_position()
+        self.timer.stop()
+        self.input_timer.stop()
+        self.panel.settings._cancel_capture()
+        self.bar.exit_button.setEnabled(False)
+        self.tray.setToolTip(tr("正在退出…"))
+
+        def stop():
+            error = None
+            try:
+                shutdown(self.control_path.parent, self.panel.settings._auto_connector)
+            except Exception as exc:
+                error = str(exc)
+            self.exit_finished.emit(error)
+
+        threading.Thread(target=stop, name="tool-shutdown").start()
+
+    def _finish_exit(self, error):
+        if error:
+            self._exiting = False
+            self.bar.exit_button.setEnabled(True)
+            self.tray.setToolTip(tr("退出尚未完成"))
+            QMessageBox.warning(self.bar, tr("退出尚未完成"), error)
+            return
+        self._exit_application()
+
+    def _exit_application(self):
         self.tray.hide()
-        if self.panel.settings._auto_connector:
-            self.panel.settings._auto_connector.close()
+        self.bar.hide()
+        self.panel.hide()
         # quit() sends a cancellable Quit event; our close-to-hide windows reject
         # it. Explicit program exit/handoff must bypass those user-close handlers.
         QApplication.instance().exit(0)
+
+    def close_interface(self):
+        """UI code handoff is not a user-requested tool exit."""
+        self.save_position()
+        if self.panel.settings._auto_connector:
+            self.panel.settings._auto_connector.close()
+        self._exit_application()
 
     def reload_interface(self):
         if self._reload_started:
@@ -445,7 +488,7 @@ class OverlayController(QObject):
             command.append("--no-auto-connect")
         subprocess.Popen(command, cwd=ROOT, creationflags=subprocess.CREATE_NO_WINDOW)
         self._reload_started = True
-        self.quit()
+        self.close_interface()
 
     def restore_interface(self):
         self.panel.settings.tabs.setCurrentIndex(self.preferences.value("restore_tab", 0, type=int))
@@ -549,6 +592,9 @@ def main():
     server = QLocalServer()
     if not server.listen(name):
         return 1
+    from sora_bilingual.game.tool_shutdown import reset_exit
+
+    reset_exit(args.control.parent)
     from sora_bilingual.app.native_settings import configure_first_run
 
     first_run = not args.control.exists()
