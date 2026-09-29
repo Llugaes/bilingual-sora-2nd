@@ -1,5 +1,10 @@
 # 剩余表文本身份：只读审计
 
+后续修复已改为使用经过整段结构校验的表资源位置和帮助条目结构，并保留实际字段地址来源，
+见 [有序表身份检查](ordered-table-identity.md)。下文是当时的调查与保守拒配结论，已不代表
+当前实现。新键用于跨语言资源对齐，不声称消费者把表行号作为官方对白／角色 ID；运行时
+通过原生字段地址验证记录，不从 `0xffff` 猜 actor，也不把本地分页序号当跨语 ID。
+
 本报告只读取 `D:\Steam\steamapps\common\Trails in the Sky 2nd Chapter` 的八语
 `table*.pac`、当前 catalog 和磁盘 `sora_2nd.exe`；没有启动或附加游戏，也没有修改
 提取器、运行时或原始资源。它复核了 `generated/diagnostic-136-resource-inventory.json`

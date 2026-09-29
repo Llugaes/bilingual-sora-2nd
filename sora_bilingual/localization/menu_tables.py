@@ -2,7 +2,8 @@
 
 The header word at +4 counts 80-byte section descriptors; it is not a version.
 Only the field layouts below emit strings. Record identity excludes explicitly
-listed pointers, retains all other bytes, and never uses a row's position.
+listed pointers and retains all other bytes. Ordered documents are aligned by
+table_alignment with explicit physical row provenance instead of coalescing.
 """
 
 from collections import Counter
@@ -314,6 +315,10 @@ def read_section(data, section, schema, text_floor, *, stable_row_identity=False
 
 
 def build_menu_entries(game_dir):
+    from sora_bilingual.localization.table_alignment import (
+        align_record_sections,
+        supports_record_alignment,
+    )
     from sora_bilingual.localization.tables import (
         _TABLE_ARCHIVES,
         _logical_tables,
@@ -405,6 +410,19 @@ def build_menu_entries(game_dir):
                 before = len(entries)
                 if kind == "TextTableData":
                     _emit_aligned(entries, parsed, path=key_path, field=None, audit=audit)
+                elif supports_record_alignment(path, kind):
+                    entries.extend(
+                        align_record_sections(
+                            {l: files[l] for l in parsed},
+                            headers,
+                            schema_for(path, kind),
+                            path=path,
+                            prefix=key_path,
+                            kind=kind,
+                            occurrence=occurrence,
+                            audit=audit,
+                        )
+                    )
                 else:
                     parsed = _coalesce_duplicate_groups(parsed, audit, path=key_path, kind=kind)
                     for field, _ in schema_for(path, kind).fields:

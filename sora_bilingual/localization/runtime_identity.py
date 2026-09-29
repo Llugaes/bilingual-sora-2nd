@@ -839,6 +839,16 @@ def compile_table_identities(game, entries, primary, secondary, language, *, res
                 schema = spec(16, [("", 8)], [0]) if keyed_text else schema_for(path, kind)
                 if stride != schema.size:
                     continue
+                physical_keys = defaultdict(list)
+                for key, entry in needed.items():
+                    if not key.startswith(prefix + "/") or "table_rows" not in entry:
+                        continue
+                    rows = entry["table_rows"].get(language, [])
+                    # A paragraph spanning several native controls cannot be
+                    # mistaken for a single field pointer. Its equal-segment
+                    # aliases have their own physical row provenance.
+                    if len(rows) == 1:
+                        physical_keys[(rows[0], key.rsplit("/", 1)[-1])].append(key)
                 for number in range(count):
                     at = start + number * stride
                     record = bytearray(data[at : at + stride])
@@ -853,28 +863,30 @@ def compile_table_identities(game, entries, primary, secondary, language, *, res
                         stable = record_identity(data, at, kind, schema, floor)
                     for field, offset in schema.fields:
                         key = f"{prefix}/{stable}" + (f"/{field}" if field else "")
-                        if key not in needed:
-                            continue
-                        entry = needed[key]
-                        source = entry["texts"][language]
-                        pointer = struct.unpack_from("<Q", data, at + offset)[0]
-                        if not floor <= pointer < len(data) or _utf8z(data, pointer) != source:
-                            continue
-                        one = MenuTranslator(
-                            [entry], primary, secondary, language, True
-                        ).runtime_model()
-                        models[key] = {"source": source, "model": one}
-                        sources[source].append(
-                            {
-                                "key": key,
-                                "file": file_id,
-                                "offset": pointer,
-                                "record_at": at,
-                                "field_at": offset,
-                                "record": record.hex(),
-                                "pointers": schema.pointers,
-                            }
-                        )
+                        keys = physical_keys.get((number, field), []) or [key]
+                        for key in keys:
+                            if key not in needed:
+                                continue
+                            entry = needed[key]
+                            source = entry["texts"][language]
+                            pointer = struct.unpack_from("<Q", data, at + offset)[0]
+                            if not floor <= pointer < len(data) or _utf8z(data, pointer) != source:
+                                continue
+                            one = MenuTranslator(
+                                [entry], primary, secondary, language, True
+                            ).runtime_model()
+                            models[key] = {"source": source, "model": one}
+                            sources[source].append(
+                                {
+                                    "key": key,
+                                    "file": file_id,
+                                    "offset": pointer,
+                                    "record_at": at,
+                                    "field_at": offset,
+                                    "record": record.hex(),
+                                    "pointers": schema.pointers,
+                                }
+                            )
         return {"sources": dict(sources), "models": models, "files": files}
     finally:
         archive.close()

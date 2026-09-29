@@ -17,7 +17,13 @@ import re
 import struct
 
 from sora_bilingual.localization import resources
-from sora_bilingual.localization.menu_tables import SCHEMAS, read_section, schema_for, sections
+from sora_bilingual.localization.menu_tables import (
+    SCHEMAS,
+    read_section,
+    record_identity,
+    schema_for,
+    sections,
+)
 from sora_bilingual.localization.resources import (
     FpacArchive,
     FormatError,
@@ -289,6 +295,18 @@ def audit_tables(game, sources, index):
         for e in entries
         if any(not indexed_text(index, e["key"], l, t) for l, t in e["texts"].items())
     ]
+    # Check declared physical provenance against raw bytes, not against the
+    # alignment algorithm. Aggregate membership is reported separately from
+    # a directly addressable field so wrapped text does not inflate coverage.
+    physical = defaultdict(list)
+    for entry in entries:
+        if "table_rows" not in entry:
+            continue
+        path_prefix = entry["key"].split("/group:")[0].split("/topic:")[0]
+        field = entry["key"].rsplit("/", 1)[-1]
+        for language, rows in entry["table_rows"].items():
+            if indexed_text(index, entry["key"], language, entry["texts"][language]):
+                physical[(language, path_prefix, field)].append((rows, entry["texts"][language]))
     counts, unknown, candidates, failures, omitted_fields = {}, [], [], [], []
     for language in sources:
         count = Counter()
@@ -329,9 +347,39 @@ def audit_tables(game, sources, index):
                             else path + "/" + kind + (f"/{occurrence}" if occurrence else "")
                         )
                         try:
+                            proven = {}
+                            if kind in SCHEMAS:
+                                for field, offset in schema_for(path, kind).fields:
+                                    for physical_rows, text in physical.get(
+                                        (language, key_path, field), []
+                                    ):
+                                        parts = []
+                                        for number in physical_rows:
+                                            if not 0 <= number < rows:
+                                                break
+                                            pointer = struct.unpack_from(
+                                                "<Q", data, start + number * size + offset
+                                            )[0]
+                                            if not floor <= pointer < len(data):
+                                                break
+                                            end = data.find(b"\0", pointer)
+                                            parts.append(data[pointer:end].decode("utf-8"))
+                                        if (
+                                            len(parts) == len(physical_rows)
+                                            and "\n".join(parts) == text
+                                        ):
+                                            for number, part in zip(physical_rows, parts):
+                                                token = (number, field, part)
+                                                direct = len(parts) == 1
+                                                proven[token] = proven.get(token, False) or direct
                             if kind == "TextTableData":
                                 raw_fields = [
-                                    (key_path + "/" + identity, text, "table_key_not_in_catalog")
+                                    (
+                                        key_path + "/" + identity,
+                                        text,
+                                        "table_key_not_in_catalog",
+                                        None,
+                                    )
                                     for identity, text in _text_rows(data).items()
                                 ]
                             else:
@@ -343,6 +391,21 @@ def audit_tables(game, sources, index):
                                     stable_row_identity=path == "table/t_notemenu.tbl"
                                     and kind == "NoteMainHistory",
                                 )
+                                numbers = defaultdict(list)
+                                for number in range(rows):
+                                    identity = (
+                                        f"row:{number}"
+                                        if path == "table/t_notemenu.tbl"
+                                        and kind == "NoteMainHistory"
+                                        else record_identity(
+                                            data,
+                                            start + number * size,
+                                            kind,
+                                            schema_for(path, kind),
+                                            floor,
+                                        )
+                                    )
+                                    numbers[identity].append(number)
                                 raw_fields = []
                                 for identity, records in groups.items():
                                     conflicting = len(records) > 1 and any(
@@ -353,15 +416,28 @@ def audit_tables(game, sources, index):
                                         if conflicting
                                         else "table_field_not_in_catalog"
                                     )
-                                    for record in records:
+                                    for number, record in zip(numbers[identity], records):
                                         raw_fields.extend(
-                                            (f"{key_path}/{identity}/{field}", value, reason)
+                                            (
+                                                f"{key_path}/{identity}/{field}",
+                                                value,
+                                                reason,
+                                                number,
+                                            )
                                             for field, value in record.items()
                                         )
-                            for field_key, value, reason in raw_fields:
+                            for field_key, value, reason, number in raw_fields:
                                 count["schema_field_occurrences"] += 1
                                 if indexed_text(index, field_key, language, value):
                                     count["schema_fields_catalogued"] += 1
+                                elif (number, field_key.rsplit("/", 1)[-1], value) in proven:
+                                    count["schema_fields_catalogued"] += 1
+                                    direct = proven[(number, field_key.rsplit("/", 1)[-1], value)]
+                                    count[
+                                        "ordered_fields_direct"
+                                        if direct
+                                        else "ordered_fields_aggregate_only"
+                                    ] += 1
                                 else:
                                     count["schema_fields_not_catalogued"] += 1
                                     omitted_fields.append([language, field_key, reason, value])

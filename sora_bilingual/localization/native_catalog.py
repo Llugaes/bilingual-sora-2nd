@@ -25,6 +25,7 @@ def fingerprint(game, *, legacy=False):
             "sora_bilingual/localization/resources.py",
             "sora_bilingual/localization/tables.py",
             "sora_bilingual/localization/menu_tables.py",
+            "sora_bilingual/localization/table_alignment.py",
             "sora_bilingual/localization/catalog_build.py",
             "sora_bilingual/localization/dynamic_producers.py",
         )
