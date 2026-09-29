@@ -81,15 +81,20 @@ class UiLanguageTests(unittest.TestCase):
             settings = panel.panel.settings
             before = read_config(path)
             try:
-                for code, title, button in (
-                    ("en", "Language", "Settings"),
-                    ("ja", "言語", "設定"),
-                    ("zh-Hans", "语言", "设置"),
+                for code, title in (
+                    ("en", "Language"),
+                    ("ja", "言語"),
+                    ("zh-Hans", "语言"),
                 ):
                     settings.ui_language.setCurrentIndex(settings.ui_language.findData(code))
                     app.processEvents()
                     self.assertEqual(settings.tabs.tabText(0), title)
-                    self.assertEqual(panel.bar.open_button.text(), button)
+                    self.assertFalse(panel.bar.open_button.icon().isNull())
+                    self.assertEqual(panel.bar.open_button.accessibleName(), tr("打开或关闭设置"))
+                    self.assertEqual(
+                        panel.bar.pin_button.toolTip(), tr("固定在最前方；再次点击取消置顶。")
+                    )
+                    self.assertEqual(panel.bar.exit_button.accessibleName(), tr("退出工具"))
                     self.assertEqual(panel.tray.contextMenu().actions()[0].text(), tr("打开设置"))
                     after = read_config(path)
                     self.assertEqual(after["ui_language"], code)

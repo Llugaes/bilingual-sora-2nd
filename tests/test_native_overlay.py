@@ -480,6 +480,7 @@ class OverlayUiTests(unittest.TestCase):
             self.assertTrue(controller.bar.marker.accessibleName())
             self.assertIn("CTRL + SHIFT + F9", controller.bar.status.toolTip())
             self.assertTrue(controller.bar.open_button.accessibleName())
+            self.assertTrue(controller.bar.pin_button.accessibleName())
             self.assertTrue(controller.bar.exit_button.accessibleName())
         finally:
             controller.bar.hide()
@@ -745,6 +746,138 @@ class OverlayUiTests(unittest.TestCase):
             controller.bar.hide()
             controller.panel.hide()
             controller.tray.hide()
+            controller.panel.deleteLater()
+            controller.bar.deleteLater()
+            controller.deleteLater()
+            self.app.processEvents()
+
+    def test_pin_and_background_transparency_preserve_connection_and_survive_recreation(self):
+        controller = OverlayController(
+            self.control, self.status, start_timers=False, auto_connect=False
+        )
+        original = self.control.read_bytes()
+        quit_events = []
+        controller.bar.quit_requested.connect(lambda: quit_events.append(True))
+        try:
+            controller.expand()
+            original_position = controller.bar.pos()
+            self.assertTrue(controller.bar.pin_button.isChecked())
+            QTest.mouseClick(controller.bar.pin_button, Qt.MouseButton.LeftButton)
+            self.assertFalse(controller.bar.pin_button.isChecked())
+            for window in (controller.bar, controller.panel):
+                self.assertFalse(window.windowFlags() & Qt.WindowType.WindowStaysOnTopHint)
+                self.assertTrue(window.isVisible())
+            self.assertEqual(controller.bar.pos(), original_position)
+            controller.panel.settings.bar_transparency.setValue(70)
+            self.assertEqual(controller.bar._background_alpha, 77)
+            self.assertEqual(controller.bar.windowOpacity(), 1.0)
+            self.assertEqual(controller.panel.windowOpacity(), 1.0)
+            controller.panel.settings.bar_transparency.setValue(100)
+            self.app.processEvents()
+            rendered = controller.bar.grab().toImage()
+            ratio = controller.bar.devicePixelRatioF()
+            self.assertLessEqual(rendered.pixelColor(QPoint(176, 16) * ratio).alpha(), 2)
+            for button in (
+                controller.bar.open_button,
+                controller.bar.pin_button,
+                controller.bar.exit_button,
+            ):
+                corner = button.pos() + QPoint(4, button.height() // 2)
+                self.assertLessEqual(rendered.pixelColor(corner * ratio).alpha(), 3)
+            self.assertTrue(
+                any(
+                    rendered.pixelColor(QPoint(x, y) * ratio).alpha() == 255
+                    for x in range(40, 100)
+                    for y in range(8, 35)
+                )
+            )
+            controller.panel.settings.bar_transparency.setValue(70)
+            controller.tick()
+            self.assertFalse(controller._exiting)
+            self.assertEqual(quit_events, [])
+            self.assertEqual(self.control.read_bytes(), original)
+            controller.preferences.sync()
+            other = OverlayController(
+                self.control, self.status, start_timers=False, auto_connect=False
+            )
+            try:
+                self.assertFalse(other.bar.pin_button.isChecked())
+                self.assertEqual(other.panel.settings.bar_transparency.value(), 70)
+                self.assertEqual(other.bar._background_alpha, 77)
+            finally:
+                other.close_interface()
+                other.panel.deleteLater()
+                other.bar.deleteLater()
+                other.deleteLater()
+            controller.hide_interface()
+            controller.bar.pin_button.click()
+            controller.tick()
+            self.assertFalse(controller.bar.isVisible())
+            self.assertFalse(controller.panel.isVisible())
+            controller.tray.contextMenu().actions()[0].trigger()
+            self.assertTrue(controller.panel.isVisible())
+            self.assertTrue(controller.bar.isVisible())
+            self.assertTrue(controller.bar.windowFlags() & Qt.WindowType.WindowStaysOnTopHint)
+            self.assertEqual(self.control.read_bytes(), original)
+        finally:
+            controller.close_interface()
+            controller.panel.deleteLater()
+            controller.bar.deleteLater()
+            controller.deleteLater()
+            self.app.processEvents()
+
+    def test_bar_click_and_small_jitter_toggle_settings_without_moving(self):
+        controller = OverlayController(
+            self.control, self.status, start_timers=False, auto_connect=False
+        )
+        original = self.control.read_bytes()
+        try:
+            controller.bar.move(12, 12)
+            for surface in (
+                controller.bar,
+                controller.bar.grip,
+                controller.bar.marker,
+                controller.bar.status,
+            ):
+                with self.subTest(surface=surface.objectName()):
+                    old_position = controller.bar.pos()
+                    QTest.mouseClick(surface, Qt.MouseButton.LeftButton, pos=QPoint(4, 4))
+                    self.assertTrue(controller.panel.isVisible())
+                    self.assertEqual(controller.bar.pos(), old_position)
+                    QTest.mousePress(surface, Qt.MouseButton.LeftButton, pos=QPoint(4, 4))
+                    QTest.mouseMove(surface, QPoint(5, 4))
+                    QTest.mouseRelease(surface, Qt.MouseButton.LeftButton, pos=QPoint(5, 4))
+                    self.assertFalse(controller.panel.isVisible())
+                    self.assertEqual(controller.bar.pos(), old_position)
+                    QTest.mouseClick(surface, Qt.MouseButton.RightButton, pos=QPoint(4, 4))
+                    self.assertFalse(controller.panel.isVisible())
+            self.assertEqual(self.control.read_bytes(), original)
+        finally:
+            controller.close_interface()
+            controller.panel.deleteLater()
+            controller.bar.deleteLater()
+            controller.deleteLater()
+            self.app.processEvents()
+
+    def test_bar_drag_never_opens_settings_even_if_pointer_returns_to_start(self):
+        controller = OverlayController(
+            self.control, self.status, start_timers=False, auto_connect=False
+        )
+        try:
+            controller.bar.move(12, 12)
+            start = controller.bar.pos()
+            surface = controller.bar.status
+            QTest.mousePress(surface, Qt.MouseButton.LeftButton, pos=QPoint(4, 4))
+            QTest.mouseMove(surface, QPoint(24, 4))
+            self.assertNotEqual(controller.bar.pos(), start)
+            # Move back to the same global location, accounting for the moved window.
+            QTest.mouseMove(surface, QPoint(-16, 4))
+            QTest.mouseRelease(surface, Qt.MouseButton.LeftButton, pos=QPoint(4, 4))
+            self.assertEqual(controller.bar.pos(), start)
+            self.assertFalse(controller.panel.isVisible())
+            self.assertEqual(controller.preferences.value("bar_position"), start)
+        finally:
+            controller.close_interface()
             controller.panel.deleteLater()
             controller.bar.deleteLater()
             controller.deleteLater()

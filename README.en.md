@@ -71,7 +71,9 @@ Choose a display mode and adjust the text layout as needed. These are offline ca
 |---|---|
 | ![Language settings](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/settings-en.png) | ![Layout settings](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/layout-en.png) |
 
-Click **Settings** on the status bar to open or close the panel. Drag the bar's text, empty space, handle, or the panel header to move both together; buttons retain their click actions. **× / Esc inside the panel** collapses it. **× on the status bar** hides the interface while the background service keeps running. Reopen it from the system tray or desktop shortcut.
+Click the status bar's text, empty space, or gear to open or close settings. Hold and drag the text, empty space, handle, or panel header to move both together; releasing a drag does not open settings. The bar shows the language pair and current display mode. **Pin** keeps it on top by default; unpinning lets other windows cover it. **× on the status bar** disables bilingual effects and fully exits the tool. **× / Esc inside the panel** only collapses settings. To hide the interface completely, use the tray menu. Reopen it from the tray or desktop shortcut.
+
+**Status bar background transparency** in Settings & updates fades only the compact bar's background and borders. Text, icons and the settings panel stay opaque. At 100%, the background is transparent but still accepts clicks and dragging. Pin and transparency preferences survive restarts and upgrades without changing the game connection.
 
 | Action | Default shortcut |
 |---|---|

@@ -8,7 +8,7 @@ from pathlib import Path
 import sys
 import time
 
-from PySide6.QtCore import Qt, QEvent, QTimer, QObject, Signal, QPoint, QSettings
+from PySide6.QtCore import Qt, QEvent, QTimer, QObject, Signal, QPoint, QRectF, QSize
 from PySide6.QtGui import QAction, QColor, QIcon, QPainter, QPixmap
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import (
@@ -66,56 +66,56 @@ class JsonSnapshot:
         return self.value
 
 
-class DragHandle(QLabel):
-    dragged = Signal(QPoint)
-    moved = Signal()
-
-    def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
-            self._drag = event.globalPosition().toPoint() - self.window().pos()
-            event.accept()
-
-    def mouseMoveEvent(self, event):
-        if event.buttons() & Qt.MouseButton.LeftButton and hasattr(self, "_drag"):
-            target = event.globalPosition().toPoint() - self._drag
-            self.dragged.emit(target - self.window().pos())
-            event.accept()
-
-    def mouseReleaseEvent(self, event):
-        if hasattr(self, "_drag"):
-            del self._drag
-        self.moved.emit()
-
-
 class DragSurface(QObject):
-    """Make passive parts of a compact overlay header move its window."""
+    """One press is either a click or a drag, using the desktop drag threshold."""
 
     dragged = Signal(QPoint)
     moved = Signal()
+    clicked = Signal()
 
     def __init__(self, window, surfaces):
         super().__init__(window)
         self._window = window
+        self._press = None
+        self._dragging = False
         for surface in surfaces:
             surface.installEventFilter(self)
 
     def eventFilter(self, watched, event):
         if event.type() == QEvent.Type.MouseButtonPress:
             if event.button() == Qt.MouseButton.LeftButton:
-                self._drag = event.globalPosition().toPoint() - self._window.pos()
+                self._press = event.globalPosition().toPoint()
+                self._offset = self._press - self._window.pos()
+                self._dragging = False
                 event.accept()
                 return True
         elif event.type() == QEvent.Type.MouseMove:
-            if event.buttons() & Qt.MouseButton.LeftButton and hasattr(self, "_drag"):
-                target = event.globalPosition().toPoint() - self._drag
-                self.dragged.emit(target - self._window.pos())
+            if event.buttons() & Qt.MouseButton.LeftButton and self._press is not None:
+                point = event.globalPosition().toPoint()
+                if (point - self._press).manhattanLength() >= QApplication.startDragDistance():
+                    self._dragging = True
+                if self._dragging:
+                    self.dragged.emit(point - self._offset - self._window.pos())
                 event.accept()
                 return True
-        elif event.type() == QEvent.Type.MouseButtonRelease and hasattr(self, "_drag"):
-            del self._drag
-            self.moved.emit()
+        elif (
+            event.type() == QEvent.Type.MouseButtonRelease
+            and event.button() == Qt.MouseButton.LeftButton
+            and self._press is not None
+        ):
+            distance = (event.globalPosition().toPoint() - self._press).manhattanLength()
+            self._press = None
+            if self._dragging:
+                self.moved.emit()
+            elif distance < QApplication.startDragDistance() and watched.rect().contains(
+                event.position().toPoint()
+            ):
+                self.clicked.emit()
             event.accept()
             return True
+        elif event.type() in (QEvent.Type.Hide, QEvent.Type.UngrabMouse):
+            self._press = None
+            self._dragging = False
         return super().eventFilter(watched, event)
 
 
@@ -133,12 +133,13 @@ class StatusBar(QWidget):
         )
         self.setObjectName("bar")
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         row = QHBoxLayout(self)
         row.setContentsMargins(8, 6, 8, 6)
         row.setSpacing(6)
-        self.grip = DragHandle("::")
-        self.grip.setToolTip("拖动状态条")
-        self.grip.setAccessibleName("拖动状态条")
+        self.grip = QLabel("::")
+        self.grip.setToolTip("单击打开设置，按住拖动状态条")
+        self.grip.setAccessibleName("单击打开设置，按住拖动状态条")
         row.addWidget(self.grip)
         self.marker = QLabel("○")
         self.marker.setObjectName("statusMarker")
@@ -149,12 +150,27 @@ class StatusBar(QWidget):
         self.status.setObjectName("status")
         self.status.setWordWrap(True)
         row.addWidget(self.status, 1)
-        self.open_button = QPushButton("设置")
+        self.open_button = QPushButton()
+        self.open_button.setFixedSize(32, 32)
+        self.open_button.setStyleSheet("padding:0;")
+        self.open_button.setIcon(settings_icon())
+        self.open_button.setIconSize(QSize(20, 20))
         self.open_button.setAccessibleName("打开或关闭设置")
         self.open_button.setToolTip("打开或关闭设置。快捷键显示在状态提示中。")
         self.open_button.clicked.connect(self.expand)
         row.addWidget(self.open_button)
-        self.exit_button = QPushButton("退出")
+        self.pin_button = QPushButton()
+        self.pin_button.setFixedSize(32, 32)
+        self.pin_button.setStyleSheet("padding:0;")
+        self.pin_button.setIcon(pin_icon())
+        self.pin_button.setIconSize(QSize(20, 20))
+        self.pin_button.setCheckable(True)
+        self.pin_button.setAccessibleName("悬浮条置顶")
+        self.pin_button.setToolTip("固定在最前方；再次点击取消置顶。")
+        row.addWidget(self.pin_button)
+        self.exit_button = QPushButton("×")
+        self.exit_button.setFixedSize(32, 32)
+        self.exit_button.setStyleSheet("padding:0;font-size:20px;")
         self.exit_button.setAccessibleName("退出工具")
         self.exit_button.setToolTip("关闭双语效果并退出工具。")
         self.exit_button.clicked.connect(self.quit_requested)
@@ -163,7 +179,34 @@ class StatusBar(QWidget):
         # The status text and spare bar surface are easier to target than the
         # compact grip. Buttons are intentionally excluded so their actions
         # remain reliable click targets.
-        self.drag_surface = DragSurface(self, (self, self.marker, self.status))
+        self.drag_surface = DragSurface(self, (self, self.grip, self.marker, self.status))
+        self.drag_surface.clicked.connect(self.expand)
+        for surface in (self, self.grip, self.marker, self.status):
+            surface.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.set_background_transparency(0)
+
+    def set_background_transparency(self, value):
+        # One alpha step keeps the visually clear surface hit-testable on
+        # Windows layered windows. Text/icons never inherit this alpha.
+        self._background_alpha = max(1, round(255 * (1 - value / 100)))
+        # CSS alpha 1 means fully opaque in Qt; use explicit fractional alpha.
+        alpha = f"{self._background_alpha / 255:.6f}"
+        self.setStyleSheet(
+            "QWidget#bar { background: transparent; border: none; }"
+            f"QWidget#bar QPushButton {{ background: rgba(253,249,239,{alpha}); "
+            f"border: 1px solid rgba(184,149,85,{alpha}); }}"
+            f"QWidget#bar QPushButton:hover {{ background: rgba(232,243,239,{alpha}); }}"
+            f"QWidget#bar QPushButton:checked {{ background: rgba(210,232,225,{alpha}); }}"
+            f"QWidget#bar QPushButton:pressed {{ background: rgba(210,232,225,{alpha}); }}"
+        )
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(QColor(184, 149, 85, self._background_alpha))
+        painter.setBrush(QColor(248, 243, 232, self._background_alpha))
+        painter.drawRoundedRect(QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 10, 10)
 
     def closeEvent(self, event):
         event.ignore()
@@ -183,12 +226,14 @@ class StatusBar(QWidget):
         self.status.setText(
             activity["title"]
             if activity and activity["tone"] != "ready"
-            else state.get("short_pair", state["pair"])
+            else state.get("short_pair", state["pair"]) + "\n" + tr(state["title"])
         )
         self.status.setAccessibleName(tr("语言组合：") + tr(state["pair"]))
         if activity and activity["tone"] != "ready":
             self.status.setAccessibleName(tr(activity["title"]))
-        self.status.setToolTip(tr(detail) + " · " + tr("快捷键：") + hint)
+        self.status.setToolTip(
+            tr(detail) + " · " + tr("单击打开设置，按住拖动状态条") + " · " + tr("快捷键：") + hint
+        )
         self.open_button.setToolTip(tr("打开或关闭设置。") + tr("快捷键：") + hint)
 
 
@@ -208,10 +253,11 @@ class OverlayPanel(QWidget):
         outer.setContentsMargins(20, 18, 20, 16)
         outer.setSpacing(12)
         header = QHBoxLayout()
-        self.grip = DragHandle("S O R A   /   B I L I N G U A L")
+        self.grip = QLabel("S O R A   /   B I L I N G U A L")
         self.grip.setObjectName("brand")
         self.grip.setToolTip("拖动顶部，一起移动状态条和设置")
         header.addWidget(self.grip, 1)
+        self.drag_surface = DragSurface(self, (self.grip,))
         self.hide_button = QPushButton("×")
         self.hide_button.setFixedWidth(32)
         self.hide_button.setToolTip("关闭设置，保留小状态条")
@@ -296,6 +342,48 @@ class OverlayPanel(QWidget):
         self.collapse.emit()
 
 
+def settings_icon():
+    # Draw the gear locally so installed fonts cannot turn it into a missing glyph.
+    pixmap = QPixmap(64, 64)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.translate(32, 32)
+    painter.scale(2.6, 2.6)
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QColor("#33291f"))
+    for _ in range(8):
+        painter.drawRoundedRect(QRectF(-2, -10, 4, 6), 1, 1)
+        painter.rotate(45)
+    painter.drawEllipse(QRectF(-7, -7, 14, 14))
+    painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Clear)
+    painter.drawEllipse(QRectF(-3.5, -3.5, 7, 7))
+    painter.end()
+    return QIcon(pixmap)
+
+
+def pin_icon():
+    icon = QIcon()
+    for checked in (False, True):
+        pixmap = QPixmap(64, 64)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.translate(32, 32)
+        painter.scale(2.6, 2.6)
+        if not checked:
+            painter.rotate(35)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor("#167b78" if checked else "#33291f"))
+        painter.drawRoundedRect(QRectF(-5, -9, 10, 3), 1, 1)
+        painter.drawRect(QRectF(-3, -6, 6, 7))
+        painter.drawRoundedRect(QRectF(-6, 0, 12, 3), 1, 1)
+        painter.drawRect(QRectF(-0.7, 3, 1.4, 7))
+        painter.end()
+        icon.addPixmap(pixmap, QIcon.Mode.Normal, QIcon.State.On if checked else QIcon.State.Off)
+    return icon
+
+
 def app_icon():
     pixmap = QPixmap(64, 64)
     pixmap.fill(QColor("#f2e7d1"))
@@ -329,20 +417,23 @@ class OverlayController(QObject):
 
         self.release_watch = ReleaseWatch()
         self._last_release_check = 0
-        self.preferences = QSettings(
-            str(self.control_path.with_name("overlay-window.ini")), QSettings.Format.IniFormat
-        )
         self.bar = StatusBar()
         self.panel = OverlayPanel(control, status)
+        self.preferences = self.panel.settings.window_preferences
         self._interface_hidden = False
         self.bar.expand.connect(self.toggle_settings)
+        self.bar.pin_button.setChecked(self.preferences.value("bar_pinned", True, type=bool))
+        self.bar.pin_button.toggled.connect(self.set_pinned)
+        self.set_pinned(self.bar.pin_button.isChecked())
+        self.panel.settings.bar_transparency.valueChanged.connect(
+            self.bar.set_background_transparency
+        )
+        self.bar.set_background_transparency(self.panel.settings.bar_transparency.value())
         self.panel.collapse.connect(self.collapse)
         self.bar.quit_requested.connect(self.quit)
-        self.bar.grip.moved.connect(self.save_position)
-        self.panel.grip.moved.connect(self.save_position)
+        self.panel.drag_surface.moved.connect(self.save_position)
         self.bar.drag_surface.moved.connect(self.save_position)
-        self.bar.grip.dragged.connect(self.move_group)
-        self.panel.grip.dragged.connect(self.move_group)
+        self.panel.drag_surface.dragged.connect(self.move_group)
         self.bar.drag_surface.dragged.connect(self.move_group)
         self.config = read_control(control)
         self.hotkey = InputManager({"hotkey": self.config["overlay_binding"]})
@@ -410,6 +501,19 @@ class OverlayController(QObject):
             self.config = config
         except OSError, ValueError:
             return
+
+    def set_pinned(self, pinned):
+        self.preferences.setValue("bar_pinned", pinned)
+        for window in (self.bar, self.panel):
+            if bool(window.windowFlags() & Qt.WindowType.WindowStaysOnTopHint) == pinned:
+                continue
+            visible, active, position = window.isVisible(), window.isActiveWindow(), window.pos()
+            window.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, pinned)
+            window.move(position)
+            if visible:
+                window.show()
+                if active:
+                    window.activateWindow()
 
     def save_position(self):
         self.preferences.setValue("bar_position", self.bar.pos())
@@ -615,7 +719,7 @@ class OverlayController(QObject):
             if source.get("running") and 0 <= now - source.get("updated_at", 0) < 5
             else None
         )
-        hint = " + ".join(self.config["overlay_binding"].get("keyboard", [])) or "点击设置展开"
+        hint = " + ".join(self.config["overlay_binding"].get("keyboard", [])) or "单击状态条展开"
         self.bar.present(state, hint)
         self.panel.present(state)
         if self.panel.isVisible():

@@ -17,7 +17,7 @@ import subprocess
 import sys
 from typing import Any
 
-from PySide6.QtCore import Qt, QTimer, QEvent, Signal, QSignalBlocker
+from PySide6.QtCore import Qt, QTimer, QEvent, Signal, QSignalBlocker, QSettings
 from PySide6.QtGui import QFont, QKeySequence
 from PySide6.QtWidgets import (
     QApplication,
@@ -272,6 +272,9 @@ class NativeSettingsWindow(QWidget):
     def __init__(self, control_path: Path = CONTROL_PATH, status_path: Path = STATUS_PATH) -> None:
         super().__init__()
         self.control_path = Path(control_path)
+        self.window_preferences = QSettings(
+            str(self.control_path.with_name("overlay-window.ini")), QSettings.Format.IniFormat
+        )
         self.status_path = Path(status_path)
         set_language(read_control(self.control_path)["ui_language"])
         self._updating = False
@@ -391,6 +394,21 @@ class NativeSettingsWindow(QWidget):
         interface_form = QFormLayout()
         interface_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         interface_form.addRow("界面语言", self.ui_language)
+        self.bar_transparency = QSlider(Qt.Orientation.Horizontal)
+        self.bar_transparency.setRange(0, 100)
+        self.bar_transparency.setAccessibleName("悬浮条背景透明度")
+        self.bar_transparency.setToolTip("仅背景和边框变透明，文字和图标保持清晰。")
+        try:
+            transparency = self.window_preferences.value("bar_transparency", 0, type=int)
+        except ValueError, TypeError:
+            transparency = 0
+        self.bar_transparency.setValue(transparency)
+        self.bar_transparency_value = QLabel(f"{self.bar_transparency.value()}%")
+        transparency_row = QHBoxLayout()
+        transparency_row.addWidget(self.bar_transparency, 1)
+        transparency_row.addWidget(self.bar_transparency_value)
+        interface_form.addRow("悬浮条背景透明度", transparency_row)
+        self.bar_transparency.valueChanged.connect(self._set_bar_transparency)
         self.updates.layout().insertLayout(0, interface_form)
         languages = QGridLayout()
         for column, (title, control) in enumerate(
@@ -625,6 +643,10 @@ class NativeSettingsWindow(QWidget):
 
     def _binding(self, control, action):
         return control["overlay_binding"] if action == "overlay" else control["switch_binding"]
+
+    def _set_bar_transparency(self, value: int) -> None:
+        self.window_preferences.setValue("bar_transparency", value)
+        self.bar_transparency_value.setText(f"{value}%")
 
     def _set_secondary_opacity(self, value: int) -> None:
         """Keep the visible slider and the color dialog on one normalized alpha value."""
