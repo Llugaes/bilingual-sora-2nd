@@ -1,25 +1,28 @@
-# Bilingual Sora 2nd v0.3.17
+# Bilingual Sora 2nd v0.3.18
 
 ## 简体中文
 
-- 修复 0.3.16 的首次连接回归：初始化提前释放了控制句柄，导致双语无法连接。
-- 修复游戏或后端退出后仍显示“正在连接”，以及已连接时仍把常驻后端误判为连接中的问题。失败会保留原因并恢复重试入口。
-- 新增醒目的阶段状态卡：字体／映射准备为黄色，识别语言／关联进程／应用映射为蓝色，就绪为绿色，失败为红色。每个阶段都有大标题、说明和进行中提示。
+- 修正放大对白的副语言被二次缩小；普通对话、逐字显示与日志共用字号处理，保留嵌套注解的独立行高。
+- 增加游戏运行期间加载多语言字体：首次准备结束后直接应用，无需因字体准备而关闭游戏。自动寻找目录并复用缓存。
+- 补齐脚本设置的说话人姓名在复制后的来源关联，包括“女子的声音”这一类名称。
+- 游戏过程中的主动语音正文稍向下移，普通剧情对话的位置不变。
 
-完整生产连接入口已在独立原生宿主中通过首次连接、退出、断线及重连回归；中英日界面经过离线渲染检查。真实游戏画面仍需下一次正常启动确认。设置与缓存保留。
+代码回归、隐藏原生宿主与打包启动检查已通过；新增字体加载和排版改动开放实机测试。已有设置与缓存保留。由旧版升级时，新底层代码在游戏下次正常启动后生效；这与首次字体准备免重启是两个不同环节。
 
 ## English
 
-- Fix a first-connection regression in 0.3.16: initialization invalidated the control handle too early, preventing bilingual connection.
-- Stop showing “Connecting” after the game or backend exits. A connected resident backend is no longer mistaken for an unfinished connection. Failures retain their cause and allow retry.
-- Add prominent stage cards: yellow for font/mapping preparation, blue for language detection/connection/mapping application, green for ready, and red for errors. Each stage includes a heading, explanation, and activity indicator.
+- Remove an extra shrink from enlarged secondary dialogue. Live dialogue, typewriter text, and history share size handling; nested readings retain independent height reserves.
+- Load prepared multilingual fonts into a running game without a font-related restart. Game discovery and cache reuse remain automatic.
+- Preserve script provenance when speaker names are copied, including generic voice labels.
+- Move active-voice text slightly down without shifting ordinary story dialogue.
 
-The production connection entry passed initial connection, exit, disconnect, and reconnect checks in an isolated native host. Chinese, English, and Japanese UI previews were reviewed offline. Actual game display still needs confirmation on the next normal launch. Settings and caches are preserved.
+Code, isolated native-host, and packaged-launch checks passed. The new font-loading and layout changes are available for in-game testing. Settings and caches are preserved. When upgrading an older resident version, the new native code takes effect on the next normal game launch.
 
 ## 日本語
 
-- 0.3.16 の初回接続の不具合を修正しました。初期化中に制御ハンドルが早く無効になり、二言語表示に接続できなくなっていました。
-- ゲームやバックエンドの終了後も「接続中」が残る問題と、接続済みの常駐バックエンドを接続中と誤判定する問題を修正しました。失敗理由を表示し、再試行できます。
-- 処理段階を大きな状態カードで表示します。フォント／マッピング準備は黄色、言語確認／接続／適用は青色、準備完了は緑色、エラーは赤色です。見出し、説明、処理中の表示を備えます。
+- 拡大された副言語が再び縮小される問題を修正。通常会話・文字送り・ログで字号処理を共通化し、入れ子のルビの行高を保持します。
+- 準備した多言語フォントを起動中のゲームへ読み込む機能を追加。フォント準備のための再起動は不要で、自動検出とキャッシュ再利用も継続します。
+- 「女性の声」など、スクリプトから設定された話者名のコピー後も出典を保持します。
+- アクティブボイスの本文を少し下げ、通常のイベント会話の位置は変更しません。
 
-実際の接続入口を使い、独立したネイティブホストで初回接続・終了・切断・再接続を検証しました。中英日の画面もオフラインで描画確認済みです。ゲーム画面は次回の通常起動時に確認が必要です。設定とキャッシュは保持されます。
+コード回帰・独立ネイティブホスト・配布版の起動確認を通過しました。新しいフォント読み込みとレイアウトは実ゲームでテストできます。設定とキャッシュは保持されます。旧版から更新したネイティブコードは、次回の通常のゲーム起動から有効になります。

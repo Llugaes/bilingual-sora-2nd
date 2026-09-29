@@ -41,7 +41,7 @@ Field interactions and notifications:
 
 1. Download `bilingual-sora-2nd-VERSION-windows-x64-setup.exe` from the [latest release](https://github.com/Llugaes/bilingual-sora-2nd/releases/latest) and run the installer.
 2. Open **Bilingual Sora 2nd** from the Start menu or desktop shortcut. Choose the interface language and your primary/secondary languages on first launch.
-3. The tool automatically finds the game and prepares multilingual fonts. No folder or game-language selection is needed. Keep the game closed until fonts are ready, then start it normally. The tool connects automatically; first-time language mapping initialization may take a few minutes.
+3. The tool automatically finds the game and prepares multilingual fonts. No folder or game-language selection is needed. You can start the game before preparation finishes; fonts load into the running game when ready. First-time language mapping may take a few minutes, and valid caches are reused.
 
 Supports Windows 10/11 x64 without administrator rights. Python and runtime dependencies are bundled, so the downloaded installer works offline with no separate environment setup. The interface supports English, Japanese, and Simplified Chinese. Updates retain existing settings.
 
@@ -61,7 +61,7 @@ The tool automatically finds Steam installations. After the first game launch, i
 
 ### Fonts for additional languages
 
-Some language pairs need an expanded game font to avoid missing characters appearing as question marks. Once the tool finds the game directory, it prepares fonts from local game resources and installs them while the game is closed. Complete preparation before the first game launch to use them immediately. If the game is already running, fonts are staged, installed after it exits, and loaded on its next launch. Font readiness, conflicts, and failures are shown separately. Game fonts are not distributed here; two supplementary glyphs are bundled under the OFL.
+Some language pairs need an expanded game font to avoid missing characters appearing as question marks. Fonts are prepared from local game resources: installed while the game is closed, or loaded together with their atlas into the running game without a font-related restart. Preparation, loading, readiness, and failure are shown separately. Game fonts are not distributed here; two supplementary glyphs are bundled under the OFL.
 
 ## Controls and configuration
 
