@@ -1,0 +1,67 @@
+/* A revision: real game atlas slices; the layout stays shared with concepts.js. */
+body.game-resource-prototype{background:#cbd0cb url('game-assets/camp-background.png') center top/cover fixed;color:#233c45}
+.game-resource-prototype .studio-head h1{font-family:'Microsoft YaHei UI',sans-serif;font-size:28px;color:#203d4c;text-shadow:0 1px #fff}
+.game-resource-prototype .studio-head{padding-bottom:8px}
+.game-resource-prototype .presentation{padding-top:18px}
+.game-resource-prototype .design-notes{color:#3f4d4d}
+.game-resource-prototype .design-notes h2{color:#193b4b}
+.game-resource-prototype .design-notes .recommend{background:#e9e4d4d9;border-left:3px solid #a18145;border-radius:0}
+.game-resource-prototype .theme-a{--accent:#254f69;--soft:#dfdfc9;--muted:#586466;--line:#b4b29a;--ink:#292d32;--gold:#857039;--radius:2px}
+.game-resource-prototype .app{height:668px;padding:14px 15px 17px 14px;border:0;border-radius:9px;background:transparent url('game-assets/handbook.png') center/100% 100%;box-shadow:0 20px 35px #14273555,0 3px 8px #0005;overflow:visible}
+.game-resource-prototype .chrome{height:70px;min-height:70px;padding:0 19px;border:0;border-radius:0;background:transparent;border-image-source:url('game-assets/blue-bar.png');border-image-slice:18 48 fill;border-image-width:13px 32px;color:#fffde9;gap:10px}
+.game-resource-prototype .brand-mark{width:46px;height:52px;border:0;transform:none;background:url('game-assets/guild-emblem.png') center/contain no-repeat;margin:0 8px 0 0}
+.game-resource-prototype .brand-mark svg{display:none}
+.game-resource-prototype .brand{font-size:20px;letter-spacing:3px;text-shadow:1px 2px #001b2a}
+.game-resource-prototype .brand span{color:#ede2b5;letter-spacing:2px;font-size:9px;text-shadow:none}
+.game-resource-prototype .connected{color:#e7f2d6;font-size:11px}
+.game-resource-prototype .chrome .icon-btn{color:#f4ebcb}
+.game-resource-prototype .chrome .icon-btn:hover{background:#ffffff22}
+.game-resource-prototype .sidebar{width:164px;min-width:164px;padding:27px 0 8px;background:transparent;border:0;margin-right:12px}
+.game-resource-prototype .nav-category{padding-left:13px;color:#eae5d2;text-shadow:0 1px 3px #25100c,1px 1px 2px #25100c;font-size:10px;font-weight:bold;letter-spacing:2px}
+.game-resource-prototype .nav-item{height:47px;color:#fff6d7;padding:8px 17px;margin:0 0 8px;gap:9px;font-size:13px;background:transparent url('game-assets/blue-bar.png') center/100% 100%;border-radius:0;text-shadow:0 1px 2px #102d3e}
+.game-resource-prototype .nav-item.active{background-image:url('game-assets/blue-bar-selected.png');color:#fff8ce;text-shadow:0 1px 2px #051f3a}
+.game-resource-prototype .nav-item.active:before{width:25px;height:15px;left:-14px;right:auto;background:transparent url('game-assets/cursor.png') center/contain no-repeat;border-radius:0}
+.game-resource-prototype .nav-item:hover{filter:brightness(1.15)}
+.game-resource-prototype .sidebar-foot{padding:12px 10px;background:#172c36df;border:1px solid #b9a974;border-radius:3px;color:#ddd8c6;font-size:10px}
+.game-resource-prototype .sidebar-foot span{color:#e8db94}
+.game-resource-prototype .content{padding:26px 19px 15px 21px;background:transparent}
+.game-resource-prototype .page-title{margin-bottom:22px}
+.game-resource-prototype .page-title h2{font:700 24px/1.3 'Microsoft YaHei UI',sans-serif;letter-spacing:2px;color:#484b2c;text-shadow:0 1px #fff}
+.game-resource-prototype .page-title p{color:#5f645c;font-size:11px}
+.game-resource-prototype .section-label{font-size:13px;color:#454932;border-bottom:1px solid #b5b092;padding-bottom:8px}
+.game-resource-prototype .language-pair select{font-size:14px;padding:12px 13px;color:#222c36;background:#fdfbf4cf;border:1px solid #999b8b;box-shadow:inset 0 2px 4px #7d806418,0 1px #fff;border-radius:3px}
+.game-resource-prototype .field-label{font-size:11px;color:#454f51}
+.game-resource-prototype .choice{border:0;padding:18px 15px;border-image-source:url('game-assets/dialogue-frame.png');border-image-slice:28 fill;border-image-width:17px;border-radius:0;background:transparent}
+.game-resource-prototype .choice:has(input:checked){background:#d4d3ad;border-image-source:url('game-assets/dialogue-frame.png');box-shadow:inset 0 0 0 3px #938b54}
+.game-resource-prototype .choice strong{font-size:13px;color:#38432c}
+.game-resource-prototype .choice small{font-size:10px;color:#5e6559}
+.game-resource-prototype .choice input{width:16px;height:16px;border-width:2px;border-color:#667046}
+.game-resource-prototype .choice input:checked{background:#6b783d;border-color:#6b783d;box-shadow:0 1px 2px #303f3730}
+.game-resource-prototype .preview{padding:19px 23px 17px;background:transparent;border:0;border-image-source:url('game-assets/dialogue-frame.png');border-image-slice:28 fill;border-image-width:20px;margin-top:23px;border-radius:0}
+.game-resource-prototype .preview .primary{color:#343b3e;text-shadow:0 1px 1px #aaa79c}
+.game-resource-prototype .dialogue-name{font-size:14px;color:#787437;text-shadow:0 1px #fff}
+.game-resource-prototype .preview .secondary{color:#3c5769}
+.game-resource-prototype .app-footer{margin-left:178px;border:0;background:transparent;padding:0 20px;font-size:10px;height:26px;min-height:26px;color:#687064}
+.game-resource-prototype .system-menu{top:65px;right:53px;border:0;border-image-source:url('game-assets/dialogue-frame.png');border-image-slice:28 fill;border-image-width:14px;padding:14px;box-shadow:0 12px 20px #1e2c3950}
+.game-resource-prototype .bar-stage{background:#8f9c9670;min-height:82px;border:1px solid #a2a894;border-radius:4px}
+.game-resource-prototype .mini{border:0;padding:9px 19px;width:340px;color:#fff6d7;--ink:#fff6d7;--muted:#e0e5d2;--accent:#dace9c}
+.game-resource-prototype .mini:before{border:0;border-image-source:url('game-assets/blue-bar.png');border-image-slice:18 48 fill;border-image-width:15px 30px;background:transparent}
+.game-resource-prototype .mini [data-expand] svg{display:none}
+.game-resource-prototype .mini [data-expand]{background:url('game-assets/gear.png') center/23px 23px no-repeat}
+.game-resource-prototype .bar-caption,.game-resource-prototype .bar-caption span{color:#3e5255}
+.game-resource-prototype .appearance-demo{background:#9caaa6}
+@media(max-width:680px){
+ .game-resource-prototype .app{padding:10px;height:720px}
+ .game-resource-prototype .sidebar{width:111px;min-width:111px;margin-right:6px}
+ .game-resource-prototype .nav-item{font-size:11px;padding:8px 12px}
+ .game-resource-prototype .chrome{padding:0 10px}
+ .game-resource-prototype .brand{font-size:15px}
+ .game-resource-prototype .brand-mark{width:36px;height:42px;margin-right:0}
+ .game-resource-prototype .brand span{font-size:7px;letter-spacing:1px}
+ .game-resource-prototype .content{padding:23px 12px 12px}
+ .game-resource-prototype .page-title h2{font-size:21px}
+ .game-resource-prototype .choice{padding:15px 14px}
+ .game-resource-prototype .app-footer{margin-left:116px;padding:0 6px}
+ .game-resource-prototype .language-pair select{padding:10px 6px;font-size:12px}
+}
+.game-resource-prototype .chrome .icon-btn:last-child{margin-right:6px}
