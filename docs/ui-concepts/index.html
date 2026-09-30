@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sora · 三种界面方案</title><link rel="stylesheet" href="concepts.css"></head>
+<body>
+<header class="studio-head"><div><div class="eyebrow">SORA BILINGUAL / DESIGN STUDY 01</div><h1>给冒险留出更多空间。</h1><p>三个可操作的方向。调整语言、显示方式和透明度，感受各自的布局。</p></div><span class="prototype-note">交互设计稿 · 不连接游戏</span></header>
+<nav class="concept-picker" aria-label="选择界面方案">
+<button data-concept="a" aria-pressed="true"><span class="letter">A</span><span><strong>游击士手册 <em>推荐</em></strong><small>纸色与青绿 · 左侧目录 · 游戏气质</small></span><span class="swatches"><i style="background:#f5f0e4"></i><i style="background:#235c50"></i></span></button>
+<button data-concept="b" aria-pressed="false"><span class="letter">B</span><span><strong>清透面板</strong><small>冷白与深蓝 · 内容分区 · 预览并排</small></span><span class="swatches"><i style="background:#f8fafc"></i><i style="background:#3157a4"></i></span></button>
+<button data-concept="c" aria-pressed="false"><span class="letter">C</span><span><strong>夜间控制台</strong><small>石墨与薄荷 · 折叠分组 · 更少跳转</small></span><span class="swatches"><i style="background:#1c2529"></i><i style="background:#83c6b0"></i></span></button>
+</nav>
+<main class="presentation"><div class="stage"><div class="stage-label"><span id="frame-label">A / 游击士手册</span><span>点击控件可体验</span></div><div id="app" class="app theme-a"></div><div class="bar-caption">收起后的悬浮条 <span>单击展开 · 按住拖动 · Pin 置顶</span></div><div class="bar-stage"><div id="mini" class="mini theme-a"></div></div></div><aside class="design-notes" id="notes"></aside></main>
+<footer class="studio-foot"><span>三套共同约定</span><p>● 选中 / ○ 未选中　·　内容与工具外观分开　·　更新与帮助独立入口　·　只调整背景透明度</p><small>这是界面原型；连接状态、快捷键录制、更新结果均为演示，不会修改已安装工具或游戏。</small></footer>
+<div id="toast" role="status" aria-live="polite"></div>
+<script src="concepts.js"></script>
+</body></html>
