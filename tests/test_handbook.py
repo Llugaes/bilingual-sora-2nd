@@ -10,12 +10,12 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QPoint, Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
 from sora_bilingual.app.native_overlay import OverlayController, STYLE
-from sora_bilingual.app.handbook import ASSETS, artwork
+from sora_bilingual.app.handbook import ASSETS, SkinSurface, artwork
 from sora_bilingual.config.native_config import write_config
 
 
@@ -142,6 +142,59 @@ class HandbookTests(unittest.TestCase):
                     self.assertGreaterEqual(button.height(), 24)
                     self.assertGreaterEqual(button.parentWidget().height(), button.height())
                 self.assertEqual(settings.pages[0].horizontalScrollBar().maximum(), 0)
+
+    def test_navigation_fits_leather_column_and_labels_wrap_without_clipping(self):
+        c = self.controller
+        c.expand()
+        settings = c.panel.settings
+        background = SkinSurface("handbook")
+        try:
+            for text_size in (13, 17):
+                c.panel.setStyleSheet(f"QWidget {{ font-size: {text_size}px; }}")
+                for locale in ("en", "ja", "zh-Hans"):
+                    settings.ui_language.setCurrentIndex(settings.ui_language.findData(locale))
+                    for width in (780, 850, 1000):
+                        c.panel.resize(width, 720)
+                        self.app.processEvents()
+                        background.resize(c.panel.size())
+                        image = background.grab().toImage()
+                        # Detect the actual paper in the rendered artwork, not a
+                        # second copy of the layout's expected divider position.
+                        y = image.height() // 2
+                        paper_left = (
+                            next(
+                                x
+                                for x in range(image.width())
+                                if min(image.pixelColor(x, y).getRgb()[:3]) > 215
+                            )
+                            / image.devicePixelRatio()
+                        )
+                        nav_right = settings.navigation.mapTo(
+                            c.panel, settings.navigation.rect().topRight()
+                        ).x()
+                        self.assertLess(nav_right + 8, paper_left, (locale, width))
+                        page_left = settings.tabs.mapTo(c.panel, QPoint()).x()
+                        self.assertGreater(page_left, paper_left)
+                        for index, button in enumerate(settings.nav_buttons):
+                            button.click()
+                            self.app.processEvents()
+                            label = button.rect().adjusted(28, 10, -12, -10)
+                            text = button.label_layout(button.width())
+                            self.assertLessEqual(text.boundingRect().height(), label.height())
+                            characters = 0
+                            for i in range(text.lineCount()):
+                                line = text.lineAt(i)
+                                self.assertLessEqual(line.naturalTextWidth(), label.width())
+                                characters += line.textLength()
+                            self.assertEqual(characters, len(button.text()))
+                            self.assertEqual(settings.tabs.currentIndex(), index)
+                            self.assertEqual(
+                                settings.pages[index].horizontalScrollBar().maximum(),
+                                0,
+                                (locale, width, text_size, index),
+                            )
+        finally:
+            background.deleteLater()
 
 
 if __name__ == "__main__":

@@ -40,7 +40,15 @@ from sora_bilingual.platform.runtime_process import runtime_executable
 from sora_bilingual.app.presentation import describe_state, with_font_status, STATUS_COLORS
 from sora_bilingual.app.i18n import set_language, tr
 from sora_bilingual.app.ui_widgets import NATIVE_THEME, QLabel, QPushButton, retranslate
-from sora_bilingual.app.handbook import SkinSurface, BadgeButton, artwork, draw_slice, gear_icon
+from sora_bilingual.app.handbook import (
+    SkinSurface,
+    BadgeButton,
+    artwork,
+    draw_slice,
+    gear_icon,
+    PANEL_INSET,
+    CONTENT_LEFT,
+)
 
 # Kept as a public alias because preview and regression tests import STYLE.
 STYLE = NATIVE_THEME
@@ -250,7 +258,7 @@ class OverlayPanel(SkinSurface):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setWindowTitle("Sora Bilingual")
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(15, 14, 15, 18)
+        outer.setContentsMargins(PANEL_INSET, 14, PANEL_INSET, 18)
         outer.setSpacing(9)
         self.header = SkinSurface("blue-bar")
         header = QHBoxLayout(self.header)
@@ -318,7 +326,7 @@ class OverlayPanel(SkinSurface):
         self.settings.layout().setContentsMargins(0, 0, 0, 0)
         footer = QLabel("修改自动保存  ·  Esc 收起设置")
         footer.setObjectName("detail")
-        footer.setContentsMargins(206, 0, 12, 0)
+        footer.setContentsMargins(CONTENT_LEFT, 0, 12, 0)
         outer.addWidget(footer)
         self.update_popup = SkinSurface(
             "dialogue-frame", self, Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint

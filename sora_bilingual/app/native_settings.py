@@ -296,10 +296,18 @@ class NativeSettingsWindow(QWidget):
         self.tabs = QTabWidget()
         self.tabs.tabBar().hide()
         self.pages = []
-        from sora_bilingual.app.handbook import NavigationButton, SkinSurface, ChoiceRow
+        from sora_bilingual.app.handbook import (
+            NavigationButton,
+            SkinSurface,
+            ChoiceRow,
+            NAVIGATION_WIDTH,
+            CONTENT_GAP,
+            CONTENT_LEFT,
+            PAGE_INSET,
+        )
 
         self.navigation = QWidget()
-        self.navigation.setFixedWidth(170)
+        self.navigation.setFixedWidth(NAVIGATION_WIDTH)
         navigation = QVBoxLayout(self.navigation)
         navigation.setContentsMargins(0, 10, 0, 10)
         navigation.setSpacing(7)
@@ -323,6 +331,7 @@ class NativeSettingsWindow(QWidget):
         layout_page = QWidget()
         binding_page = QWidget()
         label = QLabel("游戏内容")
+        label.setWordWrap(True)
         label.setObjectName("navGroup")
         navigation.addWidget(label)
         add_page(language_page, "语言与显示")
@@ -330,6 +339,7 @@ class NativeSettingsWindow(QWidget):
         add_page(binding_page, "快捷操作")
         navigation.addSpacing(18)
         label = QLabel("工具本身")
+        label.setWordWrap(True)
         label.setObjectName("navGroup")
         navigation.addWidget(label)
         from sora_bilingual.app.update_ui import UpdatePage
@@ -344,7 +354,7 @@ class NativeSettingsWindow(QWidget):
         self.tabs.currentChanged.connect(lambda i: self.nav_buttons[i].setChecked(True))
         self.nav_buttons[0].setChecked(True)
         body = QHBoxLayout()
-        body.setSpacing(22)
+        body.setSpacing(CONTENT_GAP)
         body.addWidget(self.navigation)
         body.addWidget(self.tabs, 1)
         layout.addLayout(body, 1)
@@ -353,11 +363,11 @@ class NativeSettingsWindow(QWidget):
         self.save_notice.hide()
         layout.addWidget(self.save_notice)
         language_layout = QVBoxLayout(language_page)
-        language_layout.setContentsMargins(16, 16, 16, 16)
+        language_layout.setContentsMargins(PAGE_INSET, 16, 16, 16)
         style_layout = QVBoxLayout(layout_page)
-        style_layout.setContentsMargins(16, 16, 16, 16)
+        style_layout.setContentsMargins(PAGE_INSET, 16, 16, 16)
         binding_layout = QVBoxLayout(binding_page)
-        binding_layout.setContentsMargins(16, 16, 16, 16)
+        binding_layout.setContentsMargins(PAGE_INSET, 16, 16, 16)
         for page_layout, title in (
             (language_layout, "语言与显示"),
             (style_layout, "文字排版"),
@@ -462,6 +472,7 @@ class NativeSettingsWindow(QWidget):
             (("主语言", self.primary), ("副语言", self.secondary))
         ):
             label = QLabel(title)
+            label.setWordWrap(True)
             label.setBuddy(control)
             control.setProperty("ui_accessible_name", title)
             control.setAccessibleName(tr(title))
@@ -490,7 +501,7 @@ class NativeSettingsWindow(QWidget):
         connection_layout.addWidget(self.connection_button)
         connection_container = QWidget()
         connection_outer = QHBoxLayout(connection_container)
-        connection_outer.setContentsMargins(208, 0, 16, 0)
+        connection_outer.setContentsMargins(CONTENT_LEFT, 0, 16, 0)
         connection_outer.addWidget(self.connection_strip)
         layout.insertWidget(0, connection_container)
         display_heading = self._section_title("显示设置")
@@ -524,6 +535,7 @@ class NativeSettingsWindow(QWidget):
         preview_layout = QVBoxLayout(preview)
         preview_layout.setContentsMargins(22, 16, 22, 16)
         preview_label = QLabel("双语排版示意（简中 / 日文）")
+        preview_label.setWordWrap(True)
         preview_label.setObjectName("helpText")
         preview_layout.addWidget(preview_label)
         preview_layout.addSpacing(8)

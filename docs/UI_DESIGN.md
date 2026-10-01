@@ -7,6 +7,7 @@ Rebuild artwork with `.venv/Scripts/pyside6-rcc.exe sora_bilingual/app/assets/ha
 ## Navigation and controls
 
 - Game content: Language & display, Text layout, Quick actions. Tool preferences: Appearance. Each page scrolls independently while navigation remains visible. Mode cards stack when large text cannot fit side by side.
+- Since 0.3.28, the artwork's leather/paper divider and the navigation share fixed logical column dimensions instead of stretching the whole book. Navigation labels wrap inside their bars, including long words at larger font sizes; one text layout handles both measurement and painting. Group labels and the example caption wrap as needed.
 - Language: enable switch first, primary/secondary columns, bilingual/single-language selection and toggle/hold behaviour. Selected controls are solid circles; others are hollow circles. The dialogue sample is labelled as an illustration, not live game output.
 - Layout: scale, offsets, spacing, secondary RGB/opacity and reset. Exact typed/loaded numbers do not round-trip through integer sliders. Runtime configuration fields are unchanged.
 - Shortcuts: select an action, record keyboard/controller combinations and choose a controller label family. Naming never changes raw input; capture instructions/cancel/clear appear when relevant.
@@ -22,4 +23,4 @@ The bar and panel move together. Click toggles settings; dragging beyond the sys
 
 Pin is removed. Windows remain on top until hidden; legacy bar_pinned is ignored without rewriting the configuration. Bar transparency fades only artwork, not foreground text/icons/dots. Minimum background alpha one preserves Windows pointer hit testing.
 
-Regression evidence: [0.3.27 verification](verification/handbook-0327.md).
+Regression evidence: [0.3.27 interactions](verification/handbook-0327.md), [0.3.28 sidebar bounds](verification/handbook-0328.md).

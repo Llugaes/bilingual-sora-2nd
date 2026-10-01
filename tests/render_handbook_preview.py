@@ -63,6 +63,24 @@ with tempfile.TemporaryDirectory() as directory:
                 locale,
                 name,
             )
+    for locale in ("en", "ja", "zh-Hans"):
+        c.panel.settings.ui_language.setCurrentIndex(c.panel.settings.ui_language.findData(locale))
+        c.panel.settings.tabs.setCurrentIndex(0)
+        for width, text_size in ((780, 17), (1000, 13)):
+            c.panel.setStyleSheet(f"QWidget {{ font-size: {text_size}px; }}")
+            c.panel.resize(width, 720)
+            app.processEvents()
+            for button in c.panel.settings.nav_buttons:
+                label = button.label_layout(button.width())
+                assert label.boundingRect().height() <= button.height() - 20, locale
+                assert all(
+                    label.lineAt(i).naturalTextWidth() <= button.width() - 40
+                    for i in range(label.lineCount())
+                ), locale
+            assert c.panel.settings.pages[0].horizontalScrollBar().maximum() == 0, locale
+            c.panel.grab().save(str(output / f"{locale}-navigation-{width}-{text_size}.png"))
+    c.panel.setStyleSheet("")
+    c.panel.resize(850, 720)
     c.panel.settings.tabs.setCurrentIndex(0)
     page = c.panel.settings.updates
     page.service.available = "v9.0.0"

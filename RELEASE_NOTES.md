@@ -1,31 +1,25 @@
-# Bilingual Sora 2nd v0.3.27
+# Bilingual Sora 2nd v0.3.28
 
 ## 简体中文
 
-- 使用游戏原版手册、徽章、蓝色选择条和对话框装饰，设置改为分组侧边目录；选中为实心圆、未选中为空心圆。
-- 标题栏常驻“更新”入口。发现新版时显示金色按钮和红点，悬浮条齿轮同步提醒；打开面板不会清除提醒。
-- 移除 Pin。悬浮条 —、设置窗口 × 都隐藏到托盘并保留效果；彻底退出请右键托盘选择“退出工具”。Esc 只收起设置。
-- 界面语言和悬浮条透明度归入“工具外观”；文字颜色、透明度和字号放在“文字排版”。保留现有游戏、语言与快捷键配置。
-- 素材嵌入 Qt 资源包，不增加启动时的游戏扫描，并兼容旧版自动更新。
+- 修复左侧菜单、分组标题和页签超出手册边框的问题：背景与内容使用同一套列宽，缩放窗口时保持对齐。
+- 较长的英文、日文页签按可用空间换行；大字体下自动增加高度，保留完整标题和选中箭头。
+- 同时修正较窄窗口下语言配置标题、排版示意说明的横向溢出。保留现有配置、托盘操作和更新提醒。
 
-本版更新工具界面，未改变游戏渲染和映射逻辑。此前地图移动的偶发顿挫仍待实机定位，不宣称本版已修复。
+本版仅修正工具界面布局，未修改游戏渲染、映射或性能逻辑。
 
 ## English
 
-- A handbook interface using original game artwork, grouped sidebar navigation and solid/hollow selection circles.
-- A dedicated Updates button turns gold with a red dot when a release is available; the compact gear shares the reminder. Opening the panel does not dismiss it.
-- Pin is removed. The bar's — and settings × hide to the tray while effects continue. Right-click the tray and choose Exit tool to quit completely. Esc collapses settings only.
-- Appearance contains UI language and bar transparency; Text layout groups colour, opacity and sizing. Existing game, language and shortcut settings are preserved.
-- Artwork is bundled as Qt resources without startup archive scanning, compatible with existing updaters.
+- Keep sidebar menus, group headings and tabs inside the handbook border. The artwork and content now share column dimensions at every window size.
+- Longer navigation labels wrap within their bars, with extra height for larger text and full labels and selection arrows preserved.
+- Prevent language headings and the bilingual example caption from overflowing narrow windows. Existing settings, tray actions and update reminders are preserved.
 
-Game rendering/mapping is unchanged. Intermittent movement stutters still need in-game investigation.
+This release changes desktop layout only, not game rendering, mapping or performance logic.
 
 ## 日本語
 
-- ゲーム本来の手帳・紋章・青い選択バー・会話枠で画面を刷新。左側の分類メニューと、選択時の塗りつぶし丸／未選択時の白抜き丸を採用しました。
-- 見出しに「更新」を常設。新版があると金色のボタンと赤い点を表示し、バーの歯車にも通知します。パネルを開いても通知は消えません。
-- Pin を削除。バーの — と設定の × は効果を維持してトレイに隠します。完全終了はトレイの右クリックメニューから行います。Esc は設定だけを閉じます。
-- 画面言語とバー背景の透明度は「ツールの外観」、文字の色・不透明度・サイズは「文字レイアウト」に集約。既存のゲーム・言語・キー設定は保持します。
-- 素材は Qt リソースに同梱し、起動時のアーカイブ走査は不要です。既存の自動更新にも対応します。
+- 左メニュー・分類見出し・タブが手帳の枠をはみ出す問題を修正。背景と内容で列幅を共有し、ウィンドウサイズが変わっても位置を揃えます。
+- 長いタブ名はバー内で折り返し、大きな文字では高さを自動調整。名称全体と選択矢印を保持します。
+- 狭い画面で言語設定の見出しや二言語表示例の説明が横にはみ出す問題も修正。設定、トレイ操作、更新通知は維持します。
 
-ゲーム描画・翻訳マッピングは変更していません。移動中の一時的なカクつきは引き続き実機調査が必要です。
+今回はツール画面の配置のみの修正です。ゲーム描画・翻訳マッピング・性能関連の処理は変更していません。

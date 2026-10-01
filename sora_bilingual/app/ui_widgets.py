@@ -52,7 +52,7 @@ QScrollBar::handle:vertical { background: #bca979; border-radius: 4px; min-heigh
 QWidget { background: transparent; color: #2b383a; }
 QWidget#panel, QWidget#bar { background: transparent; border: none; }
 QLabel#pageTitle { color: #565c36; font-size: 24px; padding-bottom: 7px; }
-QLabel#navGroup { color: #fff2ce; font-weight: 600; padding: 3px 0 5px 20px; }
+QLabel#navGroup { color: #fff2ce; font-weight: 600; padding: 3px 12px 5px 28px; }
 QLabel#brand { color: #fff1b9; font-size: 18px; letter-spacing: 2px; }
 QLabel#status { color: #fff3d0; font-size: 12px; }
 QLabel#detail, QLabel#helpText { color: #627071; }
