@@ -1,0 +1,76 @@
+{
+  "source_archive": "pac/steam/image.pac",
+  "copyright": "Game artwork belongs to Nihon Falcom Corporation.",
+  "slices": {
+    "handbook": {
+      "entry": "asset/dx11/image/note000.dds",
+      "crop": [
+        0,
+        0,
+        1754,
+        934
+      ],
+      "source_sha256": "babe97e89c3c0d3ee17686c425542eba3cda40e6c8b75c0354dcc54e42f00b0b"
+    },
+    "guild-emblem": {
+      "entry": "asset/dx11/image/window3.dds",
+      "crop": [
+        530,
+        4,
+        629,
+        108
+      ],
+      "source_sha256": "764f9d5f2d4a404faafea80f010210d1b1ea4bca721f8543baa14dfddd01fe88"
+    },
+    "dialogue-frame": {
+      "entry": "asset/dx11/image/window3.dds",
+      "crop": [
+        1543,
+        0,
+        1675,
+        143
+      ],
+      "source_sha256": "764f9d5f2d4a404faafea80f010210d1b1ea4bca721f8543baa14dfddd01fe88"
+    },
+    "blue-bar": {
+      "entry": "asset/dx11/image/window3.dds",
+      "crop": [
+        59,
+        716,
+        842,
+        776
+      ],
+      "source_sha256": "764f9d5f2d4a404faafea80f010210d1b1ea4bca721f8543baa14dfddd01fe88"
+    },
+    "blue-bar-selected": {
+      "entry": "asset/dx11/image/window3.dds",
+      "crop": [
+        59,
+        816,
+        842,
+        876
+      ],
+      "source_sha256": "764f9d5f2d4a404faafea80f010210d1b1ea4bca721f8543baa14dfddd01fe88"
+    },
+    "cursor": {
+      "entry": "asset/dx11/image/window3.dds",
+      "crop": [
+        756,
+        925,
+        854,
+        975
+      ],
+      "source_sha256": "764f9d5f2d4a404faafea80f010210d1b1ea4bca721f8543baa14dfddd01fe88"
+    },
+    "gear": {
+      "entry": "asset/dx11/image/window3.dds",
+      "crop": [
+        1385,
+        942,
+        1456,
+        1016
+      ],
+      "source_sha256": "764f9d5f2d4a404faafea80f010210d1b1ea4bca721f8543baa14dfddd01fe88"
+    }
+  }
+}

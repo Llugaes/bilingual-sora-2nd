@@ -25,6 +25,8 @@ GROUPS = {
         "sora_bilingual/app/presentation.py",
         "sora_bilingual/app/i18n.py",
         "sora_bilingual/app/ui_widgets.py",
+        "sora_bilingual/app/handbook.py",
+        "sora_bilingual/app/handbook_resources.py",
         "sora_bilingual/paths.py",
         "launch.py",
         "sora_bilingual/app/native_settings.py",

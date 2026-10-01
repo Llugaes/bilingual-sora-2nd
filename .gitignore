@@ -19,3 +19,5 @@ VALIDATION.md
 *.egg-info/
 .ruff_cache/
 .local/
+
+!sora_bilingual/app/assets/handbook/*.png

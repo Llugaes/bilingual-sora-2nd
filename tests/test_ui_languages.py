@@ -82,19 +82,16 @@ class UiLanguageTests(unittest.TestCase):
             before = read_config(path)
             try:
                 for code, title in (
-                    ("en", "Language"),
-                    ("ja", "言語"),
-                    ("zh-Hans", "语言"),
+                    ("en", "Language & display"),
+                    ("ja", "言語と表示"),
+                    ("zh-Hans", "语言与显示"),
                 ):
                     settings.ui_language.setCurrentIndex(settings.ui_language.findData(code))
                     app.processEvents()
                     self.assertEqual(settings.tabs.tabText(0), title)
                     self.assertFalse(panel.bar.open_button.icon().isNull())
                     self.assertEqual(panel.bar.open_button.accessibleName(), tr("打开或关闭设置"))
-                    self.assertEqual(
-                        panel.bar.pin_button.toolTip(), tr("固定在最前方；再次点击取消置顶。")
-                    )
-                    self.assertEqual(panel.bar.exit_button.accessibleName(), tr("退出工具"))
+                    self.assertEqual(panel.bar.minimize_button.accessibleName(), tr("最小化到托盘"))
                     self.assertEqual(panel.tray.contextMenu().actions()[0].text(), tr("打开设置"))
                     after = read_config(path)
                     self.assertEqual(after["ui_language"], code)
@@ -145,19 +142,19 @@ class UiLanguageTests(unittest.TestCase):
                 for code, tabs, system_label, opacity_label in (
                     (
                         "en",
-                        ("Language", "Text layout", "Shortcuts", "Settings and updates"),
+                        ("Language & display", "Text layout", "Quick actions", "Appearance"),
                         "Follow system",
                         "Secondary text opacity",
                     ),
                     (
                         "ja",
-                        ("言語", "文字レイアウト", "ショートカット", "設定と更新"),
+                        ("言語と表示", "文字レイアウト", "クイック操作", "ツールの外観"),
                         "システムに従う",
                         "副言語の不透明度",
                     ),
                     (
                         "zh-Hans",
-                        ("语言", "文字排版", "快捷键", "设置和更新"),
+                        ("语言与显示", "文字排版", "快捷操作", "工具外观"),
                         "跟随系统",
                         "副语言透明度",
                     ),
@@ -179,12 +176,14 @@ class UiLanguageTests(unittest.TestCase):
                         screenshot = panel.panel.grab()
                         self.assertEqual(screenshot.width(), panel.panel.width())
                         page = panel.panel.settings.pages[index]
-                        self.assertEqual(page.horizontalScrollBar().maximum(), 0)
+                        self.assertEqual(page.horizontalScrollBar().maximum(), 0, (code, index))
                         tab_position = panel.panel.settings.tabs.tabBar().pos()
                         page.verticalScrollBar().setValue(page.verticalScrollBar().maximum())
                         app.processEvents()
                         self.assertEqual(panel.panel.settings.tabs.tabBar().pos(), tab_position)
-                        self.assertTrue(panel.panel.settings.tabs.tabBar().isVisible())
+                        self.assertFalse(panel.panel.settings.tabs.tabBar().isVisible())
+                        self.assertTrue(panel.panel.settings.nav_buttons[index].isVisible())
+                        self.assertTrue(panel.panel.settings.nav_buttons[index].isChecked())
             finally:
                 panel.panel.settings._status_timer.stop()
                 panel.panel.settings._capture_timer.stop()

@@ -376,6 +376,15 @@ class InstallationTests(unittest.TestCase):
             service.tick()
             thread.assert_not_called()
 
+    def test_no_longer_available_release_clears_notification_state(self):
+        service = UpdateService(self.root)
+        service.available = "v99.0.0"
+        service.release = {"tag_name": "v99.0.0"}
+        with patch.object(service.client, "latest", return_value=({"tag_name": "v0.0.1"}, {})):
+            service._check(manual=True)
+        self.assertIsNone(service.available)
+        self.assertIsNone(service.release)
+
     def test_failure_offers_manual_download_instead_of_raw_exception(self):
         service = UpdateService(self.root)
         service.pending = ({}, self.new)

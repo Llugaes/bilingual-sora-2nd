@@ -133,6 +133,8 @@ class UpdateService:
         if not release or version_tuple(release["tag_name"]) <= version_tuple(
             self.distribution["version"]
         ):
+            self.available = None
+            self.release = None
             self.message = "当前已是最新稳定版" if release else "仓库尚未发布稳定版"
             return
         self.available = release["tag_name"]

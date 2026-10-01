@@ -8,7 +8,7 @@ from pathlib import Path
 import sys
 import time
 
-from PySide6.QtCore import Qt, QEvent, QTimer, QObject, Signal, QPoint, QRectF, QSize
+from PySide6.QtCore import Qt, QEvent, QTimer, QObject, Signal, QPoint, QSize
 from PySide6.QtGui import QAction, QColor, QIcon, QPainter, QPixmap
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import (
@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QFrame,
     QProgressBar,
+    QScrollArea,
 )
 
 from sora_bilingual.platform.inputs import InputManager
@@ -39,6 +40,7 @@ from sora_bilingual.platform.runtime_process import runtime_executable
 from sora_bilingual.app.presentation import describe_state, with_font_status, STATUS_COLORS
 from sora_bilingual.app.i18n import set_language, tr
 from sora_bilingual.app.ui_widgets import NATIVE_THEME, QLabel, QPushButton, retranslate
+from sora_bilingual.app.handbook import SkinSurface, BadgeButton, artwork, draw_slice, gear_icon
 
 # Kept as a public alias because preview and regression tests import STYLE.
 STYLE = NATIVE_THEME
@@ -121,7 +123,7 @@ class DragSurface(QObject):
 
 class StatusBar(QWidget):
     expand = Signal()
-    quit_requested = Signal()
+    minimize = Signal()
 
     def __init__(self):
         super().__init__(
@@ -135,9 +137,10 @@ class StatusBar(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         row = QHBoxLayout(self)
-        row.setContentsMargins(8, 6, 8, 6)
+        row.setContentsMargins(18, 7, 18, 7)
         row.setSpacing(6)
-        self.grip = QLabel("::")
+        self.grip = QLabel("⋮")
+        self.grip.setStyleSheet("color:#e6d795;")
         self.grip.setToolTip("单击打开设置，按住拖动状态条")
         self.grip.setAccessibleName("单击打开设置，按住拖动状态条")
         row.addWidget(self.grip)
@@ -150,32 +153,23 @@ class StatusBar(QWidget):
         self.status.setObjectName("status")
         self.status.setWordWrap(True)
         row.addWidget(self.status, 1)
-        self.open_button = QPushButton()
+        self.open_button = BadgeButton()
         self.open_button.setFixedSize(32, 32)
         self.open_button.setStyleSheet("padding:0;")
-        self.open_button.setIcon(settings_icon())
+        self.open_button.setIcon(gear_icon())
         self.open_button.setIconSize(QSize(20, 20))
         self.open_button.setAccessibleName("打开或关闭设置")
         self.open_button.setToolTip("打开或关闭设置。快捷键显示在状态提示中。")
         self.open_button.clicked.connect(self.expand)
         row.addWidget(self.open_button)
-        self.pin_button = QPushButton()
-        self.pin_button.setFixedSize(32, 32)
-        self.pin_button.setStyleSheet("padding:0;")
-        self.pin_button.setIcon(pin_icon())
-        self.pin_button.setIconSize(QSize(20, 20))
-        self.pin_button.setCheckable(True)
-        self.pin_button.setAccessibleName("悬浮条置顶")
-        self.pin_button.setToolTip("固定在最前方；再次点击取消置顶。")
-        row.addWidget(self.pin_button)
-        self.exit_button = QPushButton("×")
-        self.exit_button.setFixedSize(32, 32)
-        self.exit_button.setStyleSheet("padding:0;font-size:20px;")
-        self.exit_button.setAccessibleName("退出工具")
-        self.exit_button.setToolTip("关闭双语效果并退出工具。")
-        self.exit_button.clicked.connect(self.quit_requested)
-        row.addWidget(self.exit_button)
-        self.setFixedWidth(300)
+        self.minimize_button = QPushButton("—")
+        self.minimize_button.setFixedSize(32, 32)
+        self.minimize_button.setStyleSheet("padding:0;font-size:18px;color:#fff1be;")
+        self.minimize_button.setAccessibleName("最小化到托盘")
+        self.minimize_button.setToolTip("隐藏到托盘；右键托盘图标可彻底退出。")
+        self.minimize_button.clicked.connect(self.minimize)
+        row.addWidget(self.minimize_button)
+        self.setFixedWidth(340)
         # The status text and spare bar surface are easier to target than the
         # compact grip. Buttons are intentionally excluded so their actions
         # remain reliable click targets.
@@ -189,28 +183,23 @@ class StatusBar(QWidget):
         # One alpha step keeps the visually clear surface hit-testable on
         # Windows layered windows. Text/icons never inherit this alpha.
         self._background_alpha = max(1, round(255 * (1 - value / 100)))
-        # CSS alpha 1 means fully opaque in Qt; use explicit fractional alpha.
-        alpha = f"{self._background_alpha / 255:.6f}"
         self.setStyleSheet(
             "QWidget#bar { background: transparent; border: none; }"
-            f"QWidget#bar QPushButton {{ background: rgba(253,249,239,{alpha}); "
-            f"border: 1px solid rgba(184,149,85,{alpha}); }}"
-            f"QWidget#bar QPushButton:hover {{ background: rgba(232,243,239,{alpha}); }}"
-            f"QWidget#bar QPushButton:checked {{ background: rgba(210,232,225,{alpha}); }}"
-            f"QWidget#bar QPushButton:pressed {{ background: rgba(210,232,225,{alpha}); }}"
+            "QWidget#bar QPushButton { background: transparent; border: none; }"
+            "QWidget#bar QPushButton:hover { border: 1px solid #e5cf82; }"
         )
         self.update()
 
     def paintEvent(self, event):
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setPen(QColor(184, 149, 85, self._background_alpha))
-        painter.setBrush(QColor(248, 243, 232, self._background_alpha))
-        painter.drawRoundedRect(QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 10, 10)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        painter.fillRect(self.rect(), QColor(0, 0, 0, 1))
+        painter.setOpacity(self._background_alpha / 255)
+        draw_slice(painter, self.rect(), "blue-bar", (48, 18), (30, 15))
 
     def closeEvent(self, event):
         event.ignore()
-        self.quit_requested.emit()
+        self.minimize.emit()
 
     def present(self, state, hint):
         detail = state.get("font_notice") or state["detail"]
@@ -219,7 +208,15 @@ class StatusBar(QWidget):
         marker_name = tr("状态：") + tr(state["title"])
         marker_hint = marker_name + "。" + tr(detail)
         self.marker.setText(state.get("marker", "●"))
-        self.marker.setStyleSheet("color:" + state["color"])
+        # Pale semantic colours remain visible on the dark game metal.
+        self.marker.setStyleSheet(
+            "color:"
+            + {
+                "#a32b22": "#ff9b87",
+                "#086b68": "#b6e3b4",
+                "#4f6270": "#e9d386",
+            }.get(state["color"], "#f3da93")
+        )
         self.marker.setAccessibleName(marker_name)
         self.marker.setToolTip(marker_hint)
         activity = state.get("activity", {})
@@ -237,33 +234,61 @@ class StatusBar(QWidget):
         self.open_button.setToolTip(tr("打开或关闭设置。") + tr("快捷键：") + hint)
 
 
-class OverlayPanel(QWidget):
+class OverlayPanel(SkinSurface):
     collapse = Signal()
+    minimize = Signal()
 
     def __init__(self, control, status):
         super().__init__(
+            "handbook",
             None,
             Qt.WindowType.Tool
             | Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.WindowStaysOnTopHint,
         )
         self.setObjectName("panel")
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setWindowTitle("Sora Bilingual")
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(20, 18, 20, 16)
-        outer.setSpacing(12)
-        header = QHBoxLayout()
-        self.grip = QLabel("S O R A   /   B I L I N G U A L")
+        outer.setContentsMargins(15, 14, 15, 18)
+        outer.setSpacing(9)
+        self.header = SkinSurface("blue-bar")
+        header = QHBoxLayout(self.header)
+        header.setContentsMargins(24, 8, 20, 8)
+        emblem = QLabel()
+        emblem.setPixmap(
+            artwork("guild-emblem").scaled(
+                42,
+                46,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+        )
+        header.addWidget(emblem)
+        self.grip = QLabel(
+            'S O R A<br><span style="font-size:9px;letter-spacing:1px">BILINGUAL COMPANION</span>'
+        )
         self.grip.setObjectName("brand")
         self.grip.setToolTip("拖动顶部，一起移动状态条和设置")
         header.addWidget(self.grip, 1)
-        self.drag_surface = DragSurface(self, (self.grip,))
+        self.drag_surface = DragSurface(self, (self.header, self.grip, emblem))
+        self.update_button = BadgeButton("更新")
+        self.update_button.setObjectName("headerButton")
+        self.update_button.setAccessibleName("检查更新")
+        self.update_button.clicked.connect(self.show_updates)
+        header.addWidget(self.update_button)
+        self.more_button = QPushButton("···")
+        self.more_button.setObjectName("headerButton")
+        self.more_button.setAccessibleName("帮助和关于")
+        header.addWidget(self.more_button)
         self.hide_button = QPushButton("×")
+        self.hide_button.setObjectName("headerButton")
         self.hide_button.setFixedWidth(32)
-        self.hide_button.setToolTip("关闭设置，保留小状态条")
-        self.hide_button.clicked.connect(self.collapse)
+        self.hide_button.setToolTip("隐藏到托盘；右键托盘图标可彻底退出。")
+        self.hide_button.setAccessibleName("最小化到托盘")
+        self.hide_button.clicked.connect(self.minimize)
         header.addWidget(self.hide_button)
-        outer.addLayout(header)
+        outer.addWidget(self.header)
         self.phase_card = QFrame()
         self.phase_card.setObjectName("phaseCard")
         phase_layout = QVBoxLayout(self.phase_card)
@@ -281,16 +306,84 @@ class OverlayPanel(QWidget):
         self.phase_progress.setFixedHeight(4)
         self.phase_progress.setAccessibleName("当前阶段正在进行")
         phase_layout.addWidget(self.phase_progress)
-        outer.addWidget(self.phase_card)
         self.settings = NativeSettingsWindow(control, status)
+        # Connection feedback belongs to the content area, not over the ribbon.
+        self.settings.language_page.layout().insertWidget(2, self.phase_card)
+        self.settings.font_card.setProperty("presented_by_shell", True)
+        self.settings.font_card.hide()
         self.settings.status_footer.hide()
         outer.addWidget(self.settings, 1)
-        self.setMinimumWidth(620)
-        self.resize(620, 650)
+        self.setMinimumWidth(780)
+        self.resize(850, 720)
         self.settings.layout().setContentsMargins(0, 0, 0, 0)
         footer = QLabel("修改自动保存  ·  Esc 收起设置")
         footer.setObjectName("detail")
+        footer.setContentsMargins(206, 0, 12, 0)
         outer.addWidget(footer)
+        self.update_popup = SkinSurface(
+            "dialogue-frame", self, Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint
+        )
+        self.update_popup.setAttribute(Qt.WidgetAttribute.WA_NoMouseReplay)
+        popup_layout = QVBoxLayout(self.update_popup)
+        popup_layout.setContentsMargins(16, 16, 16, 16)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(self.settings.updates)
+        self.settings.updates.show()
+        popup_layout.addWidget(scroll)
+        self.settings.updates.availability_changed.connect(self.present_update)
+        self.help_menu = QMenu(self)
+        for title, callback in (
+            ("使用说明", self.settings.updates.open_guide),
+            ("发行说明", self.settings.updates.open_releases),
+            ("关于", self.show_about),
+        ):
+            action = self.help_menu.addAction(tr(title))
+            action.setData(title)
+            action.triggered.connect(callback)
+        self.more_button.clicked.connect(
+            lambda: self.help_menu.exec(
+                self.more_button.mapToGlobal(self.more_button.rect().bottomLeft())
+            )
+        )
+
+    def present_update(self, available):
+        self.update_button.setText("新版本" if available else "更新")
+        self.update_button.set_notice(available)
+
+    def show_updates(self):
+        if self.update_popup.isVisible():
+            self.update_popup.hide()
+            return
+        self.settings.updates.refresh(False)
+        area = self.screen().availableGeometry()
+        self.update_popup.resize(380, min(520, area.height() - 32))
+        point = self.update_button.mapToGlobal(self.update_button.rect().bottomRight())
+        point.setX(
+            max(
+                area.left(),
+                min(
+                    point.x() - self.update_popup.width(),
+                    area.right() - self.update_popup.width() + 1,
+                ),
+            )
+        )
+        point.setY(
+            max(area.top(), min(point.y() + 8, area.bottom() - self.update_popup.height() + 1))
+        )
+        self.update_popup.move(point)
+        self.update_popup.show()
+        self.settings.updates.check.setFocus()
+
+    def show_about(self):
+        QMessageBox.about(
+            self,
+            tr("关于"),
+            "Sora Bilingual "
+            + self.settings.updates.service.distribution["version"]
+            + "\n"
+            + tr("游戏美术资源：Nihon Falcom Corporation。"),
+        )
 
     def present(self, state):
         activity = state.get("activity")
@@ -321,6 +414,12 @@ class OverlayPanel(QWidget):
         self.phase_title.setText(marker + "  " + title)
         self.detail.setText(detail)
         self.phase_progress.setRange(0, 0 if working else 1)
+        self.phase_progress.setVisible(working)
+        self.phase_card.setVisible(
+            tone in ("error", "preparing", "connecting")
+            or working
+            or bool(state.get("font_notice"))
+        )
         self.phase_progress.setValue(0)
         if self.phase_card.property("tone") != tone:
             foreground, background = STATUS_COLORS[tone]
@@ -339,49 +438,7 @@ class OverlayPanel(QWidget):
 
     def closeEvent(self, event):
         event.ignore()
-        self.collapse.emit()
-
-
-def settings_icon():
-    # Draw the gear locally so installed fonts cannot turn it into a missing glyph.
-    pixmap = QPixmap(64, 64)
-    pixmap.fill(Qt.GlobalColor.transparent)
-    painter = QPainter(pixmap)
-    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-    painter.translate(32, 32)
-    painter.scale(2.6, 2.6)
-    painter.setPen(Qt.PenStyle.NoPen)
-    painter.setBrush(QColor("#33291f"))
-    for _ in range(8):
-        painter.drawRoundedRect(QRectF(-2, -10, 4, 6), 1, 1)
-        painter.rotate(45)
-    painter.drawEllipse(QRectF(-7, -7, 14, 14))
-    painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Clear)
-    painter.drawEllipse(QRectF(-3.5, -3.5, 7, 7))
-    painter.end()
-    return QIcon(pixmap)
-
-
-def pin_icon():
-    icon = QIcon()
-    for checked in (False, True):
-        pixmap = QPixmap(64, 64)
-        pixmap.fill(Qt.GlobalColor.transparent)
-        painter = QPainter(pixmap)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.translate(32, 32)
-        painter.scale(2.6, 2.6)
-        if not checked:
-            painter.rotate(35)
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor("#167b78" if checked else "#33291f"))
-        painter.drawRoundedRect(QRectF(-5, -9, 10, 3), 1, 1)
-        painter.drawRect(QRectF(-3, -6, 6, 7))
-        painter.drawRoundedRect(QRectF(-6, 0, 12, 3), 1, 1)
-        painter.drawRect(QRectF(-0.7, 3, 1.4, 7))
-        painter.end()
-        icon.addPixmap(pixmap, QIcon.Mode.Normal, QIcon.State.On if checked else QIcon.State.Off)
-    return icon
+        self.minimize.emit()
 
 
 def app_icon():
@@ -422,15 +479,16 @@ class OverlayController(QObject):
         self.preferences = self.panel.settings.window_preferences
         self._interface_hidden = False
         self.bar.expand.connect(self.toggle_settings)
-        self.bar.pin_button.setChecked(self.preferences.value("bar_pinned", True, type=bool))
-        self.bar.pin_button.toggled.connect(self.set_pinned)
-        self.set_pinned(self.bar.pin_button.isChecked())
+        # The compact status remains visible over the game until minimized.
+        # Ignore the retired pin preference, without rewriting user game settings.
         self.panel.settings.bar_transparency.valueChanged.connect(
             self.bar.set_background_transparency
         )
         self.bar.set_background_transparency(self.panel.settings.bar_transparency.value())
         self.panel.collapse.connect(self.collapse)
-        self.bar.quit_requested.connect(self.quit)
+        self.panel.minimize.connect(self.hide_interface)
+        self.bar.minimize.connect(self.hide_interface)
+        self.panel.settings.updates.availability_changed.connect(self.bar.open_button.set_notice)
         self.panel.drag_surface.moved.connect(self.save_position)
         self.bar.drag_surface.moved.connect(self.save_position)
         self.panel.drag_surface.dragged.connect(self.move_group)
@@ -498,22 +556,11 @@ class OverlayController(QObject):
                 self.tray.setToolTip(tr("Sora 双语控制台"))
                 for action in self.tray.contextMenu().actions():
                     action.setText(tr(action.data()))
+                for action in self.panel.help_menu.actions():
+                    action.setText(tr(action.data()))
             self.config = config
         except OSError, ValueError:
             return
-
-    def set_pinned(self, pinned):
-        self.preferences.setValue("bar_pinned", pinned)
-        for window in (self.bar, self.panel):
-            if bool(window.windowFlags() & Qt.WindowType.WindowStaysOnTopHint) == pinned:
-                continue
-            visible, active, position = window.isVisible(), window.isActiveWindow(), window.pos()
-            window.setWindowFlag(Qt.WindowType.WindowStaysOnTopHint, pinned)
-            window.move(position)
-            if visible:
-                window.show()
-                if active:
-                    window.activateWindow()
 
     def save_position(self):
         self.preferences.setValue("bar_position", self.bar.pos())
@@ -539,7 +586,9 @@ class OverlayController(QObject):
 
     def position_panel(self):
         area = self.bar.screen().availableGeometry()
-        self.panel.resize(620, min(580, area.height() - self.bar.height() - 24))
+        self.panel.resize(
+            min(850, area.width() - 24), min(760, area.height() - self.bar.height() - 24)
+        )
         width = max(self.panel.width(), self.bar.width())
         height = self.panel.height() + self.bar.height() + 8
         x = max(area.left(), min(self.bar.x(), area.right() - width + 1))
@@ -564,6 +613,7 @@ class OverlayController(QObject):
         self.panel.settings._cancel_capture()
         self.hotkey.reset()
         self.panel.hide()
+        self.panel.update_popup.hide()
 
     def hide_interface(self):
         # Explicit visibility state survives telemetry refresh, Alt-Tab and
@@ -572,6 +622,7 @@ class OverlayController(QObject):
         self.panel.settings._cancel_capture()
         self.hotkey.reset()
         self.panel.hide()
+        self.panel.update_popup.hide()
         self.bar.hide()
 
     def quit(self):
@@ -585,7 +636,7 @@ class OverlayController(QObject):
         self.timer.stop()
         self.input_timer.stop()
         self.panel.settings._cancel_capture()
-        self.bar.exit_button.setEnabled(False)
+        self.tray.contextMenu().actions()[-1].setEnabled(False)
         self.tray.setToolTip(tr("正在退出…"))
 
         def stop():
@@ -601,7 +652,7 @@ class OverlayController(QObject):
     def _finish_exit(self, error):
         if error:
             self._exiting = False
-            self.bar.exit_button.setEnabled(True)
+            self.tray.contextMenu().actions()[-1].setEnabled(True)
             self.tray.setToolTip(tr("退出尚未完成"))
             QMessageBox.warning(self.bar, tr("退出尚未完成"), error)
             return

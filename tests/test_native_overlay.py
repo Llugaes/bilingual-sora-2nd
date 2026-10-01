@@ -193,7 +193,7 @@ class OverlayUiTests(unittest.TestCase):
         window = self.window
         window.show()
         self.app.processEvents()
-        self.assertTrue(window.updates.isAncestorOf(window.ui_language))
+        self.assertTrue(window.appearance_page.isAncestorOf(window.ui_language))
         self.assertFalse(window.language_page.isAncestorOf(window.ui_language))
         self.assertEqual(window.primary.y(), window.secondary.y())
         self.assertLess(window.primary.x(), window.secondary.x())
@@ -439,7 +439,7 @@ class OverlayUiTests(unittest.TestCase):
         self.assertEqual(self.window.connection_state.text(), tr("已连接"))
         self.assertIn("matched", self.window.detected_game_language.text())
 
-    def test_connection_strip_stays_outside_language_scroll_and_single_modes_fit_first_view(self):
+    def test_connection_strip_stays_visible_and_single_modes_remain_reachable(self):
         update_control({"ui_language": "en"}, self.control)
         controller = OverlayController(
             self.control, self.status, start_timers=False, auto_connect=False
@@ -450,10 +450,12 @@ class OverlayUiTests(unittest.TestCase):
             settings.single_mode.click()
             self.app.processEvents()
             page = settings.pages[0]
-            self.assertIs(settings.connection_strip.parentWidget(), settings)
+            self.assertTrue(settings.isAncestorOf(settings.connection_strip))
             self.assertFalse(settings.language_page.isAncestorOf(settings.connection_strip))
             self.assertFalse(settings.single_options.isHidden())
             for option in (settings.single_toggle, settings.single_hold):
+                page.ensureWidgetVisible(option)
+                self.app.processEvents()
                 visible = option.rect().translated(option.mapTo(page.viewport(), QPoint()))
                 self.assertTrue(page.viewport().rect().contains(visible))
         finally:
@@ -476,12 +478,12 @@ class OverlayUiTests(unittest.TestCase):
                 {},
             )
             controller.bar.present(state, "CTRL + SHIFT + F9")
-            self.assertLessEqual(controller.bar.width(), 300)
+            self.assertLessEqual(controller.bar.width(), 340)
             self.assertTrue(controller.bar.marker.accessibleName())
             self.assertIn("CTRL + SHIFT + F9", controller.bar.status.toolTip())
             self.assertTrue(controller.bar.open_button.accessibleName())
-            self.assertTrue(controller.bar.pin_button.accessibleName())
-            self.assertTrue(controller.bar.exit_button.accessibleName())
+            self.assertFalse(hasattr(controller.bar, "pin_button"))
+            self.assertTrue(controller.bar.minimize_button.accessibleName())
         finally:
             controller.bar.hide()
             controller.panel.hide()
@@ -636,12 +638,12 @@ class OverlayUiTests(unittest.TestCase):
             controller.panel.hide_button.click()
             controller.tick()
             self.assertFalse(controller.panel.isVisible())
-            self.assertTrue(controller.bar.isVisible())
+            self.assertFalse(controller.bar.isVisible())
             controller.expand()
             controller.panel.close()
             controller.tick()
             self.assertFalse(controller.panel.isVisible())
-            self.assertTrue(controller.bar.isVisible())
+            self.assertFalse(controller.bar.isVisible())
             controller.hide_interface()
             controller.tick()
             self.assertFalse(controller.bar.isVisible())
@@ -658,7 +660,7 @@ class OverlayUiTests(unittest.TestCase):
             controller.deleteLater()
             self.app.processEvents()
 
-    def test_close_settings_keeps_status_bar_when_game_loses_foreground(self):
+    def test_close_hides_to_tray_while_escape_keeps_bar_when_game_loses_foreground(self):
         controller = OverlayController(self.control, self.status, start_timers=False)
         live = dict(running=True, pid=123, updated_at=time.time(), enabled=True)
         try:
@@ -666,17 +668,17 @@ class OverlayUiTests(unittest.TestCase):
                 patch.object(controller.live, "read", return_value=live),
                 patch("sora_bilingual.app.native_overlay.foreground_rect", return_value=None),
             ):
-                for close in (
-                    controller.panel.hide_button.click,
-                    controller.panel.close,
-                    lambda: QTest.keyClick(controller.panel, Qt.Key.Key_Escape),
+                for close, keep_bar in (
+                    (controller.panel.hide_button.click, False),
+                    (controller.panel.close, False),
+                    (lambda: QTest.keyClick(controller.panel, Qt.Key.Key_Escape), True),
                 ):
                     controller.expand()
                     close()
                     controller.tick()
                     controller.tick()
                     self.assertFalse(controller.panel.isVisible())
-                    self.assertTrue(controller.bar.isVisible())
+                    self.assertEqual(controller.bar.isVisible(), keep_bar)
                 controller.hide_interface()
                 controller.tick()
                 self.assertFalse(controller.bar.isVisible())
@@ -699,6 +701,7 @@ class OverlayUiTests(unittest.TestCase):
             controller.bar.open_button.click()
             self.app.processEvents()
             self.assertTrue(controller.panel.isVisible())
+            controller.panel.resize(780, 500)
             for grip in (
                 controller.bar.grip,
                 controller.bar.marker,
@@ -706,6 +709,9 @@ class OverlayUiTests(unittest.TestCase):
                 controller.bar,
                 controller.panel.grip,
             ):
+                # Leave room for each independent drag on the 800px offscreen display.
+                controller.bar.move(2, 12)
+                controller.panel.move(2, 12 + controller.bar.height() + 8)
                 old_bar = controller.bar.pos()
                 old_panel = controller.panel.pos()
                 QTest.mousePress(grip, Qt.MouseButton.LeftButton, pos=QPoint(4, 4))
@@ -725,12 +731,15 @@ class OverlayUiTests(unittest.TestCase):
             controller.bar.open_button.click()
             self.assertEqual(controller.bar.pos(), old_bar)
             self.assertTrue(controller.panel.isVisible())
-            quit_events = []
-            controller.bar.quit_requested.disconnect(controller.quit)
-            controller.bar.quit_requested.connect(lambda: quit_events.append(True))
+            minimize_events = []
+            controller.bar.minimize.connect(lambda: minimize_events.append(True))
             old_bar = controller.bar.pos()
-            QTest.mouseClick(controller.bar.exit_button, Qt.MouseButton.LeftButton)
-            self.assertEqual(quit_events, [True])
+            QTest.mouseClick(controller.bar.minimize_button, Qt.MouseButton.LeftButton)
+            self.assertEqual(minimize_events, [True])
+            self.assertFalse(controller.bar.isVisible())
+            self.assertFalse(controller.panel.isVisible())
+            controller.expand()
+            controller.panel.resize(780, 500)
             self.assertEqual(controller.bar.pos(), old_bar)
             controller.move_group(QPoint(99999, 99999))
             area = controller.bar.screen().availableGeometry()
@@ -751,23 +760,14 @@ class OverlayUiTests(unittest.TestCase):
             controller.deleteLater()
             self.app.processEvents()
 
-    def test_pin_and_background_transparency_preserve_connection_and_survive_recreation(self):
+    def test_background_transparency_preserve_connection_and_survive_recreation(self):
         controller = OverlayController(
             self.control, self.status, start_timers=False, auto_connect=False
         )
         original = self.control.read_bytes()
-        quit_events = []
-        controller.bar.quit_requested.connect(lambda: quit_events.append(True))
         try:
             controller.expand()
-            original_position = controller.bar.pos()
-            self.assertTrue(controller.bar.pin_button.isChecked())
-            QTest.mouseClick(controller.bar.pin_button, Qt.MouseButton.LeftButton)
-            self.assertFalse(controller.bar.pin_button.isChecked())
-            for window in (controller.bar, controller.panel):
-                self.assertFalse(window.windowFlags() & Qt.WindowType.WindowStaysOnTopHint)
-                self.assertTrue(window.isVisible())
-            self.assertEqual(controller.bar.pos(), original_position)
+            self.assertFalse(hasattr(controller.bar, "pin_button"))
             controller.panel.settings.bar_transparency.setValue(70)
             self.assertEqual(controller.bar._background_alpha, 77)
             self.assertEqual(controller.bar.windowOpacity(), 1.0)
@@ -779,8 +779,7 @@ class OverlayUiTests(unittest.TestCase):
             self.assertLessEqual(rendered.pixelColor(QPoint(176, 16) * ratio).alpha(), 2)
             for button in (
                 controller.bar.open_button,
-                controller.bar.pin_button,
-                controller.bar.exit_button,
+                controller.bar.minimize_button,
             ):
                 corner = button.pos() + QPoint(4, button.height() // 2)
                 self.assertLessEqual(rendered.pixelColor(corner * ratio).alpha(), 3)
@@ -794,14 +793,13 @@ class OverlayUiTests(unittest.TestCase):
             controller.panel.settings.bar_transparency.setValue(70)
             controller.tick()
             self.assertFalse(controller._exiting)
-            self.assertEqual(quit_events, [])
             self.assertEqual(self.control.read_bytes(), original)
             controller.preferences.sync()
             other = OverlayController(
                 self.control, self.status, start_timers=False, auto_connect=False
             )
             try:
-                self.assertFalse(other.bar.pin_button.isChecked())
+                self.assertFalse(hasattr(other.bar, "pin_button"))
                 self.assertEqual(other.panel.settings.bar_transparency.value(), 70)
                 self.assertEqual(other.bar._background_alpha, 77)
             finally:
@@ -810,7 +808,6 @@ class OverlayUiTests(unittest.TestCase):
                 other.bar.deleteLater()
                 other.deleteLater()
             controller.hide_interface()
-            controller.bar.pin_button.click()
             controller.tick()
             self.assertFalse(controller.bar.isVisible())
             self.assertFalse(controller.panel.isVisible())

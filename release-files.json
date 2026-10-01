@@ -98,5 +98,7 @@
   "sora_bilingual/game/scripts/runtime_fonts.js",
   "sora_bilingual/game/scripts/native_fonts.js",
   "sora_bilingual/fonts/runtime_fonts.py",
-  "sora_bilingual/platform/file_lock.py"
+  "sora_bilingual/platform/file_lock.py",
+  "sora_bilingual/app/handbook.py",
+  "sora_bilingual/app/handbook_resources.py"
 ]

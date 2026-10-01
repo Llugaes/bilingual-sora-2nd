@@ -13,6 +13,19 @@ _language = "zh-Hans"
 
 # Chinese source messages are stable UI keys. Do not put game text in this catalog.
 _ROWS = """
+语言与显示|Language & display|言語と表示
+工具外观|Appearance|ツールの外観
+游戏内容|GAME CONTENT|ゲーム設定
+工具本身|TOOL|ツール設定
+新版本|New version|新バージョン
+发现新版本：|New version: |新バージョン：
+帮助和关于|Help and about|ヘルプと情報
+关于|About|このツールについて
+双语排版示意（简中 / 日文）|Bilingual example (Chinese / Japanese)|二言語の表示例（簡体字 / 日本語）
+最小化到托盘|Minimize to tray|トレイに最小化
+隐藏到托盘；右键托盘图标可彻底退出。|Hide to tray; right-click the tray icon to quit completely.|トレイに隠します。完全に終了するにはトレイアイコンを右クリックしてください。
+游戏美术资源：Nihon Falcom Corporation。|Game artwork: Nihon Falcom Corporation.|ゲーム美術素材：Nihon Falcom Corporation。
+
 自动识别|Automatic|自動判別
 手柄按键名称|Controller button labels|コントローラーのボタン名
 自动按手柄显示键名；Steam Input 转接后可手动选择。仅改变名称，不改变绑定。|Button names follow your controller. With Steam Input, you can select a style manually. This changes labels only.|手元のコントローラーに合わせて表示します。Steam Input 経由の場合は手動で選択できます。割り当ては変わりません。

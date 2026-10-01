@@ -1,28 +1,25 @@
-# Native settings UI design
+# Handbook settings UI
 
-The Windows settings surface uses a local, game-adjacent paper panel. It does not load, copy, or depend on game assets, so the first-run language choice and offline configuration remain available without a game process or network connection.
+The 0.3.27 Qt interface implements approved concept A with original game handbook, metal bars, emblem, selection arrow and dialogue corners. Seven slices are compiled into `app/handbook_resources.py` using Qt RCC and cached as pixmaps. Opening the UI never scans a game archive or requires a game/network connection. Artwork is separate from the code MIT license; THIRD_PARTY.md and the source artwork NOTICE/provenance record its origin.
 
-| Role | Token | Use |
-| --- | --- | --- |
-| Paper surface | `#f8f3e8` | Window and settings panel |
-| Ink and title | `#33291f` / `#70451b` | Readable body text and brown-gold hierarchy |
-| Teal action | `#167b78` | Primary action, focus, checked state and live status |
-| Gold selection | `#d9ac3a` | Selected tab and slider handle |
-| Warm border | `#b89555` | Panel, control and divider boundaries |
+Rebuild artwork with `.venv/Scripts/pyside6-rcc.exe sora_bilingual/app/assets/handbook/handbook.qrc -o sora_bilingual/app/handbook_resources.py`. Keep the module in the release allowlist and UI reload group. Compiled Python resources are compatible with older updaters' file policy. Source PNGs/QRC/provenance stay in the repository, not as runtime dependencies.
 
-The window is organized by task rather than implementation fields, with four short tabs that remain legible in every UI locale:
+## Navigation and controls
 
-1. A compact, always-visible status line sits above the tabs. It shows the connection state, read-only backend-detected in-game text language, and a connect/reconnect button only when needed. Unknown values say “waiting for detection”; the detected language is never written as a user game setting.
-2. **Language** holds interface language, Mod display languages, color and opacity, enable/disable, and mode. Display has only bilingual and single-language modes; the single-language choice then exposes toggle and hold behaviour. The color button opens the RGBA picker, while its adjacent 0–100% slider updates and immediately saves the same normalized `secondary_opacity` value.
-3. **Text layout** contains annotation scale, offsets, spacing, and reset action. The color selector stores normalized RGB floats (`secondary_color`) and a normalized alpha (`secondary_opacity`); the bilingual vertical offset is `bilingual_offset_y` and positive values move both lines down.
-4. **Shortcuts** holds the selected action and keyboard/controller bindings. Recording instructions and cancellation appear only while recording; clearing appears only for an existing controller binding. There is no separate apply-mode button; selecting the mode already saves and applies it. Retrying a failed language change is offered on the Language page only after a failure.
-   Controller button labels default to automatic SDL device identification. The per-action style selector offers PlayStation, Xbox and Nintendo Switch for virtual-controller setups, without changing raw inputs. It is disabled during recording and when no controller binding exists. Long combinations wrap; the form and recording rows wrap whole controls when necessary to accommodate larger system fonts. Stick clicks and directional movements have distinct names.
-5. **Updates** holds a single automatic-update checkbox, manual checking, and links to the guide and release notes. Download/recovery/log controls appear only after failure. Desktop shortcut creation belongs to installation and is no longer duplicated here. Legacy notify-only settings behave as off; they do not grant installation consent.
+- Game content: Language & display, Text layout, Quick actions. Tool preferences: Appearance. Each page scrolls independently while navigation remains visible. Mode cards stack when large text cannot fit side by side.
+- Language: enable switch first, primary/secondary columns, bilingual/single-language selection and toggle/hold behaviour. Selected controls are solid circles; others are hollow circles. The dialogue sample is labelled as an illustration, not live game output.
+- Layout: scale, offsets, spacing, secondary RGB/opacity and reset. Exact typed/loaded numbers do not round-trip through integer sliders. Runtime configuration fields are unchanged.
+- Shortcuts: select an action, record keyboard/controller combinations and choose a controller label family. Naming never changes raw input; capture instructions/cancel/clear appear when relevant.
+- Appearance: UI locale and compact-bar background transparency. UI preferences do not modify game language or backend-owned fields. Closed dropdowns ignore wheel events.
 
-The initial local dialog stores only one UI locale (`zh-Hans`, `en`, or `ja`). It never asks for game source text language. Existing control files remain untouched. UI locale is stored separately from the detected game source and the Mod output pair.
+The connection strip stays outside scrolling pages. Manual connection is available offline, disabled while connecting and hidden after readiness. Font/progress/error details remain explicit on the language page. The existing connector owns preparation, retries and language detection; the skin starts no additional worker.
 
-The theme provides visible teal focus rings, labelled controls, gold selected tabs, dark readable status colors, explicit combo chevrons, and check marks. Text settings use a slider and a complete editable numeric box; duplicate plus/minus controls are removed. Values loaded or typed precisely are not rounded through the slider's integer ticks.
+## Updates and lifecycle
 
-Each tab scrolls its own content so navigation stays visible. The small bar and panel form one moving group: either header handle moves both, and opening clamps the whole group to the available screen. The small bar is one compact line: a shaped and colored status marker with text/tooltip semantics, the short language pair, settings toggle, and exit. Its status marker, status text, and unused bar surface all drag the group; the settings and exit buttons retain their click actions. Detailed state and the overlay shortcut remain in tooltips. Existing language, layout, and shortcut preferences are preserved.
+The persistent Updates button opens a framed popup with installed/available versions, release title, update policy, manual check and recovery actions. Real availability makes the button gold with a red dot and adds a dot to the compact gear. Both use UpdatePage.availability_changed. Opening/closing does not clear availability; a check confirming no newer version clears it. The existing background service performs network/download/install work. Guide, release notes and About are in the ellipsis menu.
 
-The Language page exposes a manual connect/reconnect button only while offline or after a connection error. During a connection attempt it stays visible but disabled with explicit progress text; after a ready acknowledgement it is hidden. The button delegates retry policy to the resident auto-connector, which never replaces a live backend connection.
+The bar and panel move together. Click toggles settings; dragging beyond the system threshold only moves them. **—, × and window-manager close hide both windows to the tray**. Esc collapses settings to the bar; Esc inside the update popup closes that popup. Tray click, shortcut and hotkey restore settings. Only the tray Exit tool action enters the existing safe shutdown flow and stops effects.
+
+Pin is removed. Windows remain on top until hidden; legacy bar_pinned is ignored without rewriting the configuration. Bar transparency fades only artwork, not foreground text/icons/dots. Minimum background alpha one preserves Windows pointer hit testing.
+
+Regression evidence: [0.3.27 verification](verification/handbook-0327.md).

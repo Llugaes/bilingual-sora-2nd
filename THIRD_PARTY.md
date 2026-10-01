@@ -87,3 +87,7 @@ that such local changes are preserved.
 Setup is built with [Inno Setup 6.7.3](https://github.com/jrsoftware/issrc/releases/tag/is-6_7_3), Copyright Jordan Russell and Martijn Laan. The compiler is a build dependency. See its [license](https://github.com/jrsoftware/issrc/blob/is-6_7_3/license.txt).
 
 Chinese installer messages use [kira-96/Inno-Setup-Chinese-Simplified-Translation](https://github.com/kira-96/Inno-Setup-Chinese-Simplified-Translation) at commit `1ff90acc4ed4aee82b1cda43253243deee3daed4`, under MIT. Notices remain in `tools/installer-language/`; a license copy ships in `licenses/Inno-Chinese-Translation-MIT.txt`.
+
+## Game UI artwork
+
+The handbook skin uses UI artwork from Trails in the Sky 2nd Chapter, copyright Nihon Falcom Corporation. These assets are not covered by this project’s MIT license. In the source repository, atlases, crop rectangles and hashes are recorded in `sora_bilingual/app/assets/handbook/provenance.json`; see its adjacent `NOTICE`. No game archives are included.

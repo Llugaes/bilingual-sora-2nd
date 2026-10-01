@@ -1,15 +1,17 @@
 """Update settings surface; service is started explicitly by the live controller."""
 
 from sora_bilingual.paths import ROOT
-from PySide6.QtCore import QTimer, QUrl
+from PySide6.QtCore import QTimer, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout
+from PySide6.QtWidgets import QWidget, QVBoxLayout
 from sora_bilingual.updates.update_service import UpdateService
 from sora_bilingual.app.i18n import tr
 from sora_bilingual.app.ui_widgets import QLabel, QCheckBox, QPushButton
 
 
 class UpdatePage(QWidget):
+    availability_changed = Signal(bool)
+
     def __init__(self, parent=None, root=None):
         super().__init__(parent)
         self.service = UpdateService(root or ROOT)
@@ -17,6 +19,13 @@ class UpdatePage(QWidget):
         layout.setContentsMargins(16, 16, 16, 16)
         d = self.service.distribution
         layout.addWidget(QLabel("当前版本：" + str(d["version"])))
+        self.available_version = QLabel()
+        self.available_version.setObjectName("sectionTitle")
+        layout.addWidget(self.available_version)
+        self.release_title = QLabel()
+        self.release_title.setWordWrap(True)
+        layout.addWidget(self.release_title)
+        self._announced_available = False
         self.automatic = QCheckBox("自动更新")
         self.automatic.setChecked(self.service.policy == "automatic")
         self.automatic.toggled.connect(self.set_automatic)
@@ -52,12 +61,6 @@ class UpdatePage(QWidget):
             label.setWordWrap(True)
             layout.addWidget(label)
         layout.addStretch()
-        links = QHBoxLayout()
-        for title, callback in [("使用说明", self.open_guide), ("发行说明", self.open_releases)]:
-            button = QPushButton(title)
-            button.clicked.connect(callback)
-            links.addWidget(button)
-        layout.addLayout(links)
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.refresh)
         self.refresh(False)
@@ -94,6 +97,13 @@ class UpdatePage(QWidget):
         if poll:
             self.service.tick()
         s = self.service
+        available = bool(s.available)
+        self.available_version.setText("发现新版本：" + s.available if available else "")
+        self.available_version.setVisible(available)
+        self.release_title.setText((s.release or {}).get("name", ""))
+        if self._announced_available != available:
+            self._announced_available = available
+            self.availability_changed.emit(available)
         self.check.setEnabled(not s.busy)
         self.download.setText("下载安装程序" if s.download_is_installer else "下载完整包（含 EXE）")
         self.download.setVisible(s.failed)

@@ -37,6 +37,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QButtonGroup,
     QGridLayout,
+    QLabel as StaticLabel,
 )
 
 from sora_bilingual.platform.inputs import vk_for_key, InputManager
@@ -288,12 +289,21 @@ class NativeSettingsWindow(QWidget):
         self._connection_error = None
         self._auto_connector = None
         self.setWindowTitle("Sora Native 双语设置")
-        self.setMinimumWidth(560)
+        self.setMinimumWidth(750)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 18, 20, 16)
         layout.setSpacing(12)
         self.tabs = QTabWidget()
+        self.tabs.tabBar().hide()
         self.pages = []
+        from sora_bilingual.app.handbook import NavigationButton, SkinSurface, ChoiceRow
+
+        self.navigation = QWidget()
+        self.navigation.setFixedWidth(170)
+        navigation = QVBoxLayout(self.navigation)
+        navigation.setContentsMargins(0, 10, 0, 10)
+        navigation.setSpacing(7)
+        self.nav_buttons = []
 
         def add_page(page, title):
             scroll = QScrollArea()
@@ -302,19 +312,42 @@ class NativeSettingsWindow(QWidget):
             scroll.setWidget(page)
             self.pages.append(scroll)
             self.tabs.addTab(scroll, title)
+            index = len(self.nav_buttons)
+            button = NavigationButton(title)
+            button.clicked.connect(lambda checked=False, i=index: self.tabs.setCurrentIndex(i))
+            navigation.addWidget(button)
+            self.nav_buttons.append(button)
 
         language_page = QWidget()
         self.language_page = language_page
         layout_page = QWidget()
         binding_page = QWidget()
-        add_page(language_page, "语言")
+        label = QLabel("游戏内容")
+        label.setObjectName("navGroup")
+        navigation.addWidget(label)
+        add_page(language_page, "语言与显示")
         add_page(layout_page, "文字排版")
-        add_page(binding_page, "快捷键")
+        add_page(binding_page, "快捷操作")
+        navigation.addSpacing(18)
+        label = QLabel("工具本身")
+        label.setObjectName("navGroup")
+        navigation.addWidget(label)
         from sora_bilingual.app.update_ui import UpdatePage
 
-        self.updates = UpdatePage()
-        add_page(self.updates, "设置和更新")
-        layout.addWidget(self.tabs, 1)
+        self.updates = UpdatePage(self)
+        self.updates.hide()
+        self.appearance_page = QWidget()
+        appearance_layout = QVBoxLayout(self.appearance_page)
+        appearance_layout.setContentsMargins(20, 16, 20, 16)
+        add_page(self.appearance_page, "工具外观")
+        navigation.addStretch()
+        self.tabs.currentChanged.connect(lambda i: self.nav_buttons[i].setChecked(True))
+        self.nav_buttons[0].setChecked(True)
+        body = QHBoxLayout()
+        body.setSpacing(22)
+        body.addWidget(self.navigation)
+        body.addWidget(self.tabs, 1)
+        layout.addLayout(body, 1)
         self.save_notice = QLabel()
         self.save_notice.setWordWrap(True)
         self.save_notice.hide()
@@ -325,6 +358,15 @@ class NativeSettingsWindow(QWidget):
         style_layout.setContentsMargins(16, 16, 16, 16)
         binding_layout = QVBoxLayout(binding_page)
         binding_layout.setContentsMargins(16, 16, 16, 16)
+        for page_layout, title in (
+            (language_layout, "语言与显示"),
+            (style_layout, "文字排版"),
+            (binding_layout, "快捷操作"),
+            (appearance_layout, "工具外观"),
+        ):
+            heading = QLabel(title)
+            heading.setObjectName("pageTitle")
+            page_layout.addWidget(heading)
         self.font_card = QWidget()
         self.font_card.setObjectName("statusFooter")
         font_layout = QVBoxLayout(self.font_card)
@@ -340,7 +382,7 @@ class NativeSettingsWindow(QWidget):
         style_form = QFormLayout()
         # English labels are wider than the compact panel.  Wrap the field
         # below its label instead of forcing a horizontal scroll area.
-        style_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+        style_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapAllRows)
         self.primary = QComboBox()
         self.secondary = QComboBox()
         self.detected_game_language = QLabel("等待检测")
@@ -357,7 +399,7 @@ class NativeSettingsWindow(QWidget):
             self.primary.addItem(label, code)
             self.secondary.addItem(label, code)
         self.enabled = QCheckBox("启用双语 Mod")
-        language_layout.insertWidget(0, self.enabled)
+        language_layout.insertWidget(1, self.enabled)
         self.bilingual_mode = QRadioButton("双语模式")
         self.single_mode = QRadioButton("单语言模式")
         self.mode_group = QButtonGroup(self)
@@ -409,7 +451,12 @@ class NativeSettingsWindow(QWidget):
         transparency_row.addWidget(self.bar_transparency_value)
         interface_form.addRow("悬浮条背景透明度", transparency_row)
         self.bar_transparency.valueChanged.connect(self._set_bar_transparency)
-        self.updates.layout().insertLayout(0, interface_form)
+        appearance_layout.addLayout(interface_form)
+        appearance_note = QLabel("仅背景和边框变透明，文字和图标保持清晰。")
+        appearance_note.setObjectName("helpText")
+        appearance_note.setWordWrap(True)
+        appearance_layout.addWidget(appearance_note)
+        appearance_layout.addStretch()
         languages = QGridLayout()
         for column, (title, control) in enumerate(
             (("主语言", self.primary), ("副语言", self.secondary))
@@ -441,18 +488,24 @@ class NativeSettingsWindow(QWidget):
         connection_layout.addWidget(self.connection_state)
         connection_layout.addWidget(self.detected_game_language, 1)
         connection_layout.addWidget(self.connection_button)
-        layout.insertWidget(0, self.connection_strip)
+        connection_container = QWidget()
+        connection_outer = QHBoxLayout(connection_container)
+        connection_outer.setContentsMargins(208, 0, 16, 0)
+        connection_outer.addWidget(self.connection_strip)
+        layout.insertWidget(0, connection_container)
         display_heading = self._section_title("显示设置")
         language_layout.addWidget(display_heading)
         self.display_form = display_form = QFormLayout()
-        display_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
-        mode_row = QWidget()
-        mode_layout = QHBoxLayout(mode_row)
-        mode_layout.setContentsMargins(0, 0, 0, 0)
-        mode_layout.addWidget(self.bilingual_mode)
-        mode_layout.addWidget(self.single_mode)
-        mode_layout.addStretch()
-        display_form.addRow("显示模式", mode_row)
+        display_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapAllRows)
+        mode_row = ChoiceRow()
+        mode_layout = mode_row.layout()
+        for button in (self.bilingual_mode, self.single_mode):
+            card = SkinSurface("dialogue-frame")
+            card_layout = QVBoxLayout(card)
+            card_layout.setContentsMargins(15, 9, 15, 9)
+            card_layout.addWidget(button)
+            mode_layout.addWidget(card, 1)
+        display_form.addRow(mode_row)
         self.single_options = QWidget()
         single_layout = QVBoxLayout(self.single_options)
         single_layout.setContentsMargins(0, 0, 0, 0)
@@ -465,8 +518,26 @@ class NativeSettingsWindow(QWidget):
         color_layout.setSpacing(6)
         color_layout.addWidget(self.secondary_color)
         color_layout.addWidget(self.secondary_opacity)
-        display_form.addRow("副语言颜色与透明度", color_row)
+        style_form.addRow("副语言颜色与透明度", color_row)
         language_layout.addLayout(display_form)
+        preview = SkinSurface("dialogue-frame")
+        preview_layout = QVBoxLayout(preview)
+        preview_layout.setContentsMargins(22, 16, 22, 16)
+        preview_label = QLabel("双语排版示意（简中 / 日文）")
+        preview_label.setObjectName("helpText")
+        preview_layout.addWidget(preview_label)
+        preview_layout.addSpacing(8)
+        sample = StaticLabel("エステル\n艾丝蒂尔")
+        sample.setStyleSheet("color:#7e7838;font-weight:700;font-size:14px;")
+        preview_layout.addWidget(sample)
+        sample = StaticLabel("一緒に見に行こう。")
+        sample.setStyleSheet("font-size:12px;")
+        preview_layout.addWidget(sample)
+        sample = StaticLabel("一起去看看吧。")
+        sample.setStyleSheet("font-size:20px;font-weight:600;")
+        preview_layout.addWidget(sample)
+        preview_layout.addSpacing(8)
+        language_layout.addWidget(preview)
         self.ruby_scale = QDoubleSpinBox()
         self.ruby_scale.setRange(0.5, 1)
         self.ruby_scale.setSingleStep(0.05)
@@ -543,7 +614,7 @@ class NativeSettingsWindow(QWidget):
         ]:
             self.binding_action.addItem(title, action)
         binding_form = QFormLayout()
-        binding_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+        binding_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapAllRows)
         binding_form.addRow("操作", self.binding_action)
         self.controller_style = QComboBox()
         for title, style in (
@@ -565,7 +636,7 @@ class NativeSettingsWindow(QWidget):
         ):
             label.setWordWrap(True)
             row = QFormLayout()
-            row.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+            row.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapAllRows)
             row.addRow(label, button)
             binding_layout.addLayout(row)
         style_help = QLabel(
@@ -843,7 +914,9 @@ class NativeSettingsWindow(QWidget):
             self._auto_connector = AutoConnector(self.status_path)
 
     def _present_font_preparation(self) -> None:
-        self.font_card.setVisible(self._auto_connector is not None)
+        self.font_card.setVisible(
+            self._auto_connector is not None and not self.font_card.property("presented_by_shell")
+        )
         fonts = getattr(self._auto_connector, "font_status", {}) or {}
         state = fonts.get("state", "idle")
         tone = (

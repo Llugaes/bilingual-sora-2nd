@@ -1,28 +1,31 @@
-# Bilingual Sora 2nd v0.3.26
+# Bilingual Sora 2nd v0.3.27
 
 ## 简体中文
 
-- 悬浮条单击文字或空白即可开关设置，按住拖动即可移动；使用系统拖动阈值区分两种操作，拖完不会误开设置。
-- 按钮精简为齿轮、Pin、×。Pin 控制置顶，默认开启，取消后可被其他窗口遮挡；× 关闭效果并完整退出工具。托盘菜单仍可隐藏、恢复界面。
-- “设置和更新”新增悬浮条背景透明度：只淡化背景和边框，文字与图标保持清晰，设置面板保持不透明。100% 透明时仍可点击和拖动。
-- 悬浮条直接显示语言组合与当前模式。Pin 和透明度自动保存，重启和升级后沿用，不改变游戏连接。
+- 使用游戏原版手册、徽章、蓝色选择条和对话框装饰，设置改为分组侧边目录；选中为实心圆、未选中为空心圆。
+- 标题栏常驻“更新”入口。发现新版时显示金色按钮和红点，悬浮条齿轮同步提醒；打开面板不会清除提醒。
+- 移除 Pin。悬浮条 —、设置窗口 × 都隐藏到托盘并保留效果；彻底退出请右键托盘选择“退出工具”。Esc 只收起设置。
+- 界面语言和悬浮条透明度归入“工具外观”；文字颜色、透明度和字号放在“文字排版”。保留现有游戏、语言与快捷键配置。
+- 素材嵌入 Qt 资源包，不增加启动时的游戏扫描，并兼容旧版自动更新。
 
-地图移动时的偶发顿挫仍待实机定位，本版不宣称卡顿已修复；保留 0.3.25 的可选原生耗时诊断。
+本版更新工具界面，未改变游戏渲染和映射逻辑。此前地图移动的偶发顿挫仍待实机定位，不宣称本版已修复。
 
 ## English
 
-- Click the status bar's text or empty space to toggle settings; hold and drag to move it. The system drag threshold prevents a drag from opening settings.
-- Compact gear, Pin and × controls replace text buttons. Pin keeps the overlay on top by default; unpinning lets other windows cover it. × disables effects and fully exits the tool. Hide and restore remain available from the tray.
-- Settings & updates now includes background transparency for the compact bar. Only backgrounds and borders fade; text and icons stay clear and the settings panel stays opaque. Clicks and dragging still work at 100% transparency.
-- The bar shows the language pair and current mode. Pin and transparency preferences persist across restarts and upgrades without changing the game connection.
+- A handbook interface using original game artwork, grouped sidebar navigation and solid/hollow selection circles.
+- A dedicated Updates button turns gold with a red dot when a release is available; the compact gear shares the reminder. Opening the panel does not dismiss it.
+- Pin is removed. The bar's — and settings × hide to the tray while effects continue. Right-click the tray and choose Exit tool to quit completely. Esc collapses settings only.
+- Appearance contains UI language and bar transparency; Text layout groups colour, opacity and sizing. Existing game, language and shortcut settings are preserved.
+- Artwork is bundled as Qt resources without startup archive scanning, compatible with existing updaters.
 
-Intermittent field-movement stutters still need in-game evidence; this release does not claim to fix them. Optional native timing diagnostics from 0.3.25 remain available.
+Game rendering/mapping is unchanged. Intermittent movement stutters still need in-game investigation.
 
 ## 日本語
 
-- ステータスバーの文字や空白をクリックして設定を開閉し、押しながらドラッグして移動できます。システムのドラッグ判定距離を使い、ドラッグ後の誤操作を防ぎます。
-- 操作を歯車、Pin、× に集約。Pin は既定で最前面固定、解除すると他のウィンドウに隠れます。× は効果を無効にしてツールを完全終了します。トレイからの非表示・再表示も利用できます。
-- 「設定と更新」に背景の透明度を追加。小さなバーの背景と枠線だけを薄くし、文字とアイコンは鮮明なまま、設定パネルは不透明のままです。100% でもクリックとドラッグが可能です。
-- バーに言語の組み合わせと現在の表示モードを表示。Pin と透明度は再起動・更新後も保持され、ゲームとの接続には影響しません。
+- ゲーム本来の手帳・紋章・青い選択バー・会話枠で画面を刷新。左側の分類メニューと、選択時の塗りつぶし丸／未選択時の白抜き丸を採用しました。
+- 見出しに「更新」を常設。新版があると金色のボタンと赤い点を表示し、バーの歯車にも通知します。パネルを開いても通知は消えません。
+- Pin を削除。バーの — と設定の × は効果を維持してトレイに隠します。完全終了はトレイの右クリックメニューから行います。Esc は設定だけを閉じます。
+- 画面言語とバー背景の透明度は「ツールの外観」、文字の色・不透明度・サイズは「文字レイアウト」に集約。既存のゲーム・言語・キー設定は保持します。
+- 素材は Qt リソースに同梱し、起動時のアーカイブ走査は不要です。既存の自動更新にも対応します。
 
-フィールド移動中の一時停止は実機調査が必要で、本版で解消したとはしていません。0.3.25 の任意のネイティブ計測も引き続き利用できます。
+ゲーム描画・翻訳マッピングは変更していません。移動中の一時的なカクつきは引き続き実機調査が必要です。

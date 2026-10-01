@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bilingual-sora-2nd"
-version = "0.3.26"
+version = "0.3.27"
 description = "Native bilingual text and learning annotations for Trails in the Sky 2nd"
 readme = "README.md"
 requires-python = ">=3.14,<3.15"
@@ -35,3 +35,6 @@ include = ["sora_bilingual/**/*.py", "tools/**/*.py", "tests/**/*.py", "launch.p
 
 [tool.ruff.lint]
 select = ["E9", "F63", "F7", "F82"]
+
+[tool.ruff.format]
+exclude = ["sora_bilingual/app/handbook_resources.py"]

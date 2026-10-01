@@ -9,8 +9,7 @@ from sora_bilingual.app.i18n import tr
 
 SOURCE_ROLE = 356
 
-# The settings window is deliberately self-contained: it has no dependency on
-# game assets and can still render while the game or the network is unavailable.
+# Game artwork is bundled locally; no game discovery or network is needed to draw.
 NATIVE_THEME = """
 QWidget { background: #f4efe2; color: #33291f; font-size: 13px; }
 QWidget#bar, QWidget#panel { background: #f8f3e8; border: 1px solid #b89555; border-radius: 10px; }
@@ -49,6 +48,28 @@ QSlider::handle:horizontal { background: #d9ac3a; border: 1px solid #946d1b; wid
 QScrollArea { border: none; }
 QScrollBar:vertical { background: #eee6d7; width: 10px; margin: 4px; }
 QScrollBar::handle:vertical { background: #bca979; border-radius: 4px; min-height: 28px; }
+/* Handbook shell. Surfaces paint the original game textures underneath. */
+QWidget { background: transparent; color: #2b383a; }
+QWidget#panel, QWidget#bar { background: transparent; border: none; }
+QLabel#pageTitle { color: #565c36; font-size: 24px; padding-bottom: 7px; }
+QLabel#navGroup { color: #fff2ce; font-weight: 600; padding: 3px 0 5px 20px; }
+QLabel#brand { color: #fff1b9; font-size: 18px; letter-spacing: 2px; }
+QLabel#status { color: #fff3d0; font-size: 12px; }
+QLabel#detail, QLabel#helpText { color: #627071; }
+QTabWidget::pane { border: none; }
+QWidget#statusFooter { background: #e6e9dc; border: 1px solid #c4c9b2; border-radius: 3px; }
+QCheckBox::indicator, QRadioButton::indicator { width: 15px; height: 15px; border: 2px solid #777c52; border-radius: 9px; background: transparent; }
+QCheckBox::indicator:checked, QRadioButton::indicator:checked { border: 2px solid #667444; background: #667444; }
+QPushButton { border-radius: 3px; border-color: #aeb3a2; background: #f8f7ee; }
+QPushButton#primaryAction { background: #285669; border-color: #456c78; }
+QPushButton#headerButton { color: #fff5da; background: transparent; border: 1px solid #a5aa8a; padding: 5px 10px; }
+QPushButton#headerButton:hover { background: #375666; }
+QPushButton#headerButton[updateAvailable="true"] { color: #473d21; background: #e7ce7a; border-color: #f5e8b6; }
+QMenu, QDialog { background: #f5f2e6; }
+QMenu { border: 1px solid #9a9979; padding: 5px; }
+QMenu::item { padding: 8px 24px; }
+QMenu::item:selected { background: #d9e3d9; }
+QToolTip { color: #f8f3da; background: #254657; border: 1px solid #b6ae7b; padding: 5px; }
 """
 
 
@@ -79,31 +100,7 @@ class QPushButton(Text, Qt.QPushButton):
 
 
 class QCheckBox(Text, Qt.QCheckBox):
-    def paintEvent(self, event):
-        super().paintEvent(event)
-        if not self.isChecked():
-            return
-        option = Qt.QStyleOptionButton()
-        self.initStyleOption(option)
-        indicator = self.style().subElementRect(
-            Qt.QStyle.SubElement.SE_CheckBoxIndicator, option, self
-        )
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setPen(QPen(QColor("#ffffff"), 2.2))
-        painter.drawLine(
-            indicator.left() + 4,
-            indicator.center().y(),
-            indicator.center().x() - 1,
-            indicator.bottom() - 4,
-        )
-        painter.drawLine(
-            indicator.center().x() - 1,
-            indicator.bottom() - 4,
-            indicator.right() - 3,
-            indicator.top() + 4,
-        )
-        painter.end()
+    pass
 
 
 class QRadioButton(Text, Qt.QRadioButton):
@@ -216,7 +213,9 @@ class QTabWidget(Qt.QTabWidget):
 class QFormLayout(Qt.QFormLayout):
     def addRow(self, *args):
         if args and isinstance(args[0], str):
-            args = (QLabel(args[0]), *args[1:])
+            label = QLabel(args[0])
+            label.setWordWrap(True)
+            args = (label, *args[1:])
         return super().addRow(*args)
 
 
