@@ -71,6 +71,116 @@
         1016
       ],
       "source_sha256": "764f9d5f2d4a404faafea80f010210d1b1ea4bca721f8543baa14dfddd01fe88"
+    },
+    "camp-background": {
+      "entry": "asset/dx11/image/camp000.dds",
+      "crop": [
+        128,
+        16,
+        2048,
+        1000
+      ],
+      "source_sha256": "d477a2bbd5fef0b2a6933302eb7b6b7b10152b95390d5b64cdf1e49cbdf835b7",
+      "output_size": [
+        960,
+        492
+      ]
+    },
+    "guild-cover": {
+      "entry": "asset/dx11/image/quest_board.dds",
+      "crop": [
+        0,
+        0,
+        2048,
+        1080
+      ],
+      "source_sha256": "77e6791f6656207ff0fb9dcc61cd318b1ec32f6acbd15ab79e84ed07d59e96ae",
+      "output_size": [
+        1024,
+        540
+      ]
+    },
+    "guild-page": {
+      "entry": "asset/dx11/image/note001.dds",
+      "crop": [
+        0,
+        0,
+        1520,
+        934
+      ],
+      "source_sha256": "2c7e7480b65c69e8529dad85cbdd5a46a48b43eed9de2fc07a256a16ceefe8e4"
+    },
+    "bronze-emblem": {
+      "entry": "asset/dx11/image/window3.dds",
+      "crop": [
+        317,
+        4,
+        421,
+        108
+      ],
+      "source_sha256": "764f9d5f2d4a404faafea80f010210d1b1ea4bca721f8543baa14dfddd01fe88"
+    },
+    "red-bar": {
+      "entry": "asset/dx11/image/window3.dds",
+      "crop": [
+        2,
+        448,
+        786,
+        507
+      ],
+      "source_sha256": "764f9d5f2d4a404faafea80f010210d1b1ea4bca721f8543baa14dfddd01fe88",
+      "mirrored_right_cap_width": 60
+    },
+    "red-bar-selected": {
+      "entry": "asset/dx11/image/window3.dds",
+      "crop": [
+        2,
+        544,
+        786,
+        604
+      ],
+      "source_sha256": "764f9d5f2d4a404faafea80f010210d1b1ea4bca721f8543baa14dfddd01fe88",
+      "mirrored_right_cap_width": 60
+    },
+    "tech-frame": {
+      "entry": "asset/dx11/image/window3.dds",
+      "crop": [
+        1148,
+        502,
+        1395,
+        681
+      ],
+      "source_sha256": "764f9d5f2d4a404faafea80f010210d1b1ea4bca721f8543baa14dfddd01fe88"
+    },
+    "dark-frame": {
+      "entry": "asset/dx11/image/window3.dds",
+      "crop": [
+        1398,
+        0,
+        1531,
+        144
+      ],
+      "source_sha256": "764f9d5f2d4a404faafea80f010210d1b1ea4bca721f8543baa14dfddd01fe88"
+    },
+    "circuit": {
+      "entry": "asset/dx11/image/camp001.dds",
+      "crop": [
+        78,
+        18,
+        240,
+        75
+      ],
+      "source_sha256": "545677ada45046ec999736ab7319c904ebb77e430e1a2be91928962ea1964992"
+    },
+    "orbment-emblem": {
+      "entry": "asset/dx11/image/camp008.dds",
+      "crop": [
+        4,
+        8,
+        214,
+        214
+      ],
+      "source_sha256": "ce5eec307913e4a060f5bac96d552bff080be92e6f2b68569505a42e511ef4ea"
     }
   }
 }

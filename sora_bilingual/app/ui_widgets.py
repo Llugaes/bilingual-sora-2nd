@@ -4,7 +4,7 @@ import math
 
 from PySide6 import QtWidgets as Qt
 from PySide6.QtCore import QSignalBlocker, Signal
-from PySide6.QtGui import QColor, QPainter, QPen
+from PySide6.QtGui import QColor, QPainter, QPalette, QPen
 from sora_bilingual.app.i18n import tr
 
 SOURCE_ROLE = 356
@@ -53,6 +53,11 @@ QWidget { background: transparent; color: #2b383a; }
 QWidget#panel, QWidget#bar { background: transparent; border: none; }
 QLabel#pageTitle { color: #565c36; font-size: 24px; padding-bottom: 7px; }
 QLabel#navGroup { color: #fff2ce; font-weight: 600; padding: 3px 12px 5px 28px; }
+QLabel#sampleName { color:#7e7838; font-weight:700; font-size:14px; }
+QLabel#appearanceTitle { font-weight:700; }
+QRadioButton#appearanceChoice { background:#f8f7ee; border:1px solid #aeb3a2; border-radius:4px; padding:10px; }
+QRadioButton#appearanceChoice:checked, QRadioButton#appearanceChoice:focus { border:2px solid #667444; }
+QRadioButton#appearanceChoice:hover { background:#edf0e5; }
 QLabel#brand { color: #fff1b9; font-size: 18px; letter-spacing: 2px; }
 QLabel#status { color: #fff3d0; font-size: 12px; }
 QLabel#detail, QLabel#helpText { color: #627071; }
@@ -121,7 +126,7 @@ class QComboBox(Qt.QComboBox):
         super().paintEvent(event)
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setPen(QPen(QColor("#70451b"), 2))
+        painter.setPen(QPen(self.palette().color(QPalette.ColorRole.Text), 2))
         center_x = self.width() - 13
         center_y = self.height() // 2 - 1
         painter.drawLine(center_x - 4, center_y - 2, center_x, center_y + 2)

@@ -90,4 +90,4 @@ Chinese installer messages use [kira-96/Inno-Setup-Chinese-Simplified-Translatio
 
 ## Game UI artwork
 
-The handbook skin uses UI artwork from Trails in the Sky 2nd Chapter, copyright Nihon Falcom Corporation. These assets are not covered by this project’s MIT license. In the source repository, atlases, crop rectangles and hashes are recorded in `sora_bilingual/app/assets/handbook/provenance.json`; see its adjacent `NOTICE`. No game archives are included.
+The desktop appearances use UI artwork from Trails in the Sky 2nd Chapter, copyright Nihon Falcom Corporation. These assets are not covered by this project’s MIT license. In the source repository, atlases, crop rectangles, background resampling, mirrored bar-cap assembly and source hashes are recorded in `sora_bilingual/app/assets/handbook/provenance.json`; see its adjacent `NOTICE`. No game archives are included.

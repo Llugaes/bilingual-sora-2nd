@@ -263,6 +263,7 @@ def load_cjk_font(app: QApplication) -> None:
 
 class NativeSettingsWindow(QWidget):
     settings_changed = Signal()
+    appearance_changed = Signal(str)
 
     @staticmethod
     def _section_title(text: str) -> QLabel:
@@ -304,7 +305,9 @@ class NativeSettingsWindow(QWidget):
             CONTENT_GAP,
             CONTENT_LEFT,
             PAGE_INSET,
+            AppearanceChoice,
         )
+        from sora_bilingual.app.appearance import APPEARANCES, appearance, apply_appearance
 
         self.navigation = QWidget()
         self.navigation.setFixedWidth(NAVIGATION_WIDTH)
@@ -446,6 +449,20 @@ class NativeSettingsWindow(QWidget):
         interface_form = QFormLayout()
         interface_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         interface_form.addRow("界面语言", self.ui_language)
+        appearance_layout.addWidget(self._section_title("工具主题"))
+        self.appearance_key = appearance(self.window_preferences.value("appearance", "sky")).key
+        self.appearance_group = QButtonGroup(self)
+        self.appearance_choices = {}
+        for key, theme in APPEARANCES.items():
+            choice = AppearanceChoice(theme)
+            self.appearance_group.addButton(choice)
+            self.appearance_choices[key] = choice
+            appearance_layout.addWidget(choice)
+            choice.setChecked(key == self.appearance_key)
+            choice.toggled.connect(
+                lambda checked, key=key: self._set_appearance(key) if checked else None
+            )
+        appearance_layout.addSpacing(12)
         self.bar_transparency = QSlider(Qt.Orientation.Horizontal)
         self.bar_transparency.setRange(0, 100)
         self.bar_transparency.setAccessibleName("悬浮条背景透明度")
@@ -540,7 +557,7 @@ class NativeSettingsWindow(QWidget):
         preview_layout.addWidget(preview_label)
         preview_layout.addSpacing(8)
         sample = StaticLabel("エステル\n艾丝蒂尔")
-        sample.setStyleSheet("color:#7e7838;font-weight:700;font-size:14px;")
+        sample.setObjectName("sampleName")
         preview_layout.addWidget(sample)
         sample = StaticLabel("一緒に見に行こう。")
         sample.setStyleSheet("font-size:12px;")
@@ -719,6 +736,7 @@ class NativeSettingsWindow(QWidget):
         self.refresh_status()
         QApplication.instance().installEventFilter(self)
         retranslate(self)
+        apply_appearance(self, self.appearance_key)
 
     @property
     def capturing(self):
@@ -726,6 +744,14 @@ class NativeSettingsWindow(QWidget):
 
     def _binding(self, control, action):
         return control["overlay_binding"] if action == "overlay" else control["switch_binding"]
+
+    def _set_appearance(self, key):
+        from sora_bilingual.app.appearance import apply_appearance
+
+        self.appearance_key = key
+        self.window_preferences.setValue("appearance", key)
+        apply_appearance(self, key)
+        self.appearance_changed.emit(key)
 
     def _set_bar_transparency(self, value: int) -> None:
         self.window_preferences.setValue("bar_transparency", value)

@@ -75,6 +75,8 @@ Click the bar or its gear to toggle settings; hold and drag to move both windows
 
 **Status bar background transparency**, under Appearance, fades only the bar’s background and borders. Text, icons and settings remain opaque. At 100%, clicking and dragging still work. Transparency and position are saved automatically.
 
+Under **Appearance → Tool theme**, switch instantly between **Trails in the Sky (default)**, **Bracer Notebook**, and **Orbal Workshop**. Each uses original game interface artwork across the settings panel, status bar, and update window. Your choice is saved automatically and does not change the in-game display.
+
 | Action | Default shortcut |
 |---|---|
 | Show / hide the interface | Ctrl + Shift + F9 |

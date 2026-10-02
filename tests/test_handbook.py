@@ -16,6 +16,7 @@ from PySide6.QtWidgets import QApplication
 
 from sora_bilingual.app.native_overlay import OverlayController, STYLE
 from sora_bilingual.app.handbook import ASSETS, SkinSurface, artwork
+from sora_bilingual.app.appearance import APPEARANCES, appearance, appearance_for
 from sora_bilingual.config.native_config import write_config
 
 
@@ -142,6 +143,112 @@ class HandbookTests(unittest.TestCase):
                     self.assertGreaterEqual(button.height(), 24)
                     self.assertGreaterEqual(button.parentWidget().height(), button.height())
                 self.assertEqual(settings.pages[0].horizontalScrollBar().maximum(), 0)
+
+    def test_appearance_switch_is_immediate_persistent_and_desktop_only(self):
+        c = self.controller
+        c.expand()
+        settings = c.panel.settings
+        settings.tabs.setCurrentIndex(3)
+        settings.bar_transparency.setValue(70)
+        original = self.control.read_bytes()
+        page = settings.updates
+        page.service.available = "v9.0.0"
+        page.refresh(False)
+        for key in ("bracer", "orbment", "sky", "orbment"):
+            choice = settings.appearance_choices[key]
+            self.app.processEvents()
+            # Click the preview, rather than only the small radio indicator.
+            QTest.mouseClick(choice, Qt.MouseButton.LeftButton, pos=QPoint(90, 40))
+            self.app.processEvents()
+            self.assertTrue(choice.isChecked())
+            for widget in (c.bar, c.panel, c.panel.header, c.panel.update_popup, settings):
+                self.assertEqual(appearance_for(widget).key, key)
+            self.assertEqual(settings.window_preferences.value("appearance"), key)
+            self.assertEqual(settings.tabs.currentIndex(), 3)
+            self.assertEqual(c.bar._background_alpha, 77)
+            self.assertTrue(c.panel.update_button._notice and c.bar.open_button._notice)
+            self.assertEqual(self.control.read_bytes(), original)
+        settings.window_preferences.sync()
+        other = OverlayController(
+            self.control,
+            self.control.with_name("status.json"),
+            start_timers=False,
+            auto_connect=False,
+        )
+        try:
+            self.assertEqual(appearance_for(other.panel).key, "orbment")
+            self.assertEqual(appearance_for(other.bar).key, "orbment")
+            self.assertTrue(other.panel.settings.appearance_choices["orbment"].isChecked())
+            self.assertEqual(other.panel.settings.bar_transparency.value(), 70)
+            self.assertEqual(self.control.read_bytes(), original)
+        finally:
+            other.panel.settings._status_timer.stop()
+            other.panel.settings._capture_timer.stop()
+            other.hide_interface()
+            other.tray.hide()
+            other.panel.deleteLater()
+            other.bar.deleteLater()
+            other.deleteLater()
+
+    def test_appearance_defaults_and_unknown_preference_are_safe(self):
+        self.assertEqual(self.controller.panel.settings.appearance_key, "sky")
+        self.assertTrue(self.controller.panel.settings.appearance_choices["sky"].isChecked())
+        for key in (None, "future-theme", ["invalid"]):
+            self.assertEqual(appearance(key).key, "sky")
+
+    def test_all_appearances_fit_three_locales_and_large_text(self):
+        c = self.controller
+        c.expand()
+        settings = c.panel.settings
+        for key in APPEARANCES:
+            settings.appearance_choices[key].click()
+            for locale in ("en", "ja", "zh-Hans"):
+                settings.ui_language.setCurrentIndex(settings.ui_language.findData(locale))
+                for width, size in ((780, 17), (1000, 13)):
+                    # Append the larger font without dropping the chosen palette.
+                    from sora_bilingual.app.appearance import stylesheet
+
+                    c.panel.setStyleSheet(
+                        stylesheet(appearance(key)) + f"QWidget {{font-size:{size}px;}}"
+                    )
+                    c.panel.resize(width, 720)
+                    for index, scroll in enumerate(settings.pages):
+                        settings.tabs.setCurrentIndex(index)
+                        self.app.processEvents()
+                        self.assertEqual(
+                            scroll.horizontalScrollBar().maximum(), 0, (key, locale, width, index)
+                        )
+                        for button in settings.nav_buttons:
+                            text = button.label_layout(button.width())
+                            self.assertLessEqual(text.boundingRect().height(), button.height() - 20)
+                        if index == 3:
+                            for button in settings.appearance_choices.values():
+                                self.assertGreaterEqual(
+                                    button.height(), button.minimumSizeHint().height()
+                                )
+
+    def test_themed_text_and_control_contrast(self):
+        def luminance(color):
+            rgb = [int(color[i : i + 2], 16) / 255 for i in (1, 3, 5)]
+            return sum(
+                w * (v / 12.92 if v <= 0.04045 else ((v + 0.055) / 1.055) ** 2.4)
+                for w, v in zip((0.2126, 0.7152, 0.0722), rgb)
+            )
+
+        for theme in APPEARANCES.values():
+            colors = theme.colors
+            if not colors:
+                continue
+            for fg, bg, minimum in (
+                ("text", "field", 4.5),
+                ("text", "card", 4.5),
+                ("muted", "card", 4.5),
+                ("accent", "card", 3),
+            ):
+                light, dark = sorted((luminance(colors[fg]), luminance(colors[bg])), reverse=True)
+                self.assertGreaterEqual(
+                    (light + 0.05) / (dark + 0.05), minimum, (theme.key, fg, bg)
+                )
 
     def test_navigation_fits_leather_column_and_labels_wrap_without_clipping(self):
         c = self.controller

@@ -1,6 +1,6 @@
 # Handbook settings UI
 
-The 0.3.27 Qt interface implements approved concept A with original game handbook, metal bars, emblem, selection arrow and dialogue corners. Seven slices are compiled into `app/handbook_resources.py` using Qt RCC and cached as pixmaps. Opening the UI never scans a game archive or requires a game/network connection. Artwork is separate from the code MIT license; THIRD_PARTY.md and the source artwork NOTICE/provenance record its origin.
+The Qt interface implements approved concept A with original game artwork. Since 0.3.29, Appearance offers three complete skins: Trails in the Sky (the existing default), Bracer Notebook, and Orbal Workshop. Seventeen slices are compiled into `app/handbook_resources.py` using Qt RCC and cached as pixmaps. Opening the UI never scans a game archive or requires a game/network connection. Artwork is separate from the code MIT license; THIRD_PARTY.md and the source artwork NOTICE/provenance record its origin.
 
 Rebuild artwork with `.venv/Scripts/pyside6-rcc.exe sora_bilingual/app/assets/handbook/handbook.qrc -o sora_bilingual/app/handbook_resources.py`. Keep the module in the release allowlist and UI reload group. Compiled Python resources are compatible with older updaters' file policy. Source PNGs/QRC/provenance stay in the repository, not as runtime dependencies.
 
@@ -11,7 +11,9 @@ Rebuild artwork with `.venv/Scripts/pyside6-rcc.exe sora_bilingual/app/assets/ha
 - Language: enable switch first, primary/secondary columns, bilingual/single-language selection and toggle/hold behaviour. Selected controls are solid circles; others are hollow circles. The dialogue sample is labelled as an illustration, not live game output.
 - Layout: scale, offsets, spacing, secondary RGB/opacity and reset. Exact typed/loaded numbers do not round-trip through integer sliders. Runtime configuration fields are unchanged.
 - Shortcuts: select an action, record keyboard/controller combinations and choose a controller label family. Naming never changes raw input; capture instructions/cancel/clear appear when relevant.
-- Appearance: UI locale and compact-bar background transparency. UI preferences do not modify game language or backend-owned fields. Closed dropdowns ignore wheel events.
+- Appearance: preview cards select a complete skin immediately; UI locale and compact-bar background transparency remain below them. The selected appearance is stored beside window position/opacity in `generated/overlay-window.ini`, never in runtime/game configuration. Missing or unrecognized values use the existing default without rewriting other preferences. Closed dropdowns ignore wheel events.
+
+`app/appearance.py` owns the skin catalog, palettes and ancestor-based lookup. `handbook.paint_surface` renders windows, tabs, cards, popups, the compact bar and chooser previews from the same original slices. Bracer Notebook uses note/quest/camp textures and copper/burgundy controls; Orbal Workshop uses blue circuit and mechanical assets with a dark palette. Appearance changes do not create timers/workers, start archive scans or reload mapping. Decoded pixmaps are cached; only large low-contrast background textures are reduced during asset extraction. Crop rectangles, resampling and mirrored cap assembly are recorded in provenance. The selection circle, text and arrow remain visible rather than relying on colour alone.
 
 The connection strip stays outside scrolling pages. Manual connection is available offline, disabled while connecting and hidden after readiness. Font/progress/error details remain explicit on the language page. The existing connector owns preparation, retries and language detection; the skin starts no additional worker.
 
@@ -23,4 +25,4 @@ The bar and panel move together. Click toggles settings; dragging beyond the sys
 
 Pin is removed. Windows remain on top until hidden; legacy bar_pinned is ignored without rewriting the configuration. Bar transparency fades only artwork, not foreground text/icons/dots. Minimum background alpha one preserves Windows pointer hit testing.
 
-Regression evidence: [0.3.27 interactions](verification/handbook-0327.md), [0.3.28 sidebar bounds](verification/handbook-0328.md).
+Regression evidence: [0.3.27 interactions](verification/handbook-0327.md), [0.3.28 sidebar bounds](verification/handbook-0328.md), [0.3.29 appearances](verification/appearance-0329.md).

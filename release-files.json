@@ -100,5 +100,6 @@
   "sora_bilingual/fonts/runtime_fonts.py",
   "sora_bilingual/platform/file_lock.py",
   "sora_bilingual/app/handbook.py",
+  "sora_bilingual/app/appearance.py",
   "sora_bilingual/app/handbook_resources.py"
 ]

@@ -19,6 +19,7 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 from sora_bilingual.app.native_overlay import OverlayController, STYLE
 from sora_bilingual.app.native_settings import load_cjk_font
+from sora_bilingual.app.appearance import APPEARANCES
 from sora_bilingual.config.native_config import write_config
 
 app = QApplication([])
@@ -81,6 +82,28 @@ with tempfile.TemporaryDirectory() as directory:
             c.panel.grab().save(str(output / f"{locale}-navigation-{width}-{text_size}.png"))
     c.panel.setStyleSheet("")
     c.panel.resize(850, 720)
+    for theme in APPEARANCES:
+        c.panel.settings.appearance_choices[theme].click()
+        for locale in ("zh-Hans", "en", "ja"):
+            c.panel.settings.ui_language.setCurrentIndex(
+                c.panel.settings.ui_language.findData(locale)
+            )
+            for index, name in enumerate(("language", "layout", "shortcuts", "appearance")):
+                c.panel.settings.tabs.setCurrentIndex(index)
+                app.processEvents()
+                assert c.panel.settings.pages[index].horizontalScrollBar().maximum() == 0, (
+                    theme,
+                    locale,
+                    name,
+                )
+                c.panel.grab().save(str(output / f"{theme}-{locale}-{name}.png"))
+        c.bar.grab().save(str(output / f"{theme}-bar.png"))
+        c.panel.update_button.click()
+        app.processEvents()
+        c.panel.update_popup.grab().save(str(output / f"{theme}-updates.png"))
+        c.panel.update_popup.hide()
+    c.panel.settings.appearance_choices["sky"].click()
+    c.panel.settings.ui_language.setCurrentIndex(c.panel.settings.ui_language.findData("zh-Hans"))
     c.panel.settings.tabs.setCurrentIndex(0)
     page = c.panel.settings.updates
     page.service.available = "v9.0.0"

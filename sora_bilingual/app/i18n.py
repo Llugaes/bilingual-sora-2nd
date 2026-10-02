@@ -15,6 +15,13 @@ _language = "zh-Hans"
 _ROWS = """
 语言与显示|Language & display|言語と表示
 工具外观|Appearance|ツールの外観
+工具主题|Tool theme|ツールのテーマ
+空之轨迹（默认）|Trails in the Sky (default)|空の軌跡（デフォルト）
+游击士手册|Bracer Notebook|遊撃士手帳
+导力工房|Orbal Workshop|オーブメント工房
+深蓝金属、皮革书脊与浅色纸页。|Navy metal, a leather spine and light paper pages.|紺色の金属、革の背表紙と明るい紙面。
+协会木纹、铜色徽章与酒红选择条。|Guild wood grain, a bronze crest and burgundy tabs.|協会の木目、銅色の紋章とワインレッドのタブ。
+导力菜单的蓝钢、回路纹理与机械圆盘。|Blue steel, circuit textures and an orbal mechanism.|導力メニューの青い金属、回路模様と機械円盤。
 游戏内容|GAME CONTENT|ゲーム設定
 工具本身|TOOL|ツール設定
 新版本|New version|新バージョン

@@ -48,7 +48,9 @@ from sora_bilingual.app.handbook import (
     gear_icon,
     PANEL_INSET,
     CONTENT_LEFT,
+    paint_surface,
 )
+from sora_bilingual.app.appearance import apply_appearance, appearance_for, stylesheet
 
 # Kept as a public alias because preview and regression tests import STYLE.
 STYLE = NATIVE_THEME
@@ -185,17 +187,22 @@ class StatusBar(QWidget):
         self.drag_surface.clicked.connect(self.expand)
         for surface in (self, self.grip, self.marker, self.status):
             surface.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.set_appearance("sky")
         self.set_background_transparency(0)
+
+    def set_appearance(self, key):
+        apply_appearance(self, key)
+        self.setStyleSheet(
+            stylesheet(appearance_for(self))
+            + "QWidget#bar { background: transparent; border: none; }"
+            "QWidget#bar QPushButton { background: transparent; border: none; }"
+            "QWidget#bar QPushButton:hover { border: 1px solid #e5cf82; }"
+        )
 
     def set_background_transparency(self, value):
         # One alpha step keeps the visually clear surface hit-testable on
         # Windows layered windows. Text/icons never inherit this alpha.
         self._background_alpha = max(1, round(255 * (1 - value / 100)))
-        self.setStyleSheet(
-            "QWidget#bar { background: transparent; border: none; }"
-            "QWidget#bar QPushButton { background: transparent; border: none; }"
-            "QWidget#bar QPushButton:hover { border: 1px solid #e5cf82; }"
-        )
         self.update()
 
     def paintEvent(self, event):
@@ -203,7 +210,11 @@ class StatusBar(QWidget):
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
         painter.fillRect(self.rect(), QColor(0, 0, 0, 1))
         painter.setOpacity(self._background_alpha / 255)
-        draw_slice(painter, self.rect(), "blue-bar", (48, 18), (30, 15))
+        theme = appearance_for(self)
+        if theme.key == "sky":
+            draw_slice(painter, self.rect(), "blue-bar", (48, 18), (30, 15))
+        else:
+            paint_surface(painter, self.rect(), "blue-bar", theme)
 
     def closeEvent(self, event):
         event.ignore()
@@ -264,6 +275,7 @@ class OverlayPanel(SkinSurface):
         header = QHBoxLayout(self.header)
         header.setContentsMargins(24, 8, 20, 8)
         emblem = QLabel()
+        self.emblem = emblem
         emblem.setPixmap(
             artwork("guild-emblem").scaled(
                 42,
@@ -352,6 +364,19 @@ class OverlayPanel(SkinSurface):
         self.more_button.clicked.connect(
             lambda: self.help_menu.exec(
                 self.more_button.mapToGlobal(self.more_button.rect().bottomLeft())
+            )
+        )
+        self.settings.appearance_changed.connect(self.set_appearance)
+        self.set_appearance(self.settings.appearance_key)
+
+    def set_appearance(self, key):
+        apply_appearance(self, key)
+        self.emblem.setPixmap(
+            artwork(appearance_for(self).emblem).scaled(
+                42,
+                46,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
             )
         )
 
@@ -493,6 +518,8 @@ class OverlayController(QObject):
             self.bar.set_background_transparency
         )
         self.bar.set_background_transparency(self.panel.settings.bar_transparency.value())
+        self.panel.settings.appearance_changed.connect(self.bar.set_appearance)
+        self.bar.set_appearance(self.panel.settings.appearance_key)
         self.panel.collapse.connect(self.collapse)
         self.panel.minimize.connect(self.hide_interface)
         self.bar.minimize.connect(self.hide_interface)
