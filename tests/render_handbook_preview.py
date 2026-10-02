@@ -118,10 +118,10 @@ with tempfile.TemporaryDirectory() as directory:
     assert not c.panel.update_popup.isVisible()
     assert c.panel.isVisible() and c.bar.open_button._notice
     c.bar.grab().save(str(output / "bar-update.png"))
-    c.panel.settings.bar_transparency.setValue(100)
+    c.panel.settings.bar_opacity.setValue(0)
     app.processEvents()
     c.bar.grab().save(str(output / "bar-transparent.png"))
-    c.panel.settings.bar_transparency.setValue(0)
+    c.panel.settings.bar_opacity.setValue(100)
     original = control.read_bytes()
     c.panel.hide_button.click()
     c.tick()

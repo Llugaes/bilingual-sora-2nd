@@ -73,7 +73,7 @@ Choose a display mode and adjust the text layout as needed. These are offline ca
 
 Click the bar or its gear to toggle settings; hold and drag to move both windows. The bar shows the language pair and current mode. **— and the settings window’s × hide both windows to the tray**, keeping effects active. Esc collapses settings only. Right-click the tray icon and select Exit tool to stop effects and quit. Click the tray icon or launch the desktop shortcut to restore settings.
 
-**Status bar background transparency**, under Appearance, fades only the bar’s background and borders. Text, icons and settings remain opaque. At 100%, clicking and dragging still work. Transparency and position are saved automatically.
+**Status bar background opacity**, under Appearance, defaults to 100% for the full background. Lower values fade the background and borders; 0% hides them while keeping clicking and dragging available. Text, icons and settings remain opaque. Opacity and position are saved automatically; existing settings convert to the new scale without changing their appearance.
 
 Under **Appearance → Tool theme**, switch instantly between **Trails in the Sky (default)**, **Bracer Notebook**, and **Orbal Workshop**. Each uses original game interface artwork across the settings panel, status bar, and update window. Your choice is saved automatically and does not change the in-game display.
 

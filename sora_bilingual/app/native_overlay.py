@@ -514,10 +514,10 @@ class OverlayController(QObject):
         self.bar.expand.connect(self.toggle_settings)
         # The compact status remains visible over the game until minimized.
         # Ignore the retired pin preference, without rewriting user game settings.
-        self.panel.settings.bar_transparency.valueChanged.connect(
-            self.bar.set_background_transparency
+        self.panel.settings.bar_opacity.valueChanged.connect(
+            lambda value: self.bar.set_background_transparency(100 - value)
         )
-        self.bar.set_background_transparency(self.panel.settings.bar_transparency.value())
+        self.bar.set_background_transparency(100 - self.panel.settings.bar_opacity.value())
         self.panel.settings.appearance_changed.connect(self.bar.set_appearance)
         self.bar.set_appearance(self.panel.settings.appearance_key)
         self.panel.collapse.connect(self.collapse)

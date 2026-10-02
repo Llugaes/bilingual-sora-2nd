@@ -201,8 +201,8 @@ Sora 双语控制台|Sora bilingual controls|Sora 二言語コントロール
 打开或关闭设置|Open or close settings|設定を開閉
 悬浮条置顶|Pin overlay on top|ステータスバーを最前面に固定
 固定在最前方；再次点击取消置顶。|Keep on top; click again to unpin.|最前面に固定。もう一度クリックすると解除します。
-悬浮条背景透明度|Status bar background transparency|ステータスバー背景の透明度
-仅背景和边框变透明，文字和图标保持清晰。|Fade only the background and borders; text and icons stay clear.|背景と枠線だけを透明にします。文字とアイコンは鮮明に保ちます。
+悬浮条背景不透明度|Status bar background opacity|ステータスバー背景の不透明度
+100% 显示完整背景；调低使背景变淡。文字和图标保持清晰。|100% shows the full background; lower values fade it. Text and icons stay clear.|100% で背景を完全に表示。値を下げると背景が薄くなります。文字とアイコンは鮮明に保ちます。
 单击状态条展开|Click the status bar to open settings|ステータスバーをクリックして設定を開く
 × / Esc 关闭设置，保留状态条  ·  拖动顶部移动|× / Esc closes settings · Drag the header to move|× / Esc で設定を閉じる · 上部をドラッグして移動
 启用双语 Mod|Enable mod|Mod を有効にする

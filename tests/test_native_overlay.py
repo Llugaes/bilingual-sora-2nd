@@ -760,7 +760,10 @@ class OverlayUiTests(unittest.TestCase):
             controller.deleteLater()
             self.app.processEvents()
 
-    def test_background_transparency_preserve_connection_and_survive_recreation(self):
+    def test_background_opacity_preserves_legacy_appearance_and_survives_recreation(self):
+        self.assertEqual(self.window.bar_opacity.value(), 100)
+        self.window.window_preferences.setValue("bar_transparency", 70)
+        self.window.window_preferences.sync()
         controller = OverlayController(
             self.control, self.status, start_timers=False, auto_connect=False
         )
@@ -768,11 +771,16 @@ class OverlayUiTests(unittest.TestCase):
         try:
             controller.expand()
             self.assertFalse(hasattr(controller.bar, "pin_button"))
-            controller.panel.settings.bar_transparency.setValue(70)
+            self.assertEqual(controller.panel.settings.bar_opacity.value(), 30)
+            self.assertEqual(controller.panel.settings.bar_opacity_value.text(), "30%")
             self.assertEqual(controller.bar._background_alpha, 77)
             self.assertEqual(controller.bar.windowOpacity(), 1.0)
             self.assertEqual(controller.panel.windowOpacity(), 1.0)
-            controller.panel.settings.bar_transparency.setValue(100)
+            controller.panel.settings.bar_opacity.setValue(100)
+            self.assertEqual(controller.bar._background_alpha, 255)
+            self.assertEqual(controller.preferences.value("bar_transparency", type=int), 0)
+            controller.panel.settings.bar_opacity.setValue(0)
+            self.assertEqual(controller.preferences.value("bar_transparency", type=int), 100)
             self.app.processEvents()
             rendered = controller.bar.grab().toImage()
             ratio = controller.bar.devicePixelRatioF()
@@ -790,7 +798,7 @@ class OverlayUiTests(unittest.TestCase):
                     for y in range(8, 35)
                 )
             )
-            controller.panel.settings.bar_transparency.setValue(70)
+            controller.panel.settings.bar_opacity.setValue(30)
             controller.tick()
             self.assertFalse(controller._exiting)
             self.assertEqual(self.control.read_bytes(), original)
@@ -800,7 +808,7 @@ class OverlayUiTests(unittest.TestCase):
             )
             try:
                 self.assertFalse(hasattr(other.bar, "pin_button"))
-                self.assertEqual(other.panel.settings.bar_transparency.value(), 70)
+                self.assertEqual(other.panel.settings.bar_opacity.value(), 30)
                 self.assertEqual(other.bar._background_alpha, 77)
             finally:
                 other.close_interface()

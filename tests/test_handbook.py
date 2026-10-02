@@ -149,7 +149,7 @@ class HandbookTests(unittest.TestCase):
         c.expand()
         settings = c.panel.settings
         settings.tabs.setCurrentIndex(3)
-        settings.bar_transparency.setValue(70)
+        settings.bar_opacity.setValue(30)
         original = self.control.read_bytes()
         page = settings.updates
         page.service.available = "v9.0.0"
@@ -179,7 +179,7 @@ class HandbookTests(unittest.TestCase):
             self.assertEqual(appearance_for(other.panel).key, "orbment")
             self.assertEqual(appearance_for(other.bar).key, "orbment")
             self.assertTrue(other.panel.settings.appearance_choices["orbment"].isChecked())
-            self.assertEqual(other.panel.settings.bar_transparency.value(), 70)
+            self.assertEqual(other.panel.settings.bar_opacity.value(), 30)
             self.assertEqual(self.control.read_bytes(), original)
         finally:
             other.panel.settings._status_timer.stop()

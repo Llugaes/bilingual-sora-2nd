@@ -463,23 +463,24 @@ class NativeSettingsWindow(QWidget):
                 lambda checked, key=key: self._set_appearance(key) if checked else None
             )
         appearance_layout.addSpacing(12)
-        self.bar_transparency = QSlider(Qt.Orientation.Horizontal)
-        self.bar_transparency.setRange(0, 100)
-        self.bar_transparency.setAccessibleName("悬浮条背景透明度")
-        self.bar_transparency.setToolTip("仅背景和边框变透明，文字和图标保持清晰。")
+        self.bar_opacity = QSlider(Qt.Orientation.Horizontal)
+        self.bar_opacity.setRange(0, 100)
+        self.bar_opacity.setAccessibleName("悬浮条背景不透明度")
+        self.bar_opacity.setToolTip("100% 显示完整背景；调低使背景变淡。文字和图标保持清晰。")
         try:
             transparency = self.window_preferences.value("bar_transparency", 0, type=int)
         except ValueError, TypeError:
             transparency = 0
-        self.bar_transparency.setValue(transparency)
-        self.bar_transparency_value = QLabel(f"{self.bar_transparency.value()}%")
-        transparency_row = QHBoxLayout()
-        transparency_row.addWidget(self.bar_transparency, 1)
-        transparency_row.addWidget(self.bar_transparency_value)
-        interface_form.addRow("悬浮条背景透明度", transparency_row)
-        self.bar_transparency.valueChanged.connect(self._set_bar_transparency)
+        # Keep the saved transparency scale compatible with previous releases.
+        self.bar_opacity.setValue(100 - transparency)
+        self.bar_opacity_value = QLabel(f"{self.bar_opacity.value()}%")
+        opacity_row = QHBoxLayout()
+        opacity_row.addWidget(self.bar_opacity, 1)
+        opacity_row.addWidget(self.bar_opacity_value)
+        interface_form.addRow("悬浮条背景不透明度", opacity_row)
+        self.bar_opacity.valueChanged.connect(self._set_bar_opacity)
         appearance_layout.addLayout(interface_form)
-        appearance_note = QLabel("仅背景和边框变透明，文字和图标保持清晰。")
+        appearance_note = QLabel("100% 显示完整背景；调低使背景变淡。文字和图标保持清晰。")
         appearance_note.setObjectName("helpText")
         appearance_note.setWordWrap(True)
         appearance_layout.addWidget(appearance_note)
@@ -753,9 +754,9 @@ class NativeSettingsWindow(QWidget):
         apply_appearance(self, key)
         self.appearance_changed.emit(key)
 
-    def _set_bar_transparency(self, value: int) -> None:
-        self.window_preferences.setValue("bar_transparency", value)
-        self.bar_transparency_value.setText(f"{value}%")
+    def _set_bar_opacity(self, value: int) -> None:
+        self.window_preferences.setValue("bar_transparency", 100 - value)
+        self.bar_opacity_value.setText(f"{value}%")
 
     def _set_secondary_opacity(self, value: int) -> None:
         """Keep the visible slider and the color dialog on one normalized alpha value."""
