@@ -54,6 +54,8 @@ def main():
             write_config(config, control)
             # Isolate the update policy as well as window/game preferences.
             with (
+                patch("sora_bilingual.app.native_overlay.DEVELOPMENT", False),
+                patch("sora_bilingual.app.native_overlay.BUILD_SUFFIX", ""),
                 patch("sora_bilingual.app.update_ui.UpdateService", lambda *_: UpdateService(root)),
                 patch.object(UpdateService, "tick", side_effect=AssertionError("Offline capture")),
             ):

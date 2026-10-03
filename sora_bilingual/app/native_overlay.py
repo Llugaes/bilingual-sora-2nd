@@ -54,6 +54,8 @@ from sora_bilingual.app.appearance import apply_appearance, appearance_for, styl
 
 # Kept as a public alias because preview and regression tests import STYLE.
 STYLE = NATIVE_THEME
+DEVELOPMENT = not (ROOT / "installed-manifest.json").is_file()
+BUILD_SUFFIX = " · DEV" if DEVELOPMENT else ""
 
 
 class JsonSnapshot:
@@ -149,7 +151,7 @@ class StatusBar(QWidget):
         row = QHBoxLayout(self)
         row.setContentsMargins(18, 7, 18, 7)
         row.setSpacing(6)
-        self.grip = QLabel("⋮")
+        self.grip = QLabel("DEV" if DEVELOPMENT else "⋮")
         self.grip.setStyleSheet("color:#e6d795;")
         self.grip.setToolTip("单击打开设置，按住拖动状态条")
         self.grip.setAccessibleName("单击打开设置，按住拖动状态条")
@@ -267,7 +269,7 @@ class OverlayPanel(SkinSurface):
         )
         self.setObjectName("panel")
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setWindowTitle("Sora Bilingual")
+        self.setWindowTitle("Sora Bilingual" + BUILD_SUFFIX)
         outer = QVBoxLayout(self)
         outer.setContentsMargins(PANEL_INSET, 14, PANEL_INSET, 18)
         outer.setSpacing(9)
@@ -286,7 +288,7 @@ class OverlayPanel(SkinSurface):
         )
         header.addWidget(emblem)
         self.grip = QLabel(
-            'S O R A<br><span style="font-size:9px;letter-spacing:1px">BILINGUAL COMPANION</span>'
+            f'S O R A{BUILD_SUFFIX}<br><span style="font-size:9px;letter-spacing:1px">BILINGUAL COMPANION</span>'
         )
         self.grip.setObjectName("brand")
         self.grip.setToolTip("拖动顶部，一起移动状态条和设置")
@@ -478,12 +480,12 @@ def app_icon():
     pixmap = QPixmap(64, 64)
     pixmap.fill(QColor("#f2e7d1"))
     painter = QPainter(pixmap)
-    painter.setPen(QColor("#176b6b"))
+    painter.setPen(QColor("#9b570f" if DEVELOPMENT else "#176b6b"))
     font = painter.font()
     font.setPixelSize(30)
     font.setBold(True)
     painter.setFont(font)
-    painter.drawText(pixmap.rect(), Qt.AlignmentFlag.AlignCenter, "双")
+    painter.drawText(pixmap.rect(), Qt.AlignmentFlag.AlignCenter, "D" if DEVELOPMENT else "双")
     painter.end()
     return QIcon(pixmap)
 
@@ -536,7 +538,7 @@ class OverlayController(QObject):
         self._last_pid = None
         self._last_state = None
         self.tray = QSystemTrayIcon(app_icon(), self)
-        self.tray.setToolTip(tr("Sora 双语控制台"))
+        self.tray.setToolTip(tr("Sora 双语控制台") + BUILD_SUFFIX)
         menu = QMenu()
         for title, callback in [
             ("打开设置", self.expand),
@@ -588,7 +590,7 @@ class OverlayController(QObject):
                 set_language(config["ui_language"])
                 retranslate(self.bar)
                 retranslate(self.panel)
-                self.tray.setToolTip(tr("Sora 双语控制台"))
+                self.tray.setToolTip(tr("Sora 双语控制台") + BUILD_SUFFIX)
                 for action in self.tray.contextMenu().actions():
                     action.setText(tr(action.data()))
                 for action in self.panel.help_menu.actions():
