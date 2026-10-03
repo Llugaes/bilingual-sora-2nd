@@ -3,13 +3,14 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
+from urllib.error import HTTPError
 
 from sora_bilingual.updates.github_updates import GitHubClient
 from sora_bilingual.updates.release_client import ASSET_MANIFEST, sha256
 from tests.test_gitee_updates import fixture
 from tests.test_updates import Response
-from tools.relay_gitee import exclusive_directory, relay
+from tools.relay_gitee import discover_release, exclusive_directory, relay
 
 
 class Source:
@@ -30,6 +31,48 @@ class Source:
 
 
 class RelayTests(unittest.TestCase):
+    def test_active_wait_accepts_only_the_requested_published_stable_release(self):
+        source = Mock(repository="a/b")
+        stable = {"tag_name": "v1.0.0", "draft": False, "prerelease": False}
+        source._json.side_effect = [
+            HTTPError("https://api.github.com/", 404, "not published", {}, None),
+            {**stable, "prerelease": True},
+            stable,
+        ]
+        with patch("tools.relay_gitee.time.sleep") as sleep:
+            self.assertEqual(discover_release(source, "v1.0.0", wait=True), stable)
+        self.assertEqual(sleep.call_count, 2)
+        source.latest.assert_not_called()
+        self.assertTrue(
+            all(c.args[0].endswith("/tags/v1.0.0") for c in source._json.call_args_list)
+        )
+
+    def test_active_wait_stops_at_the_deadline(self):
+        source = Mock(repository="a/b")
+        source._json.side_effect = HTTPError("https://api.github.com/", 404, "pending", {}, None)
+        with patch("tools.relay_gitee.time") as clock:
+            clock.monotonic.side_effect = [0, 0, 60]
+            with self.assertRaises(TimeoutError):
+                discover_release(source, "v1.0.0", wait=True, timeout=60)
+            clock.sleep.assert_called_once_with(60)
+
+    def test_active_wait_does_not_hide_api_failure_wrong_version_or_missing_tag(self):
+        source = Mock(repository="a/b")
+        with patch("tools.relay_gitee.time.sleep") as sleep:
+            with self.assertRaises(ValueError):
+                discover_release(source, wait=True)
+            source._json.assert_not_called()
+            source._json.side_effect = HTTPError(
+                "https://api.github.com/", 403, "limited", {}, None
+            )
+            with self.assertRaises(HTTPError):
+                discover_release(source, "v1.0.0", wait=True)
+            source._json.side_effect = None
+            source._json.return_value = {"tag_name": "v9.0.0", "draft": False, "prerelease": False}
+            with self.assertRaises(ValueError):
+                discover_release(source, "v1.0.0", wait=True)
+            sleep.assert_not_called()
+
     def publisher(self, source):
         publisher = Mock()
         publisher.request.return_value = {"id": 9, "prerelease": False}
@@ -51,7 +94,15 @@ class RelayTests(unittest.TestCase):
                 )
 
             publisher.publish.side_effect = publish
-            relay(source.client, directory, publisher=publisher)
+            with patch("tools.relay_gitee.time.sleep") as sleep:
+                relay(
+                    source.client,
+                    directory,
+                    tag="v1.0.0",
+                    publisher=publisher,
+                    wait_for_release=True,
+                )
+                sleep.assert_not_called()
             self.assertTrue((directory / "verified.json").is_file())
             self.assertEqual(len(source.requests), 5)  # latest + 4 original assets
             relay(source.client, directory, publisher=publisher)
