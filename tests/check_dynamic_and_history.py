@@ -148,7 +148,13 @@ def replay_cases(entries, names, primary, secondary):
             excluded.append({"key": entry["key"], "reason": "missing_selected_locale"})
             continue
         numeric = bool(entry.get("dynamic_producer"))
-        for value in (0, 2, 100, 200, 2147483647) if numeric else (None,):
+        # Icons are opaque runtime arguments, not fixed item-table values.
+        # Include the captured icon numbers as well as numeric boundaries so
+        # the REPORTED guard continues to replay the original full inputs.
+        values = (0, 2, 100, 200, 2147483647) if numeric else (None,)
+        if entry.get("dynamic_producer", {}).get("dynamic_icon"):
+            values = (0, 5, 10, 12, 110, 2147483647)
+        for value in values:
             source, a, b = (
                 number_text(entry, locale, value) if numeric else entry["texts"][locale]
                 for locale in ("zh-Hans", primary, secondary)

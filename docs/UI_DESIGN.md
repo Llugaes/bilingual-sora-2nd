@@ -26,3 +26,9 @@ The bar and panel move together. Click toggles settings; dragging beyond the sys
 Pin is removed. Windows remain on top until hidden; legacy bar_pinned is ignored without rewriting the configuration. Since 0.3.30, the bar control displays opacity: 100% (default) shows the full background, and lower values fade only artwork, not foreground text/icons/dots. The existing `bar_transparency` INI key and renderer retain their original scale; UI read/write and signal boundaries convert with `100 - opacity`, preserving the exact rendered alpha and compatibility with earlier releases. Minimum background alpha one at 0% opacity preserves Windows pointer hit testing.
 
 Regression evidence: [0.3.27 interactions](verification/handbook-0327.md), [0.3.28 sidebar bounds](verification/handbook-0328.md), [0.3.29 appearances](verification/appearance-0329.md).
+
+## Documentation captures
+
+`python -X utf8 tests/render_overlay_preview.py` captures the actual Qt pages in all three UI languages, using isolated temporary configuration and no game connection or network. The navigation labels are asserted; the fourth page is Appearance, while Updates is captured through its separate header popup. The recommended single-language hold mode is selected. Settings windows expand to show all controls without scrolling; the script checks both scrollbar ranges before saving each page.
+
+Review `generated/ui-guide/` visually before copying referenced images into `docs/images/`. The offline screenshots show no connected game and no update result. They demonstrate controls, not successful runtime preparation or release verification. See [the October 3 review](verification/todo-review-20261003.md) for the refreshed README coverage and remaining checks.

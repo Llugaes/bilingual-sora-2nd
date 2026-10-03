@@ -31,6 +31,38 @@ class Source:
 
 
 class RelayTests(unittest.TestCase):
+    def test_pending_release_runs_the_complete_relay_once_after_publication(self):
+        source = Source()
+        publisher = self.publisher(source)
+        original_open = source.open
+        pending = True
+
+        def open_after_publish(request, timeout):
+            nonlocal pending
+            if pending:
+                pending = False
+                raise HTTPError(request.full_url, 404, "not published", {}, None)
+            return original_open(request, timeout)
+
+        source.open = open_after_publish
+        with tempfile.TemporaryDirectory() as tmp, patch("tools.relay_gitee.time.sleep") as sleep:
+            path = Path(tmp)
+            self.assertEqual(
+                relay(
+                    source.client, path, tag="v1.0.0", wait_for_release=True, publisher=publisher
+                ),
+                "v1.0.0",
+            )
+            sleep.assert_called_once_with(60)
+            publisher.publish.assert_called_once_with("v1.0.0", path / "packages")
+            receipt = json.loads((path / "verified.json").read_bytes())
+            self.assertEqual(receipt["source"]["tag"], "v1.0.0")
+            self.assertEqual(
+                {p.name: p.read_bytes() for p in (path / "packages").iterdir()}, source.payloads
+            )
+            relay(source.client, path, tag="v1.0.0", wait_for_release=True, publisher=publisher)
+            self.assertEqual(publisher.publish.call_count, 1)
+
     def test_active_wait_accepts_only_the_requested_published_stable_release(self):
         source = Mock(repository="a/b")
         stable = {"tag_name": "v1.0.0", "draft": False, "prerelease": False}

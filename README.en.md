@@ -51,13 +51,13 @@ See the [FAQ](#frequently-asked-questions-faq) for portable use, older-version m
 
 The header’s ··· menu links to the user guide and release notes. Opening the application again shows the existing interface without starting another backend.
 
-The game-art handbook groups settings into Language & display, Text layout, Quick actions, and Appearance. Updates has its own header button. Choose any primary/secondary pair under Language. In-game text language is a read-only detection status, not an editable setting. Failed connections retry automatically; the Language page also offers a manual connection button. The Mod's primary language controls displayed text without changing the game's setting.
+The game-art handbook groups settings into Language & display, Text layout, Quick actions, and Appearance. Updates has its own header button. Choose any primary/secondary pair under Language & display. In-game text language is a read-only detection status, not an editable setting. Failed connections retry automatically; the Language & display page also offers a manual connection button. The Mod's primary language controls displayed text without changing the game's setting.
 
 ### First-run defaults
 
 The primary language defaults to the game's text language. The secondary defaults to Japanese, or English when the game is in Japanese.
 
-The primary language syncs once from the actual game text language each time a new game process starts. You can then change it; reconnecting to that same game process preserves your choice. Secondary language and other preferences survive restarts and updates. Choose English, Simplified Chinese, or Japanese for the interface on first launch, or change **Interface language** under **Appearance**. The Language page places the enable switch first, with primary and secondary choices side by side. Scrolling over a closed dropdown does not change its selection.
+The primary language syncs once from the actual game text language each time a new game process starts. You can then change it; reconnecting to that same game process preserves your choice. Secondary language and other preferences survive restarts and updates. Choose English, Simplified Chinese, or Japanese for the interface on first launch, or change **Interface language** under **Appearance**. The Language & display page places the enable switch first, with primary and secondary choices side by side. Scrolling over a closed dropdown does not change its selection.
 
 The tool automatically finds Steam installations. After the first game launch, it detects the actual text language and builds a cache from local resources. Valid caches are reused; the game language setting is never changed. Text is rendered by native game controls; the Qt interface provides configuration and status. Use windowed or borderless mode; the settings overlay is not guaranteed to appear over exclusive fullscreen.
 
@@ -79,12 +79,26 @@ Click the bar or its gear to toggle settings; hold and drag to move both windows
 
 Under **Appearance → Tool theme**, switch instantly between **Trails in the Sky (default)**, **Bracer Notebook**, and **Orbal Workshop**. Each uses original game interface artwork across the settings panel, status bar, and update window. Your choice is saved automatically and does not change the in-game display.
 
+<details>
+<summary>Find theme, interface language and background opacity settings</summary>
+
+![Appearance settings](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/appearance-en.png)
+
+</details>
+
 | Action | Default shortcut |
 |---|---|
 | Show / hide the interface | Ctrl + Shift + F9 |
 | Language switch for the selected mode | Ctrl + Shift + F10 |
 
-Record one keyboard or SDL controller combination under **Shortcuts**. The same binding follows the selected mode. Existing custom bindings are retained. By default, bindings respond while the game is in the foreground.
+Select an action under **Quick actions**, then record its keyboard or SDL controller combination. The language-switch binding follows the selected mode. Existing custom bindings are retained. By default, bindings respond while the game is in the foreground.
+
+<details>
+<summary>Find shortcut recording and controller button labels</summary>
+
+![Quick actions settings](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/shortcuts-en.png)
+
+</details>
 
 Bindings use device-specific names: L1/R1, L2/R2 and L3/R3 for PlayStation; LB/RB, LT/RT and LS/RS (click) for Xbox; L/R, ZL/ZR and stick clicks for Nintendo Switch. Face buttons, the D-pad and stick directions also follow the device mapping. If Steam Input exposes your controller as Xbox, select a style under **Controller button labels**; this changes names only. Newly recorded bindings retain their names when disconnected; reconnect the matching controller to identify older bindings. Inputs without an SDL mapping retain their raw numbers.
 
@@ -107,6 +121,13 @@ For smoother play, select **Single-language mode → Hold for secondary language
 ## Automatic updates
 
 **Automatic updates** is enabled by default in the header’s Updates panel. It checks stable releases on startup and every six hours, downloads and verifies updates in the background, and installs after the game connection ends. The interface reloads with settings, caches, and window state preserved. Manual checks remain available when automatic updates are off. An available release turns the button gold with a red dot; the compact gear also shows a dot. Opening the panel does not clear the reminder.
+
+<details>
+<summary>See the separate panel opened by the header’s Updates button</summary>
+
+![Update panel: automatic updates and manual check](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/updates-en.png)
+
+</details>
 
 ## Frequently asked questions (FAQ)
 

@@ -15,7 +15,7 @@ py -3.14 -m venv .venv
 | python -m tools.dev format | 格式化 Python |
 | python -m tools.dev check | 静态检查、格式检查、Python 和 JavaScript 测试 |
 | python -m tools.dev test | 仅运行测试 |
-| python -m tools.dev preview | 使用合成状态渲染离线预览 |
+| python -m tools.dev preview | 用隔离配置捕获三种语言的真实 Qt 操作图，不连接游戏 |
 | python -m tools.dev publish-local | 语法校验后发布本机热加载清单 |
 | python tests/check_overlay_update.py | 独立 Qt 进程验证界面重载，不连接游戏 |
 
@@ -57,7 +57,23 @@ py -3.14 -m venv .venv
 4. 推送 vX.Y.Z 标签，由 GitHub Actions 验证并发布。需要手动检查构建时运行：
 
 ~~~powershell
-python -m tools.build_release --version 0.2.1 --repository Llugaes/bilingual-sora-2nd
+$distribution = Get-Content distribution.json | ConvertFrom-Json
+python -m tools.build_portable --version $distribution.version --repository $distribution.repository
+python -m tools.build_installer dist/bilingual-sora-2nd-update.json
 ~~~
 
 游戏内的布局、实际手柄和过场字幕仍需单独实机验收。调试时不要热卸载驻留脚本；更改底层接入后正常退出游戏再验证新连接。
+
+GitHub 正式版发布后，在已配置凭据的维护电脑主动执行一次 Gitee 中转；本机只上传经过校验的 GitHub 原包，不重新构建：
+
+```powershell
+powershell -NoProfile -File tools/local_release_relay.ps1 -Mode Run -Tag vX.Y.Z -WaitForRelease
+```
+
+把 `vX.Y.Z` 替换为本次标签。此命令仅在本次运行期间等待对应正式版，完成后退出；不需要计划任务或常驻程序。凭据配置、失败重试、匿名校验及保留最近三版的规则见 [Gitee 分发说明](docs/verification/GITEE_DISTRIBUTION.md)。
+
+## 更新 README 操作图示
+
+运行 `python -X utf8 tests/render_overlay_preview.py`，在 `generated/ui-guide/` 得到中文、英文、日文的真实 Qt 截图及尺寸清单。它使用临时配置，禁用联网、自动连接和输入录制，不连接游戏、不修改玩家设置。图中选中 README 推荐的单语言长按模式；动态状态保留“未连接／等待检查”，不伪装连接或更新成功。
+
+逐张检查页签、选项、文字和控件边界后，只把 README 引用的 PNG 复制到 `docs/images/`。文档截图会展开窗口以完整显示滚动页面；游戏内截图与历史验收图片保留各自用途。修改页面结构时，同时核对三份 README 的操作名称及 `docs/UI_DESIGN.md`，不要继续复用按旧页签顺序生成的图片。
