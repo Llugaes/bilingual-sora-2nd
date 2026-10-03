@@ -91,7 +91,7 @@ const REPORT={{native:{{ruby_measure_return:{{rva:cOuterMeasure.sub(base).toInt3
 REPORT.native.ruby_place_return.rva=cOuterPlace.sub(base).toInt32();
 const auxiliaryContexts=new Map();
 const nativeParser=createNativeParser(auxiliaryContexts,e=>errors.push(String(e)));
-const rubyScale=.8,rubyOffsetX=0,annotationScale=.85,annotationMetrics=new Map(),compensation=new Map();
+const rubyScale=.8,rubyOffsetX=0,rubyGap=3,annotationScale=.85,annotationMetrics=new Map(),compensation=new Map();
 const label=Memory.alloc(0x900),rootParser=label.add(0x400),frame=Memory.alloc(0x500);
 const row={{pointer:label,original:'source',plan:{{kind:'layered'}},glyphLanes:[]}};
 const layerText=Memory.allocUtf8String('<R>x</Ry>secondary'),primaryText=Memory.allocUtf8String('<R>p</Rq>primary');
@@ -158,9 +158,25 @@ let suppressedTarget=fresh();prepareParent.writePointer(drawParent);const before
 const markerHook=Interceptor.attach(driver.marker,{{onEnter(){{outerPlace(suppressedTarget,text,6);}}}});Interceptor.flush();
 new NativeFunction(driver.marker,'void',[])();markerHook.detach();Interceptor.flush();
 const suppression={{slow_callbacks_before:before,slow_callbacks_after:nativeMeasure.status().slow,scale:suppressedTarget.add(0x15c).readFloat()}};
+// Replay the new multiline reserve at the same real Frida callback boundary.
+// 0x587224 writes the parsed child's bounds at rbp+17c / rbp+184 before this
+// marker; 0x587954 and 0x587977 then use the parent's bottom for the next line.
+const compensate=new NativeFunction(driver.ruby_compensate_marker,'void',['pointer','pointer','pointer']);
+const lineReserves=[];annotationMetrics.clear();row.reserveAuxiliaryHeight=true;
+for(const measuring of [false,true])for(const height of [18,22,40]){{
+    rootParser.add(4).writeFloat(100);rootParser.add(0x1ab).writeU8(measuring?1:0);
+    rootParser.add(0x1bc).writeS32(2147483647);rootParser.add(0x1c4).writeS32(-2147483648);
+    frame.add(0x17c).writeS32(-2);frame.add(0x184).writeS32(height-2);
+    compensate(rootParser,frame,label);
+    lineReserves.push({{measuring,height,y:rootParser.add(4).readFloat(),top:rootParser.add(0x1bc).readS32(),bottom:rootParser.add(0x1c4).readS32()}});
+}}
+row.reserveAuxiliaryHeight=false;rootParser.add(4).writeFloat(100);compensate(rootParser,frame,label);
+const singleLineUnchanged=close(rootParser.add(4).readFloat(),100);
 hCompPrepare.detach();hChild.detach();hParsePair.detach();hMeasure.detach();hPrepare.detach();Interceptor.flush();
 const required={{draw_nested_scale:close(draw.nested_place_scale,.1125),callsite_overwrites_then_parse_repairs:JSON.stringify(measurementCurrent.callsite_flags_1a5_1a9_1ab)==='[1,0,1]'&&JSON.stringify(measurementCurrent.parse_entry_flags_1a5_1a9_1ab)==='[0,0,1]',measuring_glyph_count_unchanged:measurementCurrent.glyphs===0,measuring_bounds_include_native_r:measurementCurrent.bounds>0,production_metric_primary_nonzero:measurementCurrent.metrics.primary>0,production_metric_secondary_nonzero:measurementCurrent.metrics.secondary>0,negative_without_allow_readings_is_red:withoutAllowReadings.bounds===0&&!withoutAllowReadings.nested_init_seen,normal_chain_not_suppressed:nativeMeasure.status().slow>0,suppression_control_observed:suppression.slow_callbacks_after===suppression.slow_callbacks_before&&close(suppression.scale,.375)}};
-rpc.exports.run=()=>({{host:'self-created-hidden-python',game_attached:false,game_started:false,exact_initializer_bytes:true,callers:{{outer_measure:String(cOuterMeasure),outer_place:String(cOuterPlace),nested_measure:String(cNestedMeasure),nested_place:String(cNestedPlace)}},draw,measurement_current:measurementCurrent,negative_without_allow_readings:withoutAllowReadings,candidate,suppression,required,native_measure_status:nativeMeasure.status(),native_parser_status:nativeParser.status(),errors}});
+required.multiline_reserve_measure_draw=lineReserves.every(v=>close(v.y,100+v.height+rubyGap)&&v.top===100&&v.bottom===Math.ceil(v.y));
+required.single_line_unchanged=singleLineUnchanged;
+rpc.exports.run=()=>({{host:'self-created-hidden-python',game_attached:false,game_started:false,exact_initializer_bytes:true,callers:{{outer_measure:String(cOuterMeasure),outer_place:String(cOuterPlace),nested_measure:String(cNestedMeasure),nested_place:String(cNestedPlace)}},draw,measurement_current:measurementCurrent,negative_without_allow_readings:withoutAllowReadings,candidate,suppression,line_reserves:lineReserves,required,native_measure_status:nativeMeasure.status(),native_parser_status:nativeParser.status(),errors}});
 """
     )
 

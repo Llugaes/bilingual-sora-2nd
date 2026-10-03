@@ -261,6 +261,10 @@ function wantedText(row,allocateLayers=true) {
         if(REPORT.diagnostics)send({type:'native_size_fallback',fontSize:row.renderSize,sourceLength:row.original.length});
     }
     row.reserveRubyHeight=row.plan.kind==='ruby'&&!uncovered&&!nativeSizeFallback;
+    // Empty anchors do not make the engine reserve their detached secondary
+    // text's height. Multiline paragraphs need that height before each base
+    // line in both measurement and drawing, independent of the extra line gap.
+    row.reserveAuxiliaryHeight=row.plan.kind==='layered'&&/\r\n|\n|\\n/.test(wanted);
     row.preservePrimaryLayout=shrink&&Boolean(uncovered||nativeSizeFallback||primaryMetrics);
     row.extendLineSpacing=shrink&&!uncovered&&!nativeSizeFallback&&(!primaryMetrics||primaryReadings);
     // Mixed labels keep native parser advances. Their owned glyphs are scaled
@@ -791,9 +795,18 @@ if(REPORT.native.ruby_compensate) Interceptor.attach(base.add(REPORT.native.ruby
         const layer=auxiliaryLayer(this.context.r15,p,row);
         if(layer) {
             const key=String(p),metrics=annotationMetrics.get(key);
-            if(metrics?.layer===layer.layer) {
+            const readings=metrics?.layer===layer.layer?metrics:null;
+            if(readings||row.reserveAuxiliaryHeight) {
                 annotationMetrics.delete(key);
-                const reserve=metrics.primary*(row.preservePrimaryLayout?annotationScale:1)+metrics.secondary;
+                // The existing child parse at 0x587224 has completed. Its
+                // bounds include text, emphasis, icons and original readings;
+                // no extra parse, font-size estimate or per-frame glyph scan.
+                const height=row.reserveAuxiliaryHeight?
+                    this.context.rbp.add(0x184).readS32()-this.context.rbp.add(0x17c).readS32():0;
+                if(height<0||height>65536)throw Error('Invalid annotation line height');
+                const secondaryReserve=row.reserveAuxiliaryHeight?height+rubyGap:0;
+                const reserve=(readings?.primary||0)*(row.preservePrimaryLayout?annotationScale:1)+
+                    Math.max(readings?.secondary||0,secondaryReserve);
                 const origin=p.add(4).readFloat(),next=origin+reserve;
                 if(!Number.isFinite(next)||reserve<0||reserve>65536)throw Error('Invalid native reading reserve');
                 if(reserve) {

@@ -1767,6 +1767,38 @@ test('a long owned rendering may be resubmitted without becoming a new raw sourc
     runtime.api.disable();runtime.update(label);assert.equal(label.text(),'raw');
 });
 
+test('multiline formatted popup reserves the secondary ink height before each primary line',()=>{
+    // Read-only layout 8/root/text capture, game 1.0.0.0, 2026-10-03.
+    // Consecutive primary-bottom / following secondary-top overlap by
+    // 6.20, 6.34, 8.82 and 13.68 native units with the production settings.
+    const a='<C1>第一行\n第二行\n<C2>第三行<C1>。\n第四行\n第五行<I4>',
+        b='<C1>一行目\n二行目\n<C2>三行目<C1>。\n四行目\n五行目<I4>';
+    const captured=[
+        [-9.877085,8.166666,38.624999],
+        [32.427083,49.458331,78.75],
+        [72.414583,90.458330,119.75],
+        [110.929162,131.166663,164.249994],
+        [150.566668,172.166670,205.416668],
+    ];
+    for(const measuring of [false,true]) {
+        const r=makeRuntime(),p=r.label(0x9968,a,0,33);p.flags=865;
+        r.api.load({pairs:{[a]:[a,b]}},'annotation',true,.85,{ruby_scale:.9,ruby_gap:0,line_gap:6});r.update(p);
+        let shift=0,previousBottom=null;
+        for(let i=0;i<captured.length;i++) {
+            const [top,bottom,primaryBottom]=captured[i],height=Math.ceil(bottom-top);
+            const result=r.auxiliary(p,i,{origin:100,measuring,bottom:height});
+            shift+=result.primaryY-100;
+            if(previousBottom!==null)assert.ok(top+shift>=previousBottom+6-.001,
+                `line ${i+1} ${measuring?'measure':'draw'} overlaps preceding primary: ${top+shift-previousBottom}`);
+            previousBottom=primaryBottom+shift;
+        }
+        assert.equal(r.api.status().failed,false);
+        r.api.select('primary',true);r.update(p);assert.equal(p.text(),a);
+        r.api.select('secondary',true);r.update(p);assert.equal(p.text(),b);
+        r.api.disable();r.update(p);assert.equal(p.text(),a);
+    }
+});
+
 test('ordinary formatted lanes retain configured main size and gap, with corrected UTF-8 anchor offsets',()=>{
     const runtime=makeRuntime(),a='<C2>甲</C>\n乙',b='<C2>一</C>\n二';
     runtime.api.load({pairs:{[a]:[a,b]},plain_pairs:{[a]:[a,b]}},'annotation',true,.9);
@@ -1999,15 +2031,17 @@ test('emphasis survives the complete annotation glyph pass at every size and rev
         }
 });
 
-test('native readings reserve a plus a-prime above every owned line including the first',()=>{
+test('multiline native readings reserve primary readings plus the whole secondary envelope without double counting',()=>{
     const a='<R>刺激</R香辛料>是首行。\n再来<R>刺激</R香辛料>。',b='<R>刺激</Rスパイス>だ。\nまた<R>刺激</Rスパイス>。';
     for(const measuring of [false,true]) {
         const r=makeRuntime();r.api.load({pairs:{[a]:[a,b]},plain_pairs:{[a]:[a,b]}},'annotation',true,.85);
         const p=r.label(0xb690,a,0,32);r.update(p);
         for(const index of [0,1])for(let rebuild=0;rebuild<3;rebuild++) {
             const origin=100+index*80;
-            const out=r.auxiliary(p,index,{origin,measuring,primaryReadingHeight:18,secondaryReadingHeight:5});
-            const expected=origin+18*.85+5;
+            const out=r.auxiliary(p,index,{origin,measuring,primaryReadingHeight:18,secondaryReadingHeight:5,bottom:23});
+            // The secondary's complete 23-unit bound already contains its
+            // 5-unit native reading. Reserve it once, plus the configured gap.
+            const expected=origin+18*.85+23+3;
             assert.ok(Math.abs(out.primaryY-expected)<1e-4,`line ${index}, measuring=${measuring}: ${out.primaryY} != ${expected}`);
             assert.equal(out.reservedTop,origin,'leading reserve belongs to the measured paragraph even on its first line');
             assert.equal(out.reservedBottom,Math.ceil(expected));

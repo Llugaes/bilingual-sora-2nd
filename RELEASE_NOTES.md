@@ -1,27 +1,25 @@
-# Bilingual Sora 2nd v0.3.33
+# Bilingual Sora 2nd v0.3.34
 
 ## 简体中文
 
-- 书籍改为按完整章节组织多语言正文，修复法文、德文额外分页无法关联的问题。双语共用新分页，保留全文与主语言插图；单语言使用所选语言原分页，关闭 MOD 恢复游戏原页，书签保存为原始页码。
-- 补齐物品获得提示的 TK／EV 调用身份及书籍登记提示，重复中文提示继续按独立调用区分目标译文。
-- 补齐可选标志参数不同的名称调用、帮助说明分页，并修复实际四／五属性组合受三项枚举上限限制的问题。
-- 更新操作文档图示。国内下载继续通过 Gitee 提供，GitHub 和 Gitee 使用同一份校验过的安装包。
+- 修复带颜色、图标等格式的多行双语说明中，副语言与上一行正文重叠的问题，例如“零力场生成器”提示。
+- 按游戏实际测得的副语言高度预留行高，测量和绘制共用同一规则；保留原有换行、颜色、图标与原生注音，不再只依赖额外行距。
+- 仅调整双语多行排版，单语言与关闭 MOD 后的原始排版不变；不新增文字解析或逐帧字形扫描。
 
-书籍正文按整章阅读进度分页，不保证跨语言句子逐一对齐。完整内容、原生翻页和书签合同已完成离线／隐藏进程检查，游戏内书籍视觉效果仍待实机反馈。本版没有宣称解决全部帧卡顿；双语日志开页仍有已知开销。
+已通过现场坐标回归、自动化检查及独立原生宿主验证。修复后的游戏内画面和提示框背景伸展仍待实机验证。本次涉及驻留排版代码，更新后须正常退出并重新启动游戏才会生效。
 
 ## English
 
-- Paginate books as complete multilingual chapters, including additional French and German pages. Bilingual pages preserve all text and primary-language illustrations. Single-language mode retains that language's original pages; disabling the MOD restores native pages and bookmarks retain native page numbers.
-- Complete TK/EV item-notification identities and book-registration messages. Identical source messages retain distinct call identities.
-- Fix speaker setters with optional flags, help-page alignment, and actual four/five-effect groups previously restricted by the three-effect permutation bound.
-- Refresh the illustrated usage documentation. Gitee and GitHub distribute identical verified artifacts.
+- Fix secondary-language text overlapping the preceding primary line in multiline bilingual messages with colours or icons, such as the Zero Field Generator explanation.
+- Reserve line height from the game's measured secondary-text bounds in both measurement and drawing. Existing line breaks, colours, icons and native readings are preserved.
+- Single-language and disabled-MOD layouts are unchanged. No additional text parsing or per-frame glyph scans are introduced.
 
-Book pagination follows whole-chapter reading progress, not guaranteed sentence alignment. Content, native-query and bookmark checks passed offline/in a hidden test process; in-game book visuals still require feedback. This release does not claim to eliminate all frame hitches or the known bilingual-history opening cost.
+Captured-coordinate regressions, automated checks and isolated native-host tests passed. The resulting in-game appearance and popup background resizing still need visual verification. Restart the game after updating to load this resident layout-code change.
 
 ## 日本語
 
-- 書籍を章全体で扱い、フランス語・ドイツ語の追加ページも含めて再ページ分割。全文と主言語の挿絵を保持し、単一言語ではその言語の元ページ、MOD 無効時はゲーム本来のページに戻します。しおりは元のページ番号で保存します。
-- TK／EV アイテム入手通知の呼び出し識別と書籍登録通知を補完。同じ原文でも別の呼び出しを区別します。
-- 任意フラグが異なる話者名、ヘルプのページ対応、実在する 4／5 効果の複合表示を修正。操作ガイド画像も更新しました。
+- 「零力場発生器」の説明など、色やアイコンを含む複数行の双語表示で、副言語が前の行の本文に重なる問題を修正しました。
+- ゲームが計測した副言語の高さを行の領域に確保し、計測と描画で同じ処理を使用します。改行、色、アイコン、元のルビは保持します。
+- 単一言語と MOD 無効時のレイアウトは変更しません。追加のテキスト解析や毎フレームの字形走査も行いません。
 
-書籍は章全体の読書進度に沿って分割するため、文単位の対応は保証しません。全文・ネイティブ照会・しおりの隔離検証は完了していますが、ゲーム内の見た目は実機確認が必要です。すべてのカクつきや双語ログを開く際の負荷を解消したという意味ではありません。
+実機から取得した座標による回帰テスト、自動テスト、独立したネイティブ検証プロセスでの確認は通過しています。修正後のゲーム内表示とウィンドウ背景の伸縮は、実機での確認が必要です。常駐する描画処理の変更を反映するには、更新後にゲームを再起動してください。
