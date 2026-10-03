@@ -38,8 +38,16 @@ def build(version, repository, output, root=ROOT, *, extra=None, runtime_id=None
         f'version = "{version}"',
         contents["pyproject.toml"].decode("utf-8"),
     ).encode("utf-8")
+    release_distribution = {
+        "schema": 1,
+        "version": version,
+        "repository": repository,
+        "platform": "windows-x64",
+    }
+    if distribution.get("gitee_mirror") is True and repository == distribution["repository"]:
+        release_distribution["gitee_mirror"] = True
     contents["distribution.json"] = json.dumps(
-        {"schema": 1, "version": version, "repository": repository, "platform": "windows-x64"},
+        release_distribution,
         indent=2,
     ).encode()
     sha = lambda data: hashlib.sha256(data).hexdigest()

@@ -1,25 +1,21 @@
-# Bilingual Sora 2nd v0.3.31
+# Bilingual Sora 2nd v0.3.32
 
 ## 简体中文
 
-- 修复完整语言映射常驻大量对象、使运行时自动内存回收阻塞游戏文本回调的问题。映射改为按需读取，保留全部译文、对话 ID 和日志匹配数据；单双语共用此修复。
-- 多行文本候选按需建立，减少启动时展开的数据。升级后首次转换缓存，后续直接复用。
-- 完整模型逐字段一致性检查通过。在独立原生宿主的相同负载中，旧方式复现约 300 ms 停顿，新方式 90 秒、18.5 万次调用最长记录约 22 ms。该测试不等同于全部游戏场景的帧时间，实机持续游玩仍需复验。
+- 新增 Gitee 国内安装包下载和自动更新源，更新失败时自动尝试 GitHub。v0.3.31 及更早版本可通过原更新入口升级，无法访问 GitHub 时可从 Gitee 下载 Setup 覆盖安装，保留设置。
+- 两端使用同一份原版文件，下载继续校验大小和 SHA-256；普通更新复用已有运行依赖。完整便携包和历史版本保留在 GitHub，Gitee 保留最新三个验证通过的稳定版。
+- 发布流程先上传预览版，逐个匿名下载验证通过后才开放稳定更新；预览版和缺少组件的镜像不会被自动安装。
 
-底层修复在游戏下次启动时生效。已经运行的游戏保持原连接，不会强制关闭或热替换钩子。
+本版调整下载与更新流程，不改动游戏文本钩子和玩家配置。
 
 ## English
 
-- Fix long native text callback waits caused by automatic garbage collection of the fully expanded language model. Load model values on demand while preserving translations, dialogue IDs, and history data in both single-language and bilingual modes.
-- Build multiline candidates on demand. Convert the cache once after upgrading, then reuse it on subsequent starts.
-- Full model field comparisons passed. An isolated native-host replay reproduced roughly 300 ms waits with the old format; the updated format recorded a maximum of about 22 ms over 185,000 calls in 90 seconds. This is a controlled regression test, not validation of every in-game frame.
-
-The runtime fix takes effect on the next game launch. Existing game connections remain intact.
+- Add a Gitee download mirror and preferred update source for mainland China, with GitHub fallback. Older clients can update through GitHub or install the mirrored Setup over their existing installation while preserving settings.
+- Both sources serve identical artifacts with size and SHA-256 verification. Unchanged runtimes are reused. GitHub retains full portable ZIPs and release history; Gitee retains the latest three verified stable mirrors.
+- Mirror uploads remain previews until every artifact passes anonymous download verification. Preview and incomplete releases are excluded from automatic installation.
 
 ## 日本語
 
-- 言語モデルの大量の常駐オブジェクトに対する自動メモリ回収が、ゲームのテキスト処理を長時間待たせる問題を修正。翻訳、会話 ID、ログ照合情報をすべて保持したまま、必要なデータだけを展開します。単言語・二言語の両モードに適用されます。
-- 複数行テキストの候補も必要時に展開。更新後にキャッシュを一度変換し、次回以降は再利用します。
-- モデル全項目の一致を確認。独立したネイティブテストでは旧方式の約 300 ms の待ち時間を再現し、新方式では 90 秒・約 18.5 万回の呼び出しで最長約 22 ms でした。実際のゲーム全場面での検証を意味するものではありません。
-
-修正は次回のゲーム起動時に有効になります。起動中のゲームの接続は維持されます。
+- 中国本土向けに Gitee の配布・更新ミラーを追加。失敗時は GitHub に切り替えます。旧版は GitHub 経由、または Gitee の Setup による上書きで設定を保持して更新できます。
+- 両配布元は同じファイルを使用し、サイズと SHA-256 を検証します。変更のないランタイムは再利用。完全なポータブル ZIP と履歴は GitHub、検証済みの最新 3 安定版は Gitee に保持します。
+- 全添付ファイルの匿名ダウンロード検証後に安定版を公開。プレビュー版や不完全なミラーは自動インストールしません。

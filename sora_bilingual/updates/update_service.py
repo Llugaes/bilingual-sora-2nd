@@ -5,6 +5,7 @@ from pathlib import Path
 import threading
 import time
 from sora_bilingual.updates.github_updates import GitHubClient, version_tuple
+from sora_bilingual.updates.release_sources import ReleaseSources
 from sora_bilingual.updates.update_installer import install, UpdateBusy, RuntimeRequired, write_json
 
 INTERVAL = 6 * 3600
@@ -25,7 +26,11 @@ class UpdateService:
             self.policy = "off"
         if self.policy not in POLICIES:
             self.policy = "automatic"
-        self.client = client or GitHubClient(self.distribution["repository"])
+        self.client = client or (
+            ReleaseSources(self.distribution["repository"], self.distribution["version"])
+            if self.distribution.get("gitee_mirror") is True
+            else GitHubClient(self.distribution["repository"])
+        )
         self.message = "等待检查更新" if self.policy == "automatic" else "自动更新已关闭"
         self.available = None
         self.pending = None
@@ -125,7 +130,7 @@ class UpdateService:
                 self.message = str(exc)
                 self.next_check = self.clock() + 10
             return
-        self.message = "正在检查 GitHub 稳定版…"
+        self.message = "正在检查稳定版更新…"
         release, cache = self.client.latest(self._read(self.directory / "release-cache.json"))
         write_json(self.directory / "release-cache.json", cache)
         self.last_check = self.clock()

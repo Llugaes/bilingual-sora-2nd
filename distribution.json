@@ -1,6 +1,7 @@
 {
   "schema": 1,
-  "version": "0.3.31",
+  "version": "0.3.32",
   "repository": "Llugaes/bilingual-sora-2nd",
-  "platform": "windows-x64"
+  "platform": "windows-x64",
+  "gitee_mirror": true
 }

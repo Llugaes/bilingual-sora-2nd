@@ -64,6 +64,10 @@ launch.py 是稳定桌面入口，bootstrap.py 是组装入口：先恢复未完
 
 发布文件由 release-files.json 明确列出。架构测试验证完整运行时已列入、开发工具与本地状态未列入。GitHub Actions 只有带版本标签、测试通过的提交能发布；全部资源先传到草稿，随后公开。版本一致性同时检查标签、distribution.json 与 pyproject.toml。
 
+`release_client.py` 统一元数据和下载校验，GitHub/Gitee 仅适配版本发现及受限来源。`release_sources.py` 优先选取完整的 Gitee 稳定版，镜像缺失、不完整或失败时回退 GitHub；当前镜像没有更高版本时也查询 GitHub。下载回退绑定原版本、大小及 SHA-256，不替换成另一版。Gitee `/latest` 会包含预览版，因此使用倒序发行列表筛选稳定版。Gitee 允许缺少完整便携 ZIP，但必须具备清单中的所有组件；安装事务仍由同一个 `UpdateService`/安装器执行。旧 GitHub ETag 不复用于 Gitee。
+
+`gitee-mirror.yml` 在 GitHub 发布后复用同一份附件，也支持指定标签重试。`tools.publish_gitee` 使用仅限该仓库的 `GITEE_RELEASE_TOKEN`，先核对本地 SHA-256 和 100 MiB/1 GiB 限制，以预览版上传，再匿名下载全部附件校验后转为稳定版。重试复用同名附件并重新校验，冲突拒绝覆盖；完整稳定版确认后才清理工具标记的旧镜像，保留最新三版，不动 GitHub 和未标记的人工发布记录。凭据仅在 CI，不能进入客户端或日志；到期前在仓库 Actions secrets 中轮换。首次配置的有效期到 2027-01-01。
+
 ## 扩展方式
 
 - 新增语言：维护语言元数据和资源规则，不在 UI 或渲染器中添加语言对专用分支。

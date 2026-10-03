@@ -44,6 +44,8 @@ PC 版『空の軌跡 the 2nd』の二言語表示 Mod。会話やメニュー�
 
 ## インストール
 
+[中国本土向け Gitee ミラー](https://gitee.com/Llugaes/bilingual-sora-2nd/releases)でも安定版の Setup を配布します。v0.3.32 以降は Gitee を優先し、失敗時は GitHub に切り替えます。サイズ・SHA-256 の検証と既存ランタイムの再利用は維持します。Gitee は検証済み安定版の最新 3 件、GitHub は完全なポータブル ZIP と全履歴を保持します。旧版から GitHub に接続できない場合は、新しい Setup で設定を保持したまま上書きインストールできます。
+
 1. [最新の Release](https://github.com/Llugaes/bilingual-sora-2nd/releases/latest) から `bilingual-sora-2nd-VERSION-windows-x64-setup.exe` をダウンロードし、実行してインストールします。
 2. スタートメニューまたはデスクトップのショートカットから **Bilingual Sora 2nd** を開き、初回は画面の言語を選択します。主言語は新しいゲームプロセスへの接続時に同期され、その後は主言語・副言語を変更できます。
 3. ツールがゲームを自動検出し、多言語フォントを準備します。フォルダーやゲーム言語の選択は不要です。準備前にゲームを起動しても、完了後にゲーム内へ読み込みます。初回の言語マッピングには数分かかる場合があり、有効なキャッシュは再利用します。

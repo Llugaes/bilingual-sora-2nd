@@ -2,11 +2,13 @@
 
 查证日期：2026-10-03。仅引用服务商官方文档、官方定价页或服务商维护的官方仓库；“已证实”是页面明确写出的事实，“推断”是基于这些事实对本项目用途的判断，“待确认”是官方当前公开资料没有给出或需在目标账号/地域复核的内容。
 
-状态：研究提案，尚未开通存储/CDN、修改 DNS 或实现新更新源。代码核对基线为 `8f6969c`（v0.3.31）。部署域名在接入时单独确认，本文件使用 `<项目子域名>` 占位。
+状态：付费方案保留，尚未开通存储/CDN或修改 DNS。Gitee 免费发行包上传和匿名下载已验证，更新器接入正在验收。代码核对基线为 `8f6969c`（v0.3.31）。部署域名在接入时单独确认，本文件使用 `<项目子域名>` 占位。
 
-## 建议采用的方案
+当前执行选择：保留付费方案，暂不开通；采用已通过真实附件验证的 Gitee 免费路线，GitHub 保留备用与完整历史。[实测记录与未通过项](verification/GITEE_DISTRIBUTION.md)。以下 COS/CDN 内容仍是备选提案。
 
-建议使用腾讯云中国大陆 COS 标准存储 + 静态 CDN（下载大文件），通过自有已备案子域名提供下载页、版本清单和安装/更新包。GitHub 继续保存源码、发布记录和备用下载；发布流水线把同一次构建的产物同步到两端。无需另建常驻服务器或数据库。
+## 付费备选方案（暂不实施）
+
+后续若需要独立容量和服务保障，可使用腾讯云中国大陆 COS 标准存储 + 静态 CDN（下载大文件），通过自有已备案子域名提供下载页、版本清单和安装/更新包。GitHub 继续保存源码、发布记录和备用下载；发布流水线把同一次构建的产物同步到两端。无需另建常驻服务器或数据库。
 
 依据：腾讯云支持已备案域名接入大陆 CDN、COS 私有桶授权回源，以及软件安装包/应用更新的大文件下载场景；仅配置项目子域名即可。账号实名认证、域名归属验证、HTTPS 证书和计费开通仍需在目标账号完成。[CDN 配置指南](https://cloud.tencent.com/document/product/228/3149/)
 
@@ -60,7 +62,7 @@ v0.3.31 的 [官方发行附件](https://github.com/Llugaes/bilingual-sora-2nd/r
 | 腾讯云 COS 中国大陆 + 腾讯云 CDN | [已证实] COS 默认域名按存储桶和地域生成；对象支持任意类型，2024-01-01 后新桶用默认域名访问文件是直接下载。自定义源站域名可不开 CDN；接入中国大陆 CDN 的域名须已备案。 | [已证实] PUT Object、SDK、COSCMD 均可上传；[推断] 可由 CI 上传 `.exe`、`.zip` 与版本元数据。 | [已证实] COS 外网下行 0.50 元/GB、CDN 回源 0.15 元/GB；大陆 CDN 下行首阶 0–2 TB/月 0.21 元/GB，按月阶梯；HTTPS 每账号每自然月 300 万次免费，超出 0.05 元/万次。存储、读写请求另计。 | [推断] 推荐作为大陆首次下载和自动更新主源；正式接入仍需完成域名验证、计费与缓存配置。 |
 | 阿里云 OSS 中国内地 + 阿里云 CDN | [已证实] OSS 可上传任何类型文件；默认 Bucket 域名为 `<bucket>.oss-<region-id>.aliyuncs.com`，公网访问可直接下载；中国内地 Bucket 绑定自定义域名须 ICP 备案，CDN 加速区域含中国内地时也须备案。 | [已证实] PutObject/SDK/ossutil；[推断] 可由 CI 上传发布物。 | [已证实] OSS 外网流出按时段计费（官方价格页：闲时 0.25 元/GB、忙时 0.50 元/GB）；大陆 CDN 首阶 0–10 TB/月 0.24 元/GB，随后 0.23/0.21/0.18/0.15 元/GB 阶梯。存储、请求、OSS CDN 回源另计。 | [推断] 技术上可作主源替代；当前建议优先使用腾讯云方案，减少跨服务商配置。 |
 | Cloudflare R2 自定义域名；香港区域 OSS 备用 | [已证实] R2 自定义域名要求域名已在同一 Cloudflare 账号成为 zone；`r2.dev` 仅开发用途且限流。Cloudflare China Network 文档明确：R2 不能在中国大陆创建，且该服务不支持 R2 自定义域名在大陆节点接入。阿里云 OSS 中国香港 `cn-hongkong` 有公网 Endpoint；非中国内地 Bucket 绑定自定义域名按阿里云文档无需 ICP。 | [已证实] R2 有 S3-compatible、Workers API；OSS 有 PutObject/SDK。 | [已证实] R2 Standard：$0.015/GB-month，Class A $4.50/百万次，Class B $0.36/百万次，互联网出网免费。香港 OSS 仍按存储、请求、外网流出计费，精确值按官方地域价格页复核。 | [推断] R2 不能保证大陆访问速度，香港 OSS 也可能受跨境链路影响；适合作补充/故障切换候选，不应据此承诺大陆体验。 |
-| Gitee Releases | [已证实] Gitee 官方博客给出发行版附件下载 URL：`https://gitee.com/{namespace}/{repo}/releases/download/{git_tag}/{attach_file_path}`。官方维护的 SDK 发布说明列出发行版附件查询、上传、删除、下载接口。 | [已证实] 有 OpenAPI/官方维护 CLI 线索；[待确认] 当前社区账号的 token 权限、限流和附件上传大小。 | [待确认] 当前官方公开资料未确认社区 Release 的附件总量、单附件上限、出网/CDN SLA 或独立价格；仓库 500 MB/单文件 50 MB 配额是仓库限制，不能当作 Release 附件配额。 | [推断] 可保留为人工备用下载；不适合作唯一自动更新主源，也不要假定免费、无限容量或自有域名能力。 |
+| Gitee Releases | [已证实] Gitee 官方博客给出发行版附件下载 URL：`https://gitee.com/{namespace}/{repo}/releases/download/{git_tag}/{attach_file_path}`。官方维护的 SDK 发布说明列出发行版附件查询、上传、删除、下载接口。 | [已证实] 有 OpenAPI/官方维护 CLI 线索；[实测] 仓库级 projects 令牌可配置；自动上传正在 CI 验收。 | [已证实] 个人社区版免费。实际上传页显示单附件 100M、每仓库附件 1G，与帮助站的 3G 说明不一致，按实际较小额度实施。 | [实测] 本项目 Setup、应用包、依赖包和清单均上传及匿名校验成功。Gitee 保留最新三版，完整便携包和全部历史保留 GitHub。 |
 
 ## 1. 腾讯云 COS 中国大陆 + CDN
 
@@ -95,12 +97,12 @@ v0.3.31 的 [官方发行附件](https://github.com/Llugaes/bilingual-sora-2nd/r
 - [已证实] 阿里云 OSS 中国香港地域 ID 为 `cn-hongkong`，公网 Endpoint 为 `oss-cn-hongkong.aliyuncs.com`；非中国内地 Bucket 的自定义域名按官方文档无需 ICP，但文档同时提示大陆访问境外节点可能延迟增大：[地域与 Endpoint](https://help.aliyun.com/zh/oss/user-guide/regions-and-endpoints)、[自定义域名](https://help.aliyun.com/zh/oss/user-guide/access-buckets-via-custom-domain-names)。
 - [待确认] 香港 OSS 的精确存储/请求/外网流出账单要按地域、存储冗余和计费时段在官方价格页复核；大陆链路质量需实测。适配判断：仅作补充或故障切换候选。
 
-## 4. Gitee Releases 人工备用
+## 4. Gitee Releases 免费路线
 
 - [已证实] Gitee 官方博客给出发行版附件下载路径，附件可被稳定地引用为版本和文件名 URL：[发行版附件 URL 更新](https://blog.gitee.com/2022/08/18/update/)。
 - [已证实] Gitee 官方维护的 TypeScript SDK 发布页列出“指定 Release 附件清单、上传、删除、下载”接口；官方前端组维护的 `gitee-release-cli` 也展示了用 token 执行 `assets upload` 的命令：[SDK v5 release](https://gitee.com/sdk/typescript-sdk-v5/releases)、[gitee-release-cli](https://gitee.com/gitee-frontend/gitee-release-cli)。
-- [待确认] 当前公开官方资料未给出社区 Release 的 `.exe`/`.zip` 后缀白名单、附件单文件/总量配额、API 限流、SLA、CDN 或独立价格；官方仓库 500 MB/单文件 50 MB 的说明是 Git 仓库配额，不应外推到 Release 附件：[仓库体积配额](https://gitee.com/help/articles/4232_)。
-- [推断] 适合人工上传、手工核验后提供备用下载；自有域名、备案、长期稳定性和自动更新主链路证据不足，暂不作为唯一主源。
+- [已证实] 新帮助站说明个人社区版免费、支持 Release/Open API，并列出开源项目附件总容量 3G；实际账号上传页进一步显示单附件 100M、每仓库合计 1G（仓库附件与发行附件合并），实施按此较小额度检查。仓库文件配额不能代替发行附件配额：[社区版功能与服务对比](https://help.gitee.com/enterprise/introduce/feature)。
+- [实测] 本项目原版 Setup、应用包、依赖包和清单均已通过上传与匿名下载 SHA-256 校验。`latest` 会包含预览版，客户端必须自行过滤；完整便携包超过附件上限，仅保留 GitHub。自动发布与正式更新器接入仍以验证记录中的阶段为准。[验证记录](verification/GITEE_DISTRIBUTION.md)
 
 ## 接入前仍需确认
 

@@ -1,0 +1,43 @@
+name: Mirror verified release to Gitee
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing GitHub stable tag to mirror
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+    secrets:
+      GITEE_RELEASE_TOKEN:
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: gitee-release-mirror
+  cancel-in-progress: false
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.14.7'
+      - name: Download original stable release artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          python -c 'import os; from sora_bilingual.updates.release_client import version_tuple; version_tuple(os.environ["RELEASE_TAG"])'
+          gh release view "$RELEASE_TAG" --json isDraft,isPrerelease --jq 'if .isDraft or .isPrerelease then error("Not a stable release") else . end'
+          gh release download "$RELEASE_TAG" --dir mirror-input --pattern '*-setup.exe' --pattern '*-app-windows-x64.zip' --pattern '*-runtime-*-windows-x64.zip' --pattern 'bilingual-sora-2nd-update.json'
+      - name: Upload, anonymously verify, then promote stable mirror
+        env:
+          GITEE_RELEASE_TOKEN: ${{ secrets.GITEE_RELEASE_TOKEN }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: python -m tools.publish_gitee --tag "$RELEASE_TAG" --repository "$GITHUB_REPOSITORY" --directory mirror-input

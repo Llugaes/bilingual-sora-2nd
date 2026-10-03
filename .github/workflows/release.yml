@@ -66,3 +66,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Draft/upload failed; no partial release is published' }
           gh release edit $env:GITHUB_REF_NAME --draft=false --latest
           if ($LASTEXITCODE -ne 0) { throw 'Publish failed' }
+  mirror:
+    needs: release
+    if: startsWith(github.ref, 'refs/tags/v')
+    uses: ./.github/workflows/gitee-mirror.yml
+    with:
+      tag: ${{ github.ref_name }}
+    secrets:
+      GITEE_RELEASE_TOKEN: ${{ secrets.GITEE_RELEASE_TOKEN }}

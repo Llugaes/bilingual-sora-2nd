@@ -44,13 +44,15 @@
 
 ## 安装和启动
 
-1. 从 [最新 Release](https://github.com/Llugaes/bilingual-sora-2nd/releases/latest) 下载 `bilingual-sora-2nd-版本-windows-x64-setup.exe`，双击完成安装。
+1. 从 [Gitee 国内下载](https://gitee.com/Llugaes/bilingual-sora-2nd/releases) 或 [GitHub 最新 Release](https://github.com/Llugaes/bilingual-sora-2nd/releases/latest) 的稳定版下载 `bilingual-sora-2nd-版本-windows-x64-setup.exe`，双击完成安装。
 2. 从开始菜单或桌面快捷方式打开 **Bilingual Sora 2nd**，首次选择界面语言；主语言在连接新游戏进程时自动同步，也可随后调整主、副语言。
 3. 工具会自动寻找游戏并准备多语言字体，无需选择目录或游戏文字语言。游戏可以先启动；字体准备完成后自动在游戏内加载。首次语言映射初始化可能需要几分钟，后续复用有效缓存。
 
 适用于 Windows 10/11 x64，无需管理员权限。Python 和运行依赖已内置，下载安装包后可离线安装，无需另外配置环境。界面支持中文、英文、日文，已有设置在升级时保留。
 
 便携版、旧版迁移及排障步骤见下方 [常见问题](#常见问题faq)。
+
+v0.3.32 起自动更新优先使用 Gitee，失败时尝试 GitHub；继续校验文件大小与 SHA-256，未变化的运行依赖不重复下载。Gitee 保留最近三个已验证稳定版的安装包与更新组件，完整便携包和全部历史版本在 GitHub。v0.3.31 及更早版本仍通过 GitHub 更新；若无法访问 GitHub，可从 Gitee 下载新 Setup 覆盖安装并保留设置。预览版不用于自动更新。
 
 标题栏“···”菜单提供使用说明和发行说明。再次打开程序会显示已有界面，不会重复启动后台。
 

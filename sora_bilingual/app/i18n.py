@@ -331,6 +331,7 @@ GitHub 发行版本|GitHub releases|GitHub リリース
 当前是开发目录：可检查版本，自动更新不会覆盖本地源码。|Development checkout: checks are available; source is never overwritten.|開発フォルダー：更新の確認は可能ですがソースは上書きしません。
 等待检查更新|Waiting to check for updates|更新確認待ち
 正在检查 GitHub 稳定版…|Checking GitHub stable releases…|GitHub の安定版を確認中…
+正在检查稳定版更新…|Checking stable releases…|安定版の更新を確認中…
 仓库尚未发布稳定版|No stable release published yet|安定版はまだ公開されていません
 当前已经是最新稳定版|Already on the latest stable release|最新の安定版です
 正在下载 |Downloading |ダウンロード中：
