@@ -256,6 +256,17 @@ class FallbackTests(unittest.TestCase):
 
 
 class PublisherTests(unittest.TestCase):
+    def test_only_read_requests_retry_transport_failures(self):
+        publisher = GiteePublisher("a/b", "placeholder")
+        for method, attempts in (("GET", 3), ("POST", 1)):
+            with (
+                patch.object(publisher.opener, "open", side_effect=OSError("reset")) as request,
+                patch("tools.publish_gitee.time.sleep"),
+            ):
+                with self.assertRaises(OSError):
+                    publisher.request(method=method)
+                self.assertEqual(request.call_count, attempts)
+
     def test_upload_keeps_credential_off_argv_and_rejects_early_http_errors(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "app.zip"

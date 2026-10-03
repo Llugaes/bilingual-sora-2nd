@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import subprocess
 import tempfile
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -57,19 +58,26 @@ class GiteePublisher:
         request = urllib.request.Request(
             self.base + suffix, data=data, headers=headers, method=method
         )
-        try:
-            with self.opener.open(request, timeout=120) as response:
-                raw = response.read(2 * 1024 * 1024 + 1)
-                if len(raw) > 2 * 1024 * 1024:
-                    raise ValueError("Oversized publisher response")
-                return json.loads(raw) if raw else None
-        except urllib.error.HTTPError as exc:
-            code = exc.code
-            exc.close()
-            if code == 404 and method == "GET" and suffix.startswith("/tags/"):
-                return None
-            # Never include a credential, signed URL or server-reflected request.
-            raise RuntimeError(f"Gitee {method} failed: HTTP {code}") from None
+        attempts = 3 if method == "GET" else 1
+        for attempt in range(attempts):
+            try:
+                with self.opener.open(request, timeout=20) as response:
+                    raw = response.read(2 * 1024 * 1024 + 1)
+                    if len(raw) > 2 * 1024 * 1024:
+                        raise ValueError("Oversized publisher response")
+                    return json.loads(raw) if raw else None
+            except urllib.error.HTTPError as exc:
+                code = exc.code
+                exc.close()
+                if code == 404 and method == "GET" and suffix.startswith("/tags/"):
+                    return None
+                if code not in (429, 500, 502, 503, 504) or attempt + 1 == attempts:
+                    # Never include a credential or server-reflected request.
+                    raise RuntimeError(f"Gitee {method} failed: HTTP {code}") from None
+            except OSError:
+                if attempt + 1 == attempts:
+                    raise
+            time.sleep(attempt + 1)
 
     def upload(self, suffix, path):
         # curl handles early HTTP rejection while sending large requests, unlike
