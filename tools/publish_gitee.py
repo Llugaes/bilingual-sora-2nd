@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import re
 import tempfile
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -59,8 +60,12 @@ class GiteePublisher:
                 parts.append(
                     f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="{file.name}"\r\nContent-Type: application/octet-stream\r\n\r\n'.encode()
                 )
-                parts.extend([file.read_bytes(), f"\r\n--{boundary}--\r\n".encode()])
-                data = b"".join(parts)
+                prefix = b"".join(parts)
+                suffix_bytes = f"\r\n--{boundary}--\r\n".encode()
+                headers["Content-Length"] = str(
+                    len(prefix) + file.stat().st_size + len(suffix_bytes)
+                )
+                data = multipart_stream(file, prefix, suffix_bytes)
                 headers["Content-Type"] = "multipart/form-data; boundary=" + boundary
             else:
                 data = urllib.parse.urlencode(fields).encode()
@@ -172,6 +177,23 @@ class GiteePublisher:
         for _, release in sorted(managed, key=lambda pair: pair[0], reverse=True)[3:]:
             self.request(f"/{release['id']}", method="DELETE")
             print("Removed old Gitee mirror: " + release["tag_name"], flush=True)
+
+
+def multipart_stream(path, prefix, suffix, *, clock=time.monotonic):
+    # A single SSL sendall for ~100 MB applies its timeout to the entire body.
+    # Send bounded pieces with Content-Length, without chunked transfer encoding.
+    started = clock()
+    yield prefix
+    count = 0
+    with path.open("rb") as stream:
+        while chunk := stream.read(1024 * 1024):
+            if clock() - started > 600:
+                raise TimeoutError("Gitee upload exceeded ten minutes")
+            yield chunk
+            count += len(chunk)
+            if count % (16 * 1024 * 1024) == 0:
+                print(f"Upload sent {count // (1024 * 1024)} MiB: {path.name}", flush=True)
+    yield suffix
 
 
 def validated_files(tag, repository, directory):

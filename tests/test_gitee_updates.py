@@ -20,7 +20,13 @@ from sora_bilingual.updates.update_service import UpdateService
 from tools.build_release import build
 from tests.test_portable_updates import payload
 from tests.test_updates import Response
-from tools.publish_gitee import GiteePublisher, MARKER, MAX_ATTACHMENT, validated_files
+from tools.publish_gitee import (
+    GiteePublisher,
+    MARKER,
+    MAX_ATTACHMENT,
+    validated_files,
+    multipart_stream,
+)
 
 
 def fixture(version="1.0.0", host="gitee.com"):
@@ -251,6 +257,26 @@ class FallbackTests(unittest.TestCase):
 
 
 class PublisherTests(unittest.TestCase):
+    def test_upload_stream_has_explicit_length_and_no_token_in_url(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "app.zip"
+            path.write_bytes(b"x" * (2 * 1024 * 1024 + 1))
+            publisher = GiteePublisher("a/b", "placeholder")
+            router = Router([{"id": 1}])
+            publisher.opener = router
+            publisher.request("/1/attach_files", method="POST", file=path)
+            request = router.requests[0]
+            chunks = list(request.data)
+            body = b"".join(chunks)
+            self.assertEqual(len(body), int(request.get_header("Content-length")))
+            self.assertNotIn("placeholder", request.full_url)
+            self.assertIn(b"placeholder", body)
+            self.assertIn(path.read_bytes(), body)
+            self.assertLessEqual(max(map(len, chunks)), 1024 * 1024)
+            times = iter([0, 601])
+            with self.assertRaises(TimeoutError):
+                list(multipart_stream(path, b"prefix", b"suffix", clock=lambda: next(times)))
+
     def test_local_validation_rejects_modified_and_oversized_artifacts(self):
         _, meta, payloads = fixture()
         with tempfile.TemporaryDirectory() as tmp:
