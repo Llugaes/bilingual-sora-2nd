@@ -1,25 +1,25 @@
-# Bilingual Sora 2nd v0.3.34
+# Bilingual Sora 2nd v0.3.35
 
 ## 简体中文
 
-- 修复带颜色、图标等格式的多行双语说明中，副语言与上一行正文重叠的问题，例如“零力场生成器”提示。
-- 按游戏实际测得的副语言高度预留行高，测量和绘制共用同一规则；保留原有换行、颜色、图标与原生注音，不再只依赖额外行距。
-- 仅调整双语多行排版，单语言与关闭 MOD 后的原始排版不变；不新增文字解析或逐帧字形扫描。
+- 紧急修复 0.3.33／0.3.34 首次连接时可能报 `book_count` 校验失败的问题：书籍模块先安装钩子，后续校验把本工具自己的修改误判为异常。现在先校验全部入口，再初始化原生模块。
+- 将生产启动顺序、真实 Frida 改写和正常／异常入口检查加入发版必跑流程，防止独立功能测试通过、实际连接失败的情况再次漏检。
+- 保留 0.3.34 的多行双语提示行高修复。本补丁不改变更新策略；手动确认更新和版本回退会单独迭代。
 
-已通过现场坐标回归、自动化检查及独立原生宿主验证。修复后的游戏内画面和提示框背景伸展仍待实机验证。本次涉及驻留排版代码，更新后须正常退出并重新启动游戏才会生效。
+本次启动错误已在独立隐藏进程复现并通过修复回归。若当前游戏进程已经出现连接失败，请正常退出游戏，更新后再启动；不要在该进程反复连接。
 
 ## English
 
-- Fix secondary-language text overlapping the preceding primary line in multiline bilingual messages with colours or icons, such as the Zero Field Generator explanation.
-- Reserve line height from the game's measured secondary-text bounds in both measurement and drawing. Existing line breaks, colours, icons and native readings are preserved.
-- Single-language and disabled-MOD layouts are unchanged. No additional text parsing or per-frame glyph scans are introduced.
+- Fix the first-connection `book_count` validation failure in 0.3.33/0.3.34. Book hooks were installed before code validation, causing the tool to reject its own patches. All entry points are now validated before native adapters initialize.
+- Add the production startup sequence, real Frida patches, and clean/modified-entry checks to mandatory release validation.
+- Retain the multiline bilingual spacing fix from 0.3.34. Update confirmation and rollback will be addressed separately; this hotfix does not change update policy.
 
-Captured-coordinate regressions, automated checks and isolated native-host tests passed. The resulting in-game appearance and popup background resizing still need visual verification. Restart the game after updating to load this resident layout-code change.
+The startup failure was reproduced and fixed in an isolated native process. If connection has already failed in the current game process, exit the game normally, update, then start it again.
 
 ## 日本語
 
-- 「零力場発生器」の説明など、色やアイコンを含む複数行の双語表示で、副言語が前の行の本文に重なる問題を修正しました。
-- ゲームが計測した副言語の高さを行の領域に確保し、計測と描画で同じ処理を使用します。改行、色、アイコン、元のルビは保持します。
-- 単一言語と MOD 無効時のレイアウトは変更しません。追加のテキスト解析や毎フレームの字形走査も行いません。
+- 0.3.33／0.3.34 の初回接続で `book_count` の検証に失敗する問題を修正しました。書籍フックを先に設置し、その変更を異常と誤判定していました。すべての入口を検証してからネイティブ処理を初期化します。
+- 製品コードの起動順序と実際の Frida フックを使う正常／異常ケースを、リリース前の必須テストに追加しました。
+- 0.3.34 の複数行の双語表示の修正は含まれます。更新前の確認とバージョンの巻き戻しは別途対応し、この修正版では更新方針を変更しません。
 
-実機から取得した座標による回帰テスト、自動テスト、独立したネイティブ検証プロセスでの確認は通過しています。修正後のゲーム内表示とウィンドウ背景の伸縮は、実機での確認が必要です。常駐する描画処理の変更を反映するには、更新後にゲームを再起動してください。
+独立した検証プロセスで同じ起動エラーを再現し、修正を確認しています。現在のゲームで接続に失敗した場合は、ゲームを通常終了し、更新後に起動し直してください。

@@ -19,6 +19,52 @@ from check_native_dynamic_identity import decoded, require, direct_target
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def bootstrap_source():
+    """Replay the production prologue with real Frida patches and CNG calls."""
+    scripts = ROOT / "sora_bilingual/game/scripts"
+    agent_path = Path(os.environ.get("NATIVE_AGENT_SOURCE", scripts / "native_agent.js"))
+    prefix, marker, _ = agent_path.read_text("utf-8").partition(
+        "let fontGeneration=0,fontsWereReady=!REPORT.runtime_fonts;"
+    )
+    if not marker:
+        raise AssertionError("Production startup boundary changed; update the integration fixture")
+    dependencies = "\n".join(
+        (scripts / name).read_text("utf-8")
+        for name in ("runtime_text.js", "runtime_books.js", "native_books.js", "native_hash.js")
+    )
+    return (
+        dependencies
+        + "\n"
+        + r"""
+const bootstrap = new Function('Process','REPORT','RuntimeText','RuntimeBooks',
+    'createNativeBooks','createNativeSha256',__PREFIX__+'\nreturn nativeBooks;');
+const retained=[];
+function runBootstrap(corrupt) {
+    const base=Memory.alloc(Process.pageSize);retained.push(base);
+    const names=['book_count','book_page','book_update','book_open_return','book_saved_page','book_text_return'];
+    const report={native:{}};
+    names.forEach((name,i)=>{
+        const rva=i*64;report.native[name]={rva,bytes:'90'.repeat(16)};
+        base.add(rva).writeByteArray(Array(32).fill(0x90));base.add(rva+32).writeU8(0xc3);
+    });
+    if(corrupt)base.add(report.native.book_text_return.rva).writeU8(0xcc);
+    Memory.protect(base,Process.pageSize,'r-x');
+    let factories=0,hashes=0,adapter=null,error=null;
+    try {
+        adapter=bootstrap({getModuleByName(name){if(name!=='sora_2nd.exe')throw Error(name);return {base};}},
+            report,RuntimeText,RuntimeBooks,(...args)=>{factories++;return createNativeBooks(...args);},
+            ()=>{hashes++;return createNativeSha256();});
+    }catch(e){error=String(e);}
+    Interceptor.flush();
+    const patched=names.filter(name=>Array.from(new Uint8Array(base.add(report.native[name].rva).readByteArray(16)))
+        .map(v=>v.toString(16).padStart(2,'0')).join('')!==report.native[name].bytes);
+    return {corrupt,factories,hashes,error,patched,adapter_created:!!adapter};
+}
+rpc.exports.run=()=>({clean:runBootstrap(false),foreign:runBootstrap(true),game_attached:false});
+""".replace("__PREFIX__", json.dumps(prefix))
+    )
+
+
 def inspect(exe):
     with pefile.PE(str(exe), fast_load=True) as pe:
         code = decoded(pe, 0x23C1E0, 0x120)
@@ -129,6 +175,18 @@ def main():
     session = None
     try:
         session = frida.attach(host.pid)
+        startup = session.create_script(bootstrap_source(), runtime="v8")
+        startup.load()
+        startup_result = startup.exports_sync.run()
+        print(json.dumps({"production_bootstrap": startup_result}), flush=True)
+        clean, foreign = startup_result["clean"], startup_result["foreign"]
+        assert clean["error"] is None and clean["adapter_created"], clean
+        assert clean["factories"] == 1 and clean["hashes"] == 1, clean
+        assert {"book_count", "book_page", "book_update"} <= set(clean["patched"]), clean
+        assert "book_text_return" in (foreign["error"] or ""), foreign
+        assert foreign["factories"] == 0 and foreign["hashes"] == 0, foreign
+        assert foreign["patched"] == ["book_text_return"], foreign
+        startup.unload()  # Only our self-created hidden host, never the game.
         agent = session.create_script(source(machine), runtime="v8")
         agent.on(
             "message",

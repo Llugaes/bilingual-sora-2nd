@@ -2,6 +2,13 @@
 // UI mutations run on UI callbacks. Font RPC stages independent resources;
 // publication and reflow happen at Update, never during background loading.
 const base = Process.getModuleByName('sora_2nd.exe').base;
+// Validate every site before constructing any adapter: factories may install
+// hooks immediately, and a NativeFunction call flushes their pending patches.
+for (const [name, point] of Object.entries(REPORT.native)) {
+    const actual = Array.from(new Uint8Array(base.add(point.rva).readByteArray(16)))
+        .map(x => x.toString(16).padStart(2, '0')).join('');
+    if (actual !== point.bytes) throw Error('Native runtime code differs from executable at '+name+'; connection refused before installing hooks');
+}
 const labels = new Map();
 const threads = new Set();
 let dictionary = Object.create(null), enabled = false, epoch = 0;
@@ -46,11 +53,6 @@ const resourceHash=typeof createNativeSha256==='function'?createNativeSha256():s
 const auxiliaryContexts=new Map(), compensation=new Map(), rubyPermissions=new Map();
 const annotationMetrics=new Map();
 const subtitleRoots=new Set(),insetRoots=new Map(),layoutRoots=new Map();let scannedLayouts=false;
-for (const [name, point] of Object.entries(REPORT.native)) {
-    const actual = Array.from(new Uint8Array(base.add(point.rva).readByteArray(16)))
-        .map(x => x.toString(16).padStart(2, '0')).join('');
-    if (actual !== point.bytes) throw Error('Native runtime code changed at '+name+'; remove other probes before attaching');
-}
 let fontGeneration=0,fontsWereReady=!REPORT.runtime_fonts;
 function invalidateFontGeometry(){
     fontGeneration++;epoch++;logFontGeneration++;
