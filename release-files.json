@@ -57,6 +57,8 @@
   "sora_bilingual/game/scripts/native_transport.js",
   "sora_bilingual/game/scripts/runtime_identity.js",
   "sora_bilingual/game/scripts/runtime_paragraph.js",
+  "sora_bilingual/game/scripts/runtime_books.js",
+  "sora_bilingual/game/scripts/native_books.js",
   "sora_bilingual/game/scripts/runtime_text.js",
   "sora_bilingual/localization/__init__.py",
   "sora_bilingual/localization/cache_io.py",

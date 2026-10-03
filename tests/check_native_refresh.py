@@ -78,7 +78,7 @@ int update(char *label) {
 const label=Memory.alloc(0x800),errors=[],labels=new Map();
 const base=ptr(0),REPORT={native:{update:{rva:native.update}},diagnostics:false};
 let epoch=100,replayEpoch=-1,updates=0,failed=false,writes=0,immediateWrites=0,wanted='';
-let runtimeFonts=null,fontGeneration=0,fontsWereReady=true;
+let runtimeFonts=null,fontGeneration=0,fontsWereReady=true;const nativeBooks=null;
 let setterEnters=0,setterLeaves=0,measureEnters=0,measureLeaves=0,drawEnters=0,drawLeaves=0;
 const setter=new NativeFunction(native.setter,'void',['pointer','pointer']);
 const resetText=new NativeFunction(native.reset_text,'void',['pointer']);

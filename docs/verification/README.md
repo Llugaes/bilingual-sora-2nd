@@ -1,5 +1,7 @@
 # 2026-09-29 文本漏译核查报告
 
+2026-10-03 后续：书籍整章重排、动态书籍库存 ID、全部 TK／EV 身份、剩余名称 setter 与 HelpPage 配对已补齐离线检查。最新结果见 [待办复查](todo-review-20261003.md) 和 [全书重排](book-pagination.md)，下文保留旧批次记录。
+
 **后续验收与发布：用户已实测当前候选，未发现遗漏并同意发布。0.3.15 已正式发布，
 版本提交 `32cdfc3`，包含下述各批修复及有序表身份修复。**
 [发布与完整 CI](https://github.com/Llugaes/bilingual-sora-2nd/actions/runs/36527860095)通过；

@@ -37,6 +37,69 @@ def help_sections(language):
 
 
 class TableRecordAlignmentTests(unittest.TestCase):
+    def test_books_keep_whole_chapter_and_original_pages_instead_of_pairing_page_numbers(self):
+        from sora_bilingual.localization.menu_text import MenuTranslator
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            texts = {"en": ["Start of a", "sentence.", "Ending."], "ja": ["冒頭の文。", "結末。"]}
+            self.game(
+                root,
+                {
+                    language: {
+                        "table/t_books.tbl": table(
+                            "BooksText",
+                            24,
+                            [
+                                ([(0, "H", 116), (2, "H", page + 1)], {8: text, 16: "newspaper17"})
+                                for page, text in enumerate(pages)
+                            ],
+                        )
+                    }
+                    for language, pages in texts.items()
+                },
+            )
+            entries, audit = build_table_entries(root)
+            self.assertEqual(len(entries), 1)
+            entry = entries[0]
+            self.assertEqual(entry["book_id"], 116)
+            self.assertEqual(entry["texts"], {l: "\n".join(pages) for l, pages in texts.items()})
+            self.assertEqual(entry["table_rows"], {"en": [0, 1, 2], "ja": [0, 1]})
+            self.assertEqual(audit["counters"]["book_documents_emitted"], 1)
+            self.assertEqual(MenuTranslator(entries, "en", "ja", "en").pairs, {})
+
+    def test_help_heading_continuation_does_not_shift_later_heading(self):
+        def pages(labels):
+            return table(
+                "HelpPage",
+                32,
+                [
+                    (
+                        [(0, "H", 64), (2, "B", 1), (3, "B", page + 1)],
+                        {8: "", 16: "description", 24: label},
+                    )
+                    for page, label in enumerate(labels)
+                ],
+            )
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            self.game(
+                root,
+                {
+                    "de": {"table/t_help.tbl": pages(["Befehl", "Befehl", "Schnell"])},
+                    "en": {"table/t_help.tbl": pages(["Command", "Quick"])},
+                    "ja": {"table/t_help.tbl": pages(["コマンド", "クイック"])},
+                },
+            )
+            entries, _ = build_table_entries(root)
+            headings = [e for e in entries if e["key"].endswith("/subtitle")]
+            self.assertEqual(len(headings), 3)
+            self.assertEqual(
+                [(e["table_rows"]["de"], e["texts"]["en"]) for e in headings],
+                [([0], "Command"), ([1], "Command"), ([2], "Quick")],
+            )
+
     def game(self, root, files):
         folder = root / "pac/steam"
         folder.mkdir(parents=True)

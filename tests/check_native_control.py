@@ -41,7 +41,7 @@ __DISABLE__};
 fixture_root=path.parent/'source'
 scripts=fixture_root/'sora_bilingual/game/scripts'
 scripts.mkdir(parents=True,exist_ok=True)
-for name in ('runtime_text.js','runtime_paragraph.js','runtime_identity.js','native_hash.js',
+for name in ('runtime_text.js','runtime_paragraph.js','runtime_books.js','native_books.js','runtime_identity.js','native_hash.js',
              'runtime_fonts.js','native_fonts.js','native_geometry.js','native_parser.js','native_measure.js','native_timing.js','native_agent.js',
              'native_transport.js','native_control.js'):
  (scripts/name).write_text(source if name=='native_agent.js' else '', 'utf8')

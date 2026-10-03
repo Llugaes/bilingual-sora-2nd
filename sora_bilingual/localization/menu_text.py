@@ -768,7 +768,9 @@ class MenuTranslator:
     def __init__(
         self, entries, primary, secondary, source_language=DEFAULT_PRIMARY, _details_only=False
     ):
-        entries = list(entries)
+        # Book bodies have locale-dependent pagination and a dedicated native
+        # document resolver. They must never enter the page/string dictionary.
+        entries = [entry for entry in entries if "book_pages" not in entry]
         # A resource-identified menu header authorizes the same detail scope
         # as a full description. Its arguments remain opaque native data.
         self.detail_headers = sorted(

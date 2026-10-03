@@ -10,6 +10,7 @@ they prove the raw command-8 inputs; they do not attach to the game.
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 from collections.abc import Iterable
 import json
 import os
@@ -23,7 +24,8 @@ from capstone.x86_const import X86_OP_IMM
 import frida
 import pefile
 
-from sora_bilingual.config.locales import archive_names
+from sora_bilingual.config.locales import LANGUAGES, archive_names
+from sora_bilingual.localization.dynamic_identity import compile_dynamic_identities
 from sora_bilingual.localization.resources import (
     FpacArchive,
     _FUNCTION,
@@ -31,7 +33,10 @@ from sora_bilingual.localization.resources import (
     _logical_script_entries,
     _parse_code,
     _string_value,
+    parse_scp,
 )
+from sora_bilingual.localization.menu_tables import sections
+from sora_bilingual.localization.tables import _logical_tables
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -113,6 +118,16 @@ def inspect_exe(exe: Path) -> dict[str, object]:
         require(command, 0x5E777F, "mov", "dword ptr [rdi + 0x10], eax")
         require(command, 0x5E7785, "mov", "dword ptr [rdi + 0x70], r9d")
 
+        # BooksTitle's inventory item ID reaches the third integer argument
+        # of system.OnBooksNoteClose; it is not a dynamic book-title string.
+        books = decoded(pe, 0x428E46, 0x100)
+        require(books, 0x428E46, "movzx", "r8d, word ptr [rbx + 0x10]")
+        require(books, 0x428EF7, "movzx", "eax, r8w")
+        require(books, 0x428EFE, "bts", "eax, 0x1e")
+        require(books, 0x428F02, "mov", "dword ptr [rsp + 0x44], eax")
+        require(books, 0x428F25, "lea", "r9, [rsp + 0x3c]")
+        require(books, 0x428F2A, "mov", "dword ptr [rsp + 0x20], 4")
+
         paths: dict[str, dict[str, int]] = {}
         for name, setup_rva, builder_call, setter_rva in HANDLERS:
             instructions = decoded(pe, setup_rva, setter_rva + 16 - setup_rva)
@@ -150,7 +165,7 @@ def _script_code(
     number = names.index(function_name)
     code_at = _FUNCTION.unpack_from(data, start + number * 32)[0]
     starts = sorted(_FUNCTION.unpack_from(data, start + index * 32)[0] for index in range(count))
-    end = next(value for value in starts if value > code_at)
+    end = next((value for value in starts if value > code_at), None)
     positions: list[int] = []
     code, _strings = _parse_code(data, code_at, end, number, names, globals_, None, positions)
     return positions, list(code), names
@@ -239,6 +254,150 @@ def actual_id220_command8(game_dir: Path) -> list[dict[str, object]]:
     return results
 
 
+def all_item_command8(game_dir: Path, catalog: Path):
+    """Compare compiled identities to raw pushes, across both helper families.
+
+    Expected tokens come directly from the outer call's item/prefix/suffix
+    words, independently of the production slot evaluator. All raw scripts
+    are scanned so an excluded catalog row cannot silently shrink the count.
+    """
+    import hashlib
+
+    entries = json.loads(catalog.read_text(encoding="utf-8"))["entries"]
+    entries = [
+        e for e in entries if e.get("producer_origin", {}).get("family") == "item_add_message"
+    ]
+    summaries, fixtures = {}, []
+    for language in LANGUAGES:
+        compiled = compile_dynamic_identities(game_dir, entries, "zh-Hans", "en", language)
+        checked, shapes = 0, Counter()
+        with FpacArchive(game_dir / "pac/steam" / archive_names("script")[language]) as archive:
+            for path, actual in _logical_script_entries(archive).items():
+                data = archive.read(actual)
+                script = parse_scp(data)
+                digest = hashlib.sha256(data).hexdigest()
+                for name, function in script.functions.items():
+                    calls = [
+                        (i, call)
+                        for i, call in enumerate(function.called)
+                        if call.kind == 0
+                        and call.target
+                        in (
+                            "ITEM_ADD_MESSAGE_EV",
+                            "ITEM_ADD_MESSAGE_TK",
+                            "ITEM_ADD_MESSAGE2_EV",
+                            "ITEM_ADD_MESSAGE2_TK",
+                        )
+                    ]
+                    if not calls:
+                        continue
+                    positions, code, _ = _script_code(data, name)
+                    sites = [
+                        i
+                        for i, op in enumerate(code)
+                        if op[0] in ("local-call", "external-call", "system-call")
+                    ]
+                    for call_id, call in calls:
+                        at = sites[call_id]
+                        item = _push_token(data, positions[at - 1])
+                        assert item == 0x40000000 | call.args[0][1]
+                        if "MESSAGE2_" in call.target:
+                            prefix = _push_token(data, positions[at - 2])
+                            suffix = _push_token(data, positions[at - 3])
+                            tokens = [0x4000FFFF, 0x40000010, prefix, 0x40000011, item, suffix]
+                        else:
+                            suffix = _push_token(data, positions[at - 2])
+                            tokens = [0x4000FFFF, 0x40000010, 0x40000011, item, suffix]
+                        token_key = ",".join(map(str, tokens))
+                        row = (
+                            compiled["scripts"].get(digest, {}).get(call.target, {}).get(token_key)
+                        )
+                        expected_key = (
+                            f"dynamic/{path}/{name}/called/{call_id}/item/{call.args[0][1]}"
+                        )
+                        assert row and row["recordKey"] == expected_key, (
+                            language,
+                            path,
+                            name,
+                            call_id,
+                        )
+                        assert row["callId"] == call_id
+                        shape = (call.target, len(call.args))
+                        if not shapes[shape] and language in ("ja", "zh-Hans"):
+                            fixtures.append(
+                                {
+                                    "function": name,
+                                    "called": call_id,
+                                    "helper": call.target,
+                                    "pc": row["pc"],
+                                    "tokens": tokens,
+                                }
+                            )
+                        shapes[shape] += 1
+                        checked += 1
+        assert checked == compiled["stats"]["emitted"] == len(entries), (
+            language,
+            checked,
+            compiled["stats"],
+        )
+        summaries[language] = {
+            "raw_calls": checked,
+            "compiled": compiled["stats"],
+            "shapes": {f"{name}/{argc}": count for (name, argc), count in shapes.items()},
+        }
+    return summaries, fixtures
+
+
+def book_registration_contract(game_dir: Path):
+    result = {}
+    for language in LANGUAGES:
+        with FpacArchive(game_dir / "pac/steam" / archive_names("script")[language]) as archive:
+            data = archive.read(_logical_script_entries(archive)["script/scena/system.dat"])
+        script = parse_scp(data)
+        assert script.functions["RegisterBook"].arg_types == (1,)
+        assert script.functions["OnBooksNoteClose"].arg_types == (1, 1, 1, 1)
+        _, code, _ = _script_code(data, "RegisterBook")
+        sites = [i for i, op in enumerate(code) if op[:3] == ("system-call", 5, 8)]
+        assert len(sites) == 1
+        site = sites[0]
+        argc = code[site][3]
+        assert argc in (5, 6)
+        # Japanese has no prefix. Both forms pass the same integer item ID.
+        expected = [
+            ("push", "string"),
+            ("slot", 2, 2),
+            ("push", "int", 17),
+        ]
+        if argc == 6:
+            expected.append(("push", "string"))
+        expected.extend(
+            [
+                ("push", "int", 16),
+                ("push", "int", 65535),
+                ("system-call", 5, 8, argc),
+            ]
+        )
+        assert code[site - argc : site + 1] == expected
+        _, code, _ = _script_code(data, "OnBooksNoteClose")
+        site = code.index(("local-call", "RegisterBook"))
+        assert code[site - 2][0] == "prepare-local"
+        assert code[site - 1] == ("slot", 2, 5)
+        with FpacArchive(game_dir / "pac/steam" / archive_names("table")[language]) as archive:
+            data = archive.read(_logical_tables(archive)["table/t_books.tbl"])
+        _, start, stride, count = next(row for row in sections(data) if row[0] == "BooksTitle")
+        assert stride == 24
+        ids = sorted(
+            {
+                struct.unpack_from("<H", data, start + index * stride + 0x10)[0]
+                for index in range(count)
+            }
+            - {0}
+        )
+        result[language] = ids
+    assert len({tuple(ids) for ids in result.values()}) == 1
+    return result
+
+
 def fixture_source(cases: list[dict[str, object]]) -> str:
     """Return a self-hosted ABI fixture for the statically derived VM tokens."""
     encoded_cases = json.dumps(cases, separators=(",", ":"))
@@ -251,14 +410,14 @@ __attribute__((noinline)) void fixture_builder(void *context,char *out,void *unk
     int top=*(int *)((char *)vm+0x64),argc=*(int *)((char *)vm+0x70);
     // Match the real builder's reverse read for six command-8 raw words.
     u32 window=0,prefix=0,opcode=0,item=0,suffix=0;
-    if(argc==6) {{
+    if(argc==5 || argc==6) {{
         window=*(u32 *)(stack+top-1*4);
-        prefix=*(u32 *)(stack+top-3*4);
-        opcode=*(u32 *)(stack+top-4*4);
-        item=*(u32 *)(stack+top-5*4);
-        suffix=*(u32 *)(stack+top-6*4);
+        prefix=argc==6 ? *(u32 *)(stack+top-3*4) : 1;
+        opcode=*(u32 *)(stack+top-(argc-2)*4);
+        item=*(u32 *)(stack+top-(argc-1)*4);
+        suffix=*(u32 *)(stack+top-argc*4);
     }}
-    const char *text=(window==0x4000ffff && prefix!=0 && opcode==0x40000011 && item==0x400000dc && suffix!=0) ? "same-byte-notification" : "rejected";
+    const char *text=(window==0x4000ffff && prefix!=0 && opcode==0x40000011 && (item&0xc0000000)==0x40000000 && suffix!=0) ? "same-byte-notification" : "rejected";
     int i=0; do {{ out[i]=text[i]; }} while(text[i++]);
 }}
 __attribute__((noinline)) void fixture_set_text(void *label,char *text) {{ *(char **)label=text; }}
@@ -276,7 +435,7 @@ function capture(vm){{
     return {{functionName:name,values,site:{{pc:vm.add(0x10).readU32(),group:vm.add(0x68).readU32(),command:vm.add(0x6c).readU32()}}}};
 }}
 function vm(spec){{
-    const tokens=spec.tokens,value=Memory.alloc(0x100),stack=Memory.alloc(tokens.length*4),name=Memory.allocUtf8String('ITEM_ADD_MESSAGE2_EV');
+    const tokens=spec.tokens,value=Memory.alloc(0x100),stack=Memory.alloc(tokens.length*4),name=Memory.allocUtf8String(spec.helper||'ITEM_ADD_MESSAGE2_EV');
     const top=tokens.length*4;
     tokens.forEach((token,index)=>stack.add(top-(index+1)*4).writeU32(token));
     value.add(0x58).writePointer(stack);value.add(0x64).writeS32(top);value.add(0x70).writeU32(tokens.length);
@@ -298,7 +457,7 @@ rpc.exports={{run(){{
     check(deliveries.length===cases.length,'expected every derived command-8 delivery');
     for(const [index,spec] of cases.entries()){{
         const got=deliveries[index].candidate;
-        check(got.functionName==='ITEM_ADD_MESSAGE2_EV','helper function name changed');
+        check(got.functionName===(spec.helper||'ITEM_ADD_MESSAGE2_EV'),'helper function name changed');
         check(JSON.stringify(got.values)===JSON.stringify(spec.tokens),'VM stack order changed');
         check(got.site.pc===spec.pc&&got.site.group===5&&got.site.command===8,'VM site contract changed');
     }}
@@ -338,6 +497,10 @@ def run_fixture(cases: list[dict[str, object]]) -> dict[str, object]:
 def main(argv: Iterable[str] | None = None) -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--exe", type=Path, help="verified sora_2nd.exe; defaults to SORA_GAME_EXE")
+    parser.add_argument(
+        "--catalog", type=Path, help="also scan every raw item helper in all locales"
+    )
+    parser.add_argument("--output", type=Path)
     args = parser.parse_args(argv)
     environment = os.environ.get("SORA_GAME_EXE")
     executable = args.exe or (Path(environment) if environment else None)
@@ -356,10 +519,24 @@ def main(argv: Iterable[str] | None = None) -> None:
     if not executable.is_file():
         raise SystemExit(f"missing game executable: {executable}")
     static = inspect_exe(executable)
+    books = book_registration_contract(executable.parent)
     actual_command8 = actual_id220_command8(executable.parent)
+    sweep = None
+    if args.catalog:
+        sweep, extra = all_item_command8(executable.parent, args.catalog)
+        actual_command8.extend(extra)
     fixture = run_fixture(actual_command8)
     assert fixture["game_attached"] is False
-    print({"static": static, "actual_command8": actual_command8, "fixture": fixture})
+    result = {
+        "static": static,
+        "actual_command8": actual_command8,
+        "fixture": fixture,
+        "sweep": sweep,
+        "book_item_ids": books,
+    }
+    if args.output:
+        args.output.write_text(json.dumps(result, indent=2), encoding="utf-8")
+    print({"static": static, "fixture_deliveries": len(fixture["deliveries"]), "sweep": sweep})
 
 
 if __name__ == "__main__":

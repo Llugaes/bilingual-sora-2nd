@@ -146,6 +146,20 @@ def load_model(entries, signature, config, output=ROOT / "generated", *, game):
         config.get("game_language", DEFAULT_PRIMARY),
     )
     model = translator.runtime_model()
+    source = config.get("game_language", DEFAULT_PRIMARY)
+    model["books"] = {
+        str(entry["book_id"]): {
+            "source": entry["book_pages"][source],
+            "primary": entry["book_pages"][config["primary"]],
+            "secondary": entry["book_pages"][config["secondary"]],
+        }
+        for entry in selected
+        if "book_pages" in entry
+        and all(
+            language in entry["book_pages"]
+            for language in (source, config["primary"], config["secondary"])
+        )
+    }
     if grammar:
         model["item_help_audit"] = grammar["audit"]
     coverage = Counter()

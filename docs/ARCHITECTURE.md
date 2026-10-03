@@ -202,7 +202,7 @@ VM 的 `+0x10` 是 system-call 消费操作码和参数数量后的 PC。仅当�
 
 动态系统提示另由 `dynamic_producers.py` 读取原始 PAC/table 编译。数值槽保留实际 opcode 决定的全角／半角宽度；食谱和物品获得提示按有限 item ID 生成完整句子，避免将多个富文本片段分别塞入注音。缺少无关语言或某语言有同名歧义只产生审计项，不全局删除整条多语言记录。每条完整提示在单行情况下拥有一个副文层，颜色状态独立封闭。
 
-`item_help_composition.py` 从原始效果参数类型及槽位建立有限组合规则：磁盘 `SkillParam` 为 `+0x30..+0x70` 五个槽，`ItemTableData` 为 `+0x3c..+0x7c` 五个槽。原始实例的五槽检查与通用类型组合的三槽枚举分开，避免将全部排列扩展成五阶组合。概率、回合、强度和属性组按游戏各语言的 LINK 与模板顺序组装，只进入详情专用模型；拆开的状态标签作为完整候选加入普通冲突检查。构建报告保留未覆盖的混合效果组，不能把这些组直接算成已证明的屏幕漏译或成功覆盖。
+`item_help_composition.py` 从原始效果参数类型及槽位建立有限组合规则：磁盘 `SkillParam` 为 `+0x30..+0x70` 五个槽，`ItemTableData` 为 `+0x3c..+0x7c` 五个槽。原始实例的五槽检查与通用类型组合的三槽枚举分开；对实际存在的四／五成员组，按原生连接类别和参数相等条件加入有序构造，避免将全部排列扩展成五阶组合。概率、回合、强度和属性组按游戏各语言的 LINK 与模板顺序组装，只进入详情专用模型；拆开的状态标签作为完整候选加入普通冲突检查。构建报告保留未覆盖的混合效果组，不能把这些组直接算成已证明的屏幕漏译或成功覆盖。
 
 道具 normalizer `0x23f010` 的源对象是 `0x23ef20` 返回的原始 `ItemTableData` 行；现场 ID 4050 与 PAC 同时证明首槽 1092、第二槽 1033。此前只读 `+0x6c` 后三个槽会漏掉这两个效果。`SkillConnectListData` 另外决定组合分支，不等同于单个效果的 parameter type；原生分支 17 将首个 name 与后续 stat＋format 按 LINK 拼接，每段独立保留自己的数值。成员从资源读取，不在代码中列举道具名称。
 
@@ -243,3 +243,11 @@ VM 的 `+0x10` 是 system-call 消费操作码和参数数量后的 PC。仅当�
 字体 face 切换后，原生 SetText 和字形重测不会自动更换已存在标签的材质图集。Update 按 font generation 调用 `createFontMaterialRefresh`，比较 normal 和有效 shadow image，再按需调用标签虚函数 `+0x28`（`0x588B40`）更新普通字形 primitive、退休旧 icon/shadow batch。释放后的 shadow handle 清零；完成后才登记新代次，setter 元数据采集不能提前登记。稳定帧不重复检查，新标签已使用新图集时不重复重建。
 
 地图列表与详情的 `spot_name` builder 先复制 MapJumpSpotData 名称并删除 LF，SetText 时已丢失表指针。该控件家族使用由完整地点表生成的 `map_spot` 上下文；不按具体地名补词，不覆盖 ViewerMapData 的真实措辞差异。原始八语资源、完整目录与最终副文审计见 [字体、性能与地图地点检查](verification/hud-performance-and-map.md)。
+
+
+## 书籍全文与分页
+
+BooksText 使用章节 ID 建立完整文档；各语言物理页保留为原始资源记录，不将页号当作跨语正文身份。
+`RuntimeBooks` 负责全文分配与缓存，`native_books.js` 负责原生页数、页面查询、正文来源及书签转换。
+主语言确定插图，双语按整章阅读进度共用分页；单语言保留所选语言原页，关闭 MOD 恢复原书页。
+只对阅读器的已验证查询／正文路径生效，不将全书文本加入普通菜单词典。见 [书籍验证](verification/book-pagination.md)。

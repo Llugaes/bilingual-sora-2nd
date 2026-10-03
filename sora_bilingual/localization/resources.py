@@ -651,6 +651,63 @@ def _has_display_text(call: Called) -> bool:
     return any(call.display_text_slots())
 
 
+def _speaker_payload_shape(call: Called):
+    """Name text is independent of the native setter's boolean persistence flag.
+
+    chr_set_display_name passes operation 0 to command 1/120. At 0x4784b6
+    the last argument becomes actor_name_set's r8b; 0x217f90 copies the same
+    rdx text unconditionally, then stores that flag at actor+0x25c6. Retain
+    actor identity and reject unknown tails; this shape only aligns payloads.
+    """
+    if (
+        call.kind != 0
+        or call.target != "chr_set_display_name"
+        or len(call.args) not in (2, 3)
+        or call.args[0][0] != "int"
+        or call.args[1][0] != "string"
+    ):
+        return None
+    if len(call.args) == 3 and call.args[2] not in (("int", 0), ("int", 1)):
+        return None
+    return call.target, call.kind, call.args[0], "name-payload"
+
+
+def _item_notification_metadata_shape(call: Called):
+    """Align the same item event despite locale-specific prefix/suffix helpers.
+
+    Both helper families run the same opcode-17 item resolver. The split
+    family adds a localized prefix; EV's omitted style is declared as 9.
+    This guards call order only; dynamic texts still use their own producer.
+    """
+    targets = {
+        "ITEM_ADD_MESSAGE_EV": ("EV", 2),
+        "ITEM_ADD_MESSAGE2_EV": ("EV", 3),
+        "ITEM_ADD_MESSAGE_TK": ("TK", 2),
+        "ITEM_ADD_MESSAGE2_TK": ("TK", 3),
+    }
+    if call.kind != 0 or call.target not in targets:
+        return None
+    family, required = targets[call.target]
+    if (
+        len(call.args) not in (required, required + (family == "EV"))
+        or call.args[0][0] != "int"
+        or any(arg[0] != "string" for arg in call.args[1:required])
+    ):
+        return None
+    style = call.args[required:] or (("int", 9),) if family == "EV" else ()
+    if any(kind != "int" for kind, _ in style):
+        return None
+    return "item-notification", family, call.args[0], style
+
+
+def _same_known_payload(left: Called, right: Called) -> bool:
+    for shape in (_speaker_payload_shape, _item_notification_metadata_shape):
+        value = shape(left)
+        if value is not None and value == shape(right):
+            return True
+    return False
+
+
 def _optional_default_speaker_equivalent(left: Called, right: Called) -> bool:
     """Accept only command-0's explicitly encoded zero versus its omission.
 
@@ -719,7 +776,9 @@ def _aligned_call_map(reference: Function, candidate: Function) -> dict[int, int
     if len(reference.called) == len(candidate.called):
         allow_default_speaker = _whole_sequence_allows_default_speaker(reference, candidate)
         for index, (left, right) in enumerate(zip(reference.called, candidate.called, strict=True)):
-            if reference_shapes[index] == candidate_shapes[index]:
+            if reference_shapes[index] == candidate_shapes[index] or _same_known_payload(
+                left, right
+            ):
                 mapped[index] = index
                 continue
             if allow_default_speaker and _optional_default_speaker_equivalent(left, right):
@@ -810,7 +869,10 @@ def _aligned_display_records(path, function_name, functions, called_shapes, audi
                 language: called
                 for language in sorted(functions)
                 if (called := mappings[language].get(reference_called)) is not None
-                and functions[language].called[called].shape() == reference_call.shape()
+                and (
+                    functions[language].called[called].shape() == reference_call.shape()
+                    or _same_known_payload(functions[language].called[called], reference_call)
+                )
             }
             languages = set(called_ids)
             if len(languages) >= 2 and not any(
@@ -821,7 +883,10 @@ def _aligned_display_records(path, function_name, functions, called_shapes, audi
                     reference_language,
                     reference_called,
                     tuple(sorted(called_ids.items())),
-                    reference_call.shape(),
+                    tuple(
+                        (language, functions[language].called[called].shape())
+                        for language, called in sorted(called_ids.items())
+                    ),
                 )
                 suffix = "/alignment/" + hashlib.sha256(repr(identity).encode()).hexdigest()
                 entries.append(

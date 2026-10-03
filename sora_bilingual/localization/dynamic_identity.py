@@ -16,6 +16,7 @@ from typing import Any, Iterable
 
 from sora_bilingual.config.locales import archive_names
 from sora_bilingual.localization.menu_text import MenuTranslator
+from sora_bilingual.localization.dynamic_producers import _ITEM_CALLEES
 from sora_bilingual.localization.resources import (
     FpacArchive,
     FormatError,
@@ -28,7 +29,6 @@ from sora_bilingual.localization.resources import (
 )
 
 
-_HELPER_PREFIX = "ITEM_ADD_MESSAGE2_"
 _HELPER_SHAPE = (
     ("slot", 2, 3),
     ("slot", 2, 2),
@@ -37,6 +37,14 @@ _HELPER_SHAPE = (
     ("push", "int", 16),
     ("push", "int", 65535),
     ("system-call", 5, 8, 6),
+)
+_SUFFIX_HELPER_SHAPE = (
+    ("slot", 2, 2),
+    ("slot", 2, 2),
+    ("push", "int", 17),
+    ("push", "int", 16),
+    ("push", "int", 65535),
+    ("system-call", 5, 8, 5),
 )
 
 
@@ -75,56 +83,61 @@ def _called_index(code: list[tuple[Any, ...]], position: int) -> int:
     )
 
 
-def _helper_site(data: bytes, helper: str) -> tuple[int, list[tuple[Any, ...]]]:
+def _helper_site(data: bytes, helper: str) -> tuple[int, tuple[tuple[Any, ...], ...]]:
     positions, code = _function_code(data, helper)
-    try:
-        system = code.index(("system-call", 5, 8, 6))
-    except ValueError as exc:
-        raise ValueError("helper has no command-8 call") from exc
-    if tuple(code[system - 6 : system + 1]) != _HELPER_SHAPE:
+    sites = [i for i, op in enumerate(code) if op[:3] == ("system-call", 5, 8)]
+    if len(sites) != 1:
+        raise ValueError("helper must have exactly one command-8 forwarding site")
+    system = sites[0]
+    program = tuple(code[system - code[system][3] : system + 1])
+    if program not in (_HELPER_SHAPE, _SUFFIX_HELPER_SHAPE):
         raise ValueError("helper command-8 forwarding shape differs")
-    if sum(item == ("system-call", 5, 8, 6) for item in code) != 1:
-        raise ValueError("helper has more than one command-8 forwarding site")
     # opcode 36 is one byte plus group, command and argc bytes.  The VM PC is
     # advanced past these operands before the native system handler is called.
-    return positions[system] + 4, code
+    return positions[system] + 4, program
 
 
 def _resolved_tokens(
-    data: bytes, positions: list[int], code: list[tuple[Any, ...]], call_at: int
+    data: bytes,
+    positions: list[int],
+    code: list[tuple[Any, ...]],
+    call_at: int,
+    argument_types: tuple[int, ...],
+    program: tuple[tuple[Any, ...], ...] = _HELPER_SHAPE,
 ) -> list[int]:
-    """Execute the helper's verified three ``slot`` copies on its local frame."""
-    frame = code[call_at - 5 : call_at + 1]
+    """Execute the helper's verified slot copies on its declared local frame."""
+    if program not in (_HELPER_SHAPE, _SUFFIX_HELPER_SHAPE):
+        raise ValueError("helper command-8 forwarding shape differs")
+    # The declaration is in argument order; executable pushes are reversed.
+    # Bit 3 marks a defaultable argument, not a different value type. Require
+    # every declared argument here: omitted defaults need separate VM proof.
+    kinds = {1: "int", 2: "string"}
+    expected = tuple(kinds.get(kind & ~8) for kind in reversed(argument_types))
+    start = call_at - len(expected) - 1
+    frame = code[start : call_at + 1] if start >= 0 else []
     if (
-        len(frame) != 6
+        not expected
+        or None in expected
+        or len(frame) != len(expected) + 2
         or frame[0][0] != "prepare-local"
         or frame[-1][0] != "local-call"
-        or tuple(item[:2] for item in frame[1:5])
-        != (("push", "int"), ("push", "string"), ("push", "string"), ("push", "int"))
+        or tuple(item[:2] for item in frame[1:-1]) != tuple(("push", kind) for kind in expected)
     ):
         raise ValueError("outer local-call frame differs")
-    # The outer caller pushes style, suffix, prefix, item.  Opcode 2 reads
+    # Both the three-argument TK and four-argument EV frames end in the same
+    # suffix, prefix, item sequence. The unused EV style precedes it. Opcode 2 reads
     # stack[top - N*4], then increments top.  Therefore its N operand is a
     # dynamic stack offset, never a hard-coded function-argument index.
-    stack = [_push_raw(data, positions[call_at - offset]) for offset in (4, 3, 2, 1)]
-    top = len(stack)
-
-    def slot(number: int) -> None:
-        nonlocal top
-        source = top - number
-        if source < 0 or source >= len(stack):
-            raise ValueError("slot copy escapes the local call frame")
-        stack.append(stack[source])
-        top += 1
-
-    slot(3)
-    slot(2)
-    stack.append(0x40000011)
-    top += 1
-    slot(5)
-    stack.extend((0x40000010, 0x4000FFFF))
-    top += 2
-    return [stack[top - (index + 1)] for index in range(6)]
+    stack = [_push_raw(data, positions[index]) for index in range(start + 1, call_at)]
+    for op in program[:-1]:
+        if op[0] == "slot":
+            source = len(stack) - op[2]
+            if source < 0 or source >= len(stack):
+                raise ValueError("slot copy escapes the local call frame")
+            stack.append(stack[source])
+        else:
+            stack.append(0x40000000 | op[2])
+    return list(reversed(stack[-program[-1][3] :]))
 
 
 def _record_key(entry: dict[str, Any]) -> tuple[str, str, int] | None:
@@ -220,7 +233,7 @@ def compile_dynamic_identities(
                 data = archive.read(actual)
                 digest = hashlib.sha256(data).hexdigest()
                 script = parse_scp(data)
-                helper_cache: dict[str, int] = {}
+                helper_cache = {}
                 code_cache: dict[str, tuple[list[int], list[tuple[Any, ...]]]] = {}
                 for entry in selected:
                     path, function, canonical = _record_key(entry)  # type: ignore[misc]
@@ -233,13 +246,13 @@ def compile_dynamic_identities(
                         stats["missing_outer_calls"] += 1
                         continue
                     helper = outer.called[call_id].target
-                    if not isinstance(helper, str) or not helper.startswith(_HELPER_PREFIX):
+                    if helper not in _ITEM_CALLEES:
                         stats["unsupported_helpers"] += 1
                         continue
                     try:
                         if helper not in helper_cache:
-                            helper_cache[helper] = _helper_site(data, helper)[0]
-                        helper_pc = helper_cache[helper]
+                            helper_cache[helper] = _helper_site(data, helper)
+                        helper_pc, program = helper_cache[helper]
                         if function not in code_cache:
                             code_cache[function] = _function_code(data, function)
                         positions, code = code_cache[function]
@@ -254,7 +267,14 @@ def compile_dynamic_identities(
                             or _called_index(code, call_at) != call_id
                         ):
                             raise ValueError("called metadata/code position mismatch")
-                        tokens = _resolved_tokens(data, positions, code, call_at)
+                        tokens = _resolved_tokens(
+                            data,
+                            positions,
+                            code,
+                            call_at,
+                            script.functions[helper].arg_types,
+                            program,
+                        )
                     except (IndexError, ValueError, FormatError) as exc:
                         stats["rejected_bytecode"] += 1
                         detail = str(exc)

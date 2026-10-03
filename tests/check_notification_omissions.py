@@ -8,6 +8,7 @@ offline catalog/render evidence only; it is not live-game validation.
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import json
 import shutil
@@ -68,10 +69,10 @@ const input=JSON.parse(require('fs').readFileSync(0,'utf8'));
 const visible=s=>s.replace(/<[^<>]*>/g,'').replace(/\s/g,'');
 const identities=new ScriptIdentities(input.scriptIdentities), logs=new LogIdentities();
 const rows=input.cases.map((c,index)=>{
- const raw=Uint8Array.from(c.blob), identity=identities.capture(c.signature,n=>raw.slice(0,n),c.helper,c.argumentsToken,{pc:c.pc,group:5,command:8},c.source);
+ const raw=Buffer.from(input.blobs[c.blobKey],'base64'), identity=identities.capture(c.signature,n=>raw.slice(0,n),c.helper,c.argumentsToken,{pc:c.pc,group:5,command:8},c.source);
  if(!identity)return {recordKey:c.recordKey,icon:c.icon,pass:false,stage:'capture'};
- logs.commit(index,'id220/'+index,identity);
- const committed=logs.lookup(index,'id220/'+index), selected=identities.lookup(committed,c.source);
+ logs.commit(index,'item/'+index,identity);
+ const committed=logs.lookup(index,'item/'+index), selected=identities.lookup(committed,c.source);
  if(!selected)return {recordKey:c.recordKey,icon:c.icon,pass:false,stage:'lookup'};
  const runtime=new RuntimeText(selected.model), plan=runtime.render(c.source,'annotation');
  const payload=plan.layers.map(layer=>layer.text).join('')+ [...plan.text.matchAll(/<R>[\s\S]*?<\/R([^<>]*)>/g)].map(m=>m[1]==='_'?'':m[1]).join('');
@@ -156,6 +157,7 @@ def _raw_producer_denominator(game: Path):
         (_SYSTEM_PATH, "OnQuestAddBP", 3): ("on_quest_add_bp", frozenset((18,))),
         (_SYSTEM_PATH, "RestShopProcess", 3): ("rest_shop_process", frozenset((18, 23))),
         (_SYSTEM_PATH, "UnLockRecipe", 2): ("unlock_recipe", frozenset((17,))),
+        (_SYSTEM_PATH, "RegisterBook", 2): ("register_book", frozenset((17,))),
     }
     per_locale = {}
     unknown: list[dict[str, object]] = []
@@ -274,6 +276,7 @@ def _all_producer_cases(entries: list[dict], secondary: str):
         "on_quest_add_bp": (-2147483648, -1, 0, 2, 200, 2147483647),
         "rest_shop_process": (-2147483648, -1, 0, 2, 200, 2147483647),
         "unlock_recipe": (5, 10, 110, 2147483647),
+        "register_book": (5, 10, 110, 2147483647),
         "item_add_message": (5, 10, 110, 2147483647),
     }
     rows = [entry for entry in entries if entry.get("dynamic_producer")]
@@ -304,68 +307,66 @@ def _all_producer_cases(entries: list[dict], secondary: str):
 
 
 def _identity_cases(entries: list[dict], model_path: Path, secondary: str, game: Path):
-    """Exercise production capture, history commit and lookup for ID 220."""
-    by_key = {entry["key"]: entry for entry in entries}
-    path = "script/scena/mp3000_ev.dat"
-    with FpacArchive(game / "pac" / "steam" / archive_names("script")[SOURCE]) as archive:
-        blob = archive.read(_logical_script_entries(archive)[path])
-    digest = hashlib.sha256(blob).hexdigest()
-    signature = script_signature(blob)
-    helper = "ITEM_ADD_MESSAGE2_EV"
-    # Use the persisted production model wholesale.  The identity test must
-    # exercise its real manifest and its installed dynamic-producer index,
-    # rather than a hand-built size/SHA/function candidate.
-    script_identities = json.loads(model_path.read_text(encoding="utf-8")).get("script_identities")
-    if not isinstance(script_identities, dict):
-        raise AssertionError("final model has no script identity model")
-    identities = script_identities.get("dynamic_producers")
-    if not isinstance(identities, dict):
-        raise AssertionError("final model has no dynamic producer identities")
-    indexed = identities.get("scripts", {}).get(digest, {}).get(helper, {})
-    manifest = script_identities.get("manifest", {}).get(signature, [])
-    if not any(
-        row.get("size") == len(blob)
-        and row.get("sha256") == digest
-        and helper in row.get("functions", [])
-        for row in manifest
-        if isinstance(row, dict)
-    ):
-        raise AssertionError("final model manifest does not admit the actual mp3000 blob")
-    cases = []
-    for key in ID220_RECORDS:
-        entry = by_key.get(key)
-        if entry is None:
-            raise AssertionError(f"ID 220 catalog row missing: {key}")
-        primary = entry["texts"][SOURCE]
-        expected = entry["texts"][secondary]
-        row = next((row for row in indexed.values() if row["recordKey"] == key), None)
-        if row is None:
-            raise AssertionError(f"ID 220 identity row missing: {key}")
-        for icon in (5, 10, 110, 2147483647):
-            source = primary.replace("%d", str(icon))
-            if icon == 5 and source != ID220_SOURCE:
-                raise AssertionError(f"ID 220 source differs: {key}")
-            cases.append(
-                {
-                    "recordKey": key,
-                    "icon": icon,
-                    "blob": list(blob),
-                    "signature": signature,
-                    "helper": helper,
-                    "argumentsToken": next(
-                        token for token, value in indexed.items() if value is row
-                    ),
-                    "pc": row["pc"],
-                    "source": source,
-                    "primary": source,
-                    "secondary": expected.replace("%d", str(icon)),
-                }
+    """Exercise every physical item call through capture, log commit and render."""
+    selected = [
+        entry
+        for entry in entries
+        if entry.get("producer_origin", {}).get("family") == "item_add_message"
+    ]
+    assert set(ID220_RECORDS) <= {entry["key"] for entry in selected}
+    script_identities = json.loads(model_path.read_text(encoding="utf-8"))["script_identities"]
+    identities = script_identities["dynamic_producers"]
+    cases, blobs, sources = [], {}, {}
+    with FpacArchive(game / "pac/steam" / archive_names("script")[SOURCE]) as archive:
+        logical = _logical_script_entries(archive)
+        for entry in selected:
+            path = entry["producer_origin"]["signature"]["path"]
+            if path not in sources:
+                blob = archive.read(logical[path])
+                digest = hashlib.sha256(blob).hexdigest()
+                signature = script_signature(blob)
+                blobs[digest] = base64.b64encode(blob).decode("ascii")
+                sources[path] = (digest, signature, len(blob))
+            digest, signature, size = sources[path]
+            matches = [
+                (helper, token, row)
+                for helper, indexed in identities["scripts"].get(digest, {}).items()
+                for token, row in indexed.items()
+                if row["recordKey"] == entry["key"]
+            ]
+            if len(matches) != 1:
+                raise AssertionError(f"item call must have one identity: {entry['key']}")
+            helper, token, row = matches[0]
+            assert any(
+                candidate.get("size") == size
+                and candidate.get("sha256") == digest
+                and helper in candidate.get("functions", [])
+                for candidate in script_identities["manifest"].get(signature, [])
             )
+            for icon in (5, 10, 110, 2147483647):
+                source = entry["texts"][SOURCE].replace("%d", str(icon))
+                if entry["key"] in ID220_RECORDS and icon == 5:
+                    assert source == ID220_SOURCE
+                cases.append(
+                    {
+                        "recordKey": entry["key"],
+                        "icon": icon,
+                        "blobKey": digest,
+                        "signature": signature,
+                        "helper": helper,
+                        "argumentsToken": token,
+                        "pc": row["pc"],
+                        "source": source,
+                        "primary": source,
+                        "secondary": entry["texts"][secondary].replace("%d", str(icon)),
+                    }
+                )
     completed = subprocess.run(
         ["node", "-e", IDENTITY_RUNNER],
         cwd=ROOT,
         input=json.dumps(
-            {"scriptIdentities": script_identities, "cases": cases}, ensure_ascii=False
+            {"scriptIdentities": script_identities, "cases": cases, "blobs": blobs},
+            ensure_ascii=False,
         ),
         text=True,
         encoding="utf-8",
@@ -597,7 +598,7 @@ def main():
                     ),
                 }
             )
-            report["all_passed"] &= passed
+            report["all_passed"] &= passed and identity_passed
     finally:
         if temporary is not None:
             temporary.cleanup()

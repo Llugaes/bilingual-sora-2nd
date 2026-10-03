@@ -36,11 +36,30 @@ EFFECT_LAYOUTS = {
 # The item normalizer at 0x23f010 reads the loaded ItemTableData row returned
 # by 0x23ef20, copying +0x3c..+0x7c into the normalized five-slot record.
 # Live ID 4050 and the raw PAC agree on the first two effects (1092, 1033).
-# Existing typed families are only proven for
-# combinations of at most three effects; raw capacity must never widen their
-# permutations.
+# Keep speculative permutations bounded; actual native groups may use all five
+# slots. The native grouping loop at 0x34b9ea..0x34bb26 accepts matching kinds
+# and parameters across the remaining slots, including non-adjacent members.
 MAX_RAW_GROUP_SLOTS = 5
 MAX_TYPED_GROUP_SLOTS = 3
+
+
+def _aggregate_sequences(members, groups, *, minimum=2, shared_values=True):
+    """Bound permutations, then include wider groups proven by installed slots."""
+    members = tuple(members)
+    for length in range(minimum, min(MAX_TYPED_GROUP_SLOTS, len(members)) + 1):
+        yield from permutations(members, length)
+    wide = set()
+    for group in groups:
+        buckets = {}
+        for slot in group:
+            if slot[0] in members:
+                key = slot[1:] if shared_values else ()
+                buckets.setdefault(key, []).append(slot[0])
+        for ids in buckets.values():
+            if MAX_TYPED_GROUP_SLOTS < len(ids) <= MAX_RAW_GROUP_SLOTS:
+                wide.add(tuple(ids))
+    yield from sorted(wide)
+
 
 # In ItemKindHelpData, the high word of the first scalar selects the item
 # category. The seven elemental quartz label templates use categories 20..26.
@@ -591,16 +610,15 @@ def compile_item_help_grammar(
         )
 
     if chance_proven:
-        for length in range(2, max_group_slots + 1):
-            for ids in permutations(chance, length):
-                _add_unique(
-                    generated,
-                    _aggregate_name(catalogue, tuple(chance[i] for i in ids), languages),
-                    "chance_group",
-                    ids,
-                    languages,
-                    parameter_types=[1],
-                )
+        for ids in _aggregate_sequences(chance, raw_groups):
+            _add_unique(
+                generated,
+                _aggregate_name(catalogue, tuple(chance[i] for i in ids), languages),
+                "chance_group",
+                ids,
+                languages,
+                parameter_types=[1],
+            )
     # SkillConnectListData selects the native constructor independently from
     # each effect's parameter type. Branch 17 (0x34de3f) formats the first
     # effect's name, then each following stat + format, with separate numbers.
@@ -612,51 +630,46 @@ def compile_item_help_grammar(
         members = tuple(connection["ids"])
         if not any(sum(slot[0] in members for slot in group) > 1 for group in groups):
             continue
-        for length in range(2, min(MAX_TYPED_GROUP_SLOTS, len(members)) + 1):
-            for ids in permutations(members, length):
-                records = [fields[by_id[record_id][0]] for record_id in ids]
-                if any(not row["stat"] or not row["format"] for row in records):
-                    raise ItemHelpContractError("independent numeric constructor fields missing")
-                if any(by_id[record_id][1]["parameter_types"] != (1,) for record_id in ids):
-                    raise ItemHelpContractError(
-                        "independent numeric constructor parameters changed"
-                    )
-                texts = {}
-                link = _constant(catalogue, "LINK", languages)
-                for language in languages:
-                    parts = [records[0]["name"][language]] + [
-                        row["stat"][language] + row["format"][language] for row in records[1:]
-                    ]
-                    if any(not _one_field(part, "d") for part in parts):
-                        raise ItemHelpContractError(
-                            "independent numeric constructor fields changed"
-                        )
-                    texts[language] = link[language].join(parts)
+        for ids in _aggregate_sequences(members, raw_groups, shared_values=False):
+            records = [fields[by_id[record_id][0]] for record_id in ids]
+            if any(not row["stat"] or not row["format"] for row in records):
+                raise ItemHelpContractError("independent numeric constructor fields missing")
+            if any(by_id[record_id][1]["parameter_types"] != (1,) for record_id in ids):
+                raise ItemHelpContractError("independent numeric constructor parameters changed")
+            texts = {}
+            link = _constant(catalogue, "LINK", languages)
+            for language in languages:
+                parts = [records[0]["name"][language]] + [
+                    row["stat"][language] + row["format"][language] for row in records[1:]
+                ]
+                if any(not _one_field(part, "d") for part in parts):
+                    raise ItemHelpContractError("independent numeric constructor fields changed")
+                texts[language] = link[language].join(parts)
+            _add_unique(
+                generated,
+                texts,
+                "independent_numeric_group",
+                ids,
+                languages,
+                parameter_types=[1] * len(ids),
+                connect_kind=17,
+            )
+            independent_numeric_groups.add(ids)
+    if turn_groups:
+        for ids in _aggregate_sequences(turn, raw_groups):
+            for level in levels:
                 _add_unique(
                     generated,
-                    texts,
-                    "independent_numeric_group",
+                    _aggregate_name(
+                        catalogue, tuple(turn[i] for i in ids), languages, literal_s="↑" * level
+                    ),
+                    "turn_stat_group",
                     ids,
                     languages,
-                    parameter_types=[1] * length,
-                    connect_kind=17,
+                    parameter_types=[16],
+                    turn_argument="slot2",
+                    strength_level=level,
                 )
-                independent_numeric_groups.add(ids)
-    if turn_groups:
-        for length in range(2, max_group_slots + 1):
-            for ids in permutations(turn, length):
-                for level in levels:
-                    _add_unique(
-                        generated,
-                        _aggregate_name(
-                            catalogue, tuple(turn[i] for i in ids), languages, literal_s="↑" * level
-                        ),
-                        "turn_stat_group",
-                        ids,
-                        languages,
-                        parameter_types=[16],
-                        strength_level=level,
-                    )
     for record_id, level in sorted({(slot[0], slot[3]) for slot in turn_slots}):
         _add_unique(
             generated,
@@ -714,6 +727,17 @@ def compile_item_help_grammar(
                     languages,
                     parameter_types=[],
                 )
+        for ids in _aggregate_sequences(cluster, raw_groups, shared_values=False):
+            if len(ids) <= MAX_TYPED_GROUP_SLOTS:
+                continue
+            _add_unique(
+                generated,
+                _literal_group(catalogue, tuple(cluster[i] for i in ids), languages),
+                "literal_stat_group",
+                ids,
+                languages,
+                parameter_types=[],
+            )
     for group in groups:
         if len(group) != 2 or group[0][0] not in timed_labels or group[1][0] not in duration_values:
             continue

@@ -58,12 +58,53 @@ class SpeakerRecordAlignmentTests(unittest.TestCase):
         self.assertEqual(speakers[0]["called_ids"], {"ja": 0, "zh-Hans": 0})
         for left, right in [
             (function(name("男性の声", 134), reward_a), function(name("男子的声音"), reward_b)),
-            (function(reward_a, name("男性の声")), function(reward_b, name("男子的声音"))),
+            (
+                function(reward_a, name("男性の声")),
+                function(
+                    resources.Called(
+                        "ITEM_ADD_MESSAGE2_EV",
+                        0,
+                        (("int", 229), ("string", "拿到了"), ("string", "。")),
+                    ),
+                    name("男子的声音"),
+                ),
+            ),
         ]:
             rejected = resources.align_functions(
                 "script/a.dat", "Scene", {"ja": left, "zh-Hans": right}, {"counters": Counter()}
             )
             self.assertFalse([row for row in rejected if row.get("display_role") == "speaker"])
+
+        rows = resources.align_functions(
+            "script/a.dat",
+            "Scene",
+            {
+                "ja": function(reward_a, name("男性の声")),
+                "zh-Hans": function(reward_b, name("男子的声音")),
+            },
+            {"counters": Counter()},
+        )
+        self.assertTrue(any(row.get("display_role") == "speaker" for row in rows))
+
+    def test_setter_flag_preserves_name_payload_but_not_different_actor(self):
+        def fn(text, tail=(), actor=65534):
+            call = resources.Called(
+                "chr_set_display_name", 0, (("int", actor), ("string", text)) + tail
+            )
+            return resources.Function("Init", 0, (), (call,), (), ())
+
+        for tail, actor, accepted in [
+            ((("int", 1),), 65534, True),
+            ((("int", 2),), 65534, False),
+            ((("int", 1),), 65533, False),
+        ]:
+            rows = resources.align_functions(
+                "script/a.dat",
+                "Init",
+                {"zh-Hans": fn("名称"), "ja": fn("名前", tail, actor)},
+                {"counters": Counter()},
+            )
+            self.assertEqual(any(row.get("display_role") == "speaker" for row in rows), accepted)
 
 
 def make_scp(

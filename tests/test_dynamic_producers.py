@@ -53,6 +53,10 @@ def _scripts(*, bad_bp=None, item_call=None):
                     "UnLockRecipe",
                     (Called(None, 0, ()), Called(None, 0, ()), _panel("Recipe ", 17, "!")),
                 ),
+                "RegisterBook": _function(
+                    "RegisterBook",
+                    (Called(None, 0, ()), Called(None, 0, ()), _panel("", 17, " registered!")),
+                ),
             }
         )
         paths = {"script/scena/system.dat": system}
@@ -69,10 +73,13 @@ def _items():
     }
 
 
-def _build(scripts, items):
+def _build(scripts, items, books=None):
     with (
         patch("sora_bilingual.localization.dynamic_producers._read_scripts", return_value=scripts),
         patch("sora_bilingual.localization.dynamic_producers._read_item_rows", return_value=items),
+        patch(
+            "sora_bilingual.localization.dynamic_producers._read_book_ids", return_value=books or {}
+        ),
     ):
         return build_dynamic_entries("unused", [{"texts": {"zh-Hans": "wrong accepted catalog"}}])
 
@@ -100,7 +107,21 @@ class DynamicProducerTests(unittest.TestCase):
         self.assertEqual(recipe["texts"]["zh-Hans"], "Recipe <C0><I%d></C><C5>zh-Hans dish</C>!")
         self.assertNotIn("%s", recipe["texts"]["zh-Hans"])
         self.assertTrue(recipe["dynamic_producer"]["dynamic_icon"])
-        self.assertEqual(audit["counters"]["recipe_items_emitted"], 1)
+        self.assertEqual(audit["counters"]["unlock_recipe_items_emitted"], 1)
+
+    def test_book_notification_uses_inventory_name_for_the_actual_book_item_id(self):
+        items = _items()
+        for language, rows in items.items():
+            rows[360] = (f"{language} volume", 527618)
+            rows[361] = (f"{language} unrelated", 527618)
+        entries, audit = _build(_scripts(), items, {language: {360} for language in LANGUAGES})
+        books = [
+            e for e in entries if e.get("producer_origin", {}).get("family") == "register_book"
+        ]
+        self.assertEqual(len(books), 1)
+        self.assertEqual(books[0]["producer_origin"]["item_id"], 360)
+        self.assertEqual(books[0]["texts"]["en"], "<C0><I%d></C><C5>en volume</C> registered!")
+        self.assertEqual(audit["counters"]["register_book_items_emitted"], 1)
 
     def test_rejects_unknown_bp_opcode_only_for_that_locale(self):
         entries, audit = _build(_scripts(bad_bp="zh-Hans"), _items())
@@ -199,14 +220,17 @@ class DynamicProducerTests(unittest.TestCase):
                 return_value=_items(),
             ),
             patch(
-                "sora_bilingual.localization.dynamic_producers._recipe_entries",
-                return_value=[
-                    next(
-                        entry
-                        for entry in entries
-                        if entry.get("producer_origin", {}).get("family") == "unlock_recipe"
-                    ),
-                    duplicate,
+                "sora_bilingual.localization.dynamic_producers._item_template_entries",
+                side_effect=[
+                    [
+                        next(
+                            entry
+                            for entry in entries
+                            if entry.get("producer_origin", {}).get("family") == "unlock_recipe"
+                        ),
+                        duplicate,
+                    ],
+                    [],
                 ],
             ),
         ):

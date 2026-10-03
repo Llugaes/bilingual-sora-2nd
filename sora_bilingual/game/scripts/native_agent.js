@@ -25,6 +25,11 @@ let activeModel=null;
 let TextFactory=RuntimeText, ScriptFactory=typeof ScriptIdentities==='undefined'?null:ScriptIdentities;
 let TableFactory=typeof TableIdentities==='undefined'?null:TableIdentities;
 let ParagraphFactory=typeof RuntimeParagraphs==='undefined'?null:RuntimeParagraphs,paragraphs=null;
+let BooksFactory=typeof RuntimeBooks==='undefined'?null:RuntimeBooks,books=null;
+const nativeBooks=typeof createNativeBooks==='function'?createNativeBooks(base,REPORT,()=>({
+    active:enabled&&!failed&&(!runtimeFonts||runtimeFonts.isReady()),books,mode:renderMode,
+    style:{rubyScale,rubyGap,lineGap:rubyLineGap,offsetY:bilingualOffsetY}
+})):null;
 let immediateWrites=0;
 let scriptIdentities=null,tableIdentities=null,identityHits=0,identityMisses=0,tableIdentityHits=0;
 const dialogueFrames=new Map();
@@ -203,7 +208,7 @@ function wantedText(row,allocateLayers=true) {
             const scriptContext=row.scriptIdentity&&scriptIdentities?scriptIdentities.lookup(row.scriptIdentity,row.original):null;
             const speakerContext=row.logKind==='name'&&row.logIdentity&&scriptIdentities?
                 scriptIdentities.historySpeakerLookup(row.logIdentity,row.original):null;
-            const context=speakerContext||(strictDialogue?(scriptContext||sourceOnlyDialogue):scriptContext||
+            const context=nativeBooks?.context(row.book,row.original)||speakerContext||(strictDialogue?(scriptContext||sourceOnlyDialogue):scriptContext||
                 (row.scriptPointer&&scriptIdentities?scriptIdentities.pointerLookup(row.scriptPointer,row.original):null)||
                 (row.tableIdentity&&tableIdentities?tableIdentities.lookup(row.tableIdentity,row.original):null)||
                 (row.logKind?resolver.historyContext(row.logSpeaker||'',row.original,row.logKind):null)||
@@ -473,7 +478,7 @@ function observeNativeText(p,identify=null,force=false) {
         if(!force&&existing&&existing.displayed===current)return;
         const row=existing||remember(p,current);
         row.original=current;row.displayed=current;
-        row.scriptIdentity=null;row.scriptPointer=null;row.tableIdentity=null;row.paragraph=null;row.logSpeaker=null;row.logKind=null;
+        row.scriptIdentity=null;row.scriptPointer=null;row.tableIdentity=null;row.paragraph=null;row.logSpeaker=null;row.logKind=null;row.book=null;
         if(identify)identify(row);
         const renderEpoch=epoch,wanted=wantedText(row);
         if(wanted!==current){copyOwnedText(row,wanted);immediateWrites++;}
@@ -492,7 +497,7 @@ function adoptCopiedLabel(p,source) {
     try {
         const row=remember(p,original.original);
         row.displayed=current;
-        for(const key of ['scriptIdentity','scriptPointer','tableIdentity','paragraph','logSpeaker','logKind'])row[key]=original[key];
+        for(const key of ['scriptIdentity','scriptPointer','tableIdentity','paragraph','logSpeaker','logKind','book'])row[key]=original[key];
         const renderEpoch=epoch,wanted=wantedText(row);
         if(wanted!==current){copyOwnedText(row,wanted);immediateWrites++;}
         row.epoch=renderEpoch;captureMetadata(row);
@@ -883,6 +888,7 @@ Interceptor.attach(base.add(REPORT.native.destroy.rva), {onEnter(args) {
     const group=logTextGroups.get(String(args[0]));
     if(group){group.retired=true;logTextGroups.delete(String(group.name));logTextGroups.delete(String(group.body));}
     if (labels.delete(String(args[0]))) destroyed++;
+    nativeBooks?.forget(args[0]);
 }});
 // actor_name_set copies a script literal into actor+2c0; actor_name_get
 // returns that owned buffer when +2cc is nonzero. Preserve the script key
@@ -1337,6 +1343,8 @@ function questLineContext(incoming,caller) {
     return {source:frame.source,index};
 }
 function identifyInput(row,input,caller) {
+    row.book=nativeBooks?.input(input,row.original,caller)||null;
+    nativeBooks?.bind(row.pointer,row.book);
     row.logSpeaker=null;
     row.logKind=null;
     row.logIdentity=null;
@@ -1598,6 +1606,7 @@ labelHooks.attach(base.add(REPORT.native.update.rva), {onEnter(args) {
         }
         const p=args[0];
         if (!isLabel(p)) return;
+        nativeBooks?.refresh(p);
         this.lease=enterLabel(p);if(!this.lease)return;
         const row=labels.get(String(p)) || remember(p,readText(p));
         // Some constructors finish animated/ruby-disabled flags AFTER SetText.
@@ -1608,7 +1617,7 @@ labelHooks.attach(base.add(REPORT.native.update.rva), {onEnter(args) {
             &&(row.metadata?.flags&0x0c)===(p.add(0x2e8).readU32()&0x0c)) return;
         // A text write bypassing SetText invalidates our remembered source.
         const current=readText(p);
-        if (current !== row.displayed) {row.original=current;row.displayed=current;row.scriptIdentity=null;row.scriptPointer=null;row.tableIdentity=null;row.paragraph=null;row.logSpeaker=null;row.logKind=null;}
+        if (current !== row.displayed) {row.original=current;row.displayed=current;row.scriptIdentity=null;row.scriptPointer=null;row.tableIdentity=null;row.paragraph=null;row.logSpeaker=null;row.logKind=null;row.book=null;}
         const renderEpoch=epoch,wanted=wantedText(row);
         const replay = epoch === replayEpoch && Object.hasOwn(dictionary,row.original);
         const changed=wanted!==row.displayed||replay;
@@ -1673,6 +1682,7 @@ rpc.exports = {
         resolver=next;renderMode=mode;
         scriptIdentities=nextScripts;tableIdentities=nextTables;
         paragraphs=nextParagraphs;
+        books=BooksFactory?new BooksFactory(model.books,TextFactory):null;
         activeModel=model;
         rpc.exports.style(scale,layout);
         return true;
@@ -1683,7 +1693,7 @@ rpc.exports = {
         // This is an accidental-instrumentation guard, not a JS sandbox.
         if(/\b(?:Interceptor|NativeFunction|NativeCallback|Memory|Process|Stalker|CModule)\b/.test(source))
             throw Error('Resident instrumentation cannot be hot-loaded; restart the game with a validated resident script');
-        const factories=new Function(source+'\nreturn {RuntimeText,ScriptIdentities,TableIdentities,RuntimeParagraphs:typeof RuntimeParagraphs===\"undefined\"?null:RuntimeParagraphs};')();
+        const factories=new Function(source+'\nreturn {RuntimeText,ScriptIdentities,TableIdentities,RuntimeParagraphs:typeof RuntimeParagraphs===\"undefined\"?null:RuntimeParagraphs,RuntimeBooks:typeof RuntimeBooks===\"undefined\"?null:RuntimeBooks};')();
         if(!activeModel)throw Error('No active model for logic update');
         const next=new factories.RuntimeText(activeModel);
         const scripts=new factories.ScriptIdentities(activeModel.script_identities,resourceHash);
@@ -1692,6 +1702,7 @@ rpc.exports = {
         TextFactory=factories.RuntimeText;ScriptFactory=factories.ScriptIdentities;TableFactory=factories.TableIdentities;
         resolver=next;scriptIdentities=scripts;tableIdentities=tables;epoch++;
         ParagraphFactory=factories.RuntimeParagraphs;paragraphs=nextParagraphs;
+        BooksFactory=factories.RuntimeBooks;books=BooksFactory?new BooksFactory(activeModel.books,TextFactory):null;
         return true;
     },
     style(scale,layout={}) {
@@ -1718,7 +1729,7 @@ rpc.exports = {
     configure(values, active, scale=1) {
         if (scale == null) scale=1; // Frida pads omitted RPC arguments with null.
         if (!Number.isFinite(scale) || scale<0.7 || scale>1) throw Error('Annotation scale must be 0.7..1');
-        resolver=null;activeModel=null;scriptIdentities=null;tableIdentities=null;paragraphs=null;dictionary=Object.assign(Object.create(null),values);enabled=!!active;runtimeFonts?.select(enabled);annotationScale=scale;epoch++;return true;
+        resolver=null;activeModel=null;scriptIdentities=null;tableIdentities=null;paragraphs=null;books=null;dictionary=Object.assign(Object.create(null),values);enabled=!!active;runtimeFonts?.select(enabled);annotationScale=scale;epoch++;return true;
     },
     disable() {if(enabled){enabled=false;epoch++;}runtimeFonts?.select(false);return true;},
     replay() {enabled=false;replayEpoch=++epoch;return true;},

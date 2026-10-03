@@ -19,6 +19,7 @@ from sora_bilingual.localization.resources import (
     _parse_code,
     _value,
     Called,
+    _speaker_payload_shape,
     assembled_dialogue,
     parse_scp,
 )
@@ -223,7 +224,7 @@ def _active_speaker_setter_records(function, setters, dialogues):
     active, result = {}, defaultdict(set)
     for called, call in enumerate(function.called):
         if call.target == "chr_set_display_name":
-            if len(call.args) == 2 and call.args[0][0] == "int" and call.args[1][0] == "string":
+            if _speaker_payload_shape(call) is not None:
                 actor = int(call.args[0][1])
                 setter = setters.get(called)
                 if setter is not None and setter[0] == call.args[1][1]:
@@ -800,6 +801,7 @@ def compile_table_identities(game, entries, primary, secondary, language, *, res
         e["key"]: e
         for e in entries
         if e.get("key", "").startswith("table/")
+        and "book_pages" not in e
         and e["texts"].get(language, "").strip()
         and complete_pair(e["texts"], primary, secondary)
         and e["texts"][language] not in resolved_pairs

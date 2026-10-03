@@ -1,7 +1,7 @@
 """Compile the narrowly verified dynamic script producers into catalog entries.
 
 The PAC parser intentionally leaves dynamic display operations out of the
-ordinary literal catalog.  This module adds only four separately audited
+ordinary literal catalog. This module adds separately audited
 families.  It never infers a producer from a phrase, a screenshot, or a
 generic printf field: every entry comes from a named function, a fixed called
 record, and the corresponding raw table row.
@@ -40,7 +40,6 @@ _RECIPE_ITEM_CLASSES = frozenset((656129, 721665, 787457, 852993, 1253377))
 # record.  Keep the icon number as a typed producer slot: it is not a fixed
 # resource constant (for example, food and fishing-rod notifications use
 # different icon IDs).
-_RECIPE_RENDER = "<C0><I%d></C><C5>{name}</C>"
 _ITEM_RENDER = "<C0><I%d></C><C5>{name}</C>"
 _ITEM_SINGLE_CALLEES = frozenset(("ITEM_ADD_MESSAGE_EV", "ITEM_ADD_MESSAGE_TK"))
 _ITEM_SPLIT_CALLEES = frozenset(("ITEM_ADD_MESSAGE2_EV", "ITEM_ADD_MESSAGE2_TK"))
@@ -343,74 +342,107 @@ def _emit_numeric(
     ]
 
 
-def _recipe_entries(
+def _read_book_ids(game: Path, audit: dict[str, object]) -> dict[str, set[int]]:
+    """BooksTitle+0x10 is the item ID sent to OnBooksNoteClose argument 3.
+
+    The native sender at 0x428e46 reads a uint16, then 0x428ef7..0x428f02
+    tags it as an integer. RegisterBook forwards that argument to opcode 17.
+    Zero means no associated inventory item (e.g. encyclopedia entries).
+    """
+    result = {}
+    for language, archive_name in archive_names("table").items():
+        try:
+            with FpacArchive(game / "pac" / "steam" / archive_name) as archive:
+                data = archive.read(_logical_tables(archive)["table/t_books.tbl"])
+            section = [row for row in sections(data) if row[0] == "BooksTitle"]
+            if len(section) != 1 or section[0][2] != 24:
+                raise FormatError("unexpected BooksTitle layout")
+            _, start, size, count = section[0]
+            if start + size * count > len(data):
+                raise FormatError("BooksTitle outside table")
+            result[language] = {
+                item_id
+                for i in range(count)
+                if (item_id := struct.unpack_from("<H", data, start + size * i + 16)[0])
+            }
+        except (OSError, KeyError, FormatError) as exc:
+            audit["diagnostics"].append(
+                _audit("book_domain_unavailable", language=language, detail=str(exc))
+            )
+    return result
+
+
+def _item_template_entries(
     scripts: dict[str, dict[str, Script]],
     item_rows: dict[str, dict[int, tuple[str, int]]],
     audit: dict[str, object],
+    *,
+    family: str,
+    function_name: str,
+    item_ids_by_locale: dict[str, set[int]],
 ) -> list[dict[str, object]]:
     templates: dict[str, str] = {}
     for language in LANGUAGES:
         function = (
-            scripts.get(language, {}).get(_SYSTEM_PATH, Script({})).functions.get("UnLockRecipe")
+            scripts.get(language, {}).get(_SYSTEM_PATH, Script({})).functions.get(function_name)
         )
         call = function.called[2] if function is not None and len(function.called) > 2 else None
         decoded = _panel_template(call, allowed_opcodes=frozenset((17,))) if call else None
         if decoded is None or decoded[1] != 17:
             audit["diagnostics"].append(
-                _audit("producer_rejected", family="unlock_recipe", language=language)
+                _audit("producer_rejected", family=family, language=language)
             )
             continue
         templates[language] = decoded[0]
     template_missing = sorted(set(LANGUAGES) - set(templates))
     if template_missing:
         audit["diagnostics"].append(
-            _audit("producer_missing_locales", family="unlock_recipe", missing=template_missing)
+            _audit("producer_missing_locales", family=family, missing=template_missing)
         )
     if len(templates) < 2:
-        audit["counters"]["recipe_incomplete"] += 1
+        audit["counters"][family + "_incomplete"] += 1
         return []
-    item_ids = set().union(*(set(rows) for rows in item_rows.values())) if item_rows else set()
+    item_ids = set().union(*item_ids_by_locale.values()) if item_ids_by_locale else set()
     result = []
     for item_id in sorted(item_ids):
-        if not _RECIPE_MIN_ID <= item_id <= _RECIPE_MAX_ID:
-            continue
         rows = {
             language: item_rows[language][item_id]
             for language in templates
             if item_id in item_rows.get(language, {})
-            and item_rows[language][item_id][1] in _RECIPE_ITEM_CLASSES
+            and item_id in item_ids_by_locale.get(language, ())
         }
         if len(rows) < 2:
-            audit["counters"]["recipe_items_without_pair"] += 1
+            audit["counters"][family + "_items_without_pair"] += 1
             audit["diagnostics"].append(
                 _audit(
-                    "recipe_item_without_pair",
+                    "producer_item_without_pair",
+                    family=family,
                     item_id=item_id,
                     missing=sorted(set(templates) - set(rows)),
                 )
             )
             continue
         texts = {
-            language: templates[language].replace(
-                "%d", _RECIPE_RENDER.format(name=rows[language][0])
-            )
+            language: templates[language].replace("%d", _ITEM_RENDER.format(name=rows[language][0]))
             for language in rows
         }
         missing = sorted(set(LANGUAGES) - set(texts))
         if missing:
             audit["diagnostics"].append(
-                _audit("recipe_item_missing_locales", item_id=item_id, missing=missing)
+                _audit(
+                    "producer_item_missing_locales", family=family, item_id=item_id, missing=missing
+                )
             )
         result.append(
             {
-                "key": f"dynamic/{_SYSTEM_PATH}/UnLockRecipe/item/{item_id}",
+                "key": f"dynamic/{_SYSTEM_PATH}/{function_name}/item/{item_id}",
                 "texts": texts,
                 "producer_origin": {
-                    "family": "unlock_recipe",
+                    "family": family,
                     "item_id": item_id,
                     "signature": {
                         "path": _SYSTEM_PATH,
-                        "function": "UnLockRecipe",
+                        "function": function_name,
                         "called": 2,
                         "kind": 3,
                         "command": 8,
@@ -418,14 +450,14 @@ def _recipe_entries(
                     },
                 },
                 "dynamic_producer": {
-                    "family": "unlock_recipe",
+                    "family": family,
                     "dynamic_icon": True,
                     "numbers": {language: ["ascii"] for language in texts},
                     "slots": [{"kind": "icon", "opcode": 17}],
                 },
             }
         )
-    audit["counters"]["recipe_items_emitted"] += len(result)
+    audit["counters"][family + "_items_emitted"] += len(result)
     return result
 
 
@@ -649,7 +681,30 @@ def build_dynamic_entries(
         called=3,
         allowed_opcodes=frozenset((18, 23)),
     )
-    result += _recipe_entries(scripts, items, audit)
+    result += _item_template_entries(
+        scripts,
+        items,
+        audit,
+        family="unlock_recipe",
+        function_name="UnLockRecipe",
+        item_ids_by_locale={
+            language: {
+                item_id
+                for item_id, (_, item_class) in rows.items()
+                if _RECIPE_MIN_ID <= item_id <= _RECIPE_MAX_ID
+                and item_class in _RECIPE_ITEM_CLASSES
+            }
+            for language, rows in items.items()
+        },
+    )
+    result += _item_template_entries(
+        scripts,
+        items,
+        audit,
+        family="register_book",
+        function_name="RegisterBook",
+        item_ids_by_locale=_read_book_ids(Path(game), audit),
+    )
     result += _item_entries(scripts, items, audit)
     result += _popup_line_entries(scripts, audit)
     result = _audit_source_conflicts(result, audit)

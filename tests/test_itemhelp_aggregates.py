@@ -234,6 +234,34 @@ def fixture():
 
 
 class ItemHelpAggregateTests(unittest.TestCase):
+    def test_actual_four_and_five_stat_groups_keep_order_and_shared_arguments(self):
+        entries, metadata, groups = fixture()
+        four = (80, 81, 83, 84)
+        five = (*four, 92)
+        for ids in (four, five):
+            with self.subTest(ids=ids):
+                actual = tuple((i, 100, 4, 1) for i in ids)
+                grammar = compile_item_help_grammar(entries, "zh-Hans", metadata, [*groups, actual])
+                matches = [
+                    row
+                    for row in grammar["detail_entries"]
+                    if row["item_help_contract"].get("record_ids") == list(ids)
+                ]
+                self.assertTrue(matches)
+                for row in matches:
+                    self.assertEqual(row["item_help_contract"]["turn_argument"], "slot2")
+                    self.assertIn("STR･DEF･ADF･SPD", row["texts"]["zh-Hans"])
+                changed = (*actual[:-1], (ids[-1], 100, 2, 1))
+                grammar = compile_item_help_grammar(
+                    entries, "zh-Hans", metadata, [*groups, changed]
+                )
+                self.assertFalse(
+                    any(
+                        row["item_help_contract"].get("record_ids") == list(ids)
+                        for row in grammar["detail_entries"]
+                    )
+                )
+
     def test_item_reader_keeps_first_and_fifth_native_effect_slots(self):
         # Native item lookup returns the #TBL row itself; normalizer 0x23f010
         # copies all five blocks at +0x3c..+0x7c. The previous +0x6c/3 reader

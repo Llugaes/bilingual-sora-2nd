@@ -27,7 +27,12 @@ from sora_bilingual.localization.item_help_composition import (
     build_item_help_grammar,
     read_item_help_contract,
 )
-from sora_bilingual.localization.menu_tables import record_identity, schema_for, sections
+from sora_bilingual.localization.menu_tables import (
+    read_section,
+    record_identity,
+    schema_for,
+    sections,
+)
 from sora_bilingual.localization.native_catalog import (
     fingerprint,
     load_entries,
@@ -226,12 +231,37 @@ def _status_titles(metadata, catalogue, titles, source, primary, secondary):
     return cases, gaps
 
 
-def _raw_field_cases(metadata, catalogue, source, primary, secondary):
+def _raw_empty_fields(game):
+    """Only eight-locale raw empty strings are non-display fields, not omissions."""
+    empty = defaultdict(set)
+    for language in LANGUAGES:
+        with FpacArchive(game / "pac/steam" / archive_names("table")[language]) as archive:
+            data = archive.read(_logical_tables(archive)["table/t_itemhelp.tbl"])
+        descriptors = sections(data)
+        floor = max(start + size * count for _, start, size, count in descriptors)
+        for section in descriptors:
+            kind, start, size, count = section
+            if kind not in FIELD_NAMES:
+                continue
+            schema = schema_for("table/t_itemhelp.tbl", kind)
+            rows = read_section(data, section, schema, floor, stable_row_identity=True)
+            for row in range(count):
+                identity = record_identity(data, start + row * size, kind, schema, floor)
+                fields = rows[f"row:{row}"][0]
+                for field in FIELD_NAMES[kind]:
+                    if not fields.get(field, "").strip():
+                        empty[_resource_key(kind, identity, field)].add(language)
+    return sorted(key for key, languages in empty.items() if languages == set(LANGUAGES))
+
+
+def _raw_field_cases(metadata, catalogue, source, primary, secondary, empty_fields=()):
     cases, gaps = [], []
     for kind, fields in FIELD_NAMES.items():
         for identity, record in metadata[kind].items():
             for field in fields:
                 key = _resource_key(kind, identity, field)
+                if key in empty_fields:
+                    continue
                 texts = catalogue.get(key)
                 if not texts:
                     gaps.append(
@@ -607,6 +637,12 @@ def _typed_bare_actual_cases(grammar, contexts, source, primary, secondary):
         ids = tuple(slot[0] for slot in slots)
         for entry in entries_by_ids.get(ids, ()):
             contract = entry["item_help_contract"]
+            if contract.get("strength_level") is not None and any(
+                slot[3] != contract["strength_level"] for slot in slots
+            ):
+                # Other compiled magnitudes are format coverage, not an
+                # installed row's actual output. Keep that denominator exact.
+                continue
             token_count = len(_tokens(entry["texts"][source]))
             native_values = tuple(slot[1] for slot in slots)
             if token_count == 1 and contract.get("turn_argument") == "slot2":
@@ -770,7 +806,7 @@ def _uncovered_source_groups(grammar, contexts, connect_groups, metadata, catalo
         if unknown_ids:
             reason = "contains_unrecognized_union_slots"
         elif not any(set(values) & display_kinds for values in kinds.values()):
-            reason = "known_effects_non_display_connection_kind"
+            reason = "known_effects_constructor_not_yet_proven"
         else:
             reason = "known_effects_but_full_group_not_constructed"
         classified[reason] += 1
@@ -894,12 +930,23 @@ def _run_runtime(model, cases):
 
 
 def _mode_report(
-    entries, signature, metadata, groups, source_contexts, title_audit, game, cache_root, mode
+    entries,
+    signature,
+    metadata,
+    groups,
+    source_contexts,
+    title_audit,
+    game,
+    cache_root,
+    mode,
+    empty_fields=(),
 ):
     source, primary, secondary = mode
     catalogue = _catalog(entries)
     grammar = build_item_help_grammar(game, entries, source, languages=(source, primary, secondary))
-    raw_cases, raw_gaps = _raw_field_cases(metadata, catalogue, source, primary, secondary)
+    raw_cases, raw_gaps = _raw_field_cases(
+        metadata, catalogue, source, primary, secondary, empty_fields
+    )
     title_cases, title_gaps = _status_titles(
         metadata, catalogue, title_audit["_help_titles"], source, primary, secondary
     )
@@ -969,6 +1016,7 @@ def _mode_report(
         "production_model_built": True,
         "resident_model_verified": False,
         "coverage": {
+            "raw_eight_locale_empty_fields": len(empty_fields),
             "raw_resource_fields": len(raw_cases),
             "raw_resource_top_level_inputs": len(raw_top_level_cases),
             "raw_resource_parameterized_contract_gaps": len(raw_cases) - len(raw_top_level_cases),
@@ -1048,6 +1096,7 @@ def main():
         entries, signature = load_entries(args.game_dir, output=args.cache_root)
     metadata, _grammar_groups, title_audit = read_item_help_contract(args.game_dir)
     groups, source_contexts, source_slot_contract = _read_source_effect_groups(args.game_dir)
+    empty_fields = _raw_empty_fields(args.game_dir)
     reports = []
     for mode in MODE_MATRIX:
         reports.append(
@@ -1061,6 +1110,7 @@ def main():
                 args.game_dir,
                 args.cache_root,
                 mode,
+                frozenset(empty_fields),
             )
         )
         gc.collect()
@@ -1073,6 +1123,7 @@ def main():
             "SkillEffectHelpData": len(metadata["SkillEffectHelpData"]),
             "effect_slot_groups": len(groups),
         },
+        "raw_eight_locale_empty_fields": empty_fields,
         "source_effect_slot_contract": source_slot_contract,
         "modes": reports,
         "all_known_inputs_passed": all(mode["all_known_inputs_passed"] for mode in reports),

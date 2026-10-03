@@ -31,6 +31,7 @@ def main():
             "tests/test_runtime_identity.js",
             "tests/test_runtime_text.js",
             "tests/test_runtime_paragraph.js",
+            "tests/test_runtime_books.js",
             "tests/test_runtime_fonts.js",
             "tests/test_native_transport.js",
         )
@@ -53,6 +54,7 @@ def main():
             run(sys.executable, "-X", "utf8", "tests/check_native_log_activation.py")
             run(sys.executable, "-X", "utf8", "tests/check_native_log_commit.py")
             run(sys.executable, "-X", "utf8", "tests/check_native_dynamic_identity.py")
+            run(sys.executable, "-X", "utf8", "tests/check_native_books.py")
             run(sys.executable, "-X", "utf8", "tests/check_native_refresh.py")
             run(sys.executable, "-X", "utf8", "tests/check_native_timing.py")
     elif command == "publish-local":

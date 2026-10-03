@@ -70,6 +70,7 @@ GROUPS = {
     "logic": (
         "sora_bilingual/game/scripts/runtime_text.js",
         "sora_bilingual/game/scripts/runtime_paragraph.js",
+        "sora_bilingual/game/scripts/runtime_books.js",
         "sora_bilingual/game/scripts/runtime_identity.js",
     ),
     "catalog": (
@@ -115,6 +116,7 @@ GROUPS = {
         "sora_bilingual/game/native_runtime.py",
         "sora_bilingual/game/source_language.py",
         "sora_bilingual/game/scripts/native_agent.js",
+        "sora_bilingual/game/scripts/native_books.js",
         "sora_bilingual/game/scripts/native_geometry.js",
         "sora_bilingual/game/scripts/native_parser.js",
         "sora_bilingual/game/scripts/native_measure.js",

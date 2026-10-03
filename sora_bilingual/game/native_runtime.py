@@ -13,6 +13,12 @@ from sora_bilingual.game.hooks import verify_target
 from sora_bilingual.paths import ROOT
 
 POINTS = {
+    "book_count": 0x23C1E0,
+    "book_page": 0x23C270,
+    "book_update": 0x4079C0,
+    "book_open_return": 0x406C70,
+    "book_saved_page": 0x40715A,
+    "book_text_return": 0x407D85,
     "set_text": 0x588A40,
     "reset_text": 0x585320,
     "measure_text": 0x588710,
@@ -178,6 +184,8 @@ class NativeLabels:
             for name in (
                 "sora_bilingual/game/scripts/runtime_text.js",
                 "sora_bilingual/game/scripts/runtime_paragraph.js",
+                "sora_bilingual/game/scripts/runtime_books.js",
+                "sora_bilingual/game/scripts/native_books.js",
                 "sora_bilingual/game/scripts/runtime_identity.js",
                 "sora_bilingual/game/scripts/native_hash.js",
                 "sora_bilingual/game/scripts/runtime_fonts.js",
@@ -399,6 +407,7 @@ class NativeLabels:
             for name in (
                 "sora_bilingual/game/scripts/runtime_text.js",
                 "sora_bilingual/game/scripts/runtime_paragraph.js",
+                "sora_bilingual/game/scripts/runtime_books.js",
                 "sora_bilingual/game/scripts/runtime_identity.js",
             )
         )
