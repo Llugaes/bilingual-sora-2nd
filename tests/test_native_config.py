@@ -209,6 +209,33 @@ class NativeConfigTests(unittest.TestCase):
         self.assertEqual(calls[0][1][1]["secondary_color"], "#4080ff")
         self.assertEqual(calls[1][1][-1]["secondary_color"], "#4080ff")
 
+    def test_reconnecting_old_resident_keeps_its_supported_wire_format(self):
+        import frida
+
+        for version in (1, 2):
+            calls = []
+
+            def negotiate():
+                if version == 1:
+                    raise frida.RPCException("Unknown control operation")
+                return 2
+
+            native = NativeLabels(lambda _: None)
+            native.resident_changed = True
+            native.script = SimpleNamespace(
+                exports_sync=SimpleNamespace(
+                    modelwireversion=negotiate,
+                    modelpackedfile=lambda *args: calls.append(args),
+                )
+            )
+            with patch(
+                "sora_bilingual.localization.model_wire.prepare_wire",
+                return_value=Path("model.wire.bin"),
+            ) as prepare:
+                native.load(None, {"enabled": True}, "annotation", cache_path="model.json")
+                prepare.assert_called_once_with("model.json", None, schema=version)
+            self.assertEqual(len(calls), 1)
+
     def test_os_lock_prevents_second_backend_and_can_be_reacquired(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "backend.lock"

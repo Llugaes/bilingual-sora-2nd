@@ -7,6 +7,34 @@ const {RuntimeParagraphs}=require('../sora_bilingual/game/scripts/runtime_paragr
 
 const model=pairs=>({pairs,plain_pairs:pairs,numeric:[],raw_numeric:[]});
 
+test('lazy paragraph candidates preserve all legacy boundaries, markup and ambiguity after eviction',()=>{
+    const pairs={
+        '甲\n乙':['甲\n乙','one\ntwo'],'乙\n丙':['乙\n丙','other\nthree'],
+        '甲\n乙\n丙':['甲\n乙\n丙','long one\nlong two\nlong three'],
+        '首\\n尾':['首\\n尾','first\\nlast'],'首\r\n尾':['首\r\n尾','a\r\nb'],
+        '<C1>前\n后</C>':['<C1>前\n后</C>','<C1>first\nlast</C>'],
+        '<unknown>前\n后':['<unknown>前\n后','first\nlast'],
+        'bad\npair':['bad\npair'],
+    };
+    for(let i=0;i<150;i++)pairs['头'+i+'\n尾']=['头'+i+'\n尾','start '+i+'\nend'];
+    const paragraph_sources={};
+    for(const source of Object.keys(pairs)) {
+        const [first]=source.split(/\r\n|\n|\\n/);
+        (paragraph_sources[first]??=[]).push(source);
+    }
+    const legacy=new RuntimeParagraphs(model(pairs),RuntimeText);
+    const indexed=new RuntimeParagraphs({...model(pairs),paragraph_sources},RuntimeText);
+    assert.equal(indexed.byFirstLine.size,0);
+    const sources=[...Object.keys(pairs),'前缀\n甲\n乙\n丙\n后缀','同\n甲\n乙\n同\n乙\n丙'];
+    for(const source of sources.concat(sources.slice().reverse())) {
+        for(const [i,slot] of RuntimeParagraphs.slots(source).entries()) {
+            for(const mode of ['primary','secondary','annotation','bilingual'])
+                assert.deepEqual(indexed.lookup(source,i,slot.text,mode),legacy.lookup(source,i,slot.text,mode));
+        }
+    }
+    assert.ok(indexed.byFirstLine.size<=128);
+});
+
 test('producer integers keep declared digit width and one complete rich-text lane',()=>{
     const bp='BP上升了<C2>2<C0>点。',target='ＢＰが<C2>2<C0>上がった。';
     const tr=new RuntimeText({...model({'2':['2','２']}),producer_numeric:[

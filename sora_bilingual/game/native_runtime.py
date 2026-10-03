@@ -319,7 +319,13 @@ class NativeLabels:
             from sora_bilingual.localization.model_wire import prepare_wire
 
             try:
-                path = prepare_wire(cache_path, model).resolve()
+                schema = 2
+                if getattr(self, "resident_changed", False):
+                    try:
+                        schema = rpc.modelwireversion()
+                    except frida.RPCException:
+                        schema = 1  # Old resident: never unload/reinstall its hooks.
+                path = prepare_wire(cache_path, model, schema=schema).resolve()
                 return rpc.modelpackedfile(
                     str(path),
                     mode,

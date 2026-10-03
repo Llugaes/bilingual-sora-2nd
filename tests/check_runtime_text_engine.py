@@ -3,8 +3,12 @@
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 
 import frida
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from sora_bilingual.localization.model_wire import indexed_model
 
 
 def main():
@@ -16,6 +20,7 @@ def main():
         creationflags=subprocess.CREATE_NO_WINDOW,
     )
     session = None
+    temporary = tempfile.TemporaryDirectory()
     try:
         session = frida.attach(host.pid)
         script = session.create_script(
@@ -35,17 +40,43 @@ rpc.exports={run(){
     if(runtime.translate(composite,'secondary')!=='<c698>「凍結·毒·炎傷·遅延」</C>')throw Error('compound labels omitted');
     if(runtime.render(composite).kind==='plain')throw Error('compound annotation omitted');
     return {runtime:Script.runtime,game_attached:false,passed:true};
+},load(model){
+    const tr=new RuntimeText(model);
+    if(!Array.isArray(model.numeric)||model.numeric.length!==20)throw Error('lazy array contract');
+    for(let i=0;i<100;i++)if(tr.translate('source'+i,'secondary')!=='訳'+i)throw Error('lazy key contract');
+    if(tr.translate('costarring','secondary')!=='collision one'||tr.translate('liquid','secondary')!=='collision two')throw Error('hash collision');
+    return {indexed:true,game_attached:false,passed:true};
 }};
-""",
+"""
+            + (
+                Path(__file__).resolve().parents[1]
+                / "sora_bilingual/game/scripts/native_transport.js"
+            ).read_text("utf-8"),
             runtime="v8",
         )
         script.load()
         print(script.exports_sync.run())
+        pairs = {f"source{i}": [f"source{i}", f"訳{i}"] for i in range(100)}
+        pairs.update(
+            {"costarring": ["costarring", "collision one"], "liquid": ["liquid", "collision two"]}
+        )
+        fixture = Path(temporary.name) / "fixture.wire.bin"
+        fixture.write_bytes(
+            indexed_model(
+                {
+                    "pairs": pairs,
+                    "plain_pairs": pairs,
+                    "numeric": [[f"number{i}([0-9]+)", ["%d", "%d"]] for i in range(20)],
+                }
+            )
+        )
+        print(script.exports_sync.modelpackedfile(str(fixture)))
     finally:
         if session is not None:
             session.detach()
         host.terminate()
         host.wait(timeout=5)
+        temporary.cleanup()
 
 
 if __name__ == "__main__":

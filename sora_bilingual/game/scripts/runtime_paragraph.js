@@ -14,16 +14,33 @@ class RuntimeParagraphs {
         this.paragraphCache=new Map();
         this.lineResolvers=new Map();
         if(typeof RuntimeText!=='function')return;
+        // Indexed models already carry the complete first-line candidate list.
+        // Do not expand all translations into a second permanently live graph.
+        if(this.model.paragraph_sources)return;
         for(const [source,pair] of Object.entries(this.model.pairs||{})) {
-            if(!Array.isArray(pair)||pair.length!==2||!pair.every(value=>typeof value==='string'))continue;
-            const slots=RuntimeParagraphs.slots(source);
-            if(slots.length<2||!RuntimeParagraphs.supportedMarkup(source)||
-                    !RuntimeParagraphs.supportedMarkup(pair[0])||!RuntimeParagraphs.supportedMarkup(pair[1]))continue;
-            const entry={source,pair,slots,length:source.length};
-            const first=slots[0].text;
+            const entry=RuntimeParagraphs.entry(source,pair);if(!entry)continue;
+            const first=entry.slots[0].text;
             if(!this.byFirstLine.has(first))this.byFirstLine.set(first,[]);
             this.byFirstLine.get(first).push(entry);
         }
+    }
+
+    static entry(source,pair) {
+        if(!Array.isArray(pair)||pair.length!==2||!pair.every(value=>typeof value==='string'))return null;
+        const slots=RuntimeParagraphs.slots(source);
+        if(slots.length<2||!RuntimeParagraphs.supportedMarkup(source)||
+                !RuntimeParagraphs.supportedMarkup(pair[0])||!RuntimeParagraphs.supportedMarkup(pair[1]))return null;
+        return {source,pair,slots,length:source.length};
+    }
+
+    candidates(first) {
+        if(!this.model.paragraph_sources)return this.byFirstLine.get(first)||[];
+        if(this.byFirstLine.has(first))return this.byFirstLine.get(first);
+        const index=this.model.paragraph_sources;
+        const sources=Object.hasOwn(index,first)?index[first]:[];
+        const entries=sources.map(source=>RuntimeParagraphs.entry(source,this.model.pairs[source])).filter(Boolean);
+        if(this.byFirstLine.size>=MAX_PARAGRAPH_CACHE)this.byFirstLine.clear();
+        this.byFirstLine.set(first,entries);return entries;
     }
 
     static slots(value) {
@@ -68,7 +85,7 @@ class RuntimeParagraphs {
         for(const slot of slots) {boundaries.add(slot.start);boundaries.add(slot.end);}
         const matches=[];let checks=0;
         for(let startIndex=0;startIndex<slots.length;startIndex++) {
-            const candidates=this.byFirstLine.get(slots[startIndex].text)||[];
+            const candidates=this.candidates(slots[startIndex].text);
             for(const entry of candidates) {
                 if(++checks>MAX_MATCH_CHECKS)return null;
                 if(this.sourceMatches(fullSource,slots,entry,startIndex,boundaries))
