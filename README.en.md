@@ -43,8 +43,6 @@ Field interactions and notifications:
 
 ## Installation
 
-[Gitee mirror for mainland China](https://gitee.com/Llugaes/bilingual-sora-2nd/releases): download the Setup from a stable release. Since v0.3.32, updates prefer Gitee and fall back to GitHub, with size/SHA-256 verification and runtime reuse. Gitee retains the latest three verified stable mirrors; full portable ZIPs and all release history remain on GitHub. Older versions still check GitHub; if it is unreachable, install the new mirrored Setup over the existing installation to preserve settings.
-
 1. Download `bilingual-sora-2nd-VERSION-windows-x64-setup.exe` from the [latest release](https://github.com/Llugaes/bilingual-sora-2nd/releases/latest) and run the installer.
 2. Open **Bilingual Sora 2nd** from the Start menu or desktop shortcut. Choose the interface language on first launch. The primary language syncs when connecting to a new game process; you can then change either display language.
 3. The tool automatically finds the game and prepares multilingual fonts. No folder or game-language selection is needed. You can start the game before preparation finishes; fonts load into the running game when ready. First-time language mapping may take a few minutes, and valid caches are reused.
