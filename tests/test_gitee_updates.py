@@ -272,11 +272,16 @@ class PublisherTests(unittest.TestCase):
                 return Mock(returncode=0, stdout="201 123 1234 0.1")
 
             with patch("tools.publish_gitee.subprocess.run", side_effect=upload):
-                self.assertEqual(publisher.request("/1/attach_files", method="POST", file=path), {"id": 1})
+                self.assertEqual(
+                    publisher.request("/1/attach_files", method="POST", file=path), {"id": 1}
+                )
             for status in ("302", "413", "401"):
-                with patch("tools.publish_gitee.subprocess.run", return_value=Mock(
-                    returncode=22, stdout=f"{status} 0 0 0.1", stderr="placeholder"
-                )):
+                with patch(
+                    "tools.publish_gitee.subprocess.run",
+                    return_value=Mock(
+                        returncode=22, stdout=f"{status} 0 0 0.1", stderr="placeholder"
+                    ),
+                ):
                     with self.assertRaisesRegex(RuntimeError, f"HTTP {status}") as error:
                         publisher.request("/1/attach_files", method="POST", file=path)
                     self.assertNotIn("placeholder", str(error.exception))

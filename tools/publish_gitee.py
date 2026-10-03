@@ -79,18 +79,36 @@ class GiteePublisher:
             response = Path(temporary) / "response.json"
             result = subprocess.run(
                 [
-                    "curl", "--config", "-", "--silent", "--show-error", "--fail",
-                    "--proto", "=https", "--connect-timeout", "20", "--max-time", "600",
-                    "--max-filesize", str(2 * 1024 * 1024),
-                    "--user-agent", "Sora-Bilingual-Release/1",
-                    "--header", "Accept: application/json",
-                    "--form", "file=@" + str(path.resolve()),
-                    "--output", str(response),
-                    "--write-out", "%{http_code} %{size_upload} %{speed_upload} %{time_total}",
+                    "curl",
+                    "--config",
+                    "-",
+                    "--silent",
+                    "--show-error",
+                    "--fail",
+                    "--proto",
+                    "=https",
+                    "--connect-timeout",
+                    "20",
+                    "--max-time",
+                    "600",
+                    "--max-filesize",
+                    str(2 * 1024 * 1024),
+                    "--user-agent",
+                    "Sora-Bilingual-Release/1",
+                    "--header",
+                    "Accept: application/json",
+                    "--form",
+                    "file=@" + str(path.resolve()),
+                    "--output",
+                    str(response),
+                    "--write-out",
+                    "%{http_code} %{size_upload} %{speed_upload} %{time_total}",
                     self.base + suffix,
                 ],
                 input="form-string = " + json.dumps("access_token=" + self.token) + "\n",
-                text=True, capture_output=True, timeout=620,
+                text=True,
+                capture_output=True,
+                timeout=620,
             )
             # Output only fixed numeric metrics; server bodies/stderr may echo
             # credentials. No --location: even same-host redirects are refused.
@@ -100,7 +118,9 @@ class GiteePublisher:
             status, uploaded, speed, seconds = metrics
             print(f"Upload HTTP {status}: {uploaded} bytes, {speed} B/s, {seconds}s", flush=True)
             if result.returncode or status != "201":
-                raise RuntimeError(f"Gitee upload failed: HTTP {status}, curl exit {result.returncode}")
+                raise RuntimeError(
+                    f"Gitee upload failed: HTTP {status}, curl exit {result.returncode}"
+                )
             if response.stat().st_size > 2 * 1024 * 1024:
                 raise ValueError("Oversized publisher response")
             return json.loads(response.read_bytes())
