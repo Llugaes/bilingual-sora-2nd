@@ -14,10 +14,14 @@ PC 版『空の軌跡 the 2nd』の二言語表示 Mod。会話やメニュー�
 
 中国語の本文に日本語の副言語を添えたゲーム内のスクリーンショットです。画像を開くと原寸で確認できます。
 
-![会話の二言語表示](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/dialogue.jpg)
+![中国語と日本語の会話](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/dialogue-zh-ja.jpg)
+
+![二言語の会話履歴](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/dialogue-log-zh-ja.jpg)
 
 <details>
 <summary>アイテム・装備・フィールドの表示例</summary>
+
+![会話の二言語表示](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/dialogue.jpg)
 
 アイテム名と説明：
 

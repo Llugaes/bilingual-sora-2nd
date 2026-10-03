@@ -14,10 +14,14 @@
 
 游戏实拍：中文正文＋日文副语言。点击图片可查看原尺寸。
 
-![对话中的双语显示](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/dialogue.jpg)
+![中日对照剧情对白](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/dialogue-zh-ja.jpg)
+
+![双语对话日志](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/dialogue-log-zh-ja.jpg)
 
 <details>
 <summary>查看道具、装备与场景界面</summary>
+
+![对话中的双语显示](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/dialogue.jpg)
 
 道具名称与底部说明：
 

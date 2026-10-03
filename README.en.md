@@ -23,6 +23,10 @@ In-game dialogue with English primary text and Japanese secondary text. Open an 
 
 The following captures use Chinese primary text and Japanese secondary text.
 
+![Chinese and Japanese story dialogue](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/dialogue-zh-ja.jpg)
+
+![Bilingual dialogue log](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/dialogue-log-zh-ja.jpg)
+
 Item names and descriptions:
 
 ![Items](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/items.jpg)
