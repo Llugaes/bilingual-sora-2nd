@@ -4,7 +4,7 @@ from pathlib import Path
 import tempfile
 import unittest
 import zipfile
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 import urllib.error
 
 from sora_bilingual.updates.gitee_updates import GiteeClient
@@ -25,7 +25,6 @@ from tools.publish_gitee import (
     MARKER,
     MAX_ATTACHMENT,
     validated_files,
-    multipart_stream,
 )
 
 
@@ -257,25 +256,30 @@ class FallbackTests(unittest.TestCase):
 
 
 class PublisherTests(unittest.TestCase):
-    def test_upload_stream_has_explicit_length_and_no_token_in_url(self):
+    def test_upload_keeps_credential_off_argv_and_rejects_early_http_errors(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "app.zip"
-            path.write_bytes(b"x" * (2 * 1024 * 1024 + 1))
+            path.write_bytes(b"payload")
             publisher = GiteePublisher("a/b", "placeholder")
-            router = Router([{"id": 1}])
-            publisher.opener = router
-            publisher.request("/1/attach_files", method="POST", file=path)
-            request = router.requests[0]
-            chunks = list(request.data)
-            body = b"".join(chunks)
-            self.assertEqual(len(body), int(request.get_header("Content-length")))
-            self.assertNotIn("placeholder", request.full_url)
-            self.assertIn(b"placeholder", body)
-            self.assertIn(path.read_bytes(), body)
-            self.assertLessEqual(max(map(len, chunks)), 1024 * 1024)
-            times = iter([0, 601])
-            with self.assertRaises(TimeoutError):
-                list(multipart_stream(path, b"prefix", b"suffix", clock=lambda: next(times)))
+
+            def upload(argv, **kwargs):
+                self.assertNotIn("placeholder", " ".join(argv))
+                self.assertNotIn("--location", argv)
+                self.assertIn("placeholder", kwargs["input"])
+                self.assertEqual(kwargs["timeout"], 620)
+                self.assertEqual(argv[argv.index("--max-time") + 1], "600")
+                Path(argv[argv.index("--output") + 1]).write_text('{"id": 1}')
+                return Mock(returncode=0, stdout="201 123 1234 0.1")
+
+            with patch("tools.publish_gitee.subprocess.run", side_effect=upload):
+                self.assertEqual(publisher.request("/1/attach_files", method="POST", file=path), {"id": 1})
+            for status in ("302", "413", "401"):
+                with patch("tools.publish_gitee.subprocess.run", return_value=Mock(
+                    returncode=22, stdout=f"{status} 0 0 0.1", stderr="placeholder"
+                )):
+                    with self.assertRaisesRegex(RuntimeError, f"HTTP {status}") as error:
+                        publisher.request("/1/attach_files", method="POST", file=path)
+                    self.assertNotIn("placeholder", str(error.exception))
 
     def test_local_validation_rejects_modified_and_oversized_artifacts(self):
         _, meta, payloads = fixture()
