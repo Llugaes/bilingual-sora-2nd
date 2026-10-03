@@ -4,7 +4,7 @@
 
 状态：付费方案保留，尚未开通存储/CDN或修改 DNS。Gitee 免费发行包上传和匿名下载已验证，更新器接入正在验收。代码核对基线为 `8f6969c`（v0.3.31）。部署域名在接入时单独确认，本文件使用 `<项目子域名>` 占位。
 
-当前执行选择：保留付费方案，暂不开通；Gitee 免费下载已验证。跨站大包上传未通过时限验收，按用户选择转为核对 GitHub、Gitee 独立构建发布的可行性；Gitee 免费 Windows 执行环境尚未证实。GitHub 保留完整历史。[实测记录与未通过项](verification/GITEE_DISTRIBUTION.md)。以下 COS/CDN 内容仍是备选提案。
+当前执行选择：保留付费方案，暂不开通；Gitee 免费下载已验证。跨站大包上传慢，且未找到 Gitee 免费托管 Windows 的证据，用户选择优先保持 GitHub 单一构建来源，经维护者本机转发原包到 Gitee。[本地中转入口](LOCAL_RELEASE_RELAY.md)；GitHub 保留完整历史。[实测记录与未通过项](verification/GITEE_DISTRIBUTION.md)。以下 COS/CDN 内容仍是备选提案。
 
 ## 付费备选方案（暂不实施）
 

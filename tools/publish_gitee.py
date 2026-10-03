@@ -18,6 +18,7 @@ from sora_bilingual.updates.release_client import (
     ASSET_PREFIX,
     file_sha256,
     repository_name,
+    sha256,
     version_tuple,
 )
 
@@ -228,11 +229,13 @@ class GiteePublisher:
             print("Removed old Gitee mirror: " + release["tag_name"], flush=True)
 
 
-def validated_files(tag, repository, directory):
+def manifest_files(tag, repository, raw):
+    """Validate the immutable mirror contract before downloading or publishing."""
     version = ".".join(map(str, version_tuple(tag)))
-    raw = (directory / ASSET_MANIFEST).read_bytes()
+    if len(raw) > 1024 * 1024:
+        raise ValueError("Oversized source manifest")
     meta = json.loads(raw)
-    if any(
+    if not isinstance(meta, dict) or any(
         meta.get(k) != v
         for k, v in {
             "schema": 1,
@@ -244,6 +247,8 @@ def validated_files(tag, repository, directory):
     ):
         raise ValueError("Source manifest identity mismatch")
     components = meta.get("components", {})
+    if not isinstance(components, dict):
+        raise ValueError("A component release is required")
     runtime_id = components.get("runtime_id", "")
     if components.get("schema") != 1 or not re.fullmatch(r"[a-f0-9]{16}", runtime_id):
         raise ValueError("A component release is required")
@@ -254,17 +259,25 @@ def validated_files(tag, repository, directory):
         (components.get("runtime", {}), f"{ASSET_PREFIX}-runtime-{runtime_id}-windows-x64.zip"),
     ]:
         if (
-            descriptor.get("asset") != expected
+            not isinstance(descriptor, dict)
+            or descriptor.get("asset") != expected
             or type(descriptor.get("size")) is not int
             or not 0 < descriptor["size"] <= MAX_ATTACHMENT
             or not re.fullmatch(r"[a-f0-9]{64}", str(descriptor.get("sha256")))
         ):
             raise ValueError("Invalid or oversized mirror component: " + expected)
-        path = directory / expected
-        if path.stat().st_size != descriptor["size"] or file_sha256(path) != descriptor["sha256"]:
-            raise ValueError("Source artifact integrity failed: " + expected)
         files[expected] = descriptor
-    files[ASSET_MANIFEST] = {"size": len(raw), "sha256": file_sha256(directory / ASSET_MANIFEST)}
+    files[ASSET_MANIFEST] = {"asset": ASSET_MANIFEST, "size": len(raw), "sha256": sha256(raw)}
+    return meta, files
+
+
+def validated_files(tag, repository, directory):
+    directory = Path(directory)
+    meta, files = manifest_files(tag, repository, (directory / ASSET_MANIFEST).read_bytes())
+    for name, descriptor in files.items():
+        path = directory / name
+        if path.stat().st_size != descriptor["size"] or file_sha256(path) != descriptor["sha256"]:
+            raise ValueError("Source artifact integrity failed: " + name)
     return meta, files
 
 

@@ -203,6 +203,8 @@ $distribution = Get-Content distribution.json | ConvertFrom-Json
 .venv\Scripts\python.exe -m tools.build_portable --version $distribution.version --repository $distribution.repository
 ```
 
+Gitee 分发复用 GitHub 的同一份正式发布文件，由维护者电脑下载、校验并上传；不另建一套构建。自动中转的启停、凭据轮换和检查命令见 [本地中转发布](docs/LOCAL_RELEASE_RELAY.md)。
+
 仓库仅在文档中收录精选演示截图；发行包不附带这些图片。发布包和仓库不包含游戏资源包、从游戏生成的字库、完整文本索引、日志或用户配置。报告问题时请附工具版本、游戏版本、语言组合与精简错误信息，避免上传完整游戏数据。
 
 </details>
