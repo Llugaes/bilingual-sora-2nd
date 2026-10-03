@@ -115,10 +115,13 @@ class RollbackTests(unittest.TestCase):
 
     def test_rollback_crash_recovers_previous_version_and_preferences_together(self):
         original = installer.atomic_bytes
+        # Install resolves paths; CI temporary folders can use Windows short
+        # names. Exercise a non-canonical spelling even on a normal local path.
+        self.prefs = self.prefs.parent / ".." / "updates" / "preferences.json"
 
         def crash(path, data):
             original(path, data)
-            if Path(path) == self.prefs:
+            if Path(path).resolve() == self.prefs.resolve():
                 raise KeyboardInterrupt("power loss after rollback preferences")
 
         with patch.object(installer, "atomic_bytes", crash), self.assertRaises(KeyboardInterrupt):
