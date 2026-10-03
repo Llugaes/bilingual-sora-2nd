@@ -263,6 +263,7 @@ function wantedText(row,allocateLayers=true) {
         if(REPORT.diagnostics)send({type:'native_size_fallback',fontSize:row.renderSize,sourceLength:row.original.length});
     }
     row.reserveRubyHeight=row.plan.kind==='ruby'&&!uncovered&&!nativeSizeFallback;
+    row.reserveAuxiliaryHeight=row.plan.kind==='layered'&&/\r\n|\n|\\n/.test(wanted);
     row.preservePrimaryLayout=shrink&&Boolean(uncovered||nativeSizeFallback||primaryMetrics);
     row.extendLineSpacing=shrink&&!uncovered&&!nativeSizeFallback&&(!primaryMetrics||primaryReadings);
     // Mixed labels keep native parser advances. Their owned glyphs are scaled
@@ -636,11 +637,23 @@ const rubyContextCallbacks={
             const layer=auxiliaryLayer(p,this.context.rbx,row);
             if(layer) {
                 this.target=args[0];this.layer=layer;
-                if(this.baseMeasurement&&((layer.layer.primary||'').includes('<R>')||layer.layer.text.includes('<R>'))) {
-                    annotationMetrics.set(String(this.context.rbx),{primary:0,secondary:0,
+                if(this.baseMeasurement&&(row.reserveAuxiliaryHeight||
+                        (layer.layer.primary||'').includes('<R>')||layer.layer.text.includes('<R>'))) {
+                    annotationMetrics.set(String(this.context.rbx),{primary:0,secondary:0,secondaryLine:0,
                         origin:this.context.rbx.add(4).readFloat(),layer:layer.layer});
                 }
                 this.metrics=annotationMetrics.get(String(this.context.rbx));
+                if(this.placement&&row.reserveAuxiliaryHeight&&this.metrics?.layer===layer.layer) {
+                    // 0x58709f measures this child at (0, 0); 0x58714a then
+                    // reinitializes the SAME context for positioned drawing.
+                    // Capture the local bounds before that reset. The bounds
+                    // at ruby_compensate include the paragraph's Y because
+                    // parse_text seeds its envelope with (0, 0): reserving that
+                    // envelope feeds the preceding lines back into each line.
+                    const top=args[0].add(0x1bc).readS32(),bottom=args[0].add(0x1c4).readS32();
+                    const height=bottom-top;
+                    if(height>=0&&height<=65536)this.metrics.secondaryLine=height;
+                }
                 const text=this.baseMeasurement?(layer.layer.primary||layer.row.original):layer.layer.text;
                 args[1]=this.baseMeasurement?layer.primaryBuffer:layer.buffer;args[2]=ptr([...text].length);
                 return;
@@ -795,7 +808,11 @@ if(REPORT.native.ruby_compensate) Interceptor.attach(base.add(REPORT.native.ruby
             const key=String(p),metrics=annotationMetrics.get(key);
             if(metrics?.layer===layer.layer) {
                 annotationMetrics.delete(key);
-                const reserve=metrics.primary*(row.preservePrimaryLayout?annotationScale:1)+metrics.secondary;
+                // The local secondary envelope already contains its original
+                // readings. Reserve them once, in both measuring and drawing.
+                const secondary=row.reserveAuxiliaryHeight&&metrics.secondaryLine>0?
+                    Math.max(metrics.secondary,metrics.secondaryLine+rubyGap):metrics.secondary;
+                const reserve=metrics.primary*(row.preservePrimaryLayout?annotationScale:1)+secondary;
                 const origin=p.add(4).readFloat(),next=origin+reserve;
                 if(!Number.isFinite(next)||reserve<0||reserve>65536)throw Error('Invalid native reading reserve');
                 if(reserve) {

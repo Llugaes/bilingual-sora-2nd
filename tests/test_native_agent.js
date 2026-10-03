@@ -554,6 +554,13 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
                 child.add(0x158).writeFloat(nativeScale);child.add(0x15c).writeFloat(nativeScale);
                 const call={returnAddress:base.add(placement?0x700:0x800),context:machine};
                 const args=[child,allocate('_'),new Pointer(1)];
+                // 0x58714a reuses the child measured at origin (0, 0).
+                // Its bounds are available BEFORE ruby_context_init resets
+                // them. The later drawing envelope is a different value.
+                if(placement&&geometry.measuredSecondaryBounds) {
+                    child.add(0x1bc).writeS32(geometry.measuredSecondaryBounds[0]);
+                    child.add(0x1c4).writeS32(geometry.measuredSecondaryBounds[1]);
+                }
                 init.onEnter.call(call,args);init.onLeave.call(call);
                 const ph=hooks.get(String(base.add(0xd00))),parseCall={};
                 child.add(0x1a5).writeU8(1);ph.onEnter.call(parseCall,[label,child]);
@@ -1779,7 +1786,7 @@ test('ordinary formatted lanes retain configured main size and gap, with correct
     runtime.api.disable();runtime.update(label);assert.equal(label.text(),a);
 });
 
-test('recovery release preserves 0.3.33 multiline origins instead of reserving whole child bounds',()=>{
+test('multiline reserve ignores the positioned child envelope',()=>{
     // Regression boundary: the withdrawn reserve affected every layered
     // multiline label, including menus, tutorial popups and NPC bubbles.
     for(const measuring of [false,true])for(const flags of [65,789,865]) {
@@ -1790,6 +1797,39 @@ test('recovery release preserves 0.3.33 multiline origins instead of reserving w
             const origin=100+line*45;
             const out=r.auxiliary(p,line,{origin,measuring,bottom});
             assert.equal(out.primaryY,origin,'a child envelope must not enlarge the menu/paragraph baseline');
+        }
+        assert.equal(r.api.status().failed,false);
+        r.api.select('primary',true);r.update(p);assert.equal(p.text(),a);
+        r.api.select('secondary',true);r.update(p);assert.equal(p.text(),b);
+        r.api.disable();r.update(p);assert.equal(p.text(),a);
+    }
+});
+
+test('multiline popup separates consecutive lines without feeding paragraph origin into line height',()=>{
+    const a='<C1>第一行\n第二行\n<C2>第三行<C1>。\n第四行\n第五行<I4>',
+        b='<C1>一行目\n二行目\n<C2>三行目<C1>。\n四行目\n五行目<I4>';
+    // Actual five-line layout-8 glyph edges captured on 0.3.33.
+    const captured=[[-9.877085,8.166666,38.624999],[32.427083,49.458331,78.75],
+        [72.414583,90.458330,119.75],[110.929162,131.166663,164.249994],
+        [150.566668,172.166670,205.416668]];
+    for(const measuring of [false,true])for(const flags of [65,789,865]) {
+        const r=makeRuntime(),p=r.label(0x9968,a,0,33);p.flags=flags;
+        r.api.load({pairs:{[a]:[a,b]}},'annotation',true,.85,{ruby_scale:.9,ruby_gap:0,line_gap:6});r.update(p);
+        for(let rebuild=0;rebuild<3;rebuild++) {
+            let shift=0,previousBottom=null;
+            for(let i=0;i<captured.length;i++) {
+                const [top,bottom,primaryBottom]=captured[i],height=Math.ceil(bottom-top);
+                const origin=100+i*42+shift;
+                const out=r.auxiliary(p,i,{origin,measuring,
+                    measuredSecondaryBounds:[0,height],bottom:Math.ceil(origin+height)});
+                const delta=out.primaryY-origin;
+                assert.ok(delta>=height&&delta<=height+1,'reserve is one local line, never the positioned envelope');
+                shift+=delta;
+                if(previousBottom!==null)assert.ok(top+shift>=previousBottom+6-.001,
+                    `line ${i+1} overlaps: ${top+shift-previousBottom}`);
+                previousBottom=primaryBottom+shift;
+            }
+            assert.ok(shift<=110,'five-line paragraph grows linearly by its five secondary lines');
         }
         assert.equal(r.api.status().failed,false);
         r.api.select('primary',true);r.update(p);assert.equal(p.text(),a);
@@ -2046,6 +2086,19 @@ test('primary and secondary reading reserves are independent and absent readings
         // keeps the existing main <s> path, so its measured reading is final.
         const extra=(mainReading?18*.85:0)+(secondaryReading?5:0);
         assert.ok(Math.abs(out.primaryY-(100+extra))<1e-4,`${mainReading}/${secondaryReading}/${measuring}`);
+        assert.equal(r.api.status().failed,false);
+    }
+});
+
+test('local line height includes secondary readings once and remains independent of initial Y',()=>{
+    const a='<R>刺激</R香辛料>。\n<C1>下一行',b='<R>刺激</Rスパイス>。\n<C1>次の行';
+    for(const measuring of [false,true])for(const origin of [0,120,1600])for(const gap of [0,3,8]) {
+        const r=makeRuntime(),p=r.label(0xb696,a,0,33);
+        r.api.load({pairs:{[a]:[a,b]}},'annotation',true,.85,{ruby_gap:gap});r.update(p);
+        const out=r.auxiliary(p,0,{origin,measuring,primaryReadingHeight:18,secondaryReadingHeight:5,
+            measuredSecondaryBounds:[-5,17],bottom:origin+22});
+        assert.ok(Math.abs(out.primaryY-origin-(18*.85+22+gap))<1e-4,
+            'the complete measured secondary line includes its five-unit reading already');
         assert.equal(r.api.status().failed,false);
     }
 });

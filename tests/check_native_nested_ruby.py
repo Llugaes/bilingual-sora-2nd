@@ -21,9 +21,12 @@ import pefile
 
 ROOT = Path(__file__).resolve().parents[1]
 EXPECTED_EXE_SHA256 = "d8b2911d1576216bdc22d070550e4f531e105de7ed2981885849669f4acf8aaf"
+EXPECTED_INIT_SHA256 = "172b31a07764174aa4b5697328f1e5ef742b5dc43cc4a394349dc8cee1ac45ee"
 OUT = ROOT / "generated/diagnostic-130-native-ruby-chain.json"
 MD = ROOT / "generated/diagnostic-130-native-ruby-chain.md"
-AGENT = (ROOT / "sora_bilingual/game/scripts/native_agent.js").read_text("utf-8")
+AGENT = Path(
+    os.environ.get("NATIVE_AGENT_SOURCE", ROOT / "sora_bilingual/game/scripts/native_agent.js")
+).read_text("utf-8")
 PARSER = (ROOT / "sora_bilingual/game/scripts/native_parser.js").read_text("utf-8")
 MEASURE = (ROOT / "sora_bilingual/game/scripts/native_measure.js").read_text("utf-8")
 CALLBACK_START = AGENT.index("const rubyContextCallbacks={")
@@ -74,6 +77,17 @@ void parse_pair(uint8_t *label,uint8_t *parent,void *m,void *d,const char *s,uin
   outer_place(d,s,6);child_parse(label,d,parent,glyph,bounds);
 }}
 void marker(void){{}}
+void line_parse(uint8_t *label,uint8_t *p,int height,float origin){{
+  /* 0x587824/0x58782e seed both bounds with zero. This intentionally
+     retains the paragraph origin in the positioned pass's envelope. */
+  *(int32_t*)(p+0x1bc)=0;*(int32_t*)(p+0x1c4)=(int32_t)origin+height;
+}}
+void layout_line(uint8_t *label,uint8_t *parent,uint8_t *primary,uint8_t *child,const char *s,int height){{
+  nested_measure(primary,s,6);line_parse(label,primary,0,0.f);
+  outer_measure(child,s,6);line_parse(label,child,height,0.f);
+  outer_place(child,s,6);line_parse(label,child,height,*(float*)(parent+4));
+  ruby_compensate_marker(parent,child+0x40,label);
+}}
 `,{{ruby_init:initCode}});
 const outerMeasure=new NativeFunction(driver.outer_measure,'void',['pointer','pointer','uint']);
 const outerPlace=new NativeFunction(driver.outer_place,'void',['pointer','pointer','uint']);
@@ -158,9 +172,36 @@ let suppressedTarget=fresh();prepareParent.writePointer(drawParent);const before
 const markerHook=Interceptor.attach(driver.marker,{{onEnter(){{outerPlace(suppressedTarget,text,6);}}}});Interceptor.flush();
 new NativeFunction(driver.marker,'void',[])();markerHook.detach();Interceptor.flush();
 const suppression={{slow_callbacks_before:before,slow_callbacks_after:nativeMeasure.status().slow,scale:suppressedTarget.add(0x15c).readFloat()}};
+// Both passes reuse the SAME child and execute the exact resetting initializer.
+// Reading bounds after initialization loses them; reading at compensate instead
+// feeds the positioned envelope back into the next line. Both must go red.
+const hLine=Interceptor.attach(driver.line_parse,{{onEnter:nativeParser.onEnter,onLeave:nativeParser.onLeave}});
+const layoutLine=new NativeFunction(driver.layout_line,'void',['pointer','pointer','pointer','pointer','pointer','int']);
+const multiline=[];
+row.reserveAuxiliaryHeight=true;row.preservePrimaryLayout=false;
+const rubyGap=0;
+for(const measuring of [false,true])for(const initial of [0,200])for(const height of [18,22,40])for(const count of [1,2,5,20]){{
+  rootParser.add(4).writeFloat(initial);rootParser.add(0x1ab).writeU8(measuring?1:0);
+  prepareParent.writePointer(rootParser);
+  const primary=fresh(),child=fresh();let good=true;
+  for(let i=0;i<count;i++){{
+    const origin=rootParser.add(4).readFloat();
+    layoutLine(label,rootParser,primary,child,text,height);
+    const delta=rootParser.add(4).readFloat()-origin;
+    good=good&&close(delta,height);
+    // Native newline uses preceding bottom plus spacing, never child origin.
+    rootParser.add(4).writeFloat(rootParser.add(4).readFloat()+34+6);
+  }}
+  const advance=rootParser.add(4).readFloat()-initial;
+  multiline.push({{measuring,initial,height,count,advance,ok:good&&close(advance,count*(height+40))}});
+}}
+row.reserveAuxiliaryHeight=false;
+rootParser.add(4).writeFloat(200);layoutLine(label,rootParser,fresh(),fresh(),text,40);
+const singleLineUnchanged=close(rootParser.add(4).readFloat(),200);
+hLine.detach();
 hCompPrepare.detach();hChild.detach();hParsePair.detach();hMeasure.detach();hPrepare.detach();Interceptor.flush();
-const required={{draw_nested_scale:close(draw.nested_place_scale,.1125),callsite_overwrites_then_parse_repairs:JSON.stringify(measurementCurrent.callsite_flags_1a5_1a9_1ab)==='[1,0,1]'&&JSON.stringify(measurementCurrent.parse_entry_flags_1a5_1a9_1ab)==='[0,0,1]',measuring_glyph_count_unchanged:measurementCurrent.glyphs===0,measuring_bounds_include_native_r:measurementCurrent.bounds>0,production_metric_primary_nonzero:measurementCurrent.metrics.primary>0,production_metric_secondary_nonzero:measurementCurrent.metrics.secondary>0,negative_without_allow_readings_is_red:withoutAllowReadings.bounds===0&&!withoutAllowReadings.nested_init_seen,normal_chain_not_suppressed:nativeMeasure.status().slow>0,suppression_control_observed:suppression.slow_callbacks_after===suppression.slow_callbacks_before&&close(suppression.scale,.375)}};
-rpc.exports.run=()=>({{host:'self-created-hidden-python',game_attached:false,game_started:false,exact_initializer_bytes:true,callers:{{outer_measure:String(cOuterMeasure),outer_place:String(cOuterPlace),nested_measure:String(cNestedMeasure),nested_place:String(cNestedPlace)}},draw,measurement_current:measurementCurrent,negative_without_allow_readings:withoutAllowReadings,candidate,suppression,required,native_measure_status:nativeMeasure.status(),native_parser_status:nativeParser.status(),errors}});
+const required={{draw_nested_scale:close(draw.nested_place_scale,.1125),callsite_overwrites_then_parse_repairs:JSON.stringify(measurementCurrent.callsite_flags_1a5_1a9_1ab)==='[1,0,1]'&&JSON.stringify(measurementCurrent.parse_entry_flags_1a5_1a9_1ab)==='[0,0,1]',measuring_glyph_count_unchanged:measurementCurrent.glyphs===0,measuring_bounds_include_native_r:measurementCurrent.bounds>0,production_metric_primary_nonzero:measurementCurrent.metrics.primary>0,production_metric_secondary_nonzero:measurementCurrent.metrics.secondary>0,negative_without_allow_readings_is_red:withoutAllowReadings.bounds===0&&!withoutAllowReadings.nested_init_seen,normal_chain_not_suppressed:nativeMeasure.status().slow>0,suppression_control_observed:suppression.slow_callbacks_after===suppression.slow_callbacks_before&&close(suppression.scale,.375),multiline_local_height:multiline.every(v=>v.ok),single_line_unchanged:singleLineUnchanged}};
+rpc.exports.run=()=>({{host:'self-created-hidden-python',game_attached:false,game_started:false,exact_initializer_bytes:true,callers:{{outer_measure:String(cOuterMeasure),outer_place:String(cOuterPlace),nested_measure:String(cNestedMeasure),nested_place:String(cNestedPlace)}},draw,measurement_current:measurementCurrent,negative_without_allow_readings:withoutAllowReadings,candidate,suppression,multiline,required,native_measure_status:nativeMeasure.status(),native_parser_status:nativeParser.status(),errors}});
 """
     )
 
@@ -189,30 +230,27 @@ def run_host(source: str) -> dict:
 def main(exe: Path | None = None) -> None:
     environment = os.environ.get("SORA_GAME_EXE")
     exe = exe or (Path(environment) if environment else None)
-    if exe is None:
-        print(
-            json.dumps(
-                {
-                    "skipped": True,
-                    "reason": "pass --exe or set SORA_GAME_EXE to the verified sora_2nd.exe",
-                    "game_started": False,
-                    "game_attached": False,
-                },
-                indent=2,
-            )
-        )
-        return
-    if not exe.is_file():
-        raise SystemExit(f"missing verified executable: {exe}")
-    exe_hash = hashlib.sha256(exe.read_bytes()).hexdigest()
-    if exe_hash != EXPECTED_EXE_SHA256:
-        raise SystemExit(f"unsupported sora_2nd.exe SHA-256: {exe_hash}")
-    code = init_bytes(exe)
+    # CI must exercise this boundary without having the copyrighted game.
+    # The 271-byte constructor fixture is verified against the supported PE
+    # locally; it has no game data or direct calls to game code.
+    code = bytes.fromhex((ROOT / "tests/fixtures/ruby_context_init.hex").read_text("ascii"))
+    exe_hash = None
+    if exe is not None:
+        if not exe.is_file():
+            raise SystemExit(f"missing verified executable: {exe}")
+        exe_hash = hashlib.sha256(exe.read_bytes()).hexdigest()
+        if exe_hash != EXPECTED_EXE_SHA256:
+            raise SystemExit(f"unsupported sora_2nd.exe SHA-256: {exe_hash}")
+        if init_bytes(exe) != code:
+            raise SystemExit("initializer fixture differs from the supported game")
+    if hashlib.sha256(code).hexdigest() != EXPECTED_INIT_SHA256:
+        raise SystemExit("initializer fixture SHA-256 mismatch")
     host = run_host(js_source(code))
     agent_hash = hashlib.sha256(AGENT.encode()).hexdigest()
     report = {
         "scope": "static on-disk PE plus self-created hidden Python host; no game process opened, attached, injected, or started",
         "exe_sha256": exe_hash,
+        "initializer_sha256": EXPECTED_INIT_SHA256,
         "native_agent_sha256": agent_hash,
         "production_callback_sha256": hashlib.sha256(CALLBACK.encode()).hexdigest(),
         "production_compensate_sha256": hashlib.sha256(COMPENSATE.encode()).hexdigest(),
@@ -223,6 +261,7 @@ def main(exe: Path | None = None) -> None:
             "drawing_child": "0x58714f begins placement setup, 0x587210 copies parent+0x1ab, then 0x587224 parses it",
             "glyph_gate": "glyph bounds are accumulated before 0x5881e5 tests child+0x1a9; 1a9=0 skips the output block while preserving measurement work",
             "line_origin": "0x588570 immediately returns for parser+0x1ab; draw first-line subtracts label+0x2fc/global+0x6a4 and later lines add label+0x2f8",
+            "local_height": "0x58709f parses the child at zero origin; capture its bounds on entry to 0x58714a before the resetting constructor; parse_text 0x587824/0x58782e zero-seeds the later positioned envelope",
         },
         "host": host,
         "decision": {
