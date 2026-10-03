@@ -26,7 +26,12 @@ def update_callback_source() -> str:
         "labelHooks.attach(base.add(REPORT.native.update.rva), {onEnter(args) {"
     )
     return (
-        AGENT_SOURCE[restore_start:restore_end]
+        AGENT_SOURCE[
+            AGENT_SOURCE.index("function textLayoutChanged(") : AGENT_SOURCE.index(
+                "function prepareTextReset("
+            )
+        ]
+        + AGENT_SOURCE[restore_start:restore_end]
         + "\n"
         + AGENT_SOURCE[start : AGENT_SOURCE.index("\nrpc.exports = {", start)]
     )

@@ -17,6 +17,7 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
     const allocations = [];
     let threadId = 1;
     let duringSetter=null;
+    let prepareReset=null;
     let logOwnerPointer=null;
     let fontManagerPointer=null;
     const scriptReads=[];
@@ -291,6 +292,7 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
             flush(){} dispose(){}
         },
         NativeFunction,
+        createNativeTextReset(_reset,_measure,prepare){prepareReset=prepare;return {};},
         Interceptor: {attach(address, callback) { hooks.set(String(address),typeof callback==='function'?{onEnter:callback}:callback); },flush(){}},
         send(message) { messages.push(message); },
         rpc: {exports: {}},
@@ -761,6 +763,12 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
             copyIntoLabel(label, args[1]);
             leave();
             return buffer;
+        },
+        externalReset(label) {
+            const refresh=prepareReset?.(label)||0;
+            if(refresh){invoke(base.add(0x190),[label])();label.reflows++;}
+            label.resetCount++;label.cursor=0;label.parserText=label.owned;
+            return !!refresh;
         },
         inlinedSet(label,text) {
             copyIntoLabel(label,allocate(text));
@@ -1647,6 +1655,45 @@ test('late animated flags rebuild the secondary lane without waiting for a mode 
     r.update(p);assert.equal(r.api.status().writes,writes,'stable animation flags must not rebuild every frame');
     p.flags|=0x10;r.update(p);
     assert.equal(r.api.status().writes,writes,'pause flags must not invalidate the dialogue');
+});
+
+test('popup reset finalizes late animation flags before its parent consumes measured bounds',()=>{
+    for(const [initial,final] of [[0x365,0x361],[0x361,0x365]]) {
+        const r=makeRuntime(),p=r.label(0xb315,'',0,33);
+        const source='<C1>Load save?<C0>\nChapter 8\nTown\nDeliver devices\nEstelle Lv.83\nJoshua Lv.83\nSchera Lv.83\nAgate Lv.83\nPlaytime 059:22:58';
+        const pairs=Object.fromEntries(['Load save?','Chapter 8','Town','Deliver devices','Estelle','Joshua','Schera','Agate'].map(s=>[s,[s,'訳'+s]]));
+        r.api.load({pairs,plain_pairs:pairs},'annotation',true,.85);
+        p.flags=initial;r.externalSet(p,source);
+        assert.equal(r.api.snapshot()[0].presentation,initial&4?'layered':'ruby');
+        // 0x536c50 changes bit 4 AFTER SetText; 0x533e4d resets the
+        // parser BEFORE the popup reads label+0x368..374. No Update yet.
+        p.flags=final;
+        assert.equal(r.externalReset(p),true,'first window measurement must be refreshed before Update');
+        const snapshot=r.api.snapshot()[0];
+        assert.equal(snapshot.presentation,final&4?'layered':'ruby');
+        assert.equal(snapshot.original,source);
+        assert.equal(p.parserText,p.owned,'initializer must consume the final buffer');
+        const writes=r.api.status().writes,reflows=p.reflows;
+        assert.equal(r.externalReset(p),false,'repeat reset does not repeatedly measure');
+        r.update(p);
+        assert.equal(r.api.status().writes,writes);
+        assert.equal(p.reflows,reflows,'first Update must use the same plan as window creation');
+        assert.equal(r.api.status().failed,false,JSON.stringify(r.messages));
+    }
+});
+
+test('popup finalization keeps single languages and disabled text free of bilingual layout',()=>{
+    for(const [mode,active,expected] of [['primary',true,'Alpha\nBeta'],['secondary',true,'甲\n乙'],['annotation',false,'Alpha\nBeta']]) {
+        const r=makeRuntime(),p=r.label(0xb316,'',0,33),source='Alpha\nBeta';
+        const pairs={Alpha:['Alpha','甲'],Beta:['Beta','乙']};
+        r.api.load({pairs,plain_pairs:pairs},'annotation',true,.85);
+        p.flags=0x365;r.externalSet(p,source);
+        r.api.select(mode,active);p.flags=0x361;r.externalReset(p);
+        assert.equal(p.text(),expected);
+        assert.equal(r.api.snapshot()[0].presentation,'plain');
+        const copies=p.copyCount;r.update(p);assert.equal(p.copyCount,copies);
+        assert.equal(r.api.status().failed,false,JSON.stringify(r.messages));
+    }
 });
 
 test('late catalog flags remeasure once just as switching into bilingual mode does',()=>{

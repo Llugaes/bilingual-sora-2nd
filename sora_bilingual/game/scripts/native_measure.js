@@ -97,6 +97,7 @@ static ThreadScope *thread_for(State *s, uint64_t tid, int create) {
     if (create && empty) { empty->tid=tid; return empty; }
     return 0;
 }
+
 static int evaluate(State *s, uint64_t tid, void *caller, void *r15, void *rbx, uint32_t measuring, double *factor) {
     Scope scope;
     ThreadScope *t;
@@ -207,4 +208,28 @@ void measure_snapshot(uint64_t *out) {
             return {disabled: !!value(0), pushes: value(1), pops: value(2), overflows: value(3), mismatches: value(4), fastMeasure: value(5), fastBase: value(6), slow: value(7), applyFailures: value(8), bridgeScopes: slowThis.size};
         }
     };
+}
+
+// Native popup constructors consume label bounds immediately after reset,
+// before Update. A replacement (not an Interceptor listener) lets the final
+// measurement return through the ordinary parser hooks after prepare returns.
+// Calling measure inside a JS/C listener suppresses those nested hooks.
+function createNativeTextReset(reset,measure,prepare) {
+    const originalSlot=Memory.alloc(Process.pointerSize);
+    const callback=new NativeCallback(prepare,'int',['pointer']);
+    const module=new CModule(`
+typedef void (*Reset)(void *);
+extern Reset original_reset;
+extern int prepare_reset(void *);
+extern void measure_text(void *);
+void reset_text(unsigned char *label) {
+    /* Native setters of size/flags mark +689 dirty. Stable per-frame resets
+       bypass JS entirely; this does not introduce a new Update scan. */
+    if (label[0x689] && prepare_reset(label)==1) measure_text(label);
+    original_reset(label);
+}
+`,{original_reset:originalSlot,prepare_reset:callback,measure_text:measure});
+    const original=Interceptor.replaceFast(reset,module.reset_text);
+    originalSlot.writePointer(original);
+    return {module,callback,originalSlot,original};
 }

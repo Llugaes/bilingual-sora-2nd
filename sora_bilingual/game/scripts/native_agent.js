@@ -293,6 +293,33 @@ function captureMetadata(row) {
     const p=row.pointer;
     row.metadata={size:p.add(0x304).readU32(),flags:p.add(0x2e8).readU32()};
 }
+function textLayoutChanged(row,p) {
+    return row.renderSize!==p.add(0x304).readU32()||
+        (row.metadata?.flags&0x0c)!==(p.add(0x2e8).readU32()&0x0c);
+}
+function prepareTextReset(p) {
+    // Update already owns its nested setter/reset and preserves reveal state.
+    // This boundary handles native constructors finalizing flags before the
+    // first Update: 0x536c50 -> 0x533e4d -> 0x533f42 (popup height).
+    if(labelCallbacks.has(String(p))||activeRewrite(p)||!isLabel(p))return 0;
+    const row=labels.get(String(p));
+    if(!row||(row.epoch===epoch&&!textLayoutChanged(row,p))||readText(p)!==row.displayed)return 0;
+    const lease=enterLabel(p);if(!lease)return 0;
+    try {
+        const previouslyOwned=row.plan?.kind==='ruby'||row.plan?.kind==='layered';
+        const renderEpoch=epoch,wanted=wantedText(row);
+        const owned=row.plan.kind==='ruby'||row.plan.kind==='layered';
+        const changed=wanted!==row.displayed;
+        if(changed)copyOwnedText(row,wanted);
+        row.epoch=renderEpoch;captureMetadata(row);
+        // The replacement's NativeCallback runs outside a listener, so the
+        // setter already measured changed bytes through the real hooks.
+        // Equal bytes with changed geometry need one explicit C measurement.
+        return previouslyOwned||owned?(changed?2:1):0;
+    }catch(e){fail(e);return 0;}finally{leaveLabel(lease);}
+}
+const nativeTextReset=typeof createNativeTextReset==='function'?createNativeTextReset(
+    base.add(REPORT.native.reset_text.rva),base.add(REPORT.native.measure_text.rva),prepareTextReset):null;
 function fail(error) {
     if (!failed) {failureReason=String(error);send({type:'error', message:failureReason});}
     failed = true; enabled = false; epoch++;
@@ -1632,8 +1659,7 @@ labelHooks.attach(base.add(REPORT.native.update.rva), {onEnter(args) {
         // Those flags change the parser and its Y origin, even at equal text
         // and font size. Reconcile once at Update, as on a hot mode switch.
         // Exclude pause (0x10): pausing must never restart the reveal lifecycle.
-        if (row.epoch === epoch&&(!runtimeFonts||row.fontGeneration===fontGeneration)&&row.renderSize===p.add(0x304).readU32()
-            &&(row.metadata?.flags&0x0c)===(p.add(0x2e8).readU32()&0x0c)) return;
+        if (row.epoch === epoch&&(!runtimeFonts||row.fontGeneration===fontGeneration)&&!textLayoutChanged(row,p)) return;
         // A text write bypassing SetText invalidates our remembered source.
         const current=readText(p);
         if (current !== row.displayed) {row.original=current;row.displayed=current;row.scriptIdentity=null;row.scriptPointer=null;row.tableIdentity=null;row.paragraph=null;row.logSpeaker=null;row.logKind=null;row.book=null;}
