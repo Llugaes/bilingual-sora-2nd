@@ -447,6 +447,80 @@ MESSAGES.update(
 )
 
 
+MESSAGES.update(
+    {
+        "自动检查新版本": {
+            "en": "Automatically check for updates",
+            "ja": "新しいバージョンを自動確認",
+        },
+        "自动检查已关闭": {"en": "Automatic checks are off", "ja": "自動確認はオフです"},
+        "只检查和提醒；点击确认后才下载安装。设置会保留。": {
+            "en": "Only checks and notifies. Download and installation require your confirmation. Settings are kept.",
+            "ja": "確認と通知のみ行います。ダウンロード・適用には確認操作が必要です。設定は保持されます。",
+        },
+        "下载安装": {"en": "Download and install", "ja": "ダウンロードして適用"},
+        "选择历史稳定版本…": {"en": "Choose an older stable version…", "ja": "過去の安定版を選択…"},
+        "历史稳定版本": {"en": "Previous stable versions", "ja": "過去の安定版"},
+        "回退到所选版本": {"en": "Restore selected version", "ja": "選択した版に戻す"},
+        "回退会保留设置并关闭自动检查，防止旧版自动升级。可随时手动检查。": {
+            "en": "Rollback keeps settings and disables automatic checks to prevent older clients from upgrading again. Manual checks remain available.",
+            "ja": "設定を保持し、旧版の自動更新を防ぐため自動確認をオフにします。手動確認はいつでも可能です。",
+        },
+        "当前是开发目录：可检查版本，不会覆盖本地源码。": {
+            "en": "Development checkout: checks are available; source is never overwritten.",
+            "ja": "開発フォルダー：バージョン確認は可能ですが、ソースは上書きしません。",
+        },
+        "确认回退": {"en": "Confirm rollback", "ja": "ロールバックの確認"},
+        "确认更新": {"en": "Confirm update", "ja": "更新の確認"},
+        "目标版本：": {"en": "Target version: ", "ja": "変更先のバージョン："},
+        "设置会保留。请先退出游戏，再执行安装。": {
+            "en": "Settings will be kept. Exit the game before installing.",
+            "ja": "設定は保持されます。ゲームを終了してから適用してください。",
+        },
+        "回退会关闭自动检查，防止旧版自动升级。": {
+            "en": "Rollback disables automatic checks to prevent older clients from upgrading again.",
+            "ja": "旧版が自動更新しないよう、ロールバック時に自動確認をオフにします。",
+        },
+        "；点击下载安装后才会更新": {
+            "en": "; click Download and install to update",
+            "ja": "。「ダウンロードして適用」を押すと更新します",
+        },
+        "正在获取历史稳定版本…": {
+            "en": "Loading previous stable versions…",
+            "ja": "過去の安定版を取得中…",
+        },
+        "请选择要回退的稳定版本": {
+            "en": "Choose a stable version to restore",
+            "ja": "戻したい安定版を選択してください",
+        },
+        "没有可回退的稳定版本": {
+            "en": "No earlier stable version is available",
+            "ja": "戻せる安定版がありません",
+        },
+        "开发目录不会被覆盖，请使用发行包": {
+            "en": "Development checkout is protected; use a release package",
+            "ja": "開発フォルダーは上書きできません。配布版を使用してください",
+        },
+        "正在核对所选版本…": {
+            "en": "Verifying the selected version…",
+            "ja": "選択したバージョンを確認中…",
+        },
+        "正在校验并安装所选版本…": {
+            "en": "Verifying and installing the selected version…",
+            "ja": "選択したバージョンを検証・適用中…",
+        },
+        "游戏连接尚未结束；请退出游戏后再次点击安装。不会自动安装。": {
+            "en": "The game is still connected. Exit the game and click install again. Nothing will install automatically.",
+            "ja": "ゲームに接続中です。終了後にもう一度適用を押してください。自動では適用しません。",
+        },
+        "版本操作未完成。请重试，或使用下方下载入口重新安装；原目录与配置请保留。详细原因见日志。": {
+            "en": "The version change or check did not finish. Retry or reinstall using the download link below. Keep the original folder and settings. Details are in the logs.",
+            "ja": "バージョンの確認・変更を完了できませんでした。再試行するか、下のリンクから再インストールしてください。元のフォルダーと設定は保持してください。詳細はログに記録されています。",
+        },
+    }
+)
+
+
 def set_language(value):
     global _language
     if value == "auto":

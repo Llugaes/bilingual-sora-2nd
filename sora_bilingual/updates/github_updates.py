@@ -15,6 +15,10 @@ from sora_bilingual.updates.release_client import (
 
 
 class GitHubClient(ReleaseClient):
+    @property
+    def releases_url(self):
+        return f"https://api.github.com/repos/{self.repository}/releases"
+
     def latest(self, cache=None):
         cache = cache or {}
         headers = {}

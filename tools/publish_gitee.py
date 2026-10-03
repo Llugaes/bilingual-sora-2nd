@@ -172,7 +172,7 @@ class GiteePublisher:
             "body": (
                 f"{MARKER}\n\nGitHub 正式发行版的原始附件镜像，大小及 SHA-256 已校验。\n\n"
                 f"[版本说明与完整便携包](https://github.com/{self.repository}/releases/tag/{tag})\n\n"
-                "首次使用请下载 setup.exe；app 和 runtime ZIP 是工具自动更新使用的组件。"
+                "首次使用请下载 setup.exe；app 和 runtime ZIP 是工具内更新使用的组件。"
             ),
         }
         if release is None:

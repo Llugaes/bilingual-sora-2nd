@@ -185,17 +185,30 @@ class FallbackTests(unittest.TestCase):
             ]
             release = {"id": 1, "tag_name": "v1.0.1", "prerelease": False}
             app = new.parent / meta["components"]["application"]["asset"]
-            router = Router([[release], assets, json.dumps(meta).encode(), app.read_bytes()])
+            router = Router(
+                [
+                    [release],
+                    assets,
+                    json.dumps(meta).encode(),
+                    release,
+                    assets,
+                    json.dumps(meta).encode(),
+                    app.read_bytes(),
+                ]
+            )
             github = Mock()
             client = ReleaseSources("a/b", "1.0.0", github=github, gitee=GiteeClient("a/b", router))
             service = UpdateService(root, client=client)
             service._check()
             self.assertEqual(
+                json.loads((root / "distribution.json").read_text())["version"], "1.0.0"
+            )
+            service._install(service.release)
+            self.assertEqual(
                 json.loads((root / "distribution.json").read_text())["version"], "1.0.1"
             )
             self.assertEqual(config.read_text(), '{"primary":"en"}')
-            self.assertIsNone(service.runtime_package)
-            self.assertEqual(len(router.requests), 4)
+            self.assertEqual(len(router.requests), 7)
             github.latest.assert_not_called()
 
     def test_primary_complete_release_does_not_wait_for_github(self):

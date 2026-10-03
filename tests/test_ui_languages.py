@@ -14,6 +14,40 @@ from sora_bilingual.app.update_ui import UpdatePage
 
 
 class UiLanguageTests(unittest.TestCase):
+    def test_version_confirmation_cannot_download_on_cancel_or_change_the_selected_tag(self):
+        from PySide6.QtWidgets import QMessageBox
+
+        app = QApplication.instance() or QApplication([])
+        page = UpdatePage()
+        page.service.release = {"tag_name": "v9.0.0"}
+        try:
+            with (
+                patch(
+                    "sora_bilingual.app.update_ui.QMessageBox.question",
+                    return_value=QMessageBox.StandardButton.No,
+                ),
+                patch.object(page.service, "install_release") as install,
+            ):
+                page.confirm_install(page.service.release)
+                install.assert_not_called()
+
+            def confirm(*args):
+                self.assertIn("v9.0.0", args[2])
+                self.assertEqual(args[-1], QMessageBox.StandardButton.No)
+                page.service.release = {"tag_name": "v10.0.0"}
+                return QMessageBox.StandardButton.Yes
+
+            with (
+                patch("sora_bilingual.app.update_ui.QMessageBox.question", side_effect=confirm),
+                patch.object(page.service, "install_release") as install,
+            ):
+                page.confirm_install(page.service.release)
+                install.assert_called_once_with({"tag_name": "v9.0.0"})
+        finally:
+            page.close()
+            page.deleteLater()
+            app.processEvents()
+
     def test_automatic_ui_locale_uses_system_language(self):
         for system, text in (
             ("English_United States", "Settings"),
@@ -123,7 +157,7 @@ class UiLanguageTests(unittest.TestCase):
 
                 self.assertEqual(UpdateService(root).policy, "off")
                 page.automatic.click()
-                self.assertEqual(UpdateService(root).policy, "automatic")
+                self.assertEqual(UpdateService(root).policy, "notify")
             finally:
                 page.close()
                 page.deleteLater()

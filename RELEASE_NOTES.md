@@ -1,25 +1,25 @@
-# Bilingual Sora 2nd v0.3.35
+# 0.4.0 — 恢复排版，改为手动更新
 
-## 简体中文
+撤回 0.3.34 引入的多行高度改动，恢复 0.3.33 的游戏排版行为，避免菜单、提示框和普通对话被异常拉长。保留 0.3.35 的连接入口校验修复。此前报告的少数多行提示拥挤暂未解决，后续先提供本地候选实测。
 
-- 紧急修复 0.3.33／0.3.34 首次连接时可能报 `book_count` 校验失败的问题：书籍模块先安装钩子，后续校验把本工具自己的修改误判为异常。现在先校验全部入口，再初始化原生模块。
-- 将生产启动顺序、真实 Frida 改写和正常／异常入口检查加入发版必跑流程，防止独立功能测试通过、实际连接失败的情况再次漏检。
-- 保留 0.3.34 的多行双语提示行高修复。本补丁不改变更新策略；手动确认更新和版本回退会单独迭代。
+更新现在只自动检查和提醒。用户点击“下载安装”并确认后才会更新；游戏仍连接时需要退出游戏后再次点击，不会自动排队安装。已有自动更新配置迁移为只检查。
 
-本次启动错误已在独立隐藏进程复现并通过修复回归。若当前游戏进程已经出现连接失败，请正常退出游戏，更新后再启动；不要在该进程反复连接。
+支持选择历史稳定版本回退，保留配置，并关闭旧版自动更新，防止再次自动升回问题版本。此后的正式版本必须经过本地实机验收；CI 只生成草稿发行版。
+
+已安装 0.3.34／0.3.35 的用户可更新到 0.4.0。请先正常退出游戏再安装；当前进程中的旧排版代码需要新游戏进程才能替换。
 
 ## English
 
-- Fix the first-connection `book_count` validation failure in 0.3.33/0.3.34. Book hooks were installed before code validation, causing the tool to reject its own patches. All entry points are now validated before native adapters initialize.
-- Add the production startup sequence, real Frida patches, and clean/modified-entry checks to mandatory release validation.
-- Retain the multiline bilingual spacing fix from 0.3.34. Update confirmation and rollback will be addressed separately; this hotfix does not change update policy.
+Restores the game layout behavior of 0.3.33, withdrawing the multiline-height change that stretched menus, popups and dialogue boxes. The 0.3.35 connection-preflight fix remains. Some crowded multiline hints are still a known limitation.
 
-The startup failure was reproduced and fixed in an isolated native process. If connection has already failed in the current game process, exit the game normally, update, then start it again.
+Updates now check and notify only. Download and installation require explicit confirmation; an active game connection requires a manual retry after the game exits. Previous automatic-install preferences become check-only.
+
+You can select an older stable release to restore, preserving settings and disabling legacy automatic updates. Future stable releases require in-game acceptance; CI creates drafts only. Exit the game before installing 0.4.0, then relaunch it to replace the resident layout code.
 
 ## 日本語
 
-- 0.3.33／0.3.34 の初回接続で `book_count` の検証に失敗する問題を修正しました。書籍フックを先に設置し、その変更を異常と誤判定していました。すべての入口を検証してからネイティブ処理を初期化します。
-- 製品コードの起動順序と実際の Frida フックを使う正常／異常ケースを、リリース前の必須テストに追加しました。
-- 0.3.34 の複数行の双語表示の修正は含まれます。更新前の確認とバージョンの巻き戻しは別途対応し、この修正版では更新方針を変更しません。
+メニュー・説明ウィンドウ・会話が縦に伸びる原因となった複数行の高さ変更を撤回し、0.3.33 のレイアウトに戻します。0.3.35 の接続時チェック修正は保持します。一部の複数行説明が窮屈になる問題は引き続き確認中です。
 
-独立した検証プロセスで同じ起動エラーを再現し、修正を確認しています。現在のゲームで接続に失敗した場合は、ゲームを通常終了し、更新後に起動し直してください。
+更新は自動確認と通知のみになります。ダウンロード・適用には明示的な確認が必要です。ゲーム接続中の場合は終了後にもう一度適用してください。以前の自動更新設定は確認のみに移行します。
+
+設定を保持して過去の安定版に戻せます。旧版の自動更新はオフにします。今後の正式版は実機確認後に公開し、CI は草稿のみ作成します。0.4.0 の適用前にゲームを終了し、適用後に起動し直してください。

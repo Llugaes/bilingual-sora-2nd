@@ -329,7 +329,7 @@ class InstallationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "更旧"):
             installer.install(self.root, self.old, self.old_meta)
 
-    def test_automatic_service_downloads_and_defers(self):
+    def test_checks_never_install_and_busy_install_requires_another_explicit_action(self):
         class Client:
             def latest(inner, cache):
                 return {"tag_name": "v0.1.1"}, {}
@@ -337,18 +337,26 @@ class InstallationTests(unittest.TestCase):
             def metadata(inner, release):
                 return self.meta, {}
 
+            def release(inner, tag):
+                return {"tag_name": tag}
+
             def download(inner, asset, meta, path, progress):
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_bytes(self.new.read_bytes())
 
         service = UpdateService(self.root, client=Client())
-        self.assertEqual(service.policy, "automatic")
-        with installer.UpdateLease(self.root):
-            service._check()
-        self.assertIsNotNone(service.pending)
-        self.assertIn("连接结束", service.message)
+        self.assertEqual(service.policy, "notify")
         service._check()
-        self.assertIsNone(service.pending)
+        self.assertEqual(service.available, "v0.1.1")
+        self.assertFalse((service.directory / self.meta["asset"]).exists())
+        with installer.UpdateLease(self.root):
+            service._run(service._install, service.release)
+        self.assertIn("再次点击", service.message)
+        service._check()
+        self.assertEqual(
+            json.loads((self.root / "distribution.json").read_text())["version"], "0.1.0"
+        )
+        service._run(service._install, service.release)
         self.assertIn("已安装", service.message)
 
     def test_updates_off_allows_manual_check_but_never_downloads(self):
@@ -367,14 +375,13 @@ class InstallationTests(unittest.TestCase):
         service._check(manual=True)
         self.assertIn("发现", service.message)
 
-    def test_legacy_notify_preference_migrates_to_off_without_installation_consent(self):
+    def test_legacy_automatic_becomes_notify_and_off_stays_off(self):
         preferences = self.root / "generated/updates/preferences.json"
-        installer.write_json(preferences, {"policy": "notify"})
-        service = UpdateService(self.root)
-        self.assertEqual(service.policy, "off")
-        with patch("sora_bilingual.updates.update_service.threading.Thread") as thread:
-            service.tick()
-            thread.assert_not_called()
+        for before, after in [("automatic", "notify"), ("notify", "notify"), ("off", "off")]:
+            installer.write_json(preferences, {"policy": before})
+            service = UpdateService(self.root)
+            self.assertEqual(service.policy, after)
+            self.assertEqual(json.loads(preferences.read_text())["policy"], after)
 
     def test_no_longer_available_release_clears_notification_state(self):
         service = UpdateService(self.root)
@@ -387,14 +394,12 @@ class InstallationTests(unittest.TestCase):
 
     def test_failure_offers_manual_download_instead_of_raw_exception(self):
         service = UpdateService(self.root)
-        service.pending = ({}, self.new)
         with patch.object(service, "_check", side_effect=ValueError("更新包文件过多")):
-            service._run(True)
+            service._run(service._check)
         self.assertNotIn("文件过多", service.message)
         self.assertIn("重新安装", service.message)
         self.assertTrue(service.failed)
         self.assertIn("https://github.com/test/mod/releases", service.download_url)
-        self.assertIsNone(service.pending)
         self.assertIn("文件过多", (service.directory / "last-error.json").read_text("utf-8"))
 
 

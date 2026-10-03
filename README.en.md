@@ -120,14 +120,16 @@ For smoother play, select **Single-language mode → Hold for secondary language
 - **Preparing a language pair can take time.** First connection, an uncached pair, or changed game resources require local resource processing. Initialization runs automatically, and secondary text appears when it finishes. This is separate from the dialogue-log opening hitch.
 - **Coverage and available space have limits.** Uncertain matches keep the original text; text embedded in images or videos is not processed. Bilingual text does not enlarge the game's fixed text boxes, so long text or large fonts may be crowded. Reduce text size or use single-language mode. The full game and every language pair have not been exhaustively verified.
 
-## Automatic updates
+## Updates and rollback
 
-**Automatic updates** is enabled by default in the header’s Updates panel. It checks stable releases on startup and every six hours, downloads and verifies updates in the background, and installs after the game connection ends. The interface reloads with settings, caches, and window state preserved. Manual checks remain available when automatic updates are off. An available release turns the button gold with a red dot; the compact gear also shows a dot. Opening the panel does not clear the reminder.
+**Automatically check for updates** is enabled by default. The tool checks on startup and every six hours and shows a red dot. It does not download or install until you click **Download and install** and confirm the target version. Exit the game first; a busy connection requires another explicit click later. Settings, caches and window state are preserved. Existing automatic-install preferences become check-only.
+
+To roll back, choose an older stable version and confirm it. Settings are preserved and automatic checks are turned off so older clients cannot automatically upgrade again. Manual checks remain available. Drafts, prereleases and withdrawn versions are excluded.
 
 <details>
 <summary>See the separate panel opened by the header’s Updates button</summary>
 
-![Update panel: automatic updates and manual check](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/updates-en.png)
+![Updates: automatic checks, manual installation and rollback](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/updates-en.png)
 
 </details>
 
@@ -154,7 +156,7 @@ The `app` and `runtime` ZIPs and `bilingual-sora-2nd-update.json` are for the up
 <details>
 <summary>How do I upgrade an old version or resolve the “too many files” error?</summary>
 
-Upgrading from **0.2.x** requires a one-time manual migration because the old updater cannot install a bundled runtime. Exit the old tool, extract the new release into a new folder, copy **generated/native-control.json** and **generated/overlay-window.ini** (not **.venv/**, **generated/updates/**, or the old hot-reload manifest), then run the new EXE. Future portable releases automatically update both code and dependencies. Keep source checkouts separate.
+Upgrading from **0.2.x** requires a one-time manual migration because the old updater cannot install a bundled runtime. Exit the old tool, extract the new release into a new folder, copy **generated/native-control.json** and **generated/overlay-window.ini** (not **.venv/**, **generated/updates/**, or the old hot-reload manifest), then run the new EXE. Future portable releases let you update code and dependencies manually from the Updates panel. Keep source checkouts separate.
 
 The 0.2.2 “too many files” error is also an old-updater limitation; use the migration steps above. Versions 0.3.0–0.3.3 download one complete automatic upgrade before switching to component updates.
 
@@ -186,9 +188,9 @@ The installer includes the audited [sora2looseload](https://github.com/lmaple0/s
 
 If an update fails, use the download and log actions on the Updates panel. You can reinstall using the latest setup EXE.
 
-Downloads are verified against the repository, version, file list, and SHA-256 hashes. Installation waits until the game connection ends. The interface then reloads automatically, restoring its position and expanded/hidden state. Settings and caches stay in **generated/**; bundled dependencies stay in **runtime/**. If installation is interrupted, the next shortcut launch completes it or restores the old files. Backups live under **generated/updates/backup-***.
+Downloads are verified against the repository, version, file list, and SHA-256 hashes. If the game is connected, exit it and click install again; no automatic installation is queued. The interface then reloads automatically, restoring its position and expanded/hidden state. Settings and caches stay in **generated/**; bundled dependencies stay in **runtime/**. If installation is interrupted, the next shortcut launch completes it or restores the old files. Backups live under **generated/updates/backup-***.
 
-Automatic installation requires a release installation containing **installed-manifest.json**. Git development directories and manually modified software files are not overwritten. Runtime updates install into a new versioned directory and switch on UI reload. Loaded DLLs are not overwritten; old runtimes remain available for recovery and consume additional disk space. Drafts, prereleases, and older versions are not installed automatically.
+In-app installation requires a release installation containing **installed-manifest.json**. Git development directories and manually modified software files are not overwritten. Runtime updates install into a new versioned directory and switch on UI reload. Loaded DLLs are not overwritten; old runtimes remain available for recovery and consume additional disk space. Drafts, prereleases, and older versions are not installed automatically.
 
 </details>
 

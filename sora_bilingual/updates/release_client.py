@@ -22,6 +22,22 @@ def version_tuple(value):
     return tuple(map(int, match.groups()))
 
 
+def stable_releases(releases):
+    """Normalize discovery without admitting previews or arbitrary tags."""
+    if not isinstance(releases, list):
+        raise ValueError("发行列表无效")
+    result = {}
+    for release in releases:
+        if not isinstance(release, dict) or release.get("draft") or release.get("prerelease"):
+            continue
+        try:
+            version = version_tuple(release.get("tag_name"))
+        except ValueError:
+            continue
+        result.setdefault(version, release)
+    return [result[v] for v in sorted(result, reverse=True)]
+
+
 def repository_name(value):
     if not isinstance(value, str) or not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", value):
         raise ValueError("尚未配置有效的 GitHub 发布仓库")
@@ -70,6 +86,24 @@ class ReleaseClient:
     hosts = GITHUB_HOSTS
     headers = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": API_VERSION}
     component_only = False
+
+    def history(self):
+        releases = []
+        for page in range(1, 11):
+            rows = self._json(self.releases_url + f"?direction=desc&per_page=100&page={page}")
+            if not isinstance(rows, list):
+                raise ValueError("发行列表无效")
+            releases.extend(rows)
+            if len(rows) < 100:
+                return stable_releases(releases)
+        raise ValueError("发行列表超过上限，请从发行页面选择版本")
+
+    def release(self, tag):
+        version_tuple(tag)
+        release = self._json(self.releases_url + "/tags/" + tag)
+        if not stable_releases([release]) or release["tag_name"] != tag:
+            raise ValueError("所选版本不是公开稳定版")
+        return release
 
     def __init__(self, repository, opener=None):
         self.repository = repository_name(repository)

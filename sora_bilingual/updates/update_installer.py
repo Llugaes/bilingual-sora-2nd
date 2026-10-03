@@ -27,7 +27,11 @@ PROTECTED = {
     "config.json",
     "installed-manifest.json",
 }
-INTERNAL = {"installed-manifest.json", "generated/tool-release.json"}
+INTERNAL = {
+    "installed-manifest.json",
+    "generated/tool-release.json",
+    "generated/updates/preferences.json",
+}
 
 
 class UpdateBusy(RuntimeError):
@@ -168,7 +172,7 @@ class UpdateLease:
             msvcrt.locking(self.file.fileno(), msvcrt.LK_NBLCK, 1)
         except OSError:
             self.file.close()
-            raise UpdateBusy("更新已准备，将在游戏连接结束后自动安装")
+            raise UpdateBusy("游戏连接尚未结束；请退出游戏后再次点击安装。不会自动安装。")
         return self
 
     def __exit__(self, *_):
@@ -385,7 +389,9 @@ def recover(root):
         return _recover_locked(root)
 
 
-def install(root, package, expected, *, runtime_package=None, component_update=False):
+def install(
+    root, package, expected, *, runtime_package=None, component_update=False, rollback=False
+):
     root = Path(root).resolve()
     # Reserve the backend BEFORE decompressing/hashing the bundled runtime.
     # While a game is connected this returns immediately without reading the ZIP.
@@ -400,13 +406,16 @@ def install(root, package, expected, *, runtime_package=None, component_update=F
                 expected,
                 runtime_package=runtime_package,
                 component_update=component_update,
+                rollback=rollback,
             )
         finally:
             if not _journal(root).exists():
                 marker.unlink(missing_ok=True)
 
 
-def _install_locked(root, package, expected, *, runtime_package=None, component_update=False):
+def _install_locked(
+    root, package, expected, *, runtime_package=None, component_update=False, rollback=False
+):
     root = Path(root).resolve()
     manifest, contents = package_contents(
         package,
@@ -421,7 +430,10 @@ def _install_locked(root, package, expected, *, runtime_package=None, component_
     old = validate_manifest(json.loads(receipt.read_text("utf-8")))
     from sora_bilingual.updates.github_updates import version_tuple
 
-    if version_tuple(manifest["version"]) <= version_tuple(old["version"]):
+    older = version_tuple(manifest["version"]) < version_tuple(old["version"])
+    if rollback and not older:
+        raise ValueError("回退目标必须是更旧的稳定版本")
+    if not rollback and version_tuple(manifest["version"]) <= version_tuple(old["version"]):
         raise ValueError("不安装相同或更旧的版本")
     if old.get("repository") != manifest.get("repository"):
         raise ValueError("更新来源与安装来源不一致")
@@ -464,6 +476,14 @@ def _install_locked(root, package, expected, *, runtime_package=None, component_
         },
         "installed-manifest.json": json.dumps(manifest, ensure_ascii=False, indent=2).encode(),
     }
+    if rollback:
+        # Part of the same crash-recoverable transaction: old clients must see
+        # their supported 'off' value before the release marker restarts them.
+        preferences = root / "generated/updates/preferences.json"
+        prefs = json.loads(preferences.read_text("utf-8")) if preferences.exists() else {}
+        updates["generated/updates/preferences.json"] = json.dumps(
+            {**prefs, "policy": "off"}, ensure_ascii=False, indent=2
+        ).encode()
     # Old runtimes may still be loaded by the UI/reloader. Retain them intact.
     removed = {n for n in set(old["files"]) - set(contents) if not n.startswith("runtime/")}
     names = removed | set(updates) | {"generated/tool-release.json"}

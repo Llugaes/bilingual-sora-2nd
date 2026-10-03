@@ -39,7 +39,7 @@ class ReleaseSources:
                 selected = {**release, "_source": source}
                 # An incomplete mirror must not stop fallback to GitHub.
                 if version > self.current_version:
-                    self._metadata[source] = client.metadata(release)
+                    self._metadata[source, release["tag_name"]] = client.metadata(release)
                     return selected, {"sources": caches}
                 candidates.append((version, selected))
             except NETWORK_ERRORS as exc:
@@ -53,10 +53,40 @@ class ReleaseSources:
 
     def metadata(self, release):
         source = release["_source"]
-        if source not in self._metadata:
-            self._metadata[source] = self.clients[source].metadata(release)
-        meta, asset = self._metadata[source]
+        key = source, release["tag_name"]
+        if key not in self._metadata:
+            self._metadata[key] = self.clients[source].metadata(release)
+        meta, asset = self._metadata[key]
         return meta, ({**asset, "_source": source, "_tag": release["tag_name"]} if asset else None)
+
+    def history(self):
+        releases = {}
+        succeeded = False
+        for source, client in self.clients.items():
+            try:
+                for release in client.history():
+                    releases.setdefault(
+                        version_tuple(release["tag_name"]), {**release, "_source": source}
+                    )
+                succeeded = True
+            except NETWORK_ERRORS:
+                continue
+        if not succeeded:
+            raise RuntimeError("历史版本检查未完成，请稍后重试")
+        return [releases[v] for v in sorted(releases, reverse=True)]
+
+    def release(self, tag):
+        # Resolve the confirmed tag afresh; a pruned/incomplete mirror can fall
+        # back to the same stable GitHub release, never to latest.
+        version_tuple(tag)
+        for source, client in self.clients.items():
+            try:
+                release = client.release(tag)
+                self._metadata[source, tag] = client.metadata(release)
+                return {**release, "_source": source}
+            except NETWORK_ERRORS:
+                continue
+        raise RuntimeError("所选版本暂不可用，请稍后重试或查看发行页面")
 
     def component_asset(self, release, descriptor):
         source = release["_source"]

@@ -120,6 +120,9 @@ class PortableUpdateTests(unittest.TestCase):
             def latest(inner, cache):
                 return {"tag_name": "v1.0.1"}, {}
 
+            def release(inner, tag):
+                return {"tag_name": tag}
+
             def metadata(inner, release):
                 return meta, {}
 
@@ -143,7 +146,7 @@ class PortableUpdateTests(unittest.TestCase):
             return original(path, data)
 
         with patch.object(installer, "atomic_bytes", guard):
-            service._run(True)
+            service._run(service._install, {"tag_name": "v1.0.1"})
         self.assertFalse(service.failed, service.message)
         self.assertEqual(downloaded, [meta["components"]["application"]["asset"]])
         self.assertEqual(
@@ -152,7 +155,7 @@ class PortableUpdateTests(unittest.TestCase):
 
     def test_changed_runtime_downloads_both_components_and_preserves_old(self):
         service, meta, downloaded = self.service(self.new_id, b"new")
-        service._run(True)
+        service._run(service._install, {"tag_name": "v1.0.1"})
         self.assertFalse(service.failed, service.message)
         self.assertEqual(
             downloaded, [meta["components"][k]["asset"] for k in ("application", "runtime")]
@@ -165,15 +168,17 @@ class PortableUpdateTests(unittest.TestCase):
             json.loads((self.root / "generated/native-control.json").read_text()), {"primary": "de"}
         )
 
-    def test_game_connection_defers_component_install_without_redownload(self):
+    def test_game_connection_requires_manual_retry_without_redownload(self):
         service, meta, downloaded = self.service(self.old_id)
         with installer.UpdateLease(self.root):
-            service._run(True)
-        self.assertIsNotNone(service.pending)
+            service._run(service._install, {"tag_name": "v1.0.1"})
+        self.assertFalse(service.installed)
         self.assertFalse(service.failed)
-        service._run(False)
-        self.assertIsNone(service.pending)
+        service._run(service._check)
+        self.assertFalse(service.installed)
         self.assertEqual(len(downloaded), 1)
+        service._run(service._install, {"tag_name": "v1.0.1"})
+        self.assertTrue(service.installed)
 
     def test_missing_new_runtime_requests_download_before_any_change(self):
         package, meta = self.upgrade(self.new_id, b"new")
@@ -187,7 +192,7 @@ class PortableUpdateTests(unittest.TestCase):
         service, meta, _ = self.service(self.new_id, b"new")
         runtime = self.base / "new" / meta["components"]["runtime"]["asset"]
         runtime.write_bytes(b"truncated")
-        service._run(True)
+        service._run(service._install, {"tag_name": "v1.0.1"})
         self.assertTrue(service.failed)
         self.assertIn("重新安装", service.message)
         self.assertEqual((self.root / "runtime/current.txt").read_text().strip(), self.old_id)
