@@ -20,6 +20,50 @@ def navi(rows):
 
 
 class SaveLocalizationTests(unittest.TestCase):
+    def test_saved_metadata_keeps_its_own_language_after_runtime_source_changes(self):
+        entries = [
+            {
+                "key": "table/t_chapter.tbl/id/title",
+                "texts": {
+                    "zh-Hans": "第８章“混沌大地”",
+                    "ja": "８章「混迷の大地」",
+                    "en": "Chapter 8: Land of Turmoil",
+                },
+            },
+            {
+                "key": "table/t_place.tbl/id/name",
+                "texts": {
+                    "zh-Hans": "卢安市・北街区",
+                    "ja": "ルーアン市・北街区",
+                    "en": "Ruan - North Block",
+                },
+            },
+            {
+                "key": "table/t_name.tbl/id/name",
+                "texts": {"zh-Hans": "艾丝蒂尔", "ja": "エステル", "en": "Estelle"},
+            },
+            {
+                "key": "table/t_quest.tbl/NaviText/id/title",
+                "texts": {
+                    "zh-Hans": "将零力场生成器送去各个协会分部",
+                    "ja": "各ギルド支部に零力場発生器を届けよう",
+                    "en": "Deliver the Zero Field Generators",
+                },
+            },
+        ]
+        for current in ("zh-Hans", "ja", "en"):
+            tr = MenuTranslator(entries, "ja", "en", current)
+            # The production scope must use the language of each saved field,
+            # independent of the current runtime table and other saved rows.
+            saved = tr.scoped.get("save_summary", tr)
+            for entry in entries:
+                for text in entry["texts"].values():
+                    with self.subTest(current=current, text=text):
+                        self.assertEqual(saved.translate(text, "primary"), entry["texts"]["ja"])
+                        self.assertEqual(saved.translate(text, "secondary"), entry["texts"]["en"])
+            if current != "zh-Hans":
+                self.assertEqual(tr.translate("艾丝蒂尔", "primary"), "艾丝蒂尔")
+
     def test_level_prefix_comes_from_requested_locales(self):
         tr = MenuTranslator(
             [
@@ -36,6 +80,58 @@ class SaveLocalizationTests(unittest.TestCase):
         self.assertEqual(tr.translate(" ·Nom  Niv.39", "primary"), " ·Name  St. 39")
         self.assertEqual(tr.translate(" ·Nom  Niv.39", "secondary"), " ·Nombre  Nv.39")
         self.assertEqual(tr.translate("Unknown Name", "primary"), "Unknown Name")
+
+    def test_saved_aliases_keep_conflicts_and_missing_targets(self):
+        entries = [
+            {
+                "key": "table/t_place.tbl/1/name",
+                "texts": {"en": "Gate", "ja": "門", "zh-Hans": "旧城门"},
+            },
+            {
+                "key": "table/t_place.tbl/2/name",
+                "texts": {"en": "Gate", "ja": "関所", "zh-Hans": "关卡"},
+            },
+            {"key": "table/t_name.tbl/1/name", "texts": {"en": "Person", "ja": "人"}},
+            {
+                "key": "script/old/dialogue",
+                "texts": {"en": "Only dialogue", "ja": "对白", "zh-Hans": "对白"},
+            },
+        ]
+        tr = MenuTranslator(entries, "ja", "zh-Hans", "zh-Hans").scoped["save_summary"]
+        for source in (
+            "Gate",
+            "Person",
+            "Only dialogue",
+            "Player chosen name",
+            "2026/10/4 18:14:44",
+        ):
+            self.assertEqual(tr.translate(source, "primary"), source)
+            self.assertEqual(tr.translate(source, "secondary"), source)
+
+    def test_current_language_cannot_choose_between_conflicting_saved_names(self):
+        entries = [
+            {
+                "key": "table/t_name.tbl/1/name",
+                "texts": {"en": "Shared", "ja": "甲", "zh-Hans": "角色甲"},
+            },
+            {
+                "key": "table/t_name.tbl/2/name",
+                "texts": {"en": "Second", "ja": "Shared", "zh-Hans": "角色乙"},
+            },
+            {
+                "key": "table/t_name.tbl/3/name",
+                "texts": {"en": "Ship", "ja": "船", "zh-Hans": "船"},
+            },
+            {
+                "key": "table/t_place.tbl/1/name",
+                "texts": {"en": "Ship", "ja": "《船》", "zh-Hans": "《船》"},
+            },
+        ]
+        for current in ("en", "ja", "zh-Hans"):
+            saved = MenuTranslator(entries, "ja", "zh-Hans", current).scoped["save_summary"]
+            for text in ("Shared", "Ship"):
+                for mode in ("primary", "secondary", "annotation"):
+                    self.assertEqual(saved.translate(text, mode), text, (current, text, mode))
 
     def test_navigation_uses_condition_ids_not_chapter_or_row_order(self):
         a = navi([("准备搭船", 18081, 18086), ("交谈", 18086, 18090)])

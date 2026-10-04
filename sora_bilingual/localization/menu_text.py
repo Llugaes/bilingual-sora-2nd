@@ -829,9 +829,36 @@ class MenuTranslator:
             ]
         self.same_language = primary == secondary
         self.scoped = {}
+        self.save_confirmation_prefixes = []
         self.detail_sources = set()
         self.details = None
         if not _details_only:
+            # Saves embed display strings from the locale used when written.
+            # Only the save-summary surface may read these cross-locale aliases;
+            # normal menus must keep the current source language and conflicts.
+            saved = []
+            for entry in entries:
+                key = entry.get("key", "")
+                summary = (
+                    key.startswith("table/t_chapter.tbl/")
+                    and key.endswith(("/title", "/heading"))
+                    or key.startswith(("table/t_place.tbl/", "table/t_name.tbl/"))
+                    and key.endswith("/name")
+                    or key.startswith("table/t_quest.tbl/NaviText/")
+                    and key.endswith("/title")
+                    or key.startswith("table/t_text.tbl/TXT_SAVE_DETAIL_")
+                    or key == "table/t_text.tbl/TXT_TITLE_CONTINUE_CONFIRM"
+                )
+                if not summary:
+                    continue
+                values = sorted(set(entry["texts"].values()) - {""})
+                saved.append({**entry, "source_variants": {source_language: values}})
+                if key == "table/t_text.tbl/TXT_TITLE_CONTINUE_CONFIRM":
+                    self.save_confirmation_prefixes = [text + "\n" for text in values]
+            if saved:
+                self.scoped["save_summary"] = MenuTranslator(
+                    saved, primary, secondary, source_language, True
+                )
             for scope, prefix in [
                 ("support", "table/t_support_ability.tbl/"),
                 ("overdrive", "table/t_condition_info.tbl/OverDriveEffect/"),
@@ -997,6 +1024,9 @@ class MenuTranslator:
                 key.startswith(("table/t_name.tbl/", "table/t_status.tbl/"))
                 and key.endswith("/name")
                 and source_language in texts
+                # Aliases may come from saves in another language. The
+                # current-locale name is not authority over those candidates.
+                and not entry.get("source_variants")
             ):
                 pair = complete_pair(texts, primary, secondary)
                 names.setdefault(texts[source_language], set()).add(pair)
@@ -1518,4 +1548,5 @@ class MenuTranslator:
             "detail_headers": self.detail_headers,
             "details": self.details.runtime_model() if self.details else None,
             "scoped": {k: v.runtime_model() for k, v in self.scoped.items()},
+            "save_confirmation_prefixes": self.save_confirmation_prefixes,
         }

@@ -52,7 +52,7 @@ const logMeasureStats={runs:0,totalMs:0,hits:0,misses:0,nameHits:0,fixedRows:0,f
 const resourceHash=typeof createNativeSha256==='function'?createNativeSha256():scriptSha256;
 const auxiliaryContexts=new Map(), compensation=new Map(), rubyPermissions=new Map();
 const annotationMetrics=new Map();
-const subtitleRoots=new Set(),insetRoots=new Map(),layoutRoots=new Map();let scannedLayouts=false;
+const subtitleRoots=new Set(),insetRoots=new Map(),layoutRoots=new Map(),layoutKinds=new Map();let scannedLayouts=false;
 let fontGeneration=0,fontsWereReady=!REPORT.runtime_fonts;
 function invalidateFontGeometry(){
     fontGeneration++;epoch++;logFontGeneration++;
@@ -101,8 +101,9 @@ function registerLayout(layout) {
     if(root.isNull())return;
     const id=layout.add(0x80).readU32(),key=String(root);
     const previous=layoutRoots.get(String(layout));
-    if(previous){subtitleRoots.delete(previous);insetRoots.delete(previous);}
+    if(previous){subtitleRoots.delete(previous);insetRoots.delete(previous);layoutKinds.delete(previous);}
     layoutRoots.set(String(layout),key);
+    layoutKinds.set(key,id);
     if(id===7)subtitleRoots.add(key);else subtitleRoots.delete(key);
     // 0x26402..0x26414 creates ActiveVoice layout 32; 0x25b29 selects text.
     // Layout 6 root/text is the small dialogue body (read-only capture 153).
@@ -123,7 +124,8 @@ function translationKey(row) {
     const entry=textKeys.size ? textKeys.get(row.pointer.add(0x2ec).readU32()) : null;
     // A dynamic widget may retain its layout's initial text key. Use that key
     // only when its source still agrees with the game's current text table.
-    row.textKey=entry && entry.source===row.original ? entry.key : null;
+    const keySource=entry&&(resolver?resolver.keyed[entry.key]?.source:entry.source);
+    row.textKey=entry && keySource===row.original ? entry.key : null;
     const keyed=row.textKey ? '\x01'+row.textKey+'\x00'+row.original : '';
     if(keyed && Object.hasOwn(dictionary,keyed))return keyed;
     row.scope=null;
@@ -132,8 +134,9 @@ function translationKey(row) {
     if(REPORT.node_names) {
         let p=row.pointer;
         const names=[];
-        let subtitle=false,insetRoot=null;
+        let subtitle=false,insetRoot=null,layoutId=null;
         for(let i=0;i<12&&!p.isNull();i++) {
+            if(layoutId===null&&layoutKinds.has(String(p)))layoutId=layoutKinds.get(String(p));
             if(subtitleRoots.has(String(p)))subtitle=true;
             if(insetRoots.has(String(p)))insetRoot=String(p);
             const np=p.add(0x88).readPointer();
@@ -148,6 +151,13 @@ function translationKey(row) {
             row.surface=insetSurface;row.surfaceRoot=insetRoot;
         }
         row.dialogueSpeaker=subtitle&&['name_text','prev_name_text'].includes(names[0]);
+        // Read-only captures of layouts 3/4/5 and the continue popup (8).
+        // These controls consume copied strings from saves written in any locale.
+        const savedField=(layoutId===3&&names[1]==='detail_info'&&['DetailText','DetailText2','DetailText3'].includes(names[0]))||
+            ([4,5].includes(layoutId)&&names[1]==='texts'&&['TitleText','SubTitleText'].includes(names[0]));
+        const savedPrompt=layoutId===8&&names[0]==='text'&&names[1]==='root'&&
+            (resolver?.model.save_confirmation_prefixes||[]).some(prefix=>row.original.startsWith(prefix));
+        if(savedField||savedPrompt)row.scope='save_summary';
         if(names[0]==='name'&&names.includes('item_template'))row.scope='item_name';
         // Both engine spot-name builders copy and join the original table
         // string before SetText, so its native table pointer is no longer here.
@@ -210,7 +220,8 @@ function wantedText(row,allocateLayers=true) {
             const scriptContext=row.scriptIdentity&&scriptIdentities?scriptIdentities.lookup(row.scriptIdentity,row.original):null;
             const speakerContext=row.logKind==='name'&&row.logIdentity&&scriptIdentities?
                 scriptIdentities.historySpeakerLookup(row.logIdentity,row.original):null;
-            const context=nativeBooks?.context(row.book,row.original)||speakerContext||(strictDialogue?(scriptContext||sourceOnlyDialogue):scriptContext||
+            const saved=row.scope==='save_summary'&&resolver.scoped.save_summary;
+            const context=(saved?{tr:saved,strict:true}:null)||nativeBooks?.context(row.book,row.original)||speakerContext||(strictDialogue?(scriptContext||sourceOnlyDialogue):scriptContext||
                 (row.scriptPointer&&scriptIdentities?scriptIdentities.pointerLookup(row.scriptPointer,row.original):null)||
                 (row.tableIdentity&&tableIdentities?tableIdentities.lookup(row.tableIdentity,row.original):null)||
                 (row.logKind?resolver.historyContext(row.logSpeaker||'',row.original,row.logKind):null)||
@@ -790,7 +801,7 @@ if(REPORT.native.layout_create) Interceptor.attach(base.add(REPORT.native.layout
     onLeave(value){try{registerLayout(value);}catch(e){fail(e);}}
 });
 if(REPORT.native.layout_release) Interceptor.attach(base.add(REPORT.native.layout_release.rva),{
-    onEnter(args){const k=String(args[1]);const root=layoutRoots.get(k);if(root){subtitleRoots.delete(root);insetRoots.delete(root);}layoutRoots.delete(k);}
+    onEnter(args){const k=String(args[1]);const root=layoutRoots.get(k);if(root){subtitleRoots.delete(root);insetRoots.delete(root);layoutKinds.delete(root);}layoutRoots.delete(k);}
 });
 // An empty annotation anchor must not contribute an invalid empty bounding
 // box or the engine's one-time ruby baseline compensation. These sites are

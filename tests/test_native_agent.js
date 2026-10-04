@@ -1000,6 +1000,59 @@ test('the actual text key disambiguates a label but a stale key never overrides 
     assert.equal(label.text(),'生命露水');
 });
 
+test('localized text keys follow the active source model after an in-game language change',()=>{
+    const r=makeRuntime(),key='TXT_KEY_HELP_HIDE_UI',hash=536578224;
+    r.keyTable(hash,key,'隐藏界面');
+    const label=r.label(0x4301,'隐藏界面');label.textKeyHash=hash;
+    const model=source=>({pairs:{},plain_pairs:{},keyed:{[key]:{source,model:{
+        pairs:{[source]:['UI非表示','隐藏界面']},plain_pairs:{[source]:['UI非表示','隐藏界面']}
+    }}}});
+    r.api.load(model('隐藏界面'),'annotation',true,1);
+    r.externalSet(label,'隐藏界面');assert.equal(label.text(),'<R>UI非表示</R隐藏界面>');
+    for(const source of ['Hide UI','UI非表示','隐藏界面','Hide UI']) {
+        r.api.load(model(source),'annotation',true,1);
+        r.externalSet(label,source);assert.equal(label.text(),'<R>UI非表示</R隐藏界面>');
+        r.api.select('secondary',true);r.update(label);assert.equal(label.text(),'隐藏界面');
+        r.api.select('primary',true);r.update(label);assert.equal(label.text(),'UI非表示');
+        r.api.disable();r.update(label);assert.equal(label.text(),source);
+        r.api.select('annotation',true);
+        // Reused widgets retain a hash even after receiving unrelated text.
+        r.externalSet(label,'Other text');assert.equal(label.text(),'Other text');
+    }
+    assert.equal(r.api.status().failed,false);
+});
+
+test('saved summary aliases are limited to native save controls and the continue prompt',()=>{
+    const fields=[
+        [4,['root','Null','texts','TitleText']],
+        [4,['root','Null','texts','SubTitleText']],
+        [5,['root','save_info','texts','TitleText']],
+        [5,['root','save_info','texts','SubTitleText']],
+        ...['DetailText','DetailText2','DetailText3'].map(name=>[3,['root','detail_info',name]]),
+        [8,['root','text']],
+    ];
+    const prompt='<C1>Loading this save data. Proceed?<C0>\n',old='艾丝蒂尔';
+    for(const [id,path] of fields) {
+        const r=makeRuntime(),nodes=path.map((name,i)=>{const p=r.label(0x50000+i*0x1000,'');p.name=name;return p;});
+        nodes.forEach((p,i)=>{if(i)p.parent=nodes[i-1];});
+        r.registerLayout(nodes[0],id);
+        const label=nodes.at(-1),source=(id===8?prompt:'')+old;
+        const saved={pairs:{[old]:['Estelle','エステル']},plain_pairs:{[old]:['Estelle','エステル']}};
+        r.api.load({pairs:{},plain_pairs:{},scoped:{save_summary:saved},save_confirmation_prefixes:[prompt]},'annotation',true,1);
+        r.externalSet(label,source);assert.equal(label.text(),(id===8?prompt:'')+'<R>Estelle</Rエステル>',path.join('/'));
+        for(const [mode,expected] of [['primary','Estelle'],['secondary','エステル'],['annotation','<R>Estelle</Rエステル>']]) {
+            r.api.select(mode,true);r.update(label);assert.equal(label.text(),(id===8?prompt:'')+expected);
+        }
+        r.api.disable();r.update(label);assert.equal(label.text(),source);
+        r.api.select('annotation',true);
+        r.externalSet(label,'Unknown saved name');assert.equal(label.text(),'Unknown saved name');
+        if(id===8) {r.externalSet(label,old);assert.equal(label.text(),old,'ordinary popups are not saved metadata');}
+        // A reused layout root is not a permanent grant to this scope.
+        r.registerLayout(nodes[0],7);r.externalSet(label,source);assert.equal(label.text(),source);
+        assert.equal(r.api.status().failed,false);
+    }
+});
+
 test('support list ancestry selects its own translation of a repeated name', () => {
     const runtime=makeRuntime();
     const label=runtime.label(0x4310,'反击');label.name='name';
