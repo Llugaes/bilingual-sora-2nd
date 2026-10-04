@@ -35,6 +35,8 @@ const fs=require('node:fs'),{RuntimeText}=require('./sora_bilingual/game/scripts
 const data=JSON.parse(fs.readFileSync(0,'utf8')),{RuntimeText:Old}=require(data.baseline);
 const result={};
 const previous=new Old(data.model),runtime=new RuntimeText(data.model);
+result.frames=data.frames.map(row=>({...row,expected:previous.translate(row.source,'secondary').replace(row.old_header,row.new_header)}));
+data.cases.push(...result.frames);
 result.negatives=data.negatives.map(row=>{
  const expected=previous.translate(row.source,'secondary'),render=previous.render(row.source);
  if(runtime.translate(row.source,'secondary')!==expected)throw Error('negative translation '+row.name);
@@ -156,6 +158,21 @@ def check(game, output):
                 }
             )
     negatives = []
+    frames = []
+    for prefix in (
+        "<C3></C>[Support - <I299><C3>Ally - Single</C>】",
+        "<c698>STR<I270> (30 turns)</C>",
+    ):
+        header = "<c698>, Side Attack Bonus, Back Attack Bonus</C>"
+        frames.append(
+            {
+                "name": "separate_icon_run:" + str(len(frames)),
+                "source": prefix + header + "\n<C0><C9>" + catalog[DESCRIPTION]["en"],
+                "old_header": header,
+                "new_header": "<c698>／側面特効／背面特効</C>",
+                "readings": [catalog[KEYS[0]]["ja"], catalog[KEYS[1]]["ja"]],
+            }
+        )
     for fragment in (
         ", UNKNOWN, Side Attack Bonus",
         ", , Side Attack Bonus",
@@ -197,7 +214,7 @@ def check(game, output):
         "config": config,
         "game_started": False,
         "game_attached": False,
-        "cases": len(cases),
+        "cases": len(cases) + len(frames),
     }
     with tempfile.TemporaryDirectory() as temporary:
         temporary = Path(temporary)
@@ -211,7 +228,13 @@ def check(game, output):
             ["node", "-e", PROFILE],
             cwd=ROOT,
             input=json.dumps(
-                {"model": model, "cases": cases, "negatives": negatives, "baseline": str(baseline)}
+                {
+                    "model": model,
+                    "cases": cases,
+                    "negatives": negatives,
+                    "frames": frames,
+                    "baseline": str(baseline),
+                }
             ),
             text=True,
             encoding="utf8",
@@ -220,6 +243,7 @@ def check(game, output):
         )
         result["cold_profile"] = json.loads(profile.stdout)
         negatives = result["cold_profile"].pop("negatives")
+        cases += result["cold_profile"].pop("frames")
         wire = temporary / "effect-model.wire.bin"
         wire.write_bytes(indexed_model(model))
         result["wire_bytes"] = wire.stat().st_size

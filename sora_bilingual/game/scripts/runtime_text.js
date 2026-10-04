@@ -673,11 +673,11 @@ class RuntimeText {
         if(this.cache.size>=20000)this.cache.clear();
         this.cache.set(ck,result);return result;
     }
-    detailJoinIconRuns(source) {
+    detailJoinIconRuns(source,includeRejected=false) {
         if(!(this.detailJoin&&source.includes('<I')&&!source.includes('<R>')&&source.includes(this.detailJoin[0])&&!this.rawPair(source)))return null;
         const runs=source.split(/(<\/?[Cc][0-9a-fA-F]*>|<[sS]\d+>|\r\n|\n|\\n)/),joined=new Set();
         runs.forEach((run,index)=>{if(!(index%2)&&run.includes('<I')&&this.detailJoinPair(run))joined.add(index);});
-        return joined.size?[runs,joined]:null;
+        return joined.size||includeRejected?[runs,joined]:null;
     }
     resolve(source,mode,key,scope,detailContext='') {
         if(mode==='bilingual')mode='annotation';
@@ -690,17 +690,16 @@ class RuntimeText {
         const anchored=this.anchoredDetails(source);
         if(anchored)return anchored[0].translate(source,mode,'','',anchored[1]);
         if(detailContext)source=this.replaceDetailContext(source,mode,detailContext);
-        const joinedRuns=this.detailJoinIconRuns(source);
+        if(this.detailInlineIcons.length)source=this.replaceDetailInlineIcons(source,mode);
+        const joinedRuns=this.detailJoinIconRuns(source,true);
         if(joinedRuns) {
             const [runs,joined]=joinedRuns;
-            if(joined.size)return runs.map((run,index)=>{
+            return runs.map((run,index)=>{
                 if(index%2)return run;
                 if(joined.has(index))return this.component(run,mode);
-                if(this.detailInlineIcons.length)run=this.replaceDetailInlineIcons(run,mode);
                 return run.split(/(<[^<>]*>|\r\n|\n|\\n)/).map((part,offset)=>offset%2?part:this.component(part,mode,!run.includes('<I'))).join('');
             }).join('');
         }
-        if(this.detailInlineIcons.length)source=this.replaceDetailInlineIcons(source,mode);
         if(this.ambiguousDisplay.has(source)||this.ambiguousDisplay.has(source.replace(/^(?:<#[^<>]*>)+/,'')))return source;
         const pair=this.rawPair(source);
         if(pair&&(mode==='primary'||mode==='secondary'))return pair[mode==='primary'?0:1];
@@ -711,8 +710,7 @@ class RuntimeText {
             return parts.length>1?parts.map((t,i)=>i%2?t:this.translate(t,mode)).join(''):source;
         }
         if(!/[<>]/.test(source)) {const t=this.component(source,mode);if(t!==source)return t;}
-        const allowDetailJoin=!(this.detailJoin&&source.includes('<I')&&source.includes(this.detailJoin[0]));
-        return source.split(/(<[^<>]*>|\r\n|\n|\\n)/).map((t,i)=>i%2?t:this.component(t,mode,allowDetailJoin)).join('');
+        return source.split(/(<[^<>]*>|\r\n|\n|\\n)/).map((t,i)=>i%2?t:this.component(t,mode)).join('');
     }
 }
 if(typeof module!=='undefined')module.exports={RuntimeText};

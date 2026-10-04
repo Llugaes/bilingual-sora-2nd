@@ -140,14 +140,35 @@ for(const row of JSON.parse(require('fs').readFileSync(0,'utf8'))) {
             },
             {
                 "key": "table/t_itemhelp.tbl/generated/typed/turn_stat_inline_icon/test",
-                "texts": {"en": "STR<I270> (%d turns)", "ja": "%dターンSTR<I270>"},
-                "item_help_contract": {"family": "turn_stat_inline_icon"},
+                "texts": {
+                    "en": "<c698>STR<I270> (%d turns)</C>",
+                    "ja": "<c698>%dターンSTR<I270></C>",
+                },
+                "item_help_contract": {
+                    "family": "turn_stat_inline_icon",
+                    "inline_icons": ["<I270>"],
+                },
+                "detail_inline_icon": True,
                 "detail_authority": True,
                 "detail_only": True,
             },
         ]
         translator = MenuTranslator(entries, "en", "ja", "en")
         cases = []
+        positives = []
+        for prefix in (
+            "<C3></C>[Support - <I299><C3>Ally - Single</C>】",
+            "<c698>STR<I270> (30 turns)</C>",
+        ):
+            source = (
+                prefix + "<c698>, Side Attack Bonus, Back Attack Bonus</C>\n<C0><C9>Description en"
+            )
+            expected_prefix = prefix if "<I299>" in prefix else "<c698>30ターンSTR<I270></C>"
+            expected = expected_prefix + "<c698>／側面特効／背面特効</C>\n<C0><C9>Description ja"
+            self.assertEqual(translator.translate(source, "secondary"), expected)
+            positives.append(
+                {"source": source, "expected": expected, "render": translator.render(source)}
+            )
         for fragment in (
             ", STR<I999> (30 turns), Side Attack Bonus",
             ", UNKNOWN, STR<I270> (30 turns), Side Attack Bonus",
@@ -164,6 +185,10 @@ for(const row of JSON.parse(require('fs').readFileSync(0,'utf8'))) {
 const assert=require('assert/strict'),{RuntimeText}=require('./sora_bilingual/game/scripts/runtime_text.js');
 const data=JSON.parse(require('fs').readFileSync(0,'utf8'));
 const {RuntimeText:Previous}=require(data.baseline),runtime=new RuntimeText(data.model),old=new Previous(data.model);
+for(const row of data.positives) {
+ assert.equal(runtime.translate(row.source,'secondary'),row.expected);
+ assert.deepEqual(runtime.render(row.source),row.render);
+}
 for(const row of data.cases) {
  assert.equal(runtime.translate(row.source,'secondary'),row.expected);
  assert.equal(runtime.translate(row.source,'secondary'),old.translate(row.source,'secondary'));
@@ -181,7 +206,12 @@ for(const row of data.cases) {
             subprocess.run(
                 ["node", "-e", runner],
                 input=json.dumps(
-                    {"model": translator.runtime_model(), "cases": cases, "baseline": str(baseline)}
+                    {
+                        "model": translator.runtime_model(),
+                        "cases": cases,
+                        "positives": positives,
+                        "baseline": str(baseline),
+                    }
                 ).encode(),
                 cwd=ROOT,
                 check=True,

@@ -1540,7 +1540,7 @@ class MenuTranslator:
             )
         return source
 
-    def _detail_join_icon_runs(self, source):
+    def _detail_join_icon_runs(self, source, include_rejected=False):
         if not (
             self.detail_join
             and "<I" in source
@@ -1555,7 +1555,7 @@ class MenuTranslator:
             for index, run in enumerate(runs)
             if index % 2 == 0 and "<I" in run and self._detail_join_pair(run)
         }
-        return (runs, joined) if joined else None
+        return (runs, joined) if joined or include_rejected else None
 
     def translate(self, source, mode="annotation", detail_context=None):
         if mode == "bilingual":
@@ -1571,29 +1571,26 @@ class MenuTranslator:
             return details.translate(source, mode, detail_context=context)
         if detail_context:
             source = self._replace_detail_context(source, mode, detail_context)
-        if joined_runs := self._detail_join_icon_runs(source):
+        if self.detail_inline_icons:
+            source = self._replace_detail_inline_icons(source, mode)
+        if joined_runs := self._detail_join_icon_runs(source, include_rejected=True):
             # An inline icon is data inside a proven effect member, not a
             # boundary between that member and the neighboring effects.
             runs, joined = joined_runs
-            if joined:
-                translated = []
-                for index, run in enumerate(runs):
-                    if index % 2:
-                        translated.append(run)
-                    elif index in joined:
-                        translated.append(self.component(run, mode))
-                    else:
-                        if self.detail_inline_icons:
-                            run = self._replace_detail_inline_icons(run, mode)
-                        translated.append(
-                            "".join(
-                                part if offset % 2 else self.component(part, mode, "<I" not in run)
-                                for offset, part in enumerate(TOKEN.split(run))
-                            )
+            translated = []
+            for index, run in enumerate(runs):
+                if index % 2:
+                    translated.append(run)
+                elif index in joined:
+                    translated.append(self.component(run, mode))
+                else:
+                    translated.append(
+                        "".join(
+                            part if offset % 2 else self.component(part, mode, "<I" not in run)
+                            for offset, part in enumerate(TOKEN.split(run))
                         )
-                return "".join(translated)
-        if self.detail_inline_icons:
-            source = self._replace_detail_inline_icons(source, mode)
+                    )
+            return "".join(translated)
         # Only admitted complete literals reach this path. Mutable emotion
         # headers cannot rescue an ambiguous body; those are removed at model
         # compilation so native provenance capture sees the same eligibility.
@@ -1625,12 +1622,8 @@ class MenuTranslator:
             whole = self.component(source, mode)
             if whole != source:
                 return whole
-        allow_detail_join = not (
-            self.detail_join and "<I" in source and self.detail_join[0] in source
-        )
         return "".join(
-            t if i % 2 else self.component(t, mode, allow_detail_join)
-            for i, t in enumerate(TOKEN.split(source))
+            t if i % 2 else self.component(t, mode) for i, t in enumerate(TOKEN.split(source))
         )
 
     def render(self, source, mode="annotation"):
