@@ -835,10 +835,18 @@ if(REPORT.native.ruby_compensate) Interceptor.attach(base.add(REPORT.native.ruby
             const key=String(p),metrics=annotationMetrics.get(key);
             if(metrics?.layer===layer.layer) {
                 annotationMetrics.delete(key);
-                // The local secondary envelope already contains its original
-                // readings. Reserve them once, in both measuring and drawing.
-                const secondary=row.reserveAuxiliaryHeight&&metrics.secondaryLine>0?
-                    Math.max(metrics.secondary,metrics.secondaryLine+rubyGap):metrics.secondary;
+                // 0x587966 advances from the previous bottom by the label's
+                // signed +0x2f4 leading, then increments parser +0x16c. That
+                // space already accommodates part (or all) of the next ruby
+                // line. Fill only its deficit; the first line has no preceding
+                // line to collide with and keeps its native origin. Original
+                // readings still reserve a/a-prime, including on the first line.
+                let secondary=metrics.secondary;
+                if(row.reserveAuxiliaryHeight&&metrics.secondaryLine>0&&p.add(0x16c).readU32()>0) {
+                    const leading=row.pointer.add(0x2f4).readS32();
+                    if(leading < -16384||leading>65536)throw Error('Invalid native line leading');
+                    secondary=Math.max(secondary,metrics.secondaryLine+rubyGap-leading);
+                }
                 const reserve=metrics.primary*(row.preservePrimaryLayout?annotationScale:1)+secondary;
                 const origin=p.add(4).readFloat(),next=origin+reserve;
                 if(!Number.isFinite(next)||reserve<0||reserve>65536)throw Error('Invalid native reading reserve');

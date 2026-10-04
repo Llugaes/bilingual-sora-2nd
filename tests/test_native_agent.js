@@ -62,6 +62,7 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
             return this.label.owned ? new TextPointer(this.label) : nullPointer;
         }
         readU32() {
+            if (this.offset === 0x2f4) return this.label.nativeLineGap??0;
             if (this.offset === 0x300) return this.label.fontIndex||0;
             if (this.offset === 0x2e8) return this.label.flags;
             if (this.offset === 0x2ec) return this.label.textKeyHash || 0;
@@ -519,6 +520,7 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
                 parser.add(0x240).writePointer(callback);
             }
             parser.writeFloat(20);parser.add(4).writeFloat(geometry.origin??100);
+            parser.add(0x16c).writeS32(geometry.lineIndex??index);
             parser.add(0x1ab).writeU8(geometry.measuring?1:0);
             parser.add(0x1bc).writeS32(0x7fffffff);parser.add(0x1c4).writeS32(-0x80000000);
             parser.values.set(8,label.add(0x318).readPointer().add(layer.offset));
@@ -1852,6 +1854,30 @@ test('multiline reserve ignores the positioned child envelope',()=>{
     }
 });
 
+test('multiline reserve fills only missing native leading and never adds a blank first line',()=>{
+    const cases=[['<C1>第一行\n第二行\n第三行','<C1>一行目\n二行目\n三行目'],
+        ['<#L[1#107w7]#G[6]#M_2#B_0#S[1]>对了，卢格兰爷爷，\n斯丁克先生现在怎么样了？',
+         '<#L[1#107w7]#G[6]#M_2#B_0#S[1]>そういえばルグラン爺さん、\nスティングさんはどうしているのかしら？',true]];
+    for(const [a,b,animated] of cases)for(const measuring of [false,true])for(const nativeGap of [-1,0,15,24,40]) {
+        const r=makeRuntime(),p=r.label(0x9967,a,0,33);p.nativeLineGap=nativeGap;
+        if(animated)p.flags|=4;
+        r.api.load({pairs:{[a]:[a,b]}},'annotation',true,.85,{ruby_scale:.9,ruby_gap:0,line_gap:3});r.update(p);
+        for(let pass=0;pass<3;pass++)for(let line=0;line<a.split('\n').length;line++) {
+            const origin=100+line*75;
+            const out=r.auxiliary(p,line,{origin,measuring,measuredSecondaryBounds:[0,23]});
+            const expected=line===0?0:Math.max(0,23-nativeGap);
+            assert.equal(out.primaryY-origin,expected,
+                `line ${line}, native leading ${nativeGap}: reserve must only fill the deficit`);
+            if(line===0)assert.equal(out.primaryY,origin,'first line keeps the 0.4.0 origin');
+        }
+        assert.equal(r.newline(p,100),103,'user spacing remains an extra adjustable gap');
+        for(const mode of ['primary','secondary']) {
+            r.api.select(mode,true);r.update(p);assert.equal(r.newline(p,100),100);
+        }
+        r.api.disable();r.update(p);assert.equal(r.newline(p,100),100);
+    }
+});
+
 test('multiline popup separates consecutive lines without feeding paragraph origin into line height',()=>{
     const a='<C1>第一行\n第二行\n<C2>第三行<C1>。\n第四行\n第五行<I4>',
         b='<C1>一行目\n二行目\n<C2>三行目<C1>。\n四行目\n五行目<I4>';
@@ -1860,7 +1886,7 @@ test('multiline popup separates consecutive lines without feeding paragraph orig
         [72.414583,90.458330,119.75],[110.929162,131.166663,164.249994],
         [150.566668,172.166670,205.416668]];
     for(const measuring of [false,true])for(const flags of [65,789,865]) {
-        const r=makeRuntime(),p=r.label(0x9968,a,0,33);p.flags=flags;
+        const r=makeRuntime(),p=r.label(0x9968,a,0,33);p.flags=flags;p.nativeLineGap=-1;
         r.api.load({pairs:{[a]:[a,b]}},'annotation',true,.85,{ruby_scale:.9,ruby_gap:0,line_gap:6});r.update(p);
         for(let rebuild=0;rebuild<3;rebuild++) {
             let shift=0,previousBottom=null;
@@ -1870,7 +1896,7 @@ test('multiline popup separates consecutive lines without feeding paragraph orig
                 const out=r.auxiliary(p,i,{origin,measuring,
                     measuredSecondaryBounds:[0,height],bottom:Math.ceil(origin+height)});
                 const delta=out.primaryY-origin;
-                assert.ok(delta>=height&&delta<=height+1,'reserve is one local line, never the positioned envelope');
+                assert.equal(delta,i===0?0:height+1,'keep the first origin; fill the captured -1 leading on later lines');
                 shift+=delta;
                 if(previousBottom!==null)assert.ok(top+shift>=previousBottom+6-.001,
                     `line ${i+1} overlaps: ${top+shift-previousBottom}`);
@@ -2139,13 +2165,15 @@ test('primary and secondary reading reserves are independent and absent readings
 
 test('local line height includes secondary readings once and remains independent of initial Y',()=>{
     const a='<R>刺激</R香辛料>。\n<C1>下一行',b='<R>刺激</Rスパイス>。\n<C1>次の行';
-    for(const measuring of [false,true])for(const origin of [0,120,1600])for(const gap of [0,3,8]) {
-        const r=makeRuntime(),p=r.label(0xb696,a,0,33);
+    for(const measuring of [false,true])for(const origin of [0,120,1600])for(const gap of [0,3,8])
+        for(const line of [0,1])for(const leading of [-1,15,40]) {
+        const r=makeRuntime(),p=r.label(0xb696,a,0,33);p.nativeLineGap=leading;
         r.api.load({pairs:{[a]:[a,b]}},'annotation',true,.85,{ruby_gap:gap});r.update(p);
-        const out=r.auxiliary(p,0,{origin,measuring,primaryReadingHeight:18,secondaryReadingHeight:5,
+        const out=r.auxiliary(p,0,{origin,measuring,lineIndex:line,primaryReadingHeight:18,secondaryReadingHeight:5,
             measuredSecondaryBounds:[-5,17],bottom:origin+22});
-        assert.ok(Math.abs(out.primaryY-origin-(18*.85+22+gap))<1e-4,
-            'the complete measured secondary line includes its five-unit reading already');
+        const secondary=line===0?5:Math.max(5,22+gap-leading);
+        assert.ok(Math.abs(out.primaryY-origin-(18*.85+secondary))<1e-4,
+            'retain original readings; full secondary reserve fills native leading only once');
         assert.equal(r.api.status().failed,false);
     }
 });

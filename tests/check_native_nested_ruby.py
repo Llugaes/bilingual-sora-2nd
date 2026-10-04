@@ -22,6 +22,7 @@ import pefile
 ROOT = Path(__file__).resolve().parents[1]
 EXPECTED_EXE_SHA256 = "d8b2911d1576216bdc22d070550e4f531e105de7ed2981885849669f4acf8aaf"
 EXPECTED_INIT_SHA256 = "172b31a07764174aa4b5697328f1e5ef742b5dc43cc4a394349dc8cee1ac45ee"
+EXPECTED_NEWLINE_SHA256 = "9ca28babc6bcfa22843a612f47900a5d4fdfa3c7452c5632fe03a888d5bfc026"
 OUT = ROOT / "generated/diagnostic-130-native-ruby-chain.json"
 MD = ROOT / "generated/diagnostic-130-native-ruby-chain.md"
 AGENT = Path(
@@ -46,6 +47,17 @@ def init_bytes(exe: Path) -> bytes:
 
 def js_source(code: bytes) -> str:
     blob = ",".join(str(v) for v in code)
+    newline = bytes.fromhex((ROOT / "tests/fixtures/text_newline_advance.hex").read_text("ascii"))
+    if hashlib.sha256(newline).hexdigest() != EXPECTED_NEWLINE_SHA256:
+        raise RuntimeError("newline fixture SHA-256 mismatch")
+    # Preserve the nonvolatile registers around the relocation-free native
+    # newline block. Windows x64 arguments: parser, label, previous bottom.
+    newline_wrapper = (
+        bytes.fromhex("56 41 55 41 54 48 8b f1 4c 8b ea 45 8b e0")
+        + newline
+        + bytes.fromhex("41 5c 41 5d 5e c3")
+    )
+    newline_blob = ",".join(str(v) for v in newline_wrapper)
     return (
         PARSER
         + "\n"
@@ -57,6 +69,9 @@ function check(v,m){{if(!v)throw Error(m);}}
 function close(a,b,e=1e-6){{return Math.abs(a-b)<=e;}}
 const initCode=Memory.alloc({len(code)});Memory.protect(initCode,{len(code)},'rwx');
 initCode.writeByteArray([{blob}]);
+const newlineCode=Memory.alloc({len(newline_wrapper)});Memory.protect(newlineCode,{len(newline_wrapper)},'rwx');
+newlineCode.writeByteArray([{newline_blob}]);
+const nativeNewline=new NativeFunction(newlineCode,'void',['pointer','pointer','int']);
 const driver=new CModule(`
 #include <stdint.h>
 extern void ruby_init(void *,const char *,uint32_t,float,float,float,float);
@@ -180,20 +195,25 @@ const layoutLine=new NativeFunction(driver.layout_line,'void',['pointer','pointe
 const multiline=[];
 row.reserveAuxiliaryHeight=true;row.preservePrimaryLayout=false;
 const rubyGap=0;
-for(const measuring of [false,true])for(const initial of [0,200])for(const height of [18,22,40])for(const count of [1,2,5,20]){{
+for(const measuring of [false,true])for(const initial of [0,200])for(const height of [18,22,40])for(const count of [1,2,5,20])for(const leading of [-1,0,15,24,40]){{
   rootParser.add(4).writeFloat(initial);rootParser.add(0x1ab).writeU8(measuring?1:0);
+  rootParser.add(0x16c).writeU32(0);label.add(0x2f4).writeS32(leading);
   prepareParent.writePointer(rootParser);
-  const primary=fresh(),child=fresh();let good=true;
+  const primary=fresh(),child=fresh();let good=true,expectedAdvance=0;
   for(let i=0;i<count;i++){{
     const origin=rootParser.add(4).readFloat();
     layoutLine(label,rootParser,primary,child,text,height);
     const delta=rootParser.add(4).readFloat()-origin;
-    good=good&&close(delta,height);
-    // Native newline uses preceding bottom plus spacing, never child origin.
-    rootParser.add(4).writeFloat(rootParser.add(4).readFloat()+34+6);
+    const expected=i===0?0:Math.max(0,height-leading);
+    good=good&&close(delta,expected);
+    // Exact 0x587966..0x5879a1 instructions: signed native leading and
+    // first/subsequent-line identity come from the real parser, not a mock.
+    nativeNewline(rootParser,label,rootParser.add(4).readFloat()+34+6);
+    good=good&&rootParser.add(0x16c).readU32()===i+1;
+    expectedAdvance+=expected+34+6+leading;
   }}
   const advance=rootParser.add(4).readFloat()-initial;
-  multiline.push({{measuring,initial,height,count,advance,ok:good&&close(advance,count*(height+40))}});
+  multiline.push({{measuring,initial,height,count,leading,advance,ok:good&&close(advance,expectedAdvance)}});
 }}
 row.reserveAuxiliaryHeight=false;
 rootParser.add(4).writeFloat(200);layoutLine(label,rootParser,fresh(),fresh(),text,40);
@@ -243,6 +263,15 @@ def main(exe: Path | None = None) -> None:
             raise SystemExit(f"unsupported sora_2nd.exe SHA-256: {exe_hash}")
         if init_bytes(exe) != code:
             raise SystemExit("initializer fixture differs from the supported game")
+        pe = pefile.PE(str(exe), fast_load=True)
+        try:
+            newline = bytes.fromhex(
+                (ROOT / "tests/fixtures/text_newline_advance.hex").read_text("ascii")
+            )
+            if pe.get_data(0x587966, 0x3B) != newline:
+                raise SystemExit("newline fixture differs from the supported game")
+        finally:
+            pe.close()
     if hashlib.sha256(code).hexdigest() != EXPECTED_INIT_SHA256:
         raise SystemExit("initializer fixture SHA-256 mismatch")
     host = run_host(js_source(code))
@@ -251,6 +280,7 @@ def main(exe: Path | None = None) -> None:
         "scope": "static on-disk PE plus self-created hidden Python host; no game process opened, attached, injected, or started",
         "exe_sha256": exe_hash,
         "initializer_sha256": EXPECTED_INIT_SHA256,
+        "newline_sha256": EXPECTED_NEWLINE_SHA256,
         "native_agent_sha256": agent_hash,
         "production_callback_sha256": hashlib.sha256(CALLBACK.encode()).hexdigest(),
         "production_compensate_sha256": hashlib.sha256(COMPENSATE.encode()).hexdigest(),
@@ -262,6 +292,7 @@ def main(exe: Path | None = None) -> None:
             "glyph_gate": "glyph bounds are accumulated before 0x5881e5 tests child+0x1a9; 1a9=0 skips the output block while preserving measurement work",
             "line_origin": "0x588570 immediately returns for parser+0x1ab; draw first-line subtracts label+0x2fc/global+0x6a4 and later lines add label+0x2f8",
             "local_height": "0x58709f parses the child at zero origin; capture its bounds on entry to 0x58714a before the resetting constructor; parse_text 0x587824/0x58782e zero-seeds the later positioned envelope",
+            "native_leading": "0x587966..0x5879a1 adds signed label+0x2f4 to the previous bottom and increments parser+0x16c; first-line auxiliary reserve is zero, later lines fill only missing leading",
         },
         "host": host,
         "decision": {
