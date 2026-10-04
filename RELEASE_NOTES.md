@@ -1,32 +1,29 @@
-# 0.4.1 — 改善 EXE 兼容检查与确认框排版
+# 0.4.2 — EXE 兼容与非中文游戏语言支持
 
-- 放宽过于严格的 EXE 检查。同一构建中不影响运行的文件信息、资源和调试信息差异，不再一律导致连接失败。
-- 语言识别允许四个样本中有一个被其他 MOD 修改，只要另外三个明确对应同一种语言；存在实际语言冲突时仍会提示错误。
-- 修正部分确认框首次排版时的高度与文字间隔。普通对话和日志保持 0.4.0 的行距，不再因颜色、控制符或逐字显示额外撑开。
-- 连接失败会保留具体原因，不再被“字体已准备”的提示盖住；EXE 兼容问题也不会再笼统显示为字体安装失败。
+- 按工具实际使用的原生函数和数据定位 EXE，允许已识别函数迁址；无关文件信息、代码和资源变化不再阻止连接。原版 EXE 和全语音 MOD 1.0.7 附带 EXE 已通过连接及双语显示实测。
+- 游戏本身使用日文、英文等支持语言时，工具可正确准备语言映射；游戏内切换文字语言后会重新匹配，并保留用户选择的主副语言。
+- 保留已验收候选中的跨语言旧存档摘要、Hide UI、复活恢复效果及标点误配修复。
 
-本版已通过中日双语实机验收。更新仍由用户手动选择，保留现有配置与历史版本回退入口。请正常退出游戏和工具后安装，再重新启动。
+本版已通过 DEV4 用户实机验收。自动检查新版本仍只提示，下载和安装由用户手动触发，保留现有配置。请正常退出游戏和工具后更新，再重新启动。
 
-已知限制：这不是对任意 EXE 或补丁的通用适配。全语音 MOD 1.0.7 附带的 EXE 改写了代码地址和字体读取流程，暂未支持。
+兼容实测仅替换上述 MOD 的 EXE，未安装完整语音资源包；不代表任意 EXE 或所有 MOD 组合均已适配。部分动态效果描述仍有遗漏，安排在 0.4.3 继续修补。
 
 ## English
 
-- Relaxed overly strict EXE checks: harmless metadata, resource and debug-information differences within the adapted build no longer cause rejection solely due to a different file hash.
-- Language detection tolerates one modified sample when three other samples clearly identify the same language. Conflicting language samples still report an error.
-- Corrected initial layout timing for some confirmation windows. Ordinary dialogue and logs retain the 0.4.0 spacing without extra gaps caused by formatting or typewriter animation.
-- Connection errors now keep their actual cause instead of being hidden by a font-ready notice or mislabeled as font installation failures.
+- EXE compatibility now locates the native functions and data used by the tool, including recognized functions moved to new addresses. Unrelated metadata, code and resource changes no longer block connection. The original EXE and the EXE bundled with full-voice MOD 1.0.7 passed connection and bilingual-display checks.
+- Language mapping works when the game itself uses Japanese, English or another supported language. Changing the game's text language refreshes the mapping while preserving your selected primary and secondary languages.
+- Includes the accepted candidate's fixes for saved summaries from other languages, Hide UI, revival effects and incorrect punctuation matching.
 
-Tested in game with Chinese/Japanese bilingual text. Updates remain manual, with settings and version rollback preserved. Exit the game and tool before installing, then relaunch.
+DEV4 passed user playtesting. Update checks only notify; downloading and installation remain manual and preserve settings. Exit the game and tool normally before updating, then relaunch.
 
-Known limitations: this does not support arbitrary executables or patches. The EXE bundled with the full-voice MOD 1.0.7 still needs a separate adapter.
+The MOD check replaced only its EXE, without installing the full voice resources. Arbitrary EXEs and all MOD combinations are not covered. Remaining dynamic-effect text gaps are scheduled for 0.4.3.
 
 ## 日本語
 
-- EXE の検証条件を緩和しました。対応済みビルドの動作に影響しないメタデータ・リソース・デバッグ情報の差だけで、接続を拒否しなくなりました。
-- 言語判定用の四つのサンプルのうち一つが他の Mod で変更されていても、残り三つが同じ言語を示せば判定できます。異なる言語が検出された場合はエラーを表示します。
-- 一部の確認ウィンドウで初回レイアウトのタイミングを修正しました。通常の会話とログは 0.4.0 の行間を維持し、書式や文字送りによる余分な空白を追加しません。
-- 接続失敗の原因を「フォント準備完了」の表示で隠したり、フォントのインストール失敗と誤表示したりしないよう修正しました。
+- ツールが使う関数とデータを基準に EXE を照合し、認識できる関数のアドレス移動にも対応しました。無関係なファイル情報・コード・リソースの変更で接続を拒否しなくなりました。原版と全ボイス Mod 1.0.7 同梱 EXE で接続と二言語表示を確認しました。
+- ゲーム自体が日本語・英語などの対応言語でも言語マッピングを準備できます。ゲーム内の文字言語を変更した場合も、主言語・副言語の設定を保持したまま再照合します。
+- 検証済み候補版の修正（別言語の古いセーブ概要、Hide UI、復活効果、句読点の誤訳）を含みます。
 
-中国語・日本語の二言語表示で実機確認済みです。更新は引き続き手動で、設定と過去バージョンへの復元機能を保持します。ゲームとツールを終了してから更新し、再起動してください。
+DEV4 はユーザーの実機確認を通過しました。更新確認は通知のみで、ダウンロードとインストールは手動です。設定を保持します。ゲームとツールを通常の方法で終了してから更新し、再起動してください。
 
-既知の制限：すべての EXE やパッチに対応するものではありません。全ボイス Mod 1.0.7 に同梱された EXE は個別対応が必要です。
+Mod の実測は EXE の置き換えのみで、音声リソース一式は導入していません。すべての EXE や Mod の組み合わせを保証するものではありません。動的な効果説明の残りの欠落は 0.4.3 で修正を進めます。

@@ -6,7 +6,7 @@
 
 A bilingual text mod for **Trails in the Sky the 2nd** on PC. Compare dialogue and menus on screen, or hold a shortcut to switch temporarily. Choose both languages independently: English, Japanese, Simplified or Traditional Chinese, Korean, French, German, and Spanish.
 
-The in-game validation baseline is Steam build **25386012**, executable **1.03.2**. The current source candidate locates only the native functions and data the tool uses: unrelated EXE metadata, code, or resource changes do not block connection, and recognized functions can move addresses. Changes to required arguments or object layouts still need adaptation. This compatibility change must pass DEV playtesting before release; see Releases for the stable build. The tool does not rewrite original PAC/EXE files. Full-game coverage, language layouts, and controller compatibility still need in-game feedback.
+The in-game validation baseline is Steam build **25386012**, executable **1.03.2**. Version 0.4.2 locates only the native functions and data the tool uses: unrelated EXE metadata, code, or resource changes do not block connection, and recognized functions can move addresses. Changes to required arguments or object layouts still need adaptation. DEV4 passed user playtesting with the original EXE and the EXE from full-voice MOD 1.0.7; only its EXE was replaced, without the full voice resources. See Releases for the stable build. The tool does not rewrite original PAC/EXE files. Full-game coverage, language layouts, and controller compatibility still need in-game feedback.
 
 **Recommended for everyday play: single-language display with hold-to-show secondary.** Read the primary language normally, hold your shortcut to compare, then release to return. Simultaneous bilingual text remains available, but opening the dialogue log can hitch and its frame rate can be lower; see the limitations below. This recommendation does not reset existing settings.
 
@@ -211,7 +211,7 @@ Publish local changes with **python -m tools.dev publish-local**. It validates s
 
 See the [architecture](https://github.com/Llugaes/bilingual-sora-2nd/blob/main/docs/ARCHITECTURE.md) and [contribution guide](https://github.com/Llugaes/bilingual-sora-2nd/blob/main/CONTRIBUTING.md), currently in Chinese. Issues and pull requests are welcome. Include the tool version, game version, language pair, reproduction steps, and a short relevant error excerpt. Do not upload complete game resources.
 
-For a release, maintainers update both **distribution.json** and **pyproject.toml**, then push a matching **vX.Y.Z** tag. GitHub Actions validates on Windows and builds the complete ZIP, update components, and offline installer from an explicit file allowlist. After portable-launch and installer checks pass, it uploads all assets to a draft and publishes them together. Manual build:
+For a release, maintainers update both **distribution.json** and **pyproject.toml**, then push a matching **vX.Y.Z** tag. GitHub Actions validates on Windows and builds the complete ZIP, update components, and offline installer from an explicit file allowlist. After portable-launch and installer checks pass, it uploads all assets to a draft. A maintainer verifies that the package matches the candidate accepted by the user before publishing. Automatic update checks only notify; downloads and installation remain manual. Manual build:
 
 ```powershell
 $distribution = Get-Content distribution.json | ConvertFrom-Json
