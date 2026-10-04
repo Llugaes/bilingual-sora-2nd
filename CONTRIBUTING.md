@@ -36,6 +36,7 @@ py -3.14 -m venv .venv
 | python -m tools.audit_resource_inventory --game GAME_DIR --catalog generated/catalog.json --output generated/resource-inventory.json | 枚举八语全部原始脚本与表，逐项记录目录覆盖、拒绝参数、未识别 schema 和身份冲突；另写小型 summary.json |
 | python tests/check_reported_texts.py --game-dir GAME_DIR --panel-audit generated/static-panels-check.json --output generated/panel-runtime.json | 全部静态面板的正式 JS 回放；全局失败保持失败，编译资源身份的结果单独记录，不能作为实机身份已传入的证明 |
 | python tests/check_reported_texts.py --game-dir GAME_DIR --item-help-audit --output generated/item-help-runtime.json | 技能详情同族资源探针及已验证的 HP／EP 回复组装回放；保留原始字段分母、格式排除项与歧义，不把独立字段通过当作运行态全覆盖 |
+| python tests/check_item_help_revive.py --game-dir GAME_DIR | 从原始槽和连接表核验类别 16 的复活＋恢复构造器，并回放八语主副文矩阵、完整目录英主日副及 JavaScript 富文本 |
 | python tests/check_dynamic_and_history.py --game-dir GAME_DIR | 完整目录下的历史原串、说话人上下文与原始动态 producer 家族回放；同时核对翻译和副文层，不连接游戏 |
 | python tests/check_history_identity.py --game-dir GAME_DIR | 从原始脚本调用捕获身份，再切换语言模型；核对全部源脚本 manifest 分母及同文异译，不连接游戏 |
 | python tests/check_mixed_history.py --game-dir GAME_DIR | 从完整目录编译全部来源语言的旧日志索引，核对八语原串到日英目标及最终副文，不连接游戏 |

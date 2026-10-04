@@ -347,6 +347,51 @@ def _recovery_header(catalogue, recovery_texts, tails, languages):
     }
 
 
+def _revive_recovery(catalogue, fields, first_identity, magnitude, languages):
+    """Build connection-kind 16's name + FORMAT8 + formatted recovery."""
+    separator = _constant(catalogue, "FORMAT8", languages)
+    first = fields[first_identity]
+    result = {}
+    for language in languages:
+        name = first["name"][language]
+        form = first["format"][language]
+        value = magnitude[language]
+        if (
+            not name.strip()
+            or "%" in name
+            or form.count("%s") != 1
+            or "%" in form.replace("%s", "")
+            or not value.strip()
+        ):
+            raise ItemHelpContractError("revive recovery constructor fields changed")
+        result[language] = name + separator[language] + form.replace("%s", value)
+    return result
+
+
+def _actual_connection_sequences(groups, members):
+    """Mirror the native forward scan for a connection kind with equal arguments."""
+    members = set(members)
+    result = set()
+    for group in groups:
+        consumed = set()
+        for index, slot in enumerate(group):
+            if index in consumed or slot[0] not in members:
+                continue
+            selected = [slot]
+            consumed.add(index)
+            for following in range(index + 1, len(group)):
+                candidate = group[following]
+                if (
+                    following not in consumed
+                    and candidate[0] in members
+                    and candidate[1:] == slot[1:]
+                ):
+                    selected.append(candidate)
+                    consumed.add(following)
+            result.add(tuple(selected))
+    return result
+
+
 # The live type-16 skill page proves `<I270>` after a stat. Keep that literal
 # control token: target locales own the surrounding name/turn order, while the
 # native icon is never translated or replaced with a Unicode lookalike. The
@@ -655,6 +700,91 @@ def compile_item_help_grammar(
                 connect_kind=17,
             )
             independent_numeric_groups.add(ids)
+
+    # Connection kind 16 is the native revive/recovery constructor at
+    # 0x34d933..0x34de3a. It writes the first record's name, FORMAT8 and the
+    # first record's format. ID 121 selects one of exactly three magnitude
+    # constants from slot1 (<3000 SMALL, <4500 MIDDLE, otherwise LARGE).
+    # Other members substitute PERSENT; value 100 can instead select ALL at
+    # runtime. Emit both proven 100 spellings and let the exact source choose.
+    revive_members = set()
+    for connection in connect_groups or ():
+        if connection["kind"] != 16:
+            continue
+        members = tuple(connection["ids"])
+        revive_members.update(members)
+        for record_id in members:
+            identity_and_value = by_id.get(record_id)
+            if (
+                not identity_and_value
+                or identity_and_value[0] not in fields
+                or identity_and_value[1]["parameter_types"] != (0, 0)
+            ):
+                raise ItemHelpContractError("revive recovery constructor parameters changed")
+        for sequence in sorted(_actual_connection_sequences(raw_groups, members)):
+            ids = tuple(slot[0] for slot in sequence)
+            first_identity = by_id[ids[0]][0]
+            if ids[0] == 121:
+                for variant, constant, bounds in (
+                    ("small", "SMALL", "slot1 < 3000"),
+                    ("middle", "MIDDLE", "3000 <= slot1 < 4500"),
+                    ("large", "LARGE", "slot1 >= 4500"),
+                ):
+                    _add_unique(
+                        generated,
+                        _revive_recovery(
+                            catalogue,
+                            fields,
+                            first_identity,
+                            _constant(catalogue, constant, languages),
+                            languages,
+                        ),
+                        "revive_recovery",
+                        ids,
+                        languages,
+                        connect_kind=16,
+                        parameter_types=[[0, 0]] * len(ids),
+                        amount_argument="slot1",
+                        variant=variant,
+                        selector=bounds,
+                    )
+            else:
+                _add_unique(
+                    generated,
+                    _revive_recovery(
+                        catalogue,
+                        fields,
+                        first_identity,
+                        _constant(catalogue, "PERSENT", languages),
+                        languages,
+                    ),
+                    "revive_recovery",
+                    ids,
+                    languages,
+                    connect_kind=16,
+                    parameter_types=[[0, 0]] * len(ids),
+                    amount_argument="slot1",
+                    variant="percent",
+                )
+                if sequence[0][1] == 100:
+                    _add_unique(
+                        generated,
+                        _revive_recovery(
+                            catalogue,
+                            fields,
+                            first_identity,
+                            _constant(catalogue, "ALL", languages),
+                            languages,
+                        ),
+                        "revive_recovery",
+                        ids,
+                        languages,
+                        connect_kind=16,
+                        parameter_types=[[0, 0]] * len(ids),
+                        amount_argument="slot1",
+                        variant="all",
+                        selector="runtime flag false and slot1 == 100",
+                    )
     if turn_groups:
         for ids in _aggregate_sequences(turn, raw_groups):
             for level in levels:
@@ -947,6 +1077,7 @@ def compile_item_help_grammar(
         | set(timed_labels)
         | set(duration_values)
         | set(recovery)
+        | revive_members
     )
     for group in recovery_header_groups:
         known.update(group)
@@ -988,6 +1119,11 @@ def compile_item_help_grammar(
             "percent_recovery_groups_proven": len(set(recovery_groups)),
             "percent_recovery_headers_proven": len(set(recovery_header_groups)),
             "independent_numeric_groups_proven": len(independent_numeric_groups),
+            "revive_recovery_records": len(revive_members),
+            "revive_recovery_templates": sum(
+                row["item_help_contract"]["family"] == "revive_recovery"
+                for row in generated.values()
+            ),
             "literal_clusters_proven": len(proven_literal_clusters),
             "prefix_records_proven": len(prefixes),
             "turn_stat_inline_icon_records": len(inline_turn_icon_records),

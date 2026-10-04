@@ -1203,6 +1203,10 @@ class MenuTranslator:
 
     def literal_argument(self, source, side):
         """Resolve a string slot without re-entering numeric/printf matching."""
+        # A printf string slot has no independent resource identity. Separators
+        # must not inherit the translation of a punctuation-only script line.
+        if not any(char.isalnum() for char in source):
+            return source
         if source in self.ambiguous_display:
             return source
         if source in self.pairs:
@@ -1257,7 +1261,12 @@ class MenuTranslator:
         # A list of known labels is stronger evidence than a free-form %s
         # template consuming the previous labels as part of its argument.
         parts = COMPONENT_LINKS.split(source)
-        pairs = [self.pairs.get(part) or self.plain_pairs.get(part) for part in parts[::2]]
+        pairs = [
+            (self.pairs.get(part) or self.plain_pairs.get(part))
+            if any(char.isalnum() for char in part)
+            else None
+            for part in parts[::2]
+        ]
         if len(parts) > 1 and all(pairs):
             return tuple(
                 "".join(pairs[i // 2][side] if i % 2 == 0 else part for i, part in enumerate(parts))
@@ -1324,6 +1333,10 @@ class MenuTranslator:
         return next(iter(matches)) if len(matches) == 1 else None
 
     def component(self, source, mode):
+        # Whole dialogue/keyed lookup happens before decomposition. Once a
+        # rich-text run is split, punctuation alone is only a separator.
+        if not any(char.isalnum() for char in source):
+            return source
         # A numeric run between native controls is presentation data, not a
         # translatable label. In particular, keep icon multipliers verbatim.
         if re.search(r"[0-9０-９]", source) and re.fullmatch(

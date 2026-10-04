@@ -1,4 +1,8 @@
 import unittest
+import itertools
+import json
+import re
+from pathlib import Path
 from sora_bilingual.localization.menu_text import MenuTranslator
 
 
@@ -7,6 +11,56 @@ def entry(sc, ja, en=None):
 
 
 class MenuTextTests(unittest.TestCase):
+    def test_embedded_engine_unicode_ranges_match_python_classification(self):
+        source = (
+            Path(__file__).resolve().parents[1] / "sora_bilingual/game/scripts/runtime_text.js"
+        ).read_text("utf-8")
+        actual = json.loads(re.search(r"const ALPHANUMERIC_RANGES=(\[[\s\S]*?\]);", source)[1])
+        expected = []
+        for include, group in itertools.groupby(range(0x110000), lambda i: chr(i).isalnum()):
+            span = list(group)
+            if include:
+                expected.extend((span[0], span[-1]))
+        self.assertEqual(actual, expected)
+
+    def test_punctuation_fragments_never_become_words_inside_effects(self):
+        # Real TutorialOrbmentQuatzEditChr argument: English punctuation is
+        # only meaningful with its original call, not as a reusable UI term.
+        records = [
+            entry("后，", "をセットすると、", ","),
+            entry("加速", "加速", "Quick"),
+            entry("CP+%d", "CP+%d", "CP+%d"),
+            entry("槽%s末", "枠%s終", "Slot%sEnd"),
+            entry("……", "………", "..."),
+            entry("框%s尾", "枠%s終", "-%s-"),
+        ]
+        tr = MenuTranslator(records, "en", "ja", "en")
+        source = "<c698>Quick</C><c698>, </C><c698>CP+15</C>"
+        expected = "<c698>加速</C><c698>, </C><c698>CP+15</C>"
+        self.assertEqual(tr.translate(source, "primary"), source)
+        self.assertEqual(tr.translate(source, "secondary"), expected)
+        self.assertNotIn("をセットすると、", str(tr.render(source)))
+        for source, expected in (
+            ("Quick・,", "加速・,"),
+            (",・Quick", ",・加速"),
+            ("Quick・,・...", "加速・,・..."),
+        ):
+            self.assertEqual(
+                tr.translate("<c698>" + source + "</C>", "secondary"), "<c698>" + expected + "</C>"
+            )
+            self.assertNotIn("をセットすると、", str(tr.render("<c698>" + source + "</C>")))
+        for punctuation in (",", "...", ", ", " / "):
+            with self.subTest(punctuation=punctuation):
+                self.assertEqual(tr.component(punctuation, "secondary"), punctuation)
+                self.assertEqual(tr.literal_argument(punctuation, 1), punctuation)
+                self.assertEqual(
+                    tr.translate("Slot" + punctuation + "End", "secondary"),
+                    "枠" + punctuation + "終",
+                )
+        # Complete, identified dialogue still keeps its official wording.
+        self.assertEqual(tr.translate("...", "secondary"), "………")
+        self.assertEqual(tr.translate("<c698>---</C>", "secondary"), "<c698>---</C>")
+
     def test_complete_pair_renders_when_only_source_has_controls(self):
         for source, primary, secondary in (
             ("<R>言葉</Rことば>", "话语", "Words"),

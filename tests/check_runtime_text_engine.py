@@ -39,6 +39,13 @@ rpc.exports={run(){
     const composite='<c698>「冻结·中毒·炎伤·延迟」</C>';
     if(runtime.translate(composite,'secondary')!=='<c698>「凍結·毒·炎傷·遅延」</C>')throw Error('compound labels omitted');
     if(runtime.render(composite).kind==='plain')throw Error('compound annotation omitted');
+    const effectPairs={',':[',','をセットすると、'],Quick:['Quick','加速']};
+    const effects=new RuntimeText({pairs:effectPairs,plain_pairs:effectPairs});
+    const effect='<c698>Quick</C><c698>, </C><c698>CP+15</C>';
+    if(effects.translate(effect,'secondary')!=='<c698>加速</C><c698>, </C><c698>CP+15</C>')
+        throw Error('punctuation injected a tutorial fragment');
+    if(JSON.stringify(effects.render(effect)).includes('をセットすると、'))
+        throw Error('punctuation leaked into the secondary payload');
     return {runtime:Script.runtime,game_attached:false,passed:true};
 },load(model){
     const tr=new RuntimeText(model);

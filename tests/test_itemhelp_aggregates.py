@@ -7,6 +7,7 @@ import unittest
 from sora_bilingual.config.locales import LANGUAGES
 from sora_bilingual.localization.item_help_composition import (
     EFFECT_LAYOUTS,
+    ItemHelpContractError,
     _iter_effect_groups,
     compile_item_help_grammar,
 )
@@ -322,6 +323,269 @@ class ItemHelpAggregateTests(unittest.TestCase):
             tr.details.translate(source, "secondary"), "アイテムの効果+30％･射程距離+10ｍ"
         )
         self.assertEqual(tr.details.render(source)["kind"], "ruby")
+
+    def test_kind_16_revive_constructor_covers_percent_all_and_native_grades(self):
+        entries, metadata, groups = fixture()
+        revive = {
+            "ja": "復活",
+            "en": "Revive",
+            "zh-Hans": "复活",
+            "zh-Hant": "復活",
+            "ko": "부활",
+            "fr": "Réanimation",
+            "de": "Wiederbeleben",
+            "es": "Resurrección",
+        }
+        heal = {
+            "ja": "HP%s回復",
+            "en": "Heal %s HP",
+            "zh-Hans": "回复HP%s",
+            "zh-Hant": "回復HP%s",
+            "ko": "HP %s 회복",
+            "fr": "Restaure %s PV",
+            "de": "Heilt %s LP",
+            "es": "Curación de %s PV",
+        }
+        constants = {
+            "FORMAT8": {
+                "ja": "／",
+                "en": ", ",
+                "zh-Hans": "／",
+                "zh-Hant": "／",
+                "ko": "／",
+                "fr": ", ",
+                "de": ", ",
+                "es": ", ",
+            },
+            "PERSENT": {
+                "ja": "%d％",
+                "en": "%d%%",
+                "zh-Hans": "%d％",
+                "zh-Hant": "%d％",
+                "ko": "%d％",
+                "fr": "%d %%",
+                "de": "%d%%",
+                "es": "%d%%",
+            },
+            "ALL": {
+                "ja": "全",
+                "en": "All",
+                "zh-Hans": "全",
+                "zh-Hant": "全",
+                "ko": "완전",
+                "fr": "Tous",
+                "de": "Alle",
+                "es": "Todo",
+            },
+            "SMALL": {
+                "ja": "小",
+                "en": "(S)",
+                "zh-Hans": "小",
+                "zh-Hant": "小",
+                "ko": "소",
+                "fr": "(S)",
+                "de": "(K)",
+                "es": "(S)",
+            },
+            "MIDDLE": {
+                "ja": "中",
+                "en": "(M)",
+                "zh-Hans": "中",
+                "zh-Hant": "中",
+                "ko": "중",
+                "fr": "(M)",
+                "de": "(M)",
+                "es": "(M)",
+            },
+            "LARGE": {
+                "ja": "大",
+                "en": "(L)",
+                "zh-Hans": "大",
+                "zh-Hant": "大",
+                "ko": "대",
+                "fr": "(L)",
+                "de": "(G)",
+                "es": "(L)",
+            },
+        }
+        for record_id, identity in ((120, "revive-percent"), (121, "revive-grade")):
+            metadata["SkillEffectHelpData"][identity] = {
+                "id": record_id,
+                "parameter_types": (0, 0),
+            }
+            base = "table/t_itemhelp.tbl/SkillEffectHelpData/" + identity
+            entries.extend(
+                (
+                    {"key": base + "/name", "texts": revive},
+                    {"key": base + "/stat", "texts": {language: "HP" for language in LANGUAGES}},
+                    {"key": base + "/format", "texts": heal},
+                )
+            )
+        by_key = {entry["key"]: entry for entry in entries}
+        for name, values in constants.items():
+            key = "table/t_text.tbl/TXT_ITEM_HELP_" + name
+            if key in by_key:
+                by_key[key]["texts"] = values
+            else:
+                entries.append({"key": key, "texts": values})
+        description = {
+            "key": "table/t_skill.tbl/revive/description",
+            "texts": {language: f"description-{language}" for language in LANGUAGES},
+        }
+        entries.append(description)
+        groups.extend(
+            (
+                ((120, 5, 0, 0),),
+                ((120, 100, 0, 0),),
+                ((121, 1750, 25, 0),),
+                ((121, 3000, 25, 0),),
+                ((121, 4500, 25, 0),),
+            )
+        )
+        grammar = compile_item_help_grammar(
+            entries,
+            "en",
+            metadata,
+            groups,
+            connect_groups=[{"kind": 16, "ids": [120, 121]}],
+        )
+        family = {
+            row["item_help_contract"].get("variant"): row
+            for row in grammar["detail_entries"]
+            if row["item_help_contract"]["family"] == "revive_recovery"
+        }
+        self.assertEqual(set(family), {"percent", "all", "small", "middle", "large"})
+        self.assertEqual(family["percent"]["texts"]["en"], "Revive, Heal %d%% HP")
+        self.assertEqual(family["all"]["texts"]["ja"], "復活／HP全回復")
+        self.assertEqual(family["small"]["texts"]["de"], "Wiederbeleben, Heilt (K) LP")
+        self.assertEqual(family["middle"]["texts"]["ko"], "부활／HP 중 회복")
+        self.assertEqual(family["large"]["texts"]["fr"], "Réanimation, Restaure (L) PV")
+        self.assertEqual(grammar["audit"]["revive_recovery_templates"], 5)
+
+        # Exercise every source/target locale through the real detail parser.
+        complete = entries + grammar["status_entries"] + grammar["detail_entries"]
+        variants = ("percent", "all", "small", "middle", "large")
+        for source_language in LANGUAGES:
+            for target_language in LANGUAGES:
+                translator = MenuTranslator(complete, target_language, "ja", source_language)
+                for variant in variants:
+                    source = (
+                        f"<c698>{family[variant]['texts'][source_language].replace('%d', '5').replace('%%', '%')}</C>"
+                        f"\n<C0>{description['texts'][source_language]}"
+                    )
+                    expected = (
+                        f"<c698>{family[variant]['texts'][target_language].replace('%d', '5').replace('%%', '%')}</C>"
+                        f"\n<C0>{description['texts'][target_language]}"
+                    )
+                    self.assertEqual(
+                        translator.translate(source, "primary"),
+                        expected,
+                        (source_language, target_language, variant),
+                    )
+
+        translator = MenuTranslator(complete, "en", "ja", "en")
+        source = "<c698>Revive, Heal (S) HP</C>\n<C0>description-en"
+        expected_secondary = "<c698>復活／HP小回復</C>\n<C0>description-ja"
+        self.assertEqual(translator.translate(source, "secondary"), expected_secondary)
+        batch = {
+            "model": translator.runtime_model(),
+            "source": source,
+            "expected": translator.render(source),
+            "expected_secondary": expected_secondary,
+        }
+        runner = """const fs=require('fs'),assert=require('assert/strict'),{RuntimeText}=require('./sora_bilingual/game/scripts/runtime_text.js');const d=JSON.parse(fs.readFileSync(0,'utf8')),r=new RuntimeText(d.model);assert.deepStrictEqual(r.render(d.source),d.expected);assert.strictEqual(r.translate(d.source,'secondary'),d.expected_secondary);"""
+        result = subprocess.run(
+            ["node", "-e", runner],
+            input=json.dumps(batch),
+            cwd=Path(__file__).resolve().parents[1],
+            text=True,
+            encoding="utf-8",
+            capture_output=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_kind_16_revive_constructor_rejects_parameter_drift(self):
+        entries, metadata, groups = fixture()
+        for record_id, identity in ((120, "revive-percent"), (121, "revive-grade")):
+            metadata["SkillEffectHelpData"][identity] = {
+                "id": record_id,
+                "parameter_types": (0, 1) if record_id == 121 else (0, 0),
+            }
+            base = "table/t_itemhelp.tbl/SkillEffectHelpData/" + identity
+            entries.extend(
+                (
+                    {"key": base + "/name", "texts": texts(("复活", "Revive", "復活"))},
+                    {"key": base + "/stat", "texts": texts(("HP", "HP", "HP"))},
+                    {
+                        "key": base + "/format",
+                        "texts": texts(("回复HP%s", "Heal %s HP", "HP%s回復")),
+                    },
+                )
+            )
+        for name, values in (
+            ("SMALL", ("小", "(S)", "小")),
+            ("MIDDLE", ("中", "(M)", "中")),
+            ("LARGE", ("大", "(L)", "大")),
+            ("ALL", ("全", "All", "全")),
+        ):
+            entries.append(
+                {"key": "table/t_text.tbl/TXT_ITEM_HELP_" + name, "texts": texts(values)}
+            )
+        with self.assertRaisesRegex(
+            ItemHelpContractError, "revive recovery constructor parameters changed"
+        ):
+            compile_item_help_grammar(
+                entries,
+                "en",
+                metadata,
+                [*groups, ((121, 1750, 25, 0),)],
+                connect_groups=[{"kind": 16, "ids": [120, 121]}],
+            )
+
+    def test_kind_16_equal_parameter_group_keeps_the_first_record_format(self):
+        entries, metadata, groups = fixture()
+        records = (
+            (
+                120,
+                "revive-first",
+                ("复活甲", "Revive A", "復活甲"),
+                ("回复HP%s", "Heal %s HP", "HP%s回復"),
+            ),
+            (
+                121,
+                "revive-last",
+                ("复活乙", "Revive B", "復活乙"),
+                ("恢复生命%s", "Restore %s Life", "生命%s回復"),
+            ),
+        )
+        for record_id, identity, name, form in records:
+            metadata["SkillEffectHelpData"][identity] = {
+                "id": record_id,
+                "parameter_types": (0, 0),
+            }
+            base = "table/t_itemhelp.tbl/SkillEffectHelpData/" + identity
+            entries.extend(
+                (
+                    {"key": base + "/name", "texts": texts(name)},
+                    {"key": base + "/stat", "texts": texts(("HP", "HP", "HP"))},
+                    {"key": base + "/format", "texts": texts(form)},
+                )
+            )
+        grammar = compile_item_help_grammar(
+            entries,
+            "en",
+            metadata,
+            [*groups, ((120, 25, 0, 0), (121, 25, 0, 0))],
+            connect_groups=[{"kind": 16, "ids": [120, 121]}],
+        )
+        grouped = next(
+            row
+            for row in grammar["detail_entries"]
+            if row.get("item_help_contract", {}).get("family") == "revive_recovery"
+            and row["item_help_contract"]["record_ids"] == [120, 121]
+        )
+        self.assertEqual(grouped["texts"]["en"], "Revive A, Heal %d%% HP")
+        self.assertNotIn("Restore", grouped["texts"]["en"])
 
     def test_status_labels_accept_only_resource_proven_plus_variants(self):
         entries, metadata, groups = fixture()

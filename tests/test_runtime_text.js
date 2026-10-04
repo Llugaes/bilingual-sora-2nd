@@ -14,6 +14,34 @@ const baseModel = overrides => ({
     ...overrides,
 });
 
+test('punctuation fragments cannot inject tutorial text into skill effects or printf arguments',()=>{
+    const runtime=new RuntimeText(baseModel({
+        pairs:{'...':['...','………']},
+        plain_pairs:{',':[',','をセットすると、'],'...':['...','………'],Quick:['Quick','加速']},
+        numeric:[['CP\\+([+-]?\\d+)',['CP+%d','CP+%d']],
+            ['Slot([^<>\\r\\n]{1,512}?)End',['Slot%sEnd','枠%s終']],
+            ['-([^<>\\r\\n]{1,512}?)-',['-%s-','枠%s終']]],
+    }));
+    const source='<c698>Quick</C><c698>, </C><c698>CP+15</C>';
+    assert.equal(runtime.translate(source,'primary'),source);
+    assert.equal(runtime.translate(source,'secondary'),'<c698>加速</C><c698>, </C><c698>CP+15</C>');
+    assert.ok(!JSON.stringify(runtime.render(source)).includes('をセットすると、'));
+    for(const [source,expected] of [['Quick・,','加速・,'],[',・Quick',',・加速'],['Quick・,・...','加速・,・...']]) {
+        assert.equal(runtime.translate('<c698>'+source+'</C>','secondary'),'<c698>'+expected+'</C>');
+        assert.ok(!JSON.stringify(runtime.render('<c698>'+source+'</C>')).includes('をセットすると、'));
+    }
+    for(const punctuation of [',','...',', ',' / ']) {
+        assert.equal(runtime.component(punctuation,'secondary'),punctuation);
+        assert.equal(runtime.literalArgument(punctuation,1),punctuation);
+        assert.equal(runtime.translate('Slot'+punctuation+'End','secondary'),'枠'+punctuation+'終');
+    }
+    assert.equal(runtime.translate('...','secondary'),'………');
+    for(const punctuation of ['---','-💡-','-\u{1f7e1}-'])
+        assert.equal(runtime.translate('<c698>'+punctuation+'</C>','secondary'),'<c698>'+punctuation+'</C>');
+    for(const word of ['Ä','é','한','字','𠀀','あ'])
+        assert.equal(runtime.translate('<c698>-'+word+'-</C>','secondary'),'<c698>枠'+word+'終</C>');
+});
+
 test('complete pairs render target languages when source alone has native controls',()=>{
     const cases=[
         ['<R>言葉</Rことば>', ['话语','Words']],

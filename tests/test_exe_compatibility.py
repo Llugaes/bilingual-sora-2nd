@@ -68,6 +68,21 @@ class ExecutableCompatibilityTests(unittest.TestCase):
             ):
                 return hooks.verify_target(exe)
 
+    def resource_tail(self):
+        """Append an independently mapped resource section to the fixture."""
+        raw = self.raw + bytes(0x200)
+        # The new section does not move any mapped core bytes.  It is read-only
+        # initialized data and the resource directory is its only reference.
+        struct.pack_into("<H", raw, 0x86, 7)
+        struct.pack_into("<I", raw, 0xD0, 0x8000)  # SizeOfImage
+        section = 0x188 + 6 * 40
+        raw[section : section + 6] = b".voice"
+        struct.pack_into("<IIII", raw, section + 8, 0x80, 0x7000, 0x200, 0x1000)
+        struct.pack_into("<I", raw, section + 36, 0x40000040)
+        raw[0x1000:0x1080] = b"voice resource metadata".ljust(0x80, b"\0")
+        struct.pack_into("<II", raw, 0x98 + 112 + 2 * 8, 0x7000, 0x80)
+        return raw
+
     def test_known_image_is_still_exact(self):
         self.assertEqual(self.verify(self.raw)["compatibility"], "exact")
 
@@ -98,6 +113,45 @@ class ExecutableCompatibilityTests(unittest.TestCase):
                 self.assertEqual(report["hooks"][0]["rva"], 0x1000)
                 self.assertEqual(report["sha256"], hashlib.sha256(raw).hexdigest())
 
+    def test_nonloaded_headers_and_tail_resource_do_not_change_native_contract(self):
+        variants = {}
+        changed = self.raw.copy()
+        changed[0x40] ^= 0x40  # DOS stub: the PE header remains at e_lfanew.
+        variants["DOS stub"] = changed
+        changed = self.raw.copy()
+        changed[0x1C] ^= 0x40  # Reserved DOS-header word.
+        variants["DOS reserved"] = changed
+        changed = self.raw.copy()
+        struct.pack_into("<II", changed, 0x8C, 0x900, 2)
+        variants["COFF symbol metadata"] = changed
+        variants["resource tail"] = self.resource_tail()
+        for name, raw in variants.items():
+            with self.subTest(name=name):
+                report = self.verify(raw)
+                self.assertEqual(report["compatibility"], "compatible_image")
+                self.assertEqual(report["hooks"][0]["rva"], 0x1000)
+
+    def test_tail_section_must_remain_read_only_and_be_the_resource_directory(self):
+        executable = self.resource_tail()
+        struct.pack_into("<I", executable, 0x188 + 6 * 40 + 36, 0x60000020)
+        with self.assertRaisesRegex(compatibility.ExecutableCompatibilityError, "可执行"):
+            self.verify(executable)
+
+        writable = self.resource_tail()
+        struct.pack_into("<I", writable, 0x188 + 6 * 40 + 36, 0xC0000040)
+        with self.assertRaisesRegex(compatibility.ExecutableCompatibilityError, "可执行或可写"):
+            self.verify(writable)
+
+        unrelated = self.resource_tail()
+        struct.pack_into("<II", unrelated, 0x98 + 112 + 2 * 8, 0x5000, 0x80)
+        with self.assertRaisesRegex(compatibility.ExecutableCompatibilityError, "非资源"):
+            self.verify(unrelated)
+
+        redirected = self.raw.copy()
+        struct.pack_into("<II", redirected, 0x98 + 112 + 2 * 8, 0x1000, 0x80)
+        with self.assertRaisesRegex(compatibility.ExecutableCompatibilityError, "资源目录指向核心"):
+            self.verify(redirected)
+
     def test_debug_symbols_are_not_runtime_contract_but_neighboring_constants_are(self):
         # A real IMAGE_DEBUG_DIRECTORY and RSDS record inside .rdata.
         raw = self.raw.copy()
@@ -122,6 +176,13 @@ class ExecutableCompatibilityTests(unittest.TestCase):
                 self.assertRaises(compatibility.ExecutableCompatibilityError),
             ):
                 self.verify(changed)
+
+    def test_debug_directory_location_is_not_a_native_contract(self):
+        changed = self.raw.copy()
+        # Runtime validation relies on the trusted fixed CodeView span and
+        # `.rdata` hash, not a candidate-controlled debug directory.
+        struct.pack_into("<II", changed, 0x98 + 112 + 6 * 8, 0x1000, 28)
+        self.assertEqual(self.verify(changed)["compatibility"], "compatible_image")
 
     def test_cli_digest_and_result_come_from_one_verified_snapshot(self):
         verified = {"compatibility": "compatible_image", "sha256": "a" * 64, "hooks": []}
@@ -153,6 +214,20 @@ class ExecutableCompatibilityTests(unittest.TestCase):
             ):
                 self.assertEqual(compatibility.main(), 1)
             self.assertEqual(json.loads(output.getvalue())["sha256"], caught.exception.sha256)
+
+    def test_cli_includes_structured_layout_differences(self):
+        error = compatibility.ExecutableCompatibilityError(
+            "layout changed", sha256="b" * 64, details=["OptionalHeader.AddressOfEntryPoint"]
+        )
+        with (
+            patch("sys.argv", ["compatibility", "--exe", "unused.exe"]),
+            patch.object(hooks, "verify_target", side_effect=error),
+            contextlib.redirect_stdout(io.StringIO()) as output,
+        ):
+            self.assertEqual(compatibility.main(), 1)
+        result = json.loads(output.getvalue())
+        self.assertEqual(result["sha256"], "b" * 64)
+        self.assertEqual(result["details"], ["OptionalHeader.AddressOfEntryPoint"])
 
     def test_every_core_section_rejects_changes_beyond_hook_entry(self):
         for i, name in enumerate((".text", ".rdata", ".data", ".pdata", ".rsrc", ".reloc")):
@@ -187,6 +262,38 @@ class ExecutableCompatibilityTests(unittest.TestCase):
         for raw in (self.raw[:-0x200], b"not a PE", self.raw[:200]):
             with self.assertRaises(compatibility.ExecutableCompatibilityError):
                 self.verify(raw)
+
+    def test_invalid_file_alignment_is_a_diagnostic_rejection_before_hook_scanning(self):
+        changed = self.raw.copy()
+        struct.pack_into("<I", changed, 0x98 + 36, 0)
+        with patch.object(hooks, "signature_matches", side_effect=AssertionError("scanned hooks")):
+            with self.assertRaisesRegex(
+                compatibility.ExecutableCompatibilityError, "FileAlignment"
+            ) as caught:
+                self.verify(changed)
+        self.assertIn("OptionalHeader.FileAlignment=0x0", caught.exception.details)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            exe = Path(tmp) / "sora_2nd.exe"
+            exe.write_bytes(changed)
+            with (
+                patch.object(compatibility, "_load_profile", return_value=self.profile),
+                patch("sys.argv", ["compatibility", "--exe", str(exe)]),
+                contextlib.redirect_stdout(io.StringIO()) as output,
+            ):
+                self.assertEqual(compatibility.main(), 1)
+        result = json.loads(output.getvalue())
+        self.assertIn("FileAlignment", result["error"])
+        self.assertIn("OptionalHeader.FileAlignment=0x0", result["details"])
+
+    def test_layout_error_names_the_changed_contract_before_scanning_hooks(self):
+        changed = self.raw.copy()
+        changed[0xA8] ^= 1  # AddressOfEntryPoint
+        with patch.object(hooks, "signature_matches", side_effect=AssertionError("scanned hooks")):
+            with self.assertRaisesRegex(
+                compatibility.ExecutableCompatibilityError, "AddressOfEntryPoint"
+            ):
+                self.verify(changed)
 
     def test_native_report_uses_same_verified_snapshot(self):
         from sora_bilingual.game import native_runtime
