@@ -1854,7 +1854,31 @@ test('multiline reserve ignores the positioned child envelope',()=>{
     }
 });
 
-test('multiline reserve fills only missing native leading and never adds a blank first line',()=>{
+test('dialogue control tags and animation never add a second line-height reserve',()=>{
+    // Same visible two-line dialogue through the production render planner.
+    // DEV3 changed 40-unit advances into 52 solely due to <K>/colour/animation.
+    const body='喂，约书亚，\n别在那耍嘴皮子。',other='おい、ヨシュア、\nそこで無駄口を叩くな。';
+    for(const prefix of ['', '<C1>', '<K>', '<s32>', '<I4>', '<#E_A#M_0#B_0><K>'])
+        for(const animated of [false,true])for(const measuring of [false,true]) {
+        const r=makeRuntime(),a=prefix+body,b=prefix+other,p=r.label(0x9966,a,0,26);
+        p.nativeLineGap=9;if(animated)p.flags|=4;
+        r.api.load({pairs:{[a]:[a,b]}},'annotation',true,.85,{ruby_scale:.9,ruby_gap:0,line_gap:6});r.update(p);
+        const row=r.api.snapshot().find(v=>v.displayed===p.text());
+        if(row.layers.length)for(let line=0;line<2;line++) {
+            const origin=40*line;
+            const result=r.auxiliary(p,line,{origin,measuring,measuredSecondaryBounds:[0,21]});
+            assert.equal(result.primaryY,origin,
+                `${prefix||'plain'}, animated=${animated}, measuring=${measuring}: added blank line`);
+        }
+        for(const mode of ['primary','secondary']) {
+            r.api.select(mode,true);r.update(p);assert.equal(r.newline(p,100),100);
+        }
+        r.api.disable();r.update(p);assert.equal(p.text(),a);
+        assert.equal(r.api.status().failed,false);
+    }
+});
+
+test('ordinary auxiliary text retains original native advances and first-line position',()=>{
     const cases=[['<C1>第一行\n第二行\n第三行','<C1>一行目\n二行目\n三行目'],
         ['<#L[1#107w7]#G[6]#M_2#B_0#S[1]>对了，卢格兰爷爷，\n斯丁克先生现在怎么样了？',
          '<#L[1#107w7]#G[6]#M_2#B_0#S[1]>そういえばルグラン爺さん、\nスティングさんはどうしているのかしら？',true]];
@@ -1865,9 +1889,9 @@ test('multiline reserve fills only missing native leading and never adds a blank
         for(let pass=0;pass<3;pass++)for(let line=0;line<a.split('\n').length;line++) {
             const origin=100+line*75;
             const out=r.auxiliary(p,line,{origin,measuring,measuredSecondaryBounds:[0,23]});
-            const expected=line===0?0:Math.max(0,23-nativeGap);
+            const expected=0;
             assert.equal(out.primaryY-origin,expected,
-                `line ${line}, native leading ${nativeGap}: reserve must only fill the deficit`);
+                `line ${line}, native leading ${nativeGap}: render strategy must not invent vertical space`);
             if(line===0)assert.equal(out.primaryY,origin,'first line keeps the 0.4.0 origin');
         }
         assert.equal(r.newline(p,100),103,'user spacing remains an extra adjustable gap');
@@ -1878,7 +1902,7 @@ test('multiline reserve fills only missing native leading and never adds a blank
     }
 });
 
-test('multiline popup separates consecutive lines without feeding paragraph origin into line height',()=>{
+test('UNRESOLVED: compact tutorial needs collision-only spacing with a bounded upper gap',()=>{
     const a='<C1>第一行\n第二行\n<C2>第三行<C1>。\n第四行\n第五行<I4>',
         b='<C1>一行目\n二行目\n<C2>三行目<C1>。\n四行目\n五行目<I4>';
     // Actual five-line layout-8 glyph edges captured on 0.3.33.
@@ -1896,10 +1920,12 @@ test('multiline popup separates consecutive lines without feeding paragraph orig
                 const out=r.auxiliary(p,i,{origin,measuring,
                     measuredSecondaryBounds:[0,height],bottom:Math.ceil(origin+height)});
                 const delta=out.primaryY-origin;
-                assert.equal(delta,i===0?0:height+1,'keep the first origin; fill the captured -1 leading on later lines');
+                if(i===0)assert.equal(delta,0,'the first line must not move');
                 shift+=delta;
-                if(previousBottom!==null)assert.ok(top+shift>=previousBottom+6-.001,
-                    `line ${i+1} overlaps: ${top+shift-previousBottom}`);
+                if(previousBottom!==null) {
+                    const gap=top+shift-previousBottom;
+                    assert.ok(gap>=6-.001&&gap<=7,`line ${i+1}: gap ${gap}, expected 6..7`);
+                }
                 previousBottom=primaryBottom+shift;
             }
             assert.ok(shift<=110,'five-line paragraph grows linearly by its five secondary lines');
@@ -2163,7 +2189,7 @@ test('primary and secondary reading reserves are independent and absent readings
     }
 });
 
-test('local line height includes secondary readings once and remains independent of initial Y',()=>{
+test('native reading height is independent of ordinary secondary font-cell height',()=>{
     const a='<R>刺激</R香辛料>。\n<C1>下一行',b='<R>刺激</Rスパイス>。\n<C1>次の行';
     for(const measuring of [false,true])for(const origin of [0,120,1600])for(const gap of [0,3,8])
         for(const line of [0,1])for(const leading of [-1,15,40]) {
@@ -2171,9 +2197,9 @@ test('local line height includes secondary readings once and remains independent
         r.api.load({pairs:{[a]:[a,b]}},'annotation',true,.85,{ruby_gap:gap});r.update(p);
         const out=r.auxiliary(p,0,{origin,measuring,lineIndex:line,primaryReadingHeight:18,secondaryReadingHeight:5,
             measuredSecondaryBounds:[-5,17],bottom:origin+22});
-        const secondary=line===0?5:Math.max(5,22+gap-leading);
+        const secondary=5;
         assert.ok(Math.abs(out.primaryY-origin-(18*.85+secondary))<1e-4,
-            'retain original readings; full secondary reserve fills native leading only once');
+            'only original readings reserve space; plain secondary height is not a gap');
         assert.equal(r.api.status().failed,false);
     }
 });

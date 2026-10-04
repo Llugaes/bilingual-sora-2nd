@@ -188,12 +188,12 @@ const markerHook=Interceptor.attach(driver.marker,{{onEnter(){{outerPlace(suppre
 new NativeFunction(driver.marker,'void',[])();markerHook.detach();Interceptor.flush();
 const suppression={{slow_callbacks_before:before,slow_callbacks_after:nativeMeasure.status().slow,scale:suppressedTarget.add(0x15c).readFloat()}};
 // Both passes reuse the SAME child and execute the exact resetting initializer.
-// Reading bounds after initialization loses them; reading at compensate instead
-// feeds the positioned envelope back into the next line. Both must go red.
+// Child font-cell bounds do not authorize moving the outer line.
+// This boundary only rejects accidental extra reserve; it is not a font layout test.
 const hLine=Interceptor.attach(driver.line_parse,{{onEnter:nativeParser.onEnter,onLeave:nativeParser.onLeave}});
 const layoutLine=new NativeFunction(driver.layout_line,'void',['pointer','pointer','pointer','pointer','pointer','int']);
 const multiline=[];
-row.reserveAuxiliaryHeight=true;row.preservePrimaryLayout=false;
+row.preservePrimaryLayout=false;
 const rubyGap=0;
 for(const measuring of [false,true])for(const initial of [0,200])for(const height of [18,22,40])for(const count of [1,2,5,20])for(const leading of [-1,0,15,24,40]){{
   rootParser.add(4).writeFloat(initial);rootParser.add(0x1ab).writeU8(measuring?1:0);
@@ -204,7 +204,7 @@ for(const measuring of [false,true])for(const initial of [0,200])for(const heigh
     const origin=rootParser.add(4).readFloat();
     layoutLine(label,rootParser,primary,child,text,height);
     const delta=rootParser.add(4).readFloat()-origin;
-    const expected=i===0?0:Math.max(0,height-leading);
+    const expected=0;
     good=good&&close(delta,expected);
     // Exact 0x587966..0x5879a1 instructions: signed native leading and
     // first/subsequent-line identity come from the real parser, not a mock.
@@ -215,12 +215,11 @@ for(const measuring of [false,true])for(const initial of [0,200])for(const heigh
   const advance=rootParser.add(4).readFloat()-initial;
   multiline.push({{measuring,initial,height,count,leading,advance,ok:good&&close(advance,expectedAdvance)}});
 }}
-row.reserveAuxiliaryHeight=false;
 rootParser.add(4).writeFloat(200);layoutLine(label,rootParser,fresh(),fresh(),text,40);
 const singleLineUnchanged=close(rootParser.add(4).readFloat(),200);
 hLine.detach();
 hCompPrepare.detach();hChild.detach();hParsePair.detach();hMeasure.detach();hPrepare.detach();Interceptor.flush();
-const required={{draw_nested_scale:close(draw.nested_place_scale,.1125),callsite_overwrites_then_parse_repairs:JSON.stringify(measurementCurrent.callsite_flags_1a5_1a9_1ab)==='[1,0,1]'&&JSON.stringify(measurementCurrent.parse_entry_flags_1a5_1a9_1ab)==='[0,0,1]',measuring_glyph_count_unchanged:measurementCurrent.glyphs===0,measuring_bounds_include_native_r:measurementCurrent.bounds>0,production_metric_primary_nonzero:measurementCurrent.metrics.primary>0,production_metric_secondary_nonzero:measurementCurrent.metrics.secondary>0,negative_without_allow_readings_is_red:withoutAllowReadings.bounds===0&&!withoutAllowReadings.nested_init_seen,normal_chain_not_suppressed:nativeMeasure.status().slow>0,suppression_control_observed:suppression.slow_callbacks_after===suppression.slow_callbacks_before&&close(suppression.scale,.375),multiline_local_height:multiline.every(v=>v.ok),single_line_unchanged:singleLineUnchanged}};
+const required={{draw_nested_scale:close(draw.nested_place_scale,.1125),callsite_overwrites_then_parse_repairs:JSON.stringify(measurementCurrent.callsite_flags_1a5_1a9_1ab)==='[1,0,1]'&&JSON.stringify(measurementCurrent.parse_entry_flags_1a5_1a9_1ab)==='[0,0,1]',measuring_glyph_count_unchanged:measurementCurrent.glyphs===0,measuring_bounds_include_native_r:measurementCurrent.bounds>0,production_metric_primary_nonzero:measurementCurrent.metrics.primary>0,production_metric_secondary_nonzero:measurementCurrent.metrics.secondary>0,negative_without_allow_readings_is_red:withoutAllowReadings.bounds===0&&!withoutAllowReadings.nested_init_seen,normal_chain_not_suppressed:nativeMeasure.status().slow>0,suppression_control_observed:suppression.slow_callbacks_after===suppression.slow_callbacks_before&&close(suppression.scale,.375),no_ordinary_auxiliary_reserve:multiline.every(v=>v.ok),single_line_unchanged:singleLineUnchanged}};
 rpc.exports.run=()=>({{host:'self-created-hidden-python',game_attached:false,game_started:false,exact_initializer_bytes:true,callers:{{outer_measure:String(cOuterMeasure),outer_place:String(cOuterPlace),nested_measure:String(cNestedMeasure),nested_place:String(cNestedPlace)}},draw,measurement_current:measurementCurrent,negative_without_allow_readings:withoutAllowReadings,candidate,suppression,multiline,required,native_measure_status:nativeMeasure.status(),native_parser_status:nativeParser.status(),errors}});
 """
     )
@@ -292,7 +291,7 @@ def main(exe: Path | None = None) -> None:
             "glyph_gate": "glyph bounds are accumulated before 0x5881e5 tests child+0x1a9; 1a9=0 skips the output block while preserving measurement work",
             "line_origin": "0x588570 immediately returns for parser+0x1ab; draw first-line subtracts label+0x2fc/global+0x6a4 and later lines add label+0x2f8",
             "local_height": "0x58709f parses the child at zero origin; capture its bounds on entry to 0x58714a before the resetting constructor; parse_text 0x587824/0x58782e zero-seeds the later positioned envelope",
-            "native_leading": "0x587966..0x5879a1 adds signed label+0x2f4 to the previous bottom and increments parser+0x16c; first-line auxiliary reserve is zero, later lines fill only missing leading",
+            "native_leading": "0x587966..0x5879a1 adds signed label+0x2f4 to the previous bottom and increments parser+0x16c; auxiliary font-cell height must not add another reserve to native advances",
         },
         "host": host,
         "decision": {
@@ -303,7 +302,7 @@ def main(exe: Path | None = None) -> None:
         },
         "limits": [
             "The host executes the exact initializer and production callback/parser/measurement bridges, but its child_parse is a field-level fixture backed by static instructions rather than a clone of parse_text.",
-            "It proves the scale/lifetime/suppression and 1a5/1a9/bounds contract, not final glyph rasterization or game screenshot acceptance.",
+            "It proves the scale/lifetime/suppression and absence of extra auxiliary reserve, not the required visible inter-line gap. The unresolved tutorial gap remains a failing Node check.",
             "The current normal draw path passing means a live failure still needs candidate restart evidence; it must not be declared fixed from this host.",
         ],
     }

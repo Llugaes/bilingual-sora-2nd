@@ -263,7 +263,6 @@ function wantedText(row,allocateLayers=true) {
         if(REPORT.diagnostics)send({type:'native_size_fallback',fontSize:row.renderSize,sourceLength:row.original.length});
     }
     row.reserveRubyHeight=row.plan.kind==='ruby'&&!uncovered&&!nativeSizeFallback;
-    row.reserveAuxiliaryHeight=row.plan.kind==='layered'&&/\r\n|\n|\\n/.test(wanted);
     row.preservePrimaryLayout=shrink&&Boolean(uncovered||nativeSizeFallback||primaryMetrics);
     row.extendLineSpacing=shrink&&!uncovered&&!nativeSizeFallback&&(!primaryMetrics||primaryReadings);
     // Mixed labels keep native parser advances. Their owned glyphs are scaled
@@ -664,23 +663,11 @@ const rubyContextCallbacks={
             const layer=auxiliaryLayer(p,this.context.rbx,row);
             if(layer) {
                 this.target=args[0];this.layer=layer;
-                if(this.baseMeasurement&&(row.reserveAuxiliaryHeight||
-                        (layer.layer.primary||'').includes('<R>')||layer.layer.text.includes('<R>'))) {
-                    annotationMetrics.set(String(this.context.rbx),{primary:0,secondary:0,secondaryLine:0,
+                if(this.baseMeasurement&&((layer.layer.primary||'').includes('<R>')||layer.layer.text.includes('<R>'))) {
+                    annotationMetrics.set(String(this.context.rbx),{primary:0,secondary:0,
                         origin:this.context.rbx.add(4).readFloat(),layer:layer.layer});
                 }
                 this.metrics=annotationMetrics.get(String(this.context.rbx));
-                if(this.placement&&row.reserveAuxiliaryHeight&&this.metrics?.layer===layer.layer) {
-                    // 0x58709f measures this child at (0, 0); 0x58714a then
-                    // reinitializes the SAME context for positioned drawing.
-                    // Capture the local bounds before that reset. The bounds
-                    // at ruby_compensate include the paragraph's Y because
-                    // parse_text seeds its envelope with (0, 0): reserving that
-                    // envelope feeds the preceding lines back into each line.
-                    const top=args[0].add(0x1bc).readS32(),bottom=args[0].add(0x1c4).readS32();
-                    const height=bottom-top;
-                    if(height>=0&&height<=65536)this.metrics.secondaryLine=height;
-                }
                 const text=this.baseMeasurement?(layer.layer.primary||layer.row.original):layer.layer.text;
                 args[1]=this.baseMeasurement?layer.primaryBuffer:layer.buffer;args[2]=ptr([...text].length);
                 return;
@@ -835,19 +822,11 @@ if(REPORT.native.ruby_compensate) Interceptor.attach(base.add(REPORT.native.ruby
             const key=String(p),metrics=annotationMetrics.get(key);
             if(metrics?.layer===layer.layer) {
                 annotationMetrics.delete(key);
-                // 0x587966 advances from the previous bottom by the label's
-                // signed +0x2f4 leading, then increments parser +0x16c. That
-                // space already accommodates part (or all) of the next ruby
-                // line. Fill only its deficit; the first line has no preceding
-                // line to collide with and keeps its native origin. Original
-                // readings still reserve a/a-prime, including on the first line.
-                let secondary=metrics.secondary;
-                if(row.reserveAuxiliaryHeight&&metrics.secondaryLine>0&&p.add(0x16c).readU32()>0) {
-                    const leading=row.pointer.add(0x2f4).readS32();
-                    if(leading < -16384||leading>65536)throw Error('Invalid native line leading');
-                    secondary=Math.max(secondary,metrics.secondaryLine+rubyGap-leading);
-                }
-                const reserve=metrics.primary*(row.preservePrimaryLayout?annotationScale:1)+secondary;
+                // Only original native readings need an additional reserve.
+                // A coloured/animated auxiliary lane is a render strategy, not
+                // proof of missing vertical space. Reserving its font-cell
+                // height added blank lines to ordinary dialogue and log rows.
+                const reserve=metrics.primary*(row.preservePrimaryLayout?annotationScale:1)+metrics.secondary;
                 const origin=p.add(4).readFloat(),next=origin+reserve;
                 if(!Number.isFinite(next)||reserve<0||reserve>65536)throw Error('Invalid native reading reserve');
                 if(reserve) {

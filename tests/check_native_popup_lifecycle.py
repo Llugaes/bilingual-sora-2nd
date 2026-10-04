@@ -132,18 +132,27 @@ const cases=[];
 for(const [kind,flags,instant,expected] of [['L',0x365,1,487],['R',0x361,0,655]]){
   seed(kind,flags);const height=open(owner,instant),first={writes,hookMeasures,prepareCalls};
   reset(p);const stable={writes,hookMeasures,prepareCalls};
-  cases.push({kind,height,expected,first,stable,text:readText(p),flags:p.add(0x2e8).readU32(),
+    cases.push({kind,height,expected,first,stable,text:readText(p),flags:p.add(0x2e8).readU32(),
     parser_owns_final_buffer:p.add(0x408).readPointer().equals(p.add(0x318).readPointer()),
     ok:height===expected&&hookMeasures===1&&writes===1&&JSON.stringify(first)===JSON.stringify(stable)});
 }
+// Equal rendered bytes can still need measuring after native geometry changes.
+// Exercise production prepare's return=1 through the C replacement, rather
+// than the changed-text setter branch above (return=2).
+seed('R',0x361);p.add(0x2e8).writeU32(0x369);p.add(0x689).writeU8(1);
+const equalHeight=open(owner,1),equalFirst={writes,hookMeasures,prepareCalls};
+reset(p);
+const equalBytes={height:equalHeight,first:equalFirst,stable:{writes,hookMeasures,prepareCalls},
+  ok:equalHeight===487&&readText(p)==='R'&&writes===0&&hookMeasures===1&&
+    JSON.stringify(equalFirst)===JSON.stringify({writes,hookMeasures,prepareCalls})};
 seed('L',0x365);mode='primary';epoch++;const primary=open(owner,1);
 const singleLanguage={height:primary,ok:primary===360&&readText(p)==='P'};
 seed('P',0x365);mode='primary';const unowned=open(owner,1);
 const plain={height:unowned,writes,hookMeasures,ok:unowned===360&&writes===0&&hookMeasures===0};
 seed('L',0x365);labelCallbacks.set(String(p),{key:String(p)});p.add(0x689).writeU8(1);reset(p);
 const nestedUpdate={writes,hookMeasures,ok:writes===0&&hookMeasures===0};labelCallbacks.clear();
-rpc.exports.run=()=>({cases,singleLanguage,plain,nestedUpdate,errors,
-  all_passed:cases.every(v=>v.ok)&&singleLanguage.ok&&plain.ok&&nestedUpdate.ok&&!errors.length});
+rpc.exports.run=()=>({cases,equalBytes,singleLanguage,plain,nestedUpdate,errors,
+  all_passed:cases.every(v=>v.ok)&&equalBytes.ok&&singleLanguage.ok&&plain.ok&&nestedUpdate.ok&&!errors.length});
 """.replace("__CODE__", json.dumps(list(code)))
         .replace("__PREPARE__", prepare)
         .replace("__INSTALL__", "true" if install else "false")
