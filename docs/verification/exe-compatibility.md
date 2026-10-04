@@ -37,7 +37,7 @@
 
 源码检查、隐藏原生宿主、安装到 DEV、真实游戏连接及画面验收是不同证据，不能互相替代。最新完整检查与实机结果见下方记录。
 
-本轮 `tools.dev check` 通过：578 项 Python（5 项既有跳过）、177 项 JS、20 个隐藏原生检查入口；其中字体检查覆盖 26 项。两个真实 PE 均通过定位，并各自通过 9 个无关改动变体、拒绝 2 个实际依赖破坏变体；另 4 个字体跳板／续段反例全部拒绝。末次撤回 reader 的原始运行时字节要求后，8 项连接入口回归及两份 PE 变异检查再次通过。112 文件测试更新包构建及 manifest 校验通过。详见本地 `generated/minimal-contract-dev-check.log` 与 `generated/native-contract-regression.json`。新的真实游戏连接复验尚待更换 DEV 候选，不借用 DEV3 原版成功作为新版证明。
+本轮 `tools.dev check` 通过：578 项 Python（5 项既有跳过）、177 项 JS、20 个隐藏原生检查入口；其中字体检查覆盖 26 项。两个真实 PE 均通过定位，并各自通过 9 个无关改动变体、拒绝 2 个实际依赖破坏变体；另 4 个字体跳板／续段反例全部拒绝。末次撤回 reader 的原始运行时字节要求后，8 项连接入口回归及两份 PE 变异检查再次通过。112 文件测试更新包构建及 manifest 校验通过。详见本地 `generated/minimal-contract-dev-check.log` 与 `generated/native-contract-regression.json`。提交 `fa83dd9` 的 CI 37202825987 通过；DEV4 的真实连接复验见下节。
 
 ## 补丁样本和真实复现
 
@@ -50,6 +50,10 @@
 全语音 EXE 长度 13,472,768，SHA-256 `b9bfd04877277ea0a4512da2e5fd7d7ec6d8e7c86227e5c16c2c12c3a7b13414`。原版摘要为 `d8b2911d1576216bdc22d070550e4f531e105de7ed2981885849669f4acf8aaf`。样本仅留本机 `generated/patch-inspection`，不提交或分发。
 
 用户授权替换后，语音 EXE 成功进入标题界面，显示 Ver.1.03.2；DEV3（组件 `b94347e944a4c1a2`）报 AddressOfEntryPoint 等 18 项布局差异，尚未安装 hook。随后从菜单正常退出，原 EXE 恢复并校验，56 个存档文件摘要不变。同一 DEV3 对原版则达到 ready、resident 和 runtimeFonts ready。这证明旧门禁造成的真实失败，而不是由字体资源不足推测连接失败。
+
+DEV4 复验（2026-10-04）：从 `fa83dd9` 安装候选 `source-language-dev4`，组件 `d187887a1a6f01f4`，660 个受管文件逐一校验。只替换语音补丁的 EXE 后，新游戏进程 49584 达到 `phase=ready`、`resident=true`、`failed=false`、`runtimeFonts.ready=true`；语言映射完成后记录到 `matched=8`、`modified=8`。用户随后进入地图，截图可见任务提示和 EP 回复的中日双语 HUD。游戏正常退出后恢复原 EXE，摘要与备份一致，56 个存档文件摘要仍不变。重新启动原版进程 32320，同一 DEV4 再次达到连接与字体 ready。两次进程的驻留 revision 均核对为 `3a056ff70e1d3103371f678998db863d3a14994cc1089f8692a1778b905c5120`。
+
+实机记录保存在本地 `generated/voice-live-test-dev4-20261004`，包括两次脱敏状态、原 EXE 备份、恢复校验及补丁 EXE 的双语 HUD 截图。该结果证明此 EXE 的连接和实际双语渲染已通过，不等于完整语音包或其他用户的所有补丁组合已验收。稳定版仍为 0.4.1，DEV4 的正式发布仍等待用户对完整候选的明确验收。
 
 静态审查发现 68 个使用位置可对应（67 native 点加文件读取器），但两个字体函数有实质跳板变化。153 组 RIP 目标已分类；普通内部调用不作为新增全部校验要求。审查还构造三个实际反例：字体读取跳到错误出口、reader 入口跳到 RET、acquire 的 CHAININFO 续段常量被改；新合同必须全部拒绝。记录：
 - `generated/patch-inspection/standards-function-complete.json`
