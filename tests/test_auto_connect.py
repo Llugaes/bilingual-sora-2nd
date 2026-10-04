@@ -221,6 +221,55 @@ class AutoConnectTests(unittest.TestCase):
             finally:
                 auto.close()
 
+    def test_runtime_font_hint_does_not_hide_failed_connection(self):
+        from sora_bilingual.app.auto_connect import AutoConnector
+
+        game = SimpleNamespace(pid=42, name="sora_2nd.exe")
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch("sora_bilingual.app.auto_connect.ROOT", Path(tmp)),
+            patch(
+                "sora_bilingual.app.auto_connect.frida.get_local_device",
+                return_value=SimpleNamespace(enumerate_processes=lambda: [game]),
+            ),
+            patch("sora_bilingual.platform.win32.process_identity", return_value=123),
+            patch(
+                "sora_bilingual.platform.win32.process_path",
+                return_value=Path(tmp) / "sora_2nd.exe",
+            ),
+            patch("sora_bilingual.game.install.find_game", return_value=Path(tmp)),
+            patch("sora_bilingual.fonts.font_delivery.source_fingerprint", return_value="fonts"),
+            patch(
+                "sora_bilingual.game.native_loading.prepare_fonts_fresh",
+                return_value=Path(tmp) / "fonts",
+            ),
+            patch(
+                "sora_bilingual.fonts.font_delivery.ensure",
+                return_value={"state": "runtime-required"},
+            ),
+            patch(
+                "sora_bilingual.app.auto_connect.subprocess.Popen",
+                return_value=SimpleNamespace(poll=lambda: 1, returncode=1),
+            ),
+        ):
+            root = Path(tmp)
+            (root / "generated").mkdir()
+            (root / "generated" / "native-error.log").write_text("unsupported executable", "utf-8")
+            auto = AutoConnector(root / "native-status.json")
+            try:
+                end = time.monotonic() + 2
+                while (
+                    auto.error != "unsupported executable"
+                    or auto.font_status.get("state") != "runtime-required"
+                ) and time.monotonic() < end:
+                    auto.wake.set()
+                    time.sleep(0.01)
+                self.assertEqual(auto.error, "unsupported executable")
+                self.assertEqual(auto.font_status["state"], "runtime-required")
+                self.assertEqual(auto.message, "连接失败：unsupported executable")
+            finally:
+                auto.close()
+
     def test_wait_connect_once_and_reconnect_after_game_restart(self):
         p = ConnectionPolicy()
         self.assertIsNone(p.choose(set(), False))

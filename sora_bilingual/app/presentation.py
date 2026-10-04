@@ -109,6 +109,7 @@ def with_font_status(state, fonts):
         "runtime-required": "字体已准备，连接后在游戏内加载，无需重启",
         "conflict": "字体安装遇到已有 MOD 文件，请查看详情",
         "error": "字体准备或安装失败，请查看详情",
+        "unsupported-exe": "游戏兼容检查未通过，未安装字体",
     }
     notice = notices.get(fonts.get("state"))
     if fonts.get("state") == "preparing" and not state.get("connected"):

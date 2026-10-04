@@ -366,9 +366,16 @@ def ensure(
     if game_is_running():
         return {**report, "state": "runtime-required", "staged": True}
 
+    from sora_bilingual.game.exe_compatibility import ExecutableCompatibilityError
     from sora_bilingual.game.hooks import verify_target
 
-    verify_target(game / "sora_2nd.exe")
+    try:
+        verify_target(game / "sora_2nd.exe")
+    except ExecutableCompatibilityError as exc:
+        # This is a connection-compatibility refusal, not a failed font write.
+        # Return it before opening a game-file transaction so callers can show
+        # the real cause and keep the installation untouched.
+        return {**report, "state": "unsupported-exe", "detail": str(exc)}
     # `health` and executable validation can take time. Query immediately
     # before opening the transaction instead of trusting an earlier snapshot.
     if game_is_running():

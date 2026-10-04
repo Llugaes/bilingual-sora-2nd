@@ -1,14 +1,19 @@
 """Version-bound Frida capture. Source signatures: 0xDC00/scripts, Tomrock645, MIT."""
 
 from __future__ import annotations
+from contextlib import contextmanager
 import hashlib
 import json
 from pathlib import Path
 import re
 import pefile
+from sora_bilingual.game.exe_compatibility import (
+    BUILD_ID,
+    TARGET_SHA256,
+    ExecutableCompatibilityError,
+    verify_image,
+)
 
-TARGET_SHA256 = "d8b2911d1576216bdc22d070550e4f531e105de7ed2981885849669f4acf8aaf"
-BUILD_ID = "25386012"
 HOOKS = [
     ("dialogue", "e8 ?? ?? ?? ?? ?? 01 be", 0),
     ("pokerDialogue1", "e8 ?? ?? ?? ?? ?? 8d 8d 80 07 00 00 ba 08 00 00 00 0f 1f 00", 0),
@@ -36,31 +41,50 @@ def signature_matches(data: bytes, pattern: str):
     return matches
 
 
-def verify_target(exe: Path):
+@contextmanager
+def verified_target_image(exe: Path):
+    """Keep one verified byte snapshot through report construction."""
     raw = exe.read_bytes()
     digest = hashlib.sha256(raw).hexdigest()
-    if digest != TARGET_SHA256:
-        raise ValueError("游戏 EXE 版本未验证，停止连接。需要为新版本重新适配。")
     # Header/sections are sufficient. Import and unwind directories are not
     # used by version/signature verification and are expensive to decode.
-    pe = pefile.PE(data=raw, fast_load=True)
-    if pe.FILE_HEADER.Machine != 0x8664:
-        raise ValueError("需要 64 位 sora_2nd.exe")
-    hooks = []
-    for name, pattern, offset in HOOKS:
-        addresses = []
-        for section in pe.sections:
-            if section.Characteristics & 0x20000000:
-                addresses += [
-                    section.VirtualAddress + n + offset
-                    for n in signature_matches(section.get_data(), pattern)
-                ]
-        if len(addresses) != 1:
-            raise ValueError(f"{name} 签名匹配 {len(addresses)} 处，停止连接")
-        rva = addresses[0]
-        hooks.append({"name": name, "rva": rva, "bytes": pe.get_data(rva, 16).hex()})
-    pe.close()
-    return {"sha256": digest, "build": BUILD_ID, "hooks": hooks}
+    try:
+        pe = pefile.PE(data=raw, fast_load=True)
+    except pefile.PEFormatError as exc:
+        raise ExecutableCompatibilityError("游戏 EXE 格式无法识别：" + str(exc)) from exc
+    try:
+        compatibility = verify_image(pe, digest)
+        hooks = []
+        for name, pattern, offset in HOOKS:
+            addresses = []
+            for section in pe.sections:
+                if section.Characteristics & 0x20000000:
+                    # Raw section padding is not game code.
+                    data = section.get_data()[: section.Misc_VirtualSize]
+                    addresses += [
+                        section.VirtualAddress + n + offset
+                        for n in signature_matches(data, pattern)
+                    ]
+            if len(addresses) != 1:
+                raise ExecutableCompatibilityError(f"{name} 签名匹配 {len(addresses)} 处，停止连接")
+            rva = addresses[0]
+            hooks.append({"name": name, "rva": rva, "bytes": pe.get_data(rva, 16).hex()})
+        yield (
+            pe,
+            {
+                "sha256": digest,
+                "build": BUILD_ID,
+                "compatibility": compatibility,
+                "hooks": hooks,
+            },
+        )
+    finally:
+        pe.close()
+
+
+def verify_target(exe: Path):
+    with verified_target_image(exe) as (_pe, report):
+        return report
 
 
 def script_source(report):

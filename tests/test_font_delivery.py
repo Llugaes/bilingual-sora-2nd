@@ -10,6 +10,7 @@ import lz4.frame
 
 from sora_bilingual.config.locales import LOCALES
 from sora_bilingual.fonts import font_delivery
+from sora_bilingual.game.exe_compatibility import ExecutableCompatibilityError
 from sora_bilingual.updates.update_installer import relative_file
 
 
@@ -157,6 +158,22 @@ class FontDeliveryTests(unittest.TestCase):
             self.assertEqual(result["state"], "runtime-required")
             self.assertTrue(result["staged"])
             self.assertFalse((game / "xinput1_4.dll").exists())
+
+    def test_incompatible_executable_does_not_report_a_font_write_failure(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            game, state = self.make_game(root), root / "state"
+            with patch(
+                "sora_bilingual.game.hooks.verify_target",
+                side_effect=ExecutableCompatibilityError("native contract changed"),
+            ):
+                result = font_delivery.ensure(
+                    game, self.prepare(game, state), game_running=False, root=state
+                )
+            self.assertEqual(result["state"], "unsupported-exe")
+            self.assertEqual(result["detail"], "native contract changed")
+            self.assertFalse((game / "xinput1_4.dll").exists())
+            self.assertFalse(font_delivery.receipt_path(game, state).exists())
 
     def test_starting_during_validation_defers_the_write_transaction(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -223,7 +223,17 @@ class StatusBar(QWidget):
         self.minimize.emit()
 
     def present(self, state, hint):
-        detail = state.get("font_notice") or state["detail"]
+        # A font notice is supplementary.  Keep a connection failure first so
+        # the compact status bar does not turn an unsupported executable (or
+        # another failed attach) into a misleading font-only instruction.
+        font_notice = state.get("font_notice")
+        activity = state.get("activity") or {}
+        if activity.get("tone") == "error" or state.get("color") == STATUS_COLORS["error"][0]:
+            detail = activity.get("detail") or state["detail"]
+            if font_notice:
+                detail += " · " + font_notice
+        else:
+            detail = font_notice or state["detail"]
         if not state.get("connected"):
             detail += " · " + tr("可打开设置后手动重新连接。")
         marker_name = tr("状态：") + tr(state["title"])
@@ -435,10 +445,13 @@ class OverlayPanel(SkinSurface):
             "runtime-required",
             "error",
             "conflict",
+            "unsupported-exe",
         ):
             font_state = state["font_state"]
             title = "正在准备字体" if font_state == "preparing" else "字体需要处理"
-            tone = "error" if font_state in ("error", "conflict") else "preparing"
+            tone = (
+                "error" if font_state in ("error", "conflict", "unsupported-exe") else "preparing"
+            )
             working = font_state == "preparing"
             detail = ""
         if state.get("font_notice"):

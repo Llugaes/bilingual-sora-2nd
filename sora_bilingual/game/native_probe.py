@@ -10,7 +10,7 @@ import sys
 import frida
 from concurrent.futures import CancelledError
 from sora_bilingual.game.native_runtime import NativeLabels, native_report
-from sora_bilingual.game.source_language import SourceLanguageResult, detect_current_language
+from sora_bilingual.game.source_language import detect_current_language
 from sora_bilingual.localization.native_catalog import (
     load_entries,
     load_model,
@@ -142,9 +142,12 @@ def run(game=None, duration=0):
             )
         try:
             report = native_report(exe)
-        except OSError, ValueError:
-            report = None
-            source_result = SourceLanguageResult(None, "unverified_exe")
+        except OSError as exc:
+            source_language_status = "exe_unreadable"
+            raise RuntimeError("无法读取游戏 EXE，请检查文件访问权限：" + str(exc)) from exc
+        except ValueError:
+            source_language_status = "unverified_exe"
+            raise
         else:
             source_result = detect_current_language(game, pid, exe, report=report)
         detected_game_language = source_result.language
@@ -159,6 +162,21 @@ def run(game=None, duration=0):
             },
         )
         if detected_game_language is None:
+            if source_language_status != "table_unready":
+                messages = {
+                    "source_unavailable": "无法读取游戏语言资源，请检查游戏资源是否完整",
+                    "probe_unavailable": "无法读取游戏进程，请检查工具与游戏的运行权限是否一致",
+                    "exe_unreadable": "无法读取游戏 EXE，请检查文件访问权限",
+                    "unverified_exe": "游戏兼容检查未通过",
+                }
+                message = messages.get(
+                    source_language_status,
+                    "无法识别当前游戏文字语言，语言资源可能被其他 MOD 更改",
+                )
+                detail = getattr(source_result, "detail", "")
+                raise RuntimeError(
+                    f"{message}（{source_language_status}）" + (f"：{detail}" if detail else "")
+                )
             heartbeat.loading("waiting_source_language")
             return
         # Sync only once per OS process lifetime, not on a reconnect or a later

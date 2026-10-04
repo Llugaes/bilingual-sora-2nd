@@ -8,7 +8,7 @@ import frida
 import threading
 import uuid
 from concurrent.futures import CancelledError
-from sora_bilingual.game.hooks import verify_target
+from sora_bilingual.game.hooks import verified_target_image
 
 from sora_bilingual.paths import ROOT
 
@@ -94,9 +94,7 @@ POINTS = {
 
 
 def native_report(exe):
-    report = verify_target(Path(exe))
-    pe = pefile.PE(str(exe), fast_load=True)
-    try:
+    with verified_target_image(Path(exe)) as (pe, report):
         report["native"] = {
             name: {"rva": rva, "bytes": pe.get_data(rva, 16).hex()} for name, rva in POINTS.items()
         }
@@ -113,8 +111,6 @@ def native_report(exe):
         # loader detour), without installing a hook or asserting pristine bytes.
         report["font_file_read"] = 0x654640
         report["log_owner_global"] = 0xC60E50
-    finally:
-        pe.close()
     return report
 
 

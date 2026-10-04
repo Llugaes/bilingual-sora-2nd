@@ -226,11 +226,15 @@ class AutoConnector:
                             "installed": "多语言字体已安装",
                             "runtime-required": "字体已准备，连接后将在游戏内加载，无需重启",
                             "conflict": "字体安装与已有 MOD 文件冲突",
+                            "unsupported-exe": "游戏兼容检查未通过，未安装字体",
                         }
                         self.font_status = {
                             "state": state,
                             "message": messages.get(state, "字体状态未知"),
-                            "detail": result.get("conflicts") or result.get("missing") or [],
+                            "detail": result.get("detail")
+                            or result.get("conflicts")
+                            or result.get("missing")
+                            or [],
                             "restart_required": False,
                         }
                         if state == "runtime-required":
@@ -377,7 +381,11 @@ class AutoConnector:
                     self.message = "正在后台准备语言缓存，可直接启动游戏"
                 elif preparation_error and not games:
                     self.message = preparation_error
-                elif self.font_status.get("state") == "runtime-required":
+                # A staged runtime font is a separate prerequisite.  It must
+                # not replace the failed backend's diagnostic: the same game
+                # can have a valid staged font and an unsupported executable
+                # (or another connection failure).
+                elif self.font_status.get("state") == "runtime-required" and not self.error:
                     self.message = self.font_status["message"]
                 runtime_fonts = status.get("runtimeFonts")
                 if (

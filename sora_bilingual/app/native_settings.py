@@ -960,7 +960,7 @@ class NativeSettingsWindow(QWidget):
         state = fonts.get("state", "idle")
         tone = (
             "error"
-            if state in ("error", "conflict")
+            if state in ("error", "conflict", "unsupported-exe")
             else "ready"
             if state in ("healthy", "installed")
             else "preparing"

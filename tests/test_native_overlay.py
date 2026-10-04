@@ -18,7 +18,13 @@ from PySide6.QtWidgets import QApplication
 from PySide6.QtNetwork import QLocalSocket
 from sora_bilingual.config.native_config import read_config, write_config, ActionPolicy
 from sora_bilingual.app.native_settings import NativeSettingsWindow, update_control, ROOT
-from sora_bilingual.app.native_overlay import describe_state, JsonSnapshot, OverlayController, STYLE
+from sora_bilingual.app.native_overlay import (
+    describe_state,
+    JsonSnapshot,
+    OverlayController,
+    StatusBar,
+    STYLE,
+)
 from sora_bilingual.platform.inputs import InputManager
 from sora_bilingual.app.i18n import tr, current_language, set_language
 from sora_bilingual.app.presentation import with_font_status
@@ -46,6 +52,39 @@ class OverlayStatusTests(unittest.TestCase):
                 self.assertNotEqual(tr(value["font_notice"]), value["font_notice"])
         finally:
             set_language(language_before)
+
+    def test_incompatible_executable_has_a_distinct_font_notice(self):
+        state = {"title": "未连接游戏", "connected": False, "detail": "等待游戏启动"}
+        value = with_font_status(
+            state,
+            {"state": "unsupported-exe", "detail": "native contract changed"},
+        )
+        self.assertEqual(value["font_state"], "unsupported-exe")
+        self.assertIn("兼容检查", value["font_notice"])
+        self.assertEqual(value["font_detail"], "native contract changed")
+
+    def test_status_bar_keeps_connection_failure_before_runtime_font_notice(self):
+        app = QApplication.instance() or QApplication([])
+        bar = StatusBar()
+        try:
+            bar.present(
+                {
+                    "title": "连接失败",
+                    "detail": "游戏 EXE 版本未验证，停止连接。",
+                    "color": "#a32b22",
+                    "connected": False,
+                    "pair": "简中 → 日文",
+                    "font_notice": "字体已准备，连接后在游戏内加载，无需重启",
+                },
+                "Ctrl + Shift + B",
+            )
+            tooltip = bar.status.toolTip()
+            self.assertIn("游戏 EXE 版本未验证", tooltip)
+            self.assertIn("字体已准备", tooltip)
+            self.assertLess(tooltip.index("游戏 EXE 版本未验证"), tooltip.index("字体已准备"))
+        finally:
+            bar.deleteLater()
+            app.processEvents()
 
     def test_preparing_locale_is_connected_and_still_reports_old_language(self):
         config = read_config(Path("__missing_test_config__.json"))

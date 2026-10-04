@@ -33,6 +33,7 @@ class SourceLanguageResult:
     language: str | None
     reason: str
     matched_keys: tuple[str, ...] = ()
+    detail: str = ""
 
 
 def _archive_stamp(game):
@@ -167,17 +168,19 @@ def detect_current_language(game, pid, exe=None, *, report=None, attach=None):
     """Identify the live table's source language, failing closed at every boundary."""
     try:
         references = load_references(game)
-    except OSError, FormatError, ValueError:
-        return SourceLanguageResult(None, "source_unavailable")
+    except (OSError, FormatError, ValueError) as exc:
+        return SourceLanguageResult(None, "source_unavailable", detail=str(exc))
     if report is None:
         try:
             report = native_report(exe)
-        except OSError, ValueError:
-            return SourceLanguageResult(None, "unverified_exe")
+        except OSError as exc:
+            return SourceLanguageResult(None, "exe_unreadable", detail=str(exc))
+        except ValueError as exc:
+            return SourceLanguageResult(None, "unverified_exe", detail=str(exc))
     try:
         values = read_runtime_values(pid, report, references.keys, attach=attach)
-    except Exception:
-        return SourceLanguageResult(None, "probe_unavailable")
+    except Exception as exc:
+        return SourceLanguageResult(None, "probe_unavailable", detail=str(exc))
     if values is None:
         return SourceLanguageResult(None, "table_unready")
     return classify_runtime_values(references, values)

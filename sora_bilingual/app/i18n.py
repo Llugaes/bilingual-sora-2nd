@@ -273,6 +273,7 @@ Sora 双语控制台|Sora bilingual controls|Sora 二言語コントロール
 字体安装与已有 MOD 文件冲突|Font installation conflicts with existing mod files|フォントのインストールが既存の MOD ファイルと競合しています
 字体准备失败|Font preparation failed|フォントの準備に失敗しました
 字体安装失败|Font installation failed|フォントのインストールに失敗しました
+游戏兼容检查未通过，未安装字体|Game compatibility check failed; fonts were not installed|ゲームの互換性確認に失敗したため、フォントはインストールされていません
 正在连接游戏|Connecting to game|ゲームに接続中
 已连接|Connected|接続済み
 正在连接已有游戏进程，请稍候。|Connecting to the existing game process. Please wait.|起動済みのゲームに接続しています。お待ちください。
