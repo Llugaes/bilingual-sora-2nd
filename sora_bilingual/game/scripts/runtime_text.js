@@ -307,9 +307,9 @@ class RuntimeText {
             return value;
         });
     }
-    componentParts(source) {
+    componentParts(source,allowDetailJoin=true) {
         const parts=source.split(COMPONENT_SEPARATORS);
-        if(this.detailJoin) {
+        if(this.detailJoin&&allowDetailJoin) {
             const separator=this.detailJoin[0];let at=1;
             while(at<parts.length-1) {
                 if(parts[at]!==separator){at+=2;continue;}
@@ -641,13 +641,13 @@ class RuntimeText {
         }
         if(this.planCache.size>=20000)this.planCache.clear();this.planCache.set(ck,result);return result;
     }
-    component(source,mode) {
+    component(source,mode,allowDetailJoin=true) {
         // Complete dialogue/keyed pairs were resolved before decomposition.
         if(!hasAlphanumeric(source))return source;
         // Icon counts and other numeric-only runs retain their native form.
         if(/[0-9０-９]/.test(source)&&/^[\s×+−\-0-9０-９.,，．%％]+$/.test(source))return source;
         const literal=Object.hasOwn(this.model.plain_pairs,source)?this.model.plain_pairs[source]:null;
-        const pair=this.detailJoin?(literal||this.detailJoinPair(source)||this.pair(source)):this.pair(source);
+        const pair=this.detailJoin&&allowDetailJoin?(literal||this.detailJoinPair(source)||this.pair(source)):this.pair(source);
         if(pair) {
             const [a,b]=pair;
             if(mode==='primary')return a;
@@ -656,13 +656,13 @@ class RuntimeText {
         }
         const trimmed=source.trim();
         if(trimmed&&trimmed!==source) {
-            const inner=this.component(trimmed,mode);
+            const inner=this.component(trimmed,mode,allowDetailJoin);
             if(inner!==trimmed) {const at=source.indexOf(trimmed);return source.slice(0,at)+inner+source.slice(at+trimmed.length);}
         }
         // Middle dots join inline lists of any length, not just bullets.
         // Whole resource pairs above retain priority over decomposition.
-        const parts=this.componentParts(source);
-        if(parts.length>1)return parts.map((p,i)=>i%2?p:this.component(p,mode)).join('');
+        const parts=this.componentParts(source,allowDetailJoin);
+        if(parts.length>1)return parts.map((p,i)=>i%2?p:this.component(p,mode,allowDetailJoin)).join('');
         return source;
     }
     translate(source,mode='annotation',key='',scope='',detailContext='') {
@@ -697,7 +697,7 @@ class RuntimeText {
                 if(index%2)return run;
                 if(joined.has(index))return this.component(run,mode);
                 if(this.detailInlineIcons.length)run=this.replaceDetailInlineIcons(run,mode);
-                return run.split(/(<[^<>]*>|\r\n|\n|\\n)/).map((part,offset)=>offset%2?part:this.component(part,mode)).join('');
+                return run.split(/(<[^<>]*>|\r\n|\n|\\n)/).map((part,offset)=>offset%2?part:this.component(part,mode,!run.includes('<I'))).join('');
             }).join('');
         }
         if(this.detailInlineIcons.length)source=this.replaceDetailInlineIcons(source,mode);
@@ -711,7 +711,8 @@ class RuntimeText {
             return parts.length>1?parts.map((t,i)=>i%2?t:this.translate(t,mode)).join(''):source;
         }
         if(!/[<>]/.test(source)) {const t=this.component(source,mode);if(t!==source)return t;}
-        return source.split(/(<[^<>]*>|\r\n|\n|\\n)/).map((t,i)=>i%2?t:this.component(t,mode)).join('');
+        const allowDetailJoin=!(this.detailJoin&&source.includes('<I')&&source.includes(this.detailJoin[0]));
+        return source.split(/(<[^<>]*>|\r\n|\n|\\n)/).map((t,i)=>i%2?t:this.component(t,mode,allowDetailJoin)).join('');
     }
 }
 if(typeof module!=='undefined')module.exports={RuntimeText};

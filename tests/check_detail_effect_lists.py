@@ -5,7 +5,7 @@ permutation occurs in the game. No game is started, attached, or modified.
 """
 
 import argparse
-from collections import Counter
+from collections import Counter, defaultdict
 import gc
 import hashlib
 import itertools
@@ -13,16 +13,20 @@ import json
 from pathlib import Path
 import re
 import subprocess
+import struct
 import sys
 import tempfile
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from sora_bilingual.config.locales import LANGUAGES
+from sora_bilingual.config.locales import LANGUAGES, archive_names
 from sora_bilingual.localization.item_help_composition import build_item_help_grammar
 from sora_bilingual.localization.menu_text import MenuTranslator, plain
 from sora_bilingual.localization.native_catalog import load_entries
+from sora_bilingual.localization.menu_tables import record_identity, schema_for, sections
+from sora_bilingual.localization.resources import FpacArchive
+from sora_bilingual.localization.tables import _logical_tables, _text_rows, _u64, _zutf8
 
 
 DESCRIPTION = (
@@ -81,6 +85,117 @@ def fold_width(text):
     return re.sub(r"[\uff01-\uff5e]", lambda m: chr(ord(m[0]) - 0xFEE0), text)
 
 
+def raw_resource_audit(game, catalog):
+    """Count physical PAC fields before alignment/coalescing can discard them."""
+    groups = defaultdict(lambda: defaultdict(list))
+    locales = {}
+    flag_values = defaultdict(dict)
+    for language, filename in archive_names("table").items():
+        with FpacArchive(game / "pac/steam" / filename) as archive:
+            paths = _logical_tables(archive)
+            data = archive.read(paths["table/t_itemhelp.tbl"])
+            descriptors = sections(data)
+            floor = max(start + size * count for _, start, size, count in descriptors)
+            counters = Counter()
+            for kind, start, size, count in descriptors:
+                if kind != "SkillEffectHelpData":
+                    continue
+                schema = schema_for("table/t_itemhelp.tbl", kind)
+                assert size == schema.size
+                for position in range(count):
+                    at = start + position * size
+                    identity = record_identity(data, at, kind, schema, floor)
+                    values = {}
+                    for field, offset in schema.fields:
+                        pointer = _u64(data, at + offset)
+                        assert not pointer or floor <= pointer < len(data)
+                        value = _zutf8(data, pointer)[0] if pointer else ""
+                        values[field] = value
+                        counters["physical_field_slots"] += 1
+                        counters["nonempty_field_slots" if value else "empty_field_slots"] += 1
+                        if not pointer:
+                            counters["null_pointer_slots"] += 1
+                    groups[identity][language].append(
+                        {
+                            "position": position,
+                            "id": struct.unpack_from("<I", data, at)[0],
+                            "values": values,
+                        }
+                    )
+                    counters["physical_records"] += 1
+            locales[language] = dict(counters)
+            text_rows = _text_rows(archive.read(paths["table/t_text.tbl"]))
+            for flag in sorted(FLAGS | {"FORMAT8", "LINK"}):
+                key = "TXT_ITEM_HELP_" + flag
+                flag_values[key][language] = text_rows.get(key)
+    counts = Counter()
+    omitted = []
+    duplicates = []
+    fields = [
+        field for field, _ in schema_for("table/t_itemhelp.tbl", "SkillEffectHelpData").fields
+    ]
+    for identity, languages in sorted(groups.items()):
+        accepted = {}
+        for language, records in languages.items():
+            same = all(record["values"] == records[0]["values"] for record in records)
+            if len(records) > 1:
+                duplicates.append(
+                    {
+                        "identity": identity,
+                        "language": language,
+                        "positions": [r["position"] for r in records],
+                        "identical": same,
+                    }
+                )
+                counts[
+                    "identical_duplicate_groups" if same else "conflicting_duplicate_groups"
+                ] += 1
+            if same:
+                accepted[language] = records[0]["values"]
+        for field in fields:
+            key = f"table/t_itemhelp.tbl/SkillEffectHelpData/{identity}/{field}"
+            expected = {
+                language: values[field] for language, values in accepted.items() if values[field]
+            }
+            counts["unique_field_identities"] += 1
+            actual = catalog.get(key)
+            if len(expected) >= 2:
+                assert actual == expected, (
+                    key,
+                    "raw/catalog disagreement",
+                    sorted(expected),
+                    actual,
+                )
+                counts["catalog_fields"] += 1
+            else:
+                assert actual is None, (key, "catalog admitted an unsupported raw field")
+                reason = "empty_in_all_languages" if not expected else "without_secondary_language"
+                counts[reason] += 1
+                omitted.append(
+                    {
+                        "key": key,
+                        "reason": reason,
+                        "nonempty_languages": sorted(expected),
+                        "physical_positions": {
+                            l: [r["position"] for r in records] for l, records in languages.items()
+                        },
+                    }
+                )
+            counts["missing_language_slots"] += len(LANGUAGES) - len(expected)
+    for flag, values in flag_values.items():
+        assert all(isinstance(value, str) and value for value in values.values()), (flag, values)
+        assert catalog.get("table/t_text.tbl/" + flag) == values, flag
+    return {
+        "source": "physical PAC records before catalog admission",
+        "languages": locales,
+        "counts": dict(counts),
+        "catalog_omissions": omitted,
+        "duplicate_groups": duplicates,
+        "native_flag_and_separator_keys": sorted(flag_values),
+        "raw_catalog_correspondence_passed": True,
+    }
+
+
 def check(game, output, baseline):
     entries, signature = load_entries(game)
     catalog = {row["key"]: row["texts"] for row in entries}
@@ -95,11 +210,13 @@ def check(game, output, baseline):
         "combinations_are_contract_closure": True,
         "targets": [],
         "all_passed": False,
-        "member_checks": "every raw field and proven typed row, preserving rejections",
+        "raw_resource_audit": raw_resource_audit(game, catalog),
+        "member_checks": "every catalog effect field and proven typed row, preserving rejections",
         "render_checks": "representatives of each family, field role and numeric parameter shape",
     }
     for source in LANGUAGES:
         grammar = build_item_help_grammar(game, entries, source)
+        result.setdefault("native_constructor_audits", {})[source] = grammar["audit"]
         all_entries = entries + grammar["status_entries"] + grammar["detail_entries"]
         raw_rows = effect_rows(all_entries)
         for secondary in LANGUAGES:
@@ -110,6 +227,7 @@ def check(game, output, baseline):
             width_equivalents = 0
             atoms = {}
             representatives = {}
+            raw_fragments_not_rendered = 0
             for row in raw_rows:
                 if not all(row["texts"].get(l) for l in (source, secondary)):
                     rejected["missing_language"] += 1
@@ -141,6 +259,15 @@ def check(game, output, baseline):
                     width_equivalents += 1
                     values = (values[0], pair[1][len(separators[secondary]) :])
                 atoms.setdefault(values, row["key"])
+                family = row.get("item_help_contract", {}).get("family")
+                complete_effect = (
+                    bool(family and family != "raw_description_context")
+                    or (row["key"].endswith("/name") and any(char.isalpha() for char in values[0]))
+                    or row["key"].removeprefix("table/t_text.tbl/TXT_ITEM_HELP_") in FLAGS
+                )
+                if not complete_effect:
+                    raw_fragments_not_rendered += 1
+                    continue
                 shape = (
                     row.get("item_help_contract", {}).get("family", row["key"].split("/")[2]),
                     row["key"].rsplit("/", 1)[-1] if not row.get("item_help_contract") else "typed",
@@ -228,9 +355,10 @@ def check(game, output, baseline):
                 "source": source,
                 "primary": source,
                 "secondary": secondary,
-                "raw_effect_fields_and_typed_rows": len(raw_rows),
+                "catalog_effect_fields_and_typed_rows": len(raw_rows),
                 "admitted_unique_members": len(admitted),
                 "render_representatives": len(samples),
+                "raw_fields_without_complete_constructor_not_rendered": raw_fragments_not_rendered,
                 "rejected_rows": dict(rejected),
                 "existing_width_equivalent_target_spellings": width_equivalents,
                 "detail_numeric_rules": len(details.detail_join_numeric),

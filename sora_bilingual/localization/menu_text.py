@@ -1159,20 +1159,7 @@ class MenuTranslator:
             if normalized.get(source) == pair and not _format_fields(source)
         }
         self.detail_join_numeric = []
-        self.detail_join_blocked_literals = set()
-        self.detail_join_blocked_numeric = []
-        for source in join_candidates:
-            if source in join_members and normalized.get(source) == join_members[source]:
-                continue
-            matches = _format_fields(source)
-            if not matches:
-                self.detail_join_blocked_literals.add(source)
-            elif (
-                len(matches) <= 4
-                and all(match.group()[-1] != "s" and "$" not in match.group() for match in matches)
-                and "%" not in _format_remainder(source)
-            ):
-                self.detail_join_blocked_numeric.append(_format_pattern(source, matches))
+        admitted_join_templates = set(self.detail_join_literals)
         for source, pair, is_raw in [(s, p, False) for s, p in normalized.items()] + [
             (s, p, True) for s, p in self.pairs.items() if "<" in s
         ]:
@@ -1200,6 +1187,19 @@ class MenuTranslator:
                 self.detail_numeric.append(rule)
             if not is_raw and join_members.get(source) == pair and "s" not in kinds:
                 self.detail_join_numeric.append(rule[0])
+                admitted_join_templates.add(source)
+        self.detail_join_blocked_literals = set()
+        self.detail_join_blocked_numeric = []
+        for source in join_candidates.keys() - admitted_join_templates:
+            matches = _format_fields(source)
+            if not matches:
+                self.detail_join_blocked_literals.update((source, source.replace("%%", "%")))
+            elif (
+                len(matches) <= 16
+                and all(match.group()[-1] != "s" for match in matches)
+                and "%" not in _format_remainder(source)
+            ):
+                self.detail_join_blocked_numeric.append(_format_pattern(source, matches))
 
     def _detail_join_pair(self, source):
         if not self.detail_join:
@@ -1250,9 +1250,9 @@ class MenuTranslator:
             result.append(value)
         return tuple(result)
 
-    def _component_parts(self, source):
+    def _component_parts(self, source, allow_detail_join=True):
         parts = SEPARATORS.split(source)
-        if self.detail_join:
+        if self.detail_join and allow_detail_join:
             separator = self.detail_join[0]
             at = 1
             while at < len(parts) - 1:
@@ -1496,7 +1496,7 @@ class MenuTranslator:
             )
         return next(iter(matches)) if len(matches) == 1 else None
 
-    def component(self, source, mode):
+    def component(self, source, mode, allow_detail_join=True):
         # Whole dialogue/keyed lookup happens before decomposition. Once a
         # rich-text run is split, punctuation alone is only a separator.
         if not any(char.isalnum() for char in source):
@@ -1511,7 +1511,7 @@ class MenuTranslator:
         # than a free-form %s template consuming previous effects as an argument.
         pair = (
             self.plain_pairs.get(source) or self._detail_join_pair(source) or self.pair(source)
-            if self.detail_join
+            if self.detail_join and allow_detail_join
             else self.pair(source)
         )
         if pair:
@@ -1528,14 +1528,15 @@ class MenuTranslator:
         # any number of members; complete resource pairs above still win.
         stripped = source.strip()
         if stripped != source and stripped:
-            inner = self.component(stripped, mode)
+            inner = self.component(stripped, mode, allow_detail_join)
             if inner != stripped:
                 start = source.index(stripped)
                 return source[:start] + inner + source[start + len(stripped) :]
-        parts = self._component_parts(source)
+        parts = self._component_parts(source, allow_detail_join)
         if len(parts) > 1:
             return "".join(
-                self.component(p, mode) if i % 2 == 0 else p for i, p in enumerate(parts)
+                self.component(p, mode, allow_detail_join) if i % 2 == 0 else p
+                for i, p in enumerate(parts)
             )
         return source
 
@@ -1586,7 +1587,7 @@ class MenuTranslator:
                             run = self._replace_detail_inline_icons(run, mode)
                         translated.append(
                             "".join(
-                                part if offset % 2 else self.component(part, mode)
+                                part if offset % 2 else self.component(part, mode, "<I" not in run)
                                 for offset, part in enumerate(TOKEN.split(run))
                             )
                         )
@@ -1624,8 +1625,12 @@ class MenuTranslator:
             whole = self.component(source, mode)
             if whole != source:
                 return whole
+        allow_detail_join = not (
+            self.detail_join and "<I" in source and self.detail_join[0] in source
+        )
         return "".join(
-            t if i % 2 else self.component(t, mode) for i, t in enumerate(TOKEN.split(source))
+            t if i % 2 else self.component(t, mode, allow_detail_join)
+            for i, t in enumerate(TOKEN.split(source))
         )
 
     def render(self, source, mode="annotation"):

@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import re
 import subprocess
+import tempfile
 import unittest
 
 from sora_bilingual.config.locales import LANGUAGES
@@ -83,6 +84,109 @@ def phrase(language, members, *, trailing=False):
 
 
 class DetailEffectListTests(unittest.TestCase):
+    def test_rejected_format_shapes_remain_closed_in_complete_headers(self):
+        probes = (
+            ("90%% chance", "90%の確率", "%d%% chance", "%d%の確率", "90% chance"),
+            ("Power%1$d", "出力%1$d", "Power%d", "力%d", "Power30"),
+            ("Power%d%d%d%d%d", "出力%d%d%d%d%d", "Power%d", "力%d", "Power12345"),
+        )
+        cases = []
+        for narrow, target, wide, wide_target, instance in probes:
+            entries = fixture() + [
+                {
+                    "key": "table/t_itemhelp.tbl/SkillEffectHelpData/narrow/format",
+                    "texts": {"en": narrow, "ja": target},
+                },
+                {
+                    "key": "table/t_itemhelp.tbl/SkillEffectHelpData/wide/format",
+                    "texts": {"en": wide, "ja": wide_target},
+                },
+            ]
+            translator = MenuTranslator(entries, "en", "ja", "en")
+            fragment = ", " + instance + ", Side Attack Bonus"
+            self.assertIsNone(translator.details._detail_join_pair(fragment))
+            source = "<c698>" + fragment + "</C>\n<C0>Description en"
+            expected = "<c698>" + fragment + "</C>\n<C0>Description ja"
+            self.assertEqual(translator.translate(source, "secondary"), expected)
+            cases.append(
+                {
+                    "model": translator.runtime_model(),
+                    "source": source,
+                    "expected": expected,
+                    "render": translator.render(source),
+                }
+            )
+        runner = """
+const assert=require('assert/strict'),{RuntimeText}=require('./sora_bilingual/game/scripts/runtime_text.js');
+for(const row of JSON.parse(require('fs').readFileSync(0,'utf8'))) {
+ const runtime=new RuntimeText(row.model);
+ assert.equal(runtime.translate(row.source,'secondary'),row.expected);
+ assert.deepEqual(runtime.render(row.source),row.render);
+}
+"""
+        subprocess.run(
+            ["node", "-e", runner], input=json.dumps(cases).encode(), cwd=ROOT, check=True
+        )
+
+    def test_unknown_icon_runs_cannot_reenter_after_token_splitting(self):
+        entries = fixture() + [
+            {
+                "key": "table/t_itemhelp.tbl/SkillEffectHelpData/str/stat",
+                "texts": {"en": "STR", "ja": "STR"},
+            },
+            {
+                "key": "table/t_itemhelp.tbl/SkillEffectHelpData/turn/turns",
+                "texts": {"en": "(%d turns)", "ja": "%dターン"},
+            },
+            {
+                "key": "table/t_itemhelp.tbl/generated/typed/turn_stat_inline_icon/test",
+                "texts": {"en": "STR<I270> (%d turns)", "ja": "%dターンSTR<I270>"},
+                "item_help_contract": {"family": "turn_stat_inline_icon"},
+                "detail_authority": True,
+                "detail_only": True,
+            },
+        ]
+        translator = MenuTranslator(entries, "en", "ja", "en")
+        cases = []
+        for fragment in (
+            ", STR<I999> (30 turns), Side Attack Bonus",
+            ", UNKNOWN, STR<I270> (30 turns), Side Attack Bonus",
+            ", STR<I270> (30 turns), UNKNOWN, Side Attack Bonus",
+        ):
+            self.assertIsNone(translator.details._detail_join_pair(fragment))
+            source = "<c698>" + fragment + "</C>\n<C0><C9>Description en"
+            expected = "<c698>" + fragment + "</C>\n<C0><C9>Description ja"
+            self.assertEqual(translator.translate(source, "secondary"), expected)
+            cases.append(
+                {"source": source, "expected": expected, "render": translator.render(source)}
+            )
+        runner = """
+const assert=require('assert/strict'),{RuntimeText}=require('./sora_bilingual/game/scripts/runtime_text.js');
+const data=JSON.parse(require('fs').readFileSync(0,'utf8'));
+const {RuntimeText:Previous}=require(data.baseline),runtime=new RuntimeText(data.model),old=new Previous(data.model);
+for(const row of data.cases) {
+ assert.equal(runtime.translate(row.source,'secondary'),row.expected);
+ assert.equal(runtime.translate(row.source,'secondary'),old.translate(row.source,'secondary'));
+ assert.deepEqual(runtime.render(row.source),row.render);
+ assert.deepEqual(runtime.render(row.source),old.render(row.source));
+}
+"""
+        with tempfile.TemporaryDirectory() as temporary:
+            baseline = Path(temporary) / "runtime_text.js"
+            baseline.write_bytes(
+                subprocess.check_output(
+                    ["git", "show", "v0.4.2:sora_bilingual/game/scripts/runtime_text.js"], cwd=ROOT
+                )
+            )
+            subprocess.run(
+                ["node", "-e", runner],
+                input=json.dumps(
+                    {"model": translator.runtime_model(), "cases": cases, "baseline": str(baseline)}
+                ).encode(),
+                cwd=ROOT,
+                check=True,
+            )
+
     def test_inline_icon_stays_inside_the_complete_member(self):
         entries = fixture() + [
             {
