@@ -815,6 +815,25 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
     };
 }
 
+test('game source language reload refreshes surviving labels and leaves disabled mode native',()=>{
+    const r=makeRuntime(),pair=['主语言','副言語'];
+    const label=r.label(0x3900,'中文来源');
+    for(const source of ['中文来源','日本語の原文','English source','中文来源']) {
+        // The game replaces its source while the previous model is still installed.
+        r.api.select('annotation',false);
+        r.externalSet(label,source);r.update(label);
+        assert.equal(label.text(),source);
+        r.api.load({pairs:{[source]:pair},plain_pairs:{[source]:pair}},'annotation',true,.85);
+        r.update(label);
+        assert.equal(r.api.snapshot().at(-1).original,source);
+        assert.equal(r.api.snapshot().at(-1).presentation,'ruby');
+        r.api.select('primary',true);r.update(label);assert.equal(label.text(),pair[0]);
+        r.api.select('secondary',true);r.update(label);assert.equal(label.text(),pair[1]);
+        r.api.select('annotation',false);r.update(label);assert.equal(label.text(),source);
+    }
+    assert.equal(r.api.status().failed,false);
+});
+
 test('cloned annotated templates inherit the raw source before their first measurement',()=>{
     const r=makeRuntime();
     r.api.load({pairs:{Source:['Primary','Secondary']},plain_pairs:{Source:['Primary','Secondary']}},'annotation',true,.8,{ruby_scale:.6});

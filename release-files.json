@@ -83,6 +83,7 @@
   "sora_bilingual/platform/gamepad_labels.py",
   "sora_bilingual/game/install.py",
   "sora_bilingual/platform/win32.py",
+  "sora_bilingual/platform/process_memory.py",
   "sora_bilingual/updates/__init__.py",
   "sora_bilingual/updates/github_updates.py",
   "sora_bilingual/updates/release_client.py",

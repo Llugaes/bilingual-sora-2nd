@@ -13,6 +13,8 @@ _language = "zh-Hans"
 
 # Chinese source messages are stable UI keys. Do not put game text in this catalog.
 _ROWS = """
+语言映射未就绪|Language mapping is not ready|言語マッピングが未完了
+游戏文字语言检测失败，将自动重试|Unable to detect the game's text language; retrying automatically|ゲームのテキスト言語を取得できません。自動的に再試行します
 语言与显示|Language & display|言語と表示
 工具外观|Appearance|ツールの外観
 工具主题|Tool theme|ツールのテーマ

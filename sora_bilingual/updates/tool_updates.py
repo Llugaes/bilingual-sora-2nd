@@ -117,6 +117,7 @@ GROUPS = {
         "sora_bilingual/localization/model_wire.py",
         "sora_bilingual/game/native_runtime.py",
         "sora_bilingual/game/source_language.py",
+        "sora_bilingual/platform/process_memory.py",
         "sora_bilingual/game/scripts/native_agent.js",
         "sora_bilingual/game/scripts/native_books.js",
         "sora_bilingual/game/scripts/native_geometry.js",

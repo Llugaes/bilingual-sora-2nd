@@ -10,7 +10,11 @@ import sys
 import frida
 from concurrent.futures import CancelledError
 from sora_bilingual.game.native_runtime import NativeLabels, native_report
-from sora_bilingual.game.source_language import detect_current_language
+from sora_bilingual.game.source_language import (
+    detect_current_language,
+    RuntimeTextTableReader,
+    SourceLanguageMonitor,
+)
 from sora_bilingual.localization.native_catalog import (
     load_entries,
     load_model,
@@ -90,9 +94,11 @@ def run(game=None, duration=0):
     exit_signal = ExitSignal(state_dir)
     native = None
     preparation = None
+    source_monitor = None
     heartbeat = None
     detected_game_language = None
     source_language_status = "game_not_running"
+    source_language_detail = ""
     run_error = None
     try:
         if exit_signal.is_set():
@@ -205,6 +211,27 @@ def run(game=None, duration=0):
         heartbeat.loading("fonts_preparing")
         font_packet = prepare_fresh(game, config, cache_only="runtime_fonts", cancel=exit_signal)
         applied_config = dict(config)
+
+        def render_enabled(candidate=None, *, requested_config=None):
+            current = applied_config if candidate is None else candidate
+            requested = config if requested_config is None else requested_config
+            return bool(
+                requested["enabled"]
+                and not stopping
+                and not error
+                and source_language_status == "matched"
+                and current["game_language"] == detected_game_language
+            )
+
+        def waiting_for_source():
+            if source_language_status == "table_unready":
+                heartbeat.loading("waiting_source_language")
+            else:
+                heartbeat.loading(
+                    "source_language_error",
+                    f"游戏文字语言检测失败，将自动重试（{source_language_status}）：{source_language_detail}",
+                )
+
         # A cached locale needs no catalog load. Keep all preparation, including
         # first-time catalog compilation, away from the input/status loop.
         preparation = ModelPreparation(
@@ -234,6 +261,7 @@ def run(game=None, duration=0):
         stopping = False
         error = None
         configuration_error = None
+        mapping_error = None
         last_live = 0
         live_key = None
         stop_requested = False
@@ -284,6 +312,13 @@ def run(game=None, duration=0):
                 flush=True,
             )
             start = time.monotonic()
+            source_reader = RuntimeTextTableReader(pid, exe)
+            source_monitor = SourceLanguageMonitor(
+                lambda: detect_current_language(
+                    game, pid, exe, report=report, read_values=source_reader.read
+                ),
+                source_reader.close,
+            )
             last_font_state = None
             while not native.exited.is_set():
                 if exit_signal.is_set():
@@ -310,17 +345,57 @@ def run(game=None, duration=0):
                             preparation.request(config, force=True)
                             heartbeat.loading("preparing")
                             log({"type": "catalog_update", "version": releases.current["version"]})
+                    next_config = None
+                    source_result = source_monitor.poll()
+                    if source_result is not None:
+                        previous_source = (
+                            detected_game_language,
+                            source_language_status,
+                            source_language_detail,
+                        )
+                        source_language_status = source_result.reason
+                        source_language_detail = getattr(source_result, "detail", "")
+                        if source_result.language is not None:
+                            if source_result.language != detected_game_language:
+                                detected_game_language = source_result.language
+                                next_config = {**config, "game_language": detected_game_language}
+                                log(
+                                    {
+                                        "type": "source_language_changed",
+                                        "language": detected_game_language,
+                                    }
+                                )
+                        if previous_source != (
+                            detected_game_language,
+                            source_language_status,
+                            source_language_detail,
+                        ):
+                            native.select(mode, render_enabled())
+                            if source_result.language is None:
+                                waiting_for_source()
+                                log(
+                                    {
+                                        "type": "source_language_wait",
+                                        "reason": source_language_status,
+                                        "detail": source_language_detail,
+                                    }
+                                )
+                            elif (
+                                not preparation.active
+                                and applied_config["game_language"] == detected_game_language
+                            ):
+                                heartbeat.loading("ready")
+                            else:
+                                heartbeat.loading("preparing", mapping_error)
                     try:
                         text = CONTROL.read_text(encoding="utf-8")
                     except OSError:
                         text = raw
-                    next_config = None
                     if text != raw:
                         try:
                             next_config = read_config()
-                            # User edits retain all settings, while this
-                            # resident connection remains tied to its verified
-                            # table language until the game process exits.
+                            # Display choices stay user-owned; the active game
+                            # table independently chooses the source index.
                             next_config["game_language"] = detected_game_language
                             configuration_error = None
                         except (ValueError, OSError) as exc:
@@ -359,6 +434,7 @@ def run(game=None, duration=0):
                             )
                         )
                         if reload:
+                            mapping_error = None
                             preparation.request(next_config)
                             heartbeat.loading("preparing")
                             log(
@@ -371,7 +447,7 @@ def run(game=None, duration=0):
                             )
                         if layout_changed:
                             native.style(next_config)
-                        native.select(mode, next_config["enabled"] and not stopping and not error)
+                        native.select(mode, render_enabled(requested_config=next_config))
                         request = next_config.get("capture_controller")
                         if request and request != capture_request:
                             capture_request = request
@@ -387,8 +463,12 @@ def run(game=None, duration=0):
                     if prepared:
                         prepared_config, new_model, prepare_error = prepared
                         if prepare_error:
+                            mapping_error = "语言索引准备失败，请重新连接或重试语言设置：" + str(
+                                prepare_error
+                            )
                             heartbeat.loading(
-                                "ready", "语言索引准备失败，保留当前语言：" + str(prepare_error)
+                                "ready" if render_enabled() else "preparing",
+                                mapping_error,
                             )
                             log(
                                 {
@@ -411,17 +491,22 @@ def run(game=None, duration=0):
                                     None if prepared_path else new_model,
                                     {
                                         **config,
-                                        "enabled": config["enabled"] and not stopping and not error,
+                                        "enabled": render_enabled(config),
                                     },
                                     mode,
                                     cache_path=prepared_path,
                                 )
                             except (frida.RPCException, OSError, ValueError) as exc:
+                                mapping_error = "语言切换未成功，请重新连接或重试语言设置：" + str(
+                                    exc
+                                )
                                 heartbeat.loading(
-                                    "ready", "语言切换未成功，保留当前语言：" + str(exc)
+                                    "ready" if render_enabled() else "preparing",
+                                    mapping_error,
                                 )
                                 log({"type": "locale_error", "stage": "apply", "message": str(exc)})
                             else:
+                                mapping_error = None
                                 if prepared_path:
                                     # Only status metadata is retained in the resident
                                     # process.  Translation data stays in the immutable
@@ -432,12 +517,16 @@ def run(game=None, duration=0):
                                     # loaders used by diagnostics and tests.
                                     model = new_model
                                 applied_config = dict(config)
-                                heartbeat.loading("ready")
+                                if source_language_status == "matched":
+                                    heartbeat.loading("ready")
+                                else:
+                                    waiting_for_source()
                                 log(
                                     {
                                         "type": "locale_applied",
                                         "primary": config["primary"],
                                         "secondary": config["secondary"],
+                                        "game_language": config["game_language"],
                                         "apply_seconds": round(time.monotonic() - load_start, 3),
                                     }
                                 )
@@ -462,7 +551,7 @@ def run(game=None, duration=0):
                     desired = policy.advance(states["switch"])
                     if desired != mode:
                         mode = desired
-                        native.select(mode, config["enabled"] and not stopping and not error)
+                        native.select(mode, render_enabled())
                     binding = controller.poll_capture()
                     if binding and capture_action:
                         latest = read_config()
@@ -475,7 +564,7 @@ def run(game=None, duration=0):
                         mode,
                         policy.base,
                         config["interaction"] == "language_hold" and states["switch"].held,
-                        config["enabled"] and not stopping and not error,
+                        render_enabled(),
                         policy.interaction,
                         error,
                     )
@@ -517,7 +606,12 @@ def run(game=None, duration=0):
                                     ),
                                 }
                             )
-                        if fonts and not preparation.active:
+                        if (
+                            fonts
+                            and not preparation.active
+                            and applied_config["game_language"] == detected_game_language
+                            and source_language_status == "matched"
+                        ):
                             if fonts.get("state") == "error":
                                 heartbeat.loading("fonts_error", fonts.get("error"))
                             elif fonts.get("ready") or not config["enabled"]:
@@ -573,6 +667,11 @@ def run(game=None, duration=0):
         raise
     finally:
         cleanup_error = None
+        if source_monitor is not None:
+            try:
+                source_monitor.close()
+            except Exception as exc:
+                cleanup_error = exc
         if preparation is not None:
             # Also cancel a locale build when the game itself closes.
             exit_signal.requested = True

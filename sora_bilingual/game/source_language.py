@@ -7,6 +7,8 @@ names from Steam, Windows, or user settings are intentionally not inputs here.
 from dataclasses import dataclass
 import json
 from pathlib import Path
+import struct
+import threading
 import time
 
 from sora_bilingual.config.locales import LANGUAGES
@@ -177,7 +179,7 @@ def read_runtime_values(pid, report, keys, *, attach=None, wait_seconds=5, sleep
         session.detach()
 
 
-def detect_current_language(game, pid, exe=None, *, report=None, attach=None):
+def detect_current_language(game, pid, exe=None, *, report=None, attach=None, read_values=None):
     """Identify the live table's source language, failing closed at every boundary."""
     try:
         references = load_references(game)
@@ -191,9 +193,142 @@ def detect_current_language(game, pid, exe=None, *, report=None, attach=None):
         except ValueError as exc:
             return SourceLanguageResult(None, "unverified_exe", detail=str(exc))
     try:
-        values = read_runtime_values(pid, report, references.keys, attach=attach)
+        values = (
+            read_values(report, references.keys)
+            if read_values is not None
+            else read_runtime_values(pid, report, references.keys, attach=attach)
+        )
     except Exception as exc:
         return SourceLanguageResult(None, "probe_unavailable", detail=str(exc))
     if values is None:
         return SourceLanguageResult(None, "table_unready")
     return classify_runtime_values(references, values)
+
+
+class RuntimeTextTableReader:
+    """Read the verified TXT table outside the game; cache only checked row addresses."""
+
+    def __init__(self, pid, exe, *, opener=None):
+        self.pid, self.exe, self.opener = pid, exe, opener
+        self.memory = None
+        self.signature = None
+        self.rows = {}
+
+    def close(self):
+        if self.memory is not None:
+            self.memory.close()
+            self.memory = None
+        self.signature, self.rows = None, {}
+
+    def _pointer(self, address):
+        return struct.unpack("<Q", self.memory.read(address, 8))[0]
+
+    def _header(self, rva):
+        manager = self._pointer(self.memory.base + rva)
+        table = self._pointer(manager + 0x6B8) if manager else 0
+        if not table:
+            return None
+        header = self.memory.read(table + 0x10, 0x24)
+        data, descriptor, index = (struct.unpack_from("<Q", header, n)[0] for n in (0, 16, 24))
+        count = struct.unpack_from("<I", header, 32)[0]
+        if not all((data, descriptor, index)) or not 0 < count <= 20000:
+            return None
+        start, stride = struct.unpack("<II", self.memory.read(descriptor + 0x44, 8))
+        if stride != 16:
+            return None
+        return manager, table, data, descriptor, index, count, start, stride
+
+    def _discover(self, header, keys):
+        _, _, data, _, index, count, start, stride = header
+        indices = struct.iter_unpack("<II", self.memory.read(index, count * 8))
+        numbers, seen = [], set()
+        for hash_value, number in indices:
+            if number == 0xFFFFFFFF:
+                continue
+            if number >= count or hash_value in seen:
+                raise ValueError("invalid TXT table index")
+            seen.add(hash_value)
+            numbers.append(number)
+        records = self.memory.read(data + start, count * stride)
+        rows = {}
+        for number in numbers:
+            key_pointer = struct.unpack_from("<Q", records, number * stride)[0]
+            key = self.memory.text(key_pointer, 257)
+            if not key.startswith("TXT_"):
+                raise ValueError("invalid TXT table key")
+            if key in keys:
+                if key in rows:
+                    raise ValueError("duplicate source-language sample")
+                rows[key] = data + start + number * stride
+        return rows
+
+    def read(self, report, keys):
+        rva = report.get("text_table_global")
+        if not isinstance(rva, int) or rva < 0:
+            return None
+        if self.memory is None:
+            from sora_bilingual.platform.process_memory import ReadOnlyProcess
+
+            self.memory = (self.opener or ReadOnlyProcess)(self.pid, self.exe)
+        try:
+            header = self._header(rva)
+            if header is None:
+                self.signature, self.rows = None, {}
+                return None
+            signature = header, tuple(keys)
+            if self.signature != signature:
+                self.rows = self._discover(header, keys)
+                # During reload the index can fill in-place without a new
+                # header. Do not permanently cache a partial set of samples.
+                self.signature = signature if len(self.rows) == len(keys) else None
+            values = {}
+            for key, record in self.rows.items():
+                key_ptr, value_ptr = struct.unpack("<QQ", self.memory.read(record, 16))
+                if self.memory.text(key_ptr, 257) != key:
+                    # A table can reuse the same buffers with reordered rows.
+                    self.signature = None
+                    return None
+                values[key] = self.memory.text(value_ptr, 65537)
+            if header != self._header(rva):
+                self.signature = None
+                return None
+            return values if len(values) >= MIN_MATCHES else None
+        except OSError, ValueError:
+            self.signature, self.rows = None, {}
+            raise  # Preserve access/format failures instead of calling them initialization.
+
+
+class SourceLanguageMonitor:
+    """One bounded read per interval, off the input loop and the game's threads."""
+
+    def __init__(self, sample, close, *, interval=1.0):
+        self.stop = threading.Event()
+        self.lock = threading.Lock()
+        self.latest = None
+
+        def run():
+            try:
+                while not self.stop.is_set():
+                    try:
+                        result = sample()
+                    except Exception as exc:
+                        result = SourceLanguageResult(None, "probe_unavailable", detail=str(exc))
+                    with self.lock:
+                        self.latest = result
+                    self.stop.wait(interval)
+            finally:
+                close()
+
+        self.thread = threading.Thread(target=run, name="source-language", daemon=True)
+        self.thread.start()
+
+    def poll(self):
+        with self.lock:
+            value, self.latest = self.latest, None
+        return value
+
+    def close(self):
+        self.stop.set()
+        self.thread.join(timeout=5)
+        if self.thread.is_alive():
+            raise RuntimeError("来源语言检测尚未退出")

@@ -76,6 +76,9 @@ def connection_activity(status, fresh, *, process_running=False, error=None, gam
     elif failure:
         title, detail, tone = "连接失败", str(failure), "error"
         working = False
+    elif fresh and status.get("reload_error"):
+        title, detail, tone = "语言映射未就绪", str(status["reload_error"]), "error"
+        working = phase == "source_language_error"  # Detection retries without reconnecting.
     elif phase in CONNECTION_PHASES:
         title, detail, tone = CONNECTION_PHASES[phase]
         working = True
@@ -160,7 +163,18 @@ def describe_state(config, live, backend, now=None):
             "pair": pair,
             "short_pair": short_pair,
         }
-    if connection and backend.get("phase") in ("fonts_preparing", "fonts_applying", "fonts_error"):
+    if connection and (
+        backend.get("phase")
+        in (
+            "fonts_preparing",
+            "fonts_applying",
+            "fonts_error",
+            "waiting_source_language",
+            "source_language_error",
+        )
+        or backend.get("reload_error")
+        or (backend.get("phase") in ("preparing", "applying") and not live.get("enabled", False))
+    ):
         activity = connection_activity(backend, True)
         return {
             "title": activity["title"],
