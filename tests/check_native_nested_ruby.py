@@ -302,7 +302,7 @@ def main(exe: Path | None = None) -> None:
         },
         "limits": [
             "The host executes the exact initializer and production callback/parser/measurement bridges, but its child_parse is a field-level fixture backed by static instructions rather than a clone of parse_text.",
-            "It proves the scale/lifetime/suppression and absence of extra auxiliary reserve, not the required visible inter-line gap. The unresolved tutorial gap remains a failing Node check.",
+            "It proves the scale/lifetime/suppression and absence of extra auxiliary reserve, not the required visible inter-line gap. Historical glyph coordinates cannot serve as current-render output; final geometry requires separate candidate evidence.",
             "The current normal draw path passing means a live failure still needs candidate restart evidence; it must not be declared fixed from this host.",
         ],
     }

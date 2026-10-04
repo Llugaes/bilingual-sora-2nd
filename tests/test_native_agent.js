@@ -1902,33 +1902,36 @@ test('ordinary auxiliary text retains original native advances and first-line po
     }
 });
 
-test('UNRESOLVED: compact tutorial needs collision-only spacing with a bounded upper gap',()=>{
-    const a='<C1>第一行\n第二行\n<C2>第三行<C1>。\n第四行\n第五行<I4>',
-        b='<C1>一行目\n二行目\n<C2>三行目<C1>。\n四行目\n五行目<I4>';
-    // Actual five-line layout-8 glyph edges captured on 0.3.33.
-    const captured=[[-9.877085,8.166666,38.624999],[32.427083,49.458331,78.75],
-        [72.414583,90.458330,119.75],[110.929162,131.166663,164.249994],
-        [150.566668,172.166670,205.416668]];
+test('compact tutorial finalizes its actual rich text before measurement without adding a second reserve',()=>{
+    // EV_08_01_07_END/called/7: use the actual source, not placeholder lines.
+    // Historical 0.3.33 glyph coordinates are documented separately. Adding
+    // one hook's delta to those coordinates cannot predict current rendering.
+    // This fixture checks production lifecycle/advance contracts, not raster
+    // collision: complete font geometry still requires an in-game capture.
+    const a='<C1>导力停止现象发生时，未装备\n“零力场生成器”的角色都无法使用\n<C2>魔法<C1>以及<C2>超能驱动<C1>。\n请于主菜单的[EQUIP]画面中，\n将<I4><C2>零力场生成器<C1>装备到配件栏中。',
+        b='<C1>導力停止現象中は『零力場発生器』を\n装備させたキャラクター以外、\n<C2>アーツ<C1>および<C2>オーバードライブ<C1>が使えません。\nメインメニュー[Equip]画面のアクセサリ欄で\n<I4><C2>零力場発生器<C1>を装備させてください。';
     for(const measuring of [false,true])for(const flags of [65,789,865]) {
-        const r=makeRuntime(),p=r.label(0x9968,a,0,33);p.flags=flags;p.nativeLineGap=-1;
-        r.api.load({pairs:{[a]:[a,b]}},'annotation',true,.85,{ruby_scale:.9,ruby_gap:0,line_gap:6});r.update(p);
+        const r=makeRuntime(),p=r.label(0x9968,'',0,33);p.flags=flags^4;p.nativeLineGap=-1;
+        r.api.load({pairs:{[a]:[a,b]}},'annotation',true,.85,{ruby_scale:.9,ruby_gap:0,line_gap:6});
+        r.externalSet(p,a);
+        p.flags=flags;
+        assert.equal(r.externalReset(p),true,'parent reset must finalize late flags before the first Update');
+        const row=r.api.snapshot().find(v=>v.original===a);
+        assert.equal(row.layers.length,5,'all five source rows retain their primary/secondary pairing');
+        assert.equal(p.parserText,p.owned,'parent measurement consumes the final text buffer');
+        const writes=r.api.status().writes,reflows=p.reflows;
+        r.update(p);
+        assert.equal(r.api.status().writes,writes,'first Update must not replace the measured text');
+        assert.equal(p.reflows,reflows,'first Update must not invalidate the measured parent height');
         for(let rebuild=0;rebuild<3;rebuild++) {
-            let shift=0,previousBottom=null;
-            for(let i=0;i<captured.length;i++) {
-                const [top,bottom,primaryBottom]=captured[i],height=Math.ceil(bottom-top);
-                const origin=100+i*42+shift;
+            assert.equal(r.externalReset(p),false,'unchanged reset must not repeatedly remeasure');
+            for(let i=0;i<row.layers.length;i++) {
+                const origin=100+i*42;
                 const out=r.auxiliary(p,i,{origin,measuring,
-                    measuredSecondaryBounds:[0,height],bottom:Math.ceil(origin+height)});
-                const delta=out.primaryY-origin;
-                if(i===0)assert.equal(delta,0,'the first line must not move');
-                shift+=delta;
-                if(previousBottom!==null) {
-                    const gap=top+shift-previousBottom;
-                    assert.ok(gap>=6-.001&&gap<=7,`line ${i+1}: gap ${gap}, expected 6..7`);
-                }
-                previousBottom=primaryBottom+shift;
+                    measuredSecondaryBounds:[0,23],bottom:Math.ceil(origin+23)});
+                assert.equal(out.primaryY,origin,'ordinary secondary text must not reserve height again');
+                assert.equal(r.newline(p,origin),origin+6,'only the configured extra gap affects newline');
             }
-            assert.ok(shift<=110,'five-line paragraph grows linearly by its five secondary lines');
         }
         assert.equal(r.api.status().failed,false);
         r.api.select('primary',true);r.update(p);assert.equal(p.text(),a);

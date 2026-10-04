@@ -6,7 +6,7 @@
 
 A bilingual text mod for **Trails in the Sky the 2nd** on PC. Compare dialogue and menus on screen, or hold a shortcut to switch temporarily. Choose both languages independently: English, Japanese, Simplified or Traditional Chinese, Korean, French, German, and Spanish.
 
-Currently supports Steam build **25386012**, executable **1.03.2**. The tool checks the game build before installing hooks; it does not force hooks into unsupported versions or rewrite the original PAC/EXE files. This is an early project with offline regression tests and partial in-game validation. Full-game coverage, layout across all languages, and controller compatibility still need in-game feedback.
+Currently adapted for Steam build **25386012**, executable **1.03.2**. Harmless EXE metadata or resource differences within that build are no longer rejected solely because the whole-file hash differs. Game builds and third-party patches that change code or address layouts still require separate adaptation. Original PAC/EXE files are not rewritten. This is an early project with offline regression tests and partial in-game validation. Full-game coverage, layout across all languages, and controller compatibility still need in-game feedback.
 
 **Recommended for everyday play: single-language display with hold-to-show secondary.** Read the primary language normally, hold your shortcut to compare, then release to return. Simultaneous bilingual text remains available, but opening the dialogue log can hitch and its frame rate can be lower; see the limitations below. This recommendation does not reset existing settings.
 

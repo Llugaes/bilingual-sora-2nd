@@ -1,25 +1,32 @@
-# 0.4.0 — 恢复排版，改为手动更新
+# 0.4.1 — 改善 EXE 兼容检查与确认框排版
 
-撤回 0.3.34 引入的多行高度改动，恢复 0.3.33 的游戏排版行为，避免菜单、提示框和普通对话被异常拉长。保留 0.3.35 的连接入口校验修复。此前报告的少数多行提示拥挤暂未解决，后续先提供本地候选实测。
+- 放宽过于严格的 EXE 检查。同一构建中不影响运行的文件信息、资源和调试信息差异，不再一律导致连接失败。
+- 语言识别允许四个样本中有一个被其他 MOD 修改，只要另外三个明确对应同一种语言；存在实际语言冲突时仍会提示错误。
+- 修正部分确认框首次排版时的高度与文字间隔。普通对话和日志保持 0.4.0 的行距，不再因颜色、控制符或逐字显示额外撑开。
+- 连接失败会保留具体原因，不再被“字体已准备”的提示盖住；EXE 兼容问题也不会再笼统显示为字体安装失败。
 
-更新现在只自动检查和提醒。用户点击“下载安装”并确认后才会更新；游戏仍连接时需要退出游戏后再次点击，不会自动排队安装。已有自动更新配置迁移为只检查。
+本版已通过中日双语实机验收。更新仍由用户手动选择，保留现有配置与历史版本回退入口。请正常退出游戏和工具后安装，再重新启动。
 
-支持选择历史稳定版本回退，保留配置，并关闭旧版自动更新，防止再次自动升回问题版本。此后的正式版本必须经过本地实机验收；CI 只生成草稿发行版。
-
-已安装 0.3.34／0.3.35 的用户可更新到 0.4.0。请先正常退出游戏再安装；当前进程中的旧排版代码需要新游戏进程才能替换。
+已知限制：这不是对任意 EXE 或补丁的通用适配。全语音 MOD 1.0.7 附带的 EXE 改写了代码地址和字体读取流程，暂未支持。
 
 ## English
 
-Restores the game layout behavior of 0.3.33, withdrawing the multiline-height change that stretched menus, popups and dialogue boxes. The 0.3.35 connection-preflight fix remains. Some crowded multiline hints are still a known limitation.
+- Relaxed overly strict EXE checks: harmless metadata, resource and debug-information differences within the adapted build no longer cause rejection solely due to a different file hash.
+- Language detection tolerates one modified sample when three other samples clearly identify the same language. Conflicting language samples still report an error.
+- Corrected initial layout timing for some confirmation windows. Ordinary dialogue and logs retain the 0.4.0 spacing without extra gaps caused by formatting or typewriter animation.
+- Connection errors now keep their actual cause instead of being hidden by a font-ready notice or mislabeled as font installation failures.
 
-Updates now check and notify only. Download and installation require explicit confirmation; an active game connection requires a manual retry after the game exits. Previous automatic-install preferences become check-only.
+Tested in game with Chinese/Japanese bilingual text. Updates remain manual, with settings and version rollback preserved. Exit the game and tool before installing, then relaunch.
 
-You can select an older stable release to restore, preserving settings and disabling legacy automatic updates. Future stable releases require in-game acceptance; CI creates drafts only. Exit the game before installing 0.4.0, then relaunch it to replace the resident layout code.
+Known limitations: this does not support arbitrary executables or patches. The EXE bundled with the full-voice MOD 1.0.7 still needs a separate adapter.
 
 ## 日本語
 
-メニュー・説明ウィンドウ・会話が縦に伸びる原因となった複数行の高さ変更を撤回し、0.3.33 のレイアウトに戻します。0.3.35 の接続時チェック修正は保持します。一部の複数行説明が窮屈になる問題は引き続き確認中です。
+- EXE の検証条件を緩和しました。対応済みビルドの動作に影響しないメタデータ・リソース・デバッグ情報の差だけで、接続を拒否しなくなりました。
+- 言語判定用の四つのサンプルのうち一つが他の Mod で変更されていても、残り三つが同じ言語を示せば判定できます。異なる言語が検出された場合はエラーを表示します。
+- 一部の確認ウィンドウで初回レイアウトのタイミングを修正しました。通常の会話とログは 0.4.0 の行間を維持し、書式や文字送りによる余分な空白を追加しません。
+- 接続失敗の原因を「フォント準備完了」の表示で隠したり、フォントのインストール失敗と誤表示したりしないよう修正しました。
 
-更新は自動確認と通知のみになります。ダウンロード・適用には明示的な確認が必要です。ゲーム接続中の場合は終了後にもう一度適用してください。以前の自動更新設定は確認のみに移行します。
+中国語・日本語の二言語表示で実機確認済みです。更新は引き続き手動で、設定と過去バージョンへの復元機能を保持します。ゲームとツールを終了してから更新し、再起動してください。
 
-設定を保持して過去の安定版に戻せます。旧版の自動更新はオフにします。今後の正式版は実機確認後に公開し、CI は草稿のみ作成します。0.4.0 の適用前にゲームを終了し、適用後に起動し直してください。
+既知の制限：すべての EXE やパッチに対応するものではありません。全ボイス Mod 1.0.7 に同梱された EXE は個別対応が必要です。
