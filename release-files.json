@@ -45,6 +45,8 @@
   "sora_bilingual/game/__init__.py",
   "sora_bilingual/game/hooks.py",
   "sora_bilingual/game/exe_compatibility.py",
+  "sora_bilingual/game/native_contracts.py",
+  "sora_bilingual/game/native_contract_data.py",
   "sora_bilingual/game/native_loading.py",
   "sora_bilingual/game/native_probe.py",
   "sora_bilingual/game/native_runtime.py",

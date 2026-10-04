@@ -1,4 +1,4 @@
-"""Version-bound native label experiment; all UI mutations run on UI callbacks."""
+"""Contract-resolved native labels; all UI mutations run on UI callbacks."""
 
 from pathlib import Path
 import json
@@ -12,6 +12,8 @@ from sora_bilingual.game.hooks import verified_target_image
 
 from sora_bilingual.paths import ROOT
 
+# Reference addresses for the developer contract compiler only. Runtime
+# connection resolves functions and globals from the actual image.
 POINTS = {
     "book_count": 0x23C1E0,
     "book_page": 0x23C270,
@@ -94,24 +96,15 @@ POINTS = {
 
 
 def native_report(exe):
-    with verified_target_image(Path(exe)) as (pe, report):
-        report["native"] = {
-            name: {"rva": rva, "bytes": pe.get_data(rva, 16).hex()} for name, rva in POINTS.items()
-        }
-        report["vtable"] = 0xB18490
-        report["icon_callback_vtable"] = 0xB18458
-        report["text_table_global"] = 0xC60E88
-        report["node_names"] = True
-        report["layout_manager_global"] = 0xC60E88
-        report["font_manager_global"] = 0xC60ED0
-        report["font_allocator_global"] = 0xC60E78
-        report["image_cache_global"] = 0xC60EF0
-        report["runtime_fonts"] = True
-        # Call through the game's existing reader (including its loose-file
-        # loader detour), without installing a hook or asserting pristine bytes.
-        report["font_file_read"] = 0x654640
-        report["log_owner_global"] = 0xC60E50
-    return report
+    with verified_target_image(Path(exe)) as (_pe, report):
+        return report
+
+
+def native_revision(source):
+    from sora_bilingual.game.native_contract_data import CONTRACT
+
+    binding = {key: CONTRACT[key] for key in ("schema", "functions", "global_specs")}
+    return hashlib.sha256((json.dumps(binding, sort_keys=True) + source).encode()).hexdigest()
 
 
 def exact_dictionary(entries, primary, secondary, mode="bilingual"):
@@ -195,9 +188,7 @@ class NativeLabels:
                 "sora_bilingual/game/scripts/native_control.js",
             )
         )
-        revision = hashlib.sha256(
-            (json.dumps(POINTS, sort_keys=True) + source).encode()
-        ).hexdigest()
+        revision = native_revision(source)
         self.control = reconnect(pid, exe)
         if self.control is not None:
             self.resident_changed = self.control.revision != revision

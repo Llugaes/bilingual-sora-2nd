@@ -1,4 +1,4 @@
-"""Validate the real build and modified disposable copies, without executing them."""
+"""Read-only real-PE regression: only native dependencies may reject a candidate."""
 
 import argparse
 import hashlib
@@ -11,83 +11,115 @@ import tempfile
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import pefile
-from sora_bilingual.game.exe_compatibility import TARGET_SHA256, ExecutableCompatibilityError
+from sora_bilingual.game.exe_compatibility import ExecutableCompatibilityError
 from sora_bilingual.game.native_runtime import native_report
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--exe", type=Path, required=True)
-    parser.add_argument("--output", type=Path)
-    args = parser.parse_args()
-    raw = args.exe.read_bytes()
-    assert hashlib.sha256(raw).hexdigest() == TARGET_SHA256, "requires reviewed baseline"
-    baseline = native_report(args.exe)
-    pe = pefile.PE(data=raw, fast_load=True)
-    allowed = {}
-    rejected = {}
+def check_image(exe, temporary):
+    raw = exe.read_bytes()
+    baseline = native_report(exe)
+    allowed, rejected = {}, {}
 
     def mutate(offset):
         changed = bytearray(raw)
         changed[offset] ^= 0x40
         return changed
 
-    allowed["timestamp"] = mutate(pe.FILE_HEADER.get_field_absolute_offset("TimeDateStamp"))
-    allowed["checksum"] = mutate(pe.OPTIONAL_HEADER.get_field_absolute_offset("CheckSum"))
-    allowed["header padding"] = mutate(pe.OPTIONAL_HEADER.SizeOfHeaders - 1)
-    pe.parse_data_directories(directories=[6])
-    codeview = next(
-        entry.struct
-        for entry in pe.DIRECTORY_ENTRY_DEBUG
-        if entry.struct.Type == 2 and pe.get_data(entry.struct.AddressOfRawData, 4) == b"RSDS"
-    )
-    for name, offset in (("PDB GUID", 4), ("PDB age", 20), ("PDB path", 24)):
-        allowed[name] = mutate(codeview.PointerToRawData + offset)
-    rejected["CodeView signature"] = mutate(codeview.PointerToRawData)
-    rejected["CodeView neighboring data"] = mutate(codeview.PointerToRawData + codeview.SizeOfData)
-    rejected["CodeView extent"] = mutate(codeview.get_field_absolute_offset("SizeOfData"))
-    allowed["overlay"] = raw + b"test publisher metadata"
-    certificate = bytearray(raw + bytes(16))
-    struct.pack_into(
-        "<II", certificate, pe.OPTIONAL_HEADER.DATA_DIRECTORY[4].get_file_offset(), len(raw), 16
-    )
-    allowed["certificate"] = certificate
-    for section in pe.sections:
-        name = section.Name.rstrip(b"\0").decode()
-        changed = mutate(section.PointerToRawData + 64)
-        (allowed if name == ".rsrc" else rejected)[name] = changed
-        if section.SizeOfRawData > section.Misc_VirtualSize:
-            allowed[name + " padding"] = mutate(section.PointerToRawData + section.Misc_VirtualSize)
-    rejected["parser body after entry"] = mutate(pe.get_offset_from_rva(0x5877A0 + 0x80))
-    rejected["entrypoint"] = mutate(
-        pe.OPTIONAL_HEADER.get_field_absolute_offset("AddressOfEntryPoint")
-    )
+    with pefile.PE(data=raw, fast_load=True) as pe:
+        for field in ("TimeDateStamp",):
+            allowed[field] = mutate(pe.FILE_HEADER.get_field_absolute_offset(field))
+        for field in ("CheckSum", "AddressOfEntryPoint", "DllCharacteristics"):
+            allowed[field] = mutate(pe.OPTIONAL_HEADER.get_field_absolute_offset(field))
+        allowed["DOS stub"] = mutate(0x40)
+        allowed["overlay"] = raw + b"unrelated publisher metadata"
+        for section in pe.sections:
+            name = section.Name.rstrip(b"\0").decode()
+            if name in (".text", ".rdata", ".rsrc"):
+                allowed["unrelated " + name] = mutate(section.PointerToRawData + 64)
+        # A change beyond the hook entry must still invalidate its real function.
+        rva = baseline["native"]["set_text"]["rva"]
+        rejected["used function body beyond entry"] = mutate(pe.get_offset_from_rva(rva + 0x30))
+        changed = bytearray(raw)
+        struct.pack_into("<H", changed, pe.FILE_HEADER.get_field_absolute_offset("Machine"), 0x14C)
+        rejected["wrong architecture"] = changed
     results = []
-    with tempfile.TemporaryDirectory(prefix="sora-exe-compat-") as tmp:
-        target = Path(tmp) / "sora_2nd.exe"
-        for expected, variants in ((True, allowed), (False, rejected)):
-            for name, contents in variants.items():
-                target.write_bytes(contents)
-                # Negative control: the previous release rejects every altered copy.
-                assert hashlib.sha256(contents).hexdigest() != TARGET_SHA256
-                try:
-                    report = native_report(target)
-                except ExecutableCompatibilityError as exc:
-                    assert not expected, (name, str(exc))
-                    results.append({"case": name, "accepted": False, "detail": str(exc)})
-                else:
-                    assert expected, name
-                    assert report["compatibility"] == "compatible_image", name
-                    assert report["native"] == baseline["native"], name
-                    assert report["hooks"] == baseline["hooks"], name
-                    results.append({"case": name, "accepted": True})
-    pe.close()
-    result = {
-        "baseline": TARGET_SHA256,
+    for expected, variants in ((True, allowed), (False, rejected)):
+        for name, contents in variants.items():
+            temporary.write_bytes(contents)
+            assert hashlib.sha256(contents).hexdigest() != baseline["sha256"]
+            try:
+                report = native_report(temporary)
+            except ExecutableCompatibilityError as exc:
+                assert not expected, (name, str(exc))
+                results.append({"case": name, "accepted": False, "detail": str(exc)})
+            else:
+                assert expected, name
+                assert report["compatibility"] == "native_contract", name
+                assert report["native"] == baseline["native"], name
+                results.append({"case": name, "accepted": True})
+    return {
+        "sha256": baseline["sha256"],
         "native_points": len(baseline["native"]),
-        "legacy_rejects_allowed": len(allowed),
         "results": results,
     }
+
+
+def check_reviewed_detours(exe, temporary):
+    # The public sample is a negative/positive fixture, never an identity gate.
+    raw = exe.read_bytes()
+    with pefile.PE(data=raw, fast_load=True) as pe:
+        rows = []
+        for name, instruction, target in (
+            ("post-call jump to wrong exit", 0x5C5DB8, 0x5C5DC0),
+            ("reader entry jump to RET", 0x6542B0, 0xCEF399),
+        ):
+            assert pe.get_data(instruction, 1) == b"\xe9"
+            changed = bytearray(raw)
+            struct.pack_into(
+                "<i", changed, pe.get_offset_from_rva(instruction + 1), target - instruction - 5
+            )
+            rows.append((name, changed))
+        changed = bytearray(raw)
+        assert pe.get_data(0x3895B, 4).hex() == "11cb24b2"
+        changed[pe.get_offset_from_rva(0x3895B) : pe.get_offset_from_rva(0x3895B) + 4] = bytes(4)
+        rows.append(("chained acquire body constant", changed))
+        changed = bytearray(raw)
+        fragment = bytearray(pe.get_data(0x3890C, 0x85))
+        struct.pack_into("<i", fragment, 90, 0x5C5AA0 - 0xCF1000 - 94)
+        at = pe.get_offset_from_rva(0xCF1000)
+        changed[at : at + len(fragment)] = fragment
+        pe.parse_data_directories(directories=[3])
+        entry = next(
+            row.struct for row in pe.DIRECTORY_ENTRY_EXCEPTION if row.struct.BeginAddress == 0x3890C
+        )
+        struct.pack_into("<II", changed, entry.get_file_offset(), 0xCF1000, 0xCF1085)
+        at = pe.get_offset_from_rva(0x3895B)
+        changed[at : at + 4] = bytes(4)
+        rows.append(("unexecuted chained clone cannot hide corrupt fallthrough", changed))
+    result = []
+    for name, changed in rows:
+        temporary.write_bytes(changed)
+        try:
+            native_report(temporary)
+        except ExecutableCompatibilityError as exc:
+            result.append({"case": name, "accepted": False, "detail": str(exc)})
+        else:
+            raise AssertionError("Required font contract mutation was accepted: " + name)
+    return result
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--exe", type=Path, required=True)
+    parser.add_argument("--voice-exe", type=Path)
+    parser.add_argument("--output", type=Path)
+    args = parser.parse_args()
+    with tempfile.TemporaryDirectory(prefix="sora-exe-contract-") as tmp:
+        temporary = Path(tmp) / "sora_2nd.exe"
+        result = {"baseline": check_image(args.exe, temporary)}
+        if args.voice_exe:
+            result["voice_sample"] = check_image(args.voice_exe, temporary)
+            result["font_counterexamples"] = check_reviewed_detours(args.voice_exe, temporary)
     encoded = json.dumps(result, ensure_ascii=False, indent=2) + "\n"
     if args.output:
         args.output.write_text(encoded, encoding="utf-8")

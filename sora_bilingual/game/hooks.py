@@ -1,4 +1,7 @@
-"""Version-bound Frida capture. Source signatures: 0xDC00/scripts, Tomrock645, MIT."""
+"""Native dependency resolution and optional legacy text capture.
+
+Capture signatures: 0xDC00/scripts, Tomrock645, MIT.
+"""
 
 from __future__ import annotations
 from contextlib import contextmanager
@@ -9,7 +12,6 @@ import re
 import pefile
 from sora_bilingual.game.exe_compatibility import (
     BUILD_ID,
-    TARGET_SHA256,
     ExecutableCompatibilityError,
     verify_image,
 )
@@ -42,12 +44,12 @@ def signature_matches(data: bytes, pattern: str):
 
 
 @contextmanager
-def verified_target_image(exe: Path):
+def verified_target_image(exe: Path, *, capture=False):
     """Keep one verified byte snapshot through report construction."""
     raw = exe.read_bytes()
     digest = hashlib.sha256(raw).hexdigest()
-    # Header/sections are sufficient. Import and unwind directories are not
-    # used by version/signature verification and are expensive to decode.
+    # Decode only the directory needed by the selected capability. Identity
+    # is recorded from the same snapshot but is never a compatibility gate.
     try:
         pe = pefile.PE(data=raw, fast_load=True)
     except pefile.PEFormatError as exc:
@@ -55,7 +57,39 @@ def verified_target_image(exe: Path):
             "游戏 EXE 格式无法识别：" + str(exc), sha256=digest
         ) from exc
     try:
-        compatibility = verify_image(pe, digest)
+        if not capture:
+            resolved = verify_image(pe)
+            points = dict(resolved["points"])
+            # Called through the game's existing reader, not intercepted.
+            # The bundled loose-file loader may detour this entry at runtime;
+            # its original disk contract is still resolved above, but pristine
+            # live bytes would incorrectly reject that supported loader.
+            reader = points.pop("font_file_read")
+            native = {
+                name: {"rva": rva, "bytes": pe.get_data(rva, 16).hex()}
+                for name, rva in points.items()
+            }
+            if any(len(point["bytes"]) != 32 for point in native.values()):
+                raise ExecutableCompatibilityError("原生调用点的指令数据不完整")
+            yield (
+                pe,
+                {
+                    "sha256": digest,
+                    "build": BUILD_ID,
+                    "compatibility": "native_contract",
+                    "native_contract_id": resolved["contract_id"],
+                    "native": native,
+                    **resolved["globals"],
+                    "font_file_read": reader,
+                    "node_names": True,
+                    "runtime_fonts": True,
+                },
+            )
+            return
+        # Legacy text-only capture has six independent call sites. They are
+        # not dependencies of the normal in-game bilingual renderer.
+        if pe.FILE_HEADER.Machine != 0x8664 or pe.OPTIONAL_HEADER.Magic != 0x20B:
+            raise ExecutableCompatibilityError("需要 64 位 PE32+ sora_2nd.exe")
         hooks = []
         for name, pattern, offset in HOOKS:
             addresses = []
@@ -76,7 +110,7 @@ def verified_target_image(exe: Path):
             {
                 "sha256": digest,
                 "build": BUILD_ID,
-                "compatibility": compatibility,
+                "compatibility": "capture_contract",
                 "hooks": hooks,
             },
         )
@@ -142,7 +176,8 @@ class Capture:
     def attach(self, pid: int, exe: Path):
         import frida
 
-        report = verify_target(exe)
+        with verified_target_image(exe, capture=True) as (_pe, report):
+            pass
         self.close()
         self.session = frida.attach(pid)
         self.session.on("detached", lambda *args: self.on_event({"type": "detached"}))

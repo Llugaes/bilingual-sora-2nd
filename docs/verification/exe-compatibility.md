@@ -1,70 +1,69 @@
 # EXE 兼容检查与连接失败提示
 
-2026-10-04：0.4.1 已包含整文件摘要改为核心映像校验、连接错误保留及字体提示分离。本轮继续用明确的 PE 加载语义替代原始头部摘要，仅进入新的本地候选，不继承此前的实机验收。已取得全语音 MOD 1.0.7 公开包的 EXE 做静态比较，尚未取得反馈用户实际运行的 EXE；其真实迁址适配仍未完成，不能将本轮放宽元数据检查记为该 P0 已解决。
+2026-10-04：本轮候选改为按实际原生依赖定位。公开稳定版仍为 0.4.1，后续发布须取得用户对新候选的实机验收。没有正版／破解、DLC 授权、补丁名称或整个 EXE 摘要白名单。
 
-## 已确认的问题
+## 检查范围
 
-旧 `verify_target` 要求整个文件 SHA-256 等于 Build 25386012 的已知值。它不读取正版／破解、DLC 授权或补丁名称，但无关的 PE 元数据、资源或文件尾变化也会被拒绝。
+运行时入口为 `hooks.verified_target_image` → `exe_compatibility.verify_image` → `native_contracts.resolve_native_contracts`。同一次文件读取产生诊断摘要、定位结果和 hook 指令快照。
 
-同一检查用于离线字体安装。失败此前显示成“字体准备或安装失败”。连接入口又吞掉异常详情、正常返回 `unverified_exe`；UI 随后用 `runtime-required` 字体通知覆盖连接状态。因此用户可以先看到红色“EXE 版本未验证”，启动游戏后又只看到黄色“字体已准备，连接后在游戏内加载”。黄色通知不是连接成功，也不能证明字体加载是失败根因。
+- 不比较游戏版本、整文件哈希、整个代码／数据段、入口地址、时间戳、资源、证书、调试信息或未使用函数。SHA-256 只用于诊断标识。
+- 用 PE 的 x64 异常目录枚举候选函数；无关的坏记录不会阻止已用函数定位。只匹配工具调用、拦截或读取的原生函数及它们的 CHAININFO 续段。无异常目录的叶函数从已验证调用关系定位。
+- 模板保留指令、寄存器、字段偏移、常量及函数内分支；仅归一化地址操作数。工具依赖的调用关系必须相符，多个调用者共同消除重名函数歧义。函数整体迁址无需新增 EXE 版本名单。
+- 所需 manager 指针与两张虚表从对应 RIP 引用恢复；检查实际读取范围、对齐和类型身份。读取操作不要求所在区段必须只读。普通游戏内部调用不扩展为整个传递调用图的校验。
+- 字体入口被搬到跳板的变体还校验该入口的续接体、参数／返回合同及必要的路径 helper；不能只 mask 跳转目标后直接接受。只要求当前函数变体使用的延续体，不要求原版具有语音 MOD 的 helper。
+- 连接前，仍将上述磁盘快照与进程内 67 个原生接管位置的 16 字节逐一比对，在任何适配器、原生调用或 hook 安装前完成。文件读取器保留磁盘函数合同，但不要求运行时入口保持原始字节：工具自带的松散资源加载器会在该入口安装 detour，字体桥应通过这个现有入口调用，而不是拒绝或覆盖它。这项检查防止定位结果与当前进程不符，不是未知 EXE 的唯一兼容证明。
+- 旧文本 Capture 功能有自己的六处调用签名，只有选择 Capture 才验证；它不再成为正常双语连接的前置条件。
+- 局部函数确实改写了参数、对象布局或必需语义时，需要扩展该函数合同。不能保证任意修改都兼容，也不以一个“继续连接”开关跳过实际依赖。
 
-## 当前修改边界
+`tools/build_native_contracts.py` 是开发期模板编译器，用 Capstone 从经审查样本编译函数摘要、地址掩码及关系。安装端只依赖已有 pefile。内置 `native_contract_data.py` 不含游戏机器码；其中样本摘要和开发期 RVA 是证据出处，不是运行时放行名单。所有合同变化参与 resident revision，新候选须新游戏进程加载。
 
-- 原始整文件 SHA 快路径保留。未知摘要检查同一构建的 PE 加载语义及 `.text/.rdata/.data/.pdata/.reloc` 映射内容；`.data` 包括零初始化尾部，文件对齐填充不参与内容摘要。
-- 布局合同逐项保存入口、映像基址、对齐、头大小、子系统、DLL 特性、非资源／证书／调试目录，以及每个核心区段的 RVA、虚拟大小和权限。`FileAlignment` 继续参与 raw section 对齐验证，因为它决定映像如何从文件读取；`LoaderFlags` 是保留字段，要求为零而不是版本 ABI。它不再把 DOS stub、DOS 保留字段、COFF 时间戳、校验和或已弃用的 COFF symbol-table 指针／计数当作原生 ABI；Windows 通过 `e_lfanew` 定位 PE 头，镜像的 COFF symbol 字段应为零且不会装载。依据见 [Microsoft PE format](https://learn.microsoft.com/en-us/windows/win32/debug/pe-format)。
-- 有效资源目录及 `.rsrc` 内容、位于映像之外的证书、文件尾附加数据、文件内 raw section 偏移仍可变化。还允许一个只读、不可执行、不可写、位于映像尾部且唯一由资源目录引用的新资源段；它不得移动任一核心段，`SizeOfImage` 仍须与全部段映射一致。新增代码／可写段、任一入口／核心区段／加载目录差异、重叠或未对齐段都会拒绝。
-- 未知映像被拒绝时，诊断列出具体 `OptionalHeader`、数据目录或区段字段差异，并明确该阶段尚未扫描签名或安装 hook；CLI JSON 也返回完整差异列表。
-- 调试目录本身不在加载／原生 ABI 合同中，位置和长度可变化，甚至不会据候选文件解析它。CodeView `RSDS` 的 GUID、age 和 PDB 路径同样不决定运行时合同；唯一忽略范围来自已知原版的固定记录位置和长度，不从待连接文件学习范围。固定范围外的 `.rdata` 仍参与核心内容哈希，不能借由候选调试目录把任意 `.rdata` 改动解释成调试信息。
-- 支持的是核心映像不变的修改副本。实际改写代码、常量、虚表、unwind、初始化数据或重定位的补丁仍需拿到样本分析；不是任意版本自动移植。
-- `native_report`、签名报告及诊断 CLI 的成功／失败摘要从同一次读取的 PE 快照生成，不在校验前后重新打开可能被替换的 EXE。现有运行时入口字节校验继续在任何适配器／原生调用／hook 之前执行。
-- 语言探针与分类器共用 `MIN_MATCHES=3`：四个独立样本中有三个明确指向同一种语言，即使另一个缺失或被其他 MOD 改成未知内容也可识别。有任何已识别的其他语言样本则拒绝，不能用多数票掩盖混合语言表。
-- EXE 不兼容、文件不可读、语言资源缺失、进程读取失败分别保留具体原因。只有文本表尚未初始化继续等待和自动重试。字体通知不覆盖连接错误；离线 EXE 拒绝不写入字体或安装收据。
-- 兼容指纹以 Python 常量分发，保持 0.4.0 更新器的文件白名单兼容。没有游戏机器码或游戏资源进入指纹文件。
+## 连接与字体提示
 
-## 回归证据
+0.4.1 之前，离线字体准备和连接共用整文件版本门禁，拒绝会被显示成字体失败，连接错误还可能被黄色字体就绪通知覆盖。现有修正保留 EXE、权限、语言资源和进程读取的具体错误，只有文本表尚未初始化才等待重试；字体通知不覆盖连接失败。离线拒绝不写字体或安装收据。
 
-`test_connection_failures.py` 修改前复现六个失败断言：EXE 校验、访问权限及四种非暂时语言检测错误静默返回。修改后保留错误、清除连接心跳、不编译模型也不安装 hook；表初始化仍可重试。
+语言识别从四个独立样本中至少取得三个一致结果；缺失的一个可以等待或容忍，但已识别的其他语言冲突不能被多数票掩盖。
 
-`test_exe_compatibility.py` 使用真正可由 pefile 解析的合成 PE 文件，覆盖已知／兼容副本、核心段修改、地址变化、截断、错误资源／证书边界及原子报告快照。`test_font_delivery` 证明兼容拒绝零游戏文件写入；`test_auto_connect` 与 Qt 状态栏测试覆盖错误和字体准备并存。
+## 回归入口与证据边界
 
-本机只读基线检查：
+`test_native_contracts.py` 使用有效合成 PE 验证迁址、无关代码／数据变化、caller 消歧、叶函数、global／RTTI、BSS、CHAININFO 和局部跳板。错误返回目标或被修改的必要函数体必须被拒绝。
+
+`test_exe_compatibility.py` 经生产连接预检入口验证单快照、诊断错误、Capture 能力隔离和驻留 revision。`tests/check_exe_compatibility.py` 对真实原版和语音 EXE 的临时副本做允许／拒绝变异，不启动游戏：
 
 ```powershell
-.venv/Scripts/python.exe -X utf8 tests/check_exe_compatibility.py --exe "游戏目录/sora_2nd.exe" --output generated/exe-compatibility-regression.json
+.venv/Scripts/python.exe -X utf8 tests/check_exe_compatibility.py --exe "游戏目录/sora_2nd.exe" --voice-exe generated/patch-inspection/add-sora_2nd.exe.inspect --output generated/native-contract-regression.json
 ```
 
-已验证基线摘要 `d8b2911d1576216bdc22d070550e4f531e105de7ed2981885849669f4acf8aaf`。合成 PE 覆盖 DOS stub／保留字段、COFF symbol 元数据和尾随只读资源段，同时保留同一核心映像、入口及 hook RVA；入口、核心地址、权限、加载目录、可执行尾随段和非资源尾随段被拒绝。真实基线的提取布局与内置合同逐项相同，DOS stub 变体在内存中可通过，未启动、附加或改写游戏。这不替代第三方补丁与实机验证。最新本地报告为 `generated/exe-compatibility-review-real.json`。
+`tests/check_native_fonts.py` 在隐藏自建进程中执行实际形状的 CALL、JMP、reader wrapper 和生产字体桥，包含原有 8 项及新增 18 项跳板检查：绝对路径、别名、普通资源、五个参数、cache hit/miss、失败分配和返回值。可选 `--voice-exe` 额外对照样本机器码。该检查已在 `tools.dev check` 中执行。
 
-本轮连接、字体交付、原生加载、语言识别、自动连接和状态显示回归共 100 项通过。语言探针测试在 Node VM 中执行生产 JS，用指针内存夹具验证 3/4 就绪、2/4 等待及冲突样本；没有把字符串包含检查或模拟返回值当成实际探针验证。
+源码检查、隐藏原生宿主、安装到 DEV、真实游戏连接及画面验收是不同证据，不能互相替代。最新完整检查与实机结果见下方记录。
 
-## 三个补丁来源的实查
+本轮 `tools.dev check` 通过：578 项 Python（5 项既有跳过）、177 项 JS、20 个隐藏原生检查入口；其中字体检查覆盖 26 项。两个真实 PE 均通过定位，并各自通过 9 个无关改动变体、拒绝 2 个实际依赖破坏变体；另 4 个字体跳板／续段反例全部拒绝。末次撤回 reader 的原始运行时字节要求后，8 项连接入口回归及两份 PE 变异检查再次通过。112 文件测试更新包构建及 manifest 校验通过。详见本地 `generated/minimal-contract-dev-check.log` 与 `generated/native-contract-regression.json`。新的真实游戏连接复验尚待更换 DEV 候选，不借用 DEV3 原版成功作为新版证明。
 
-| 来源 | 已取得的证据 | 当前结论 |
+## 补丁样本和真实复现
+
+| 来源 | 已取得证据 | 边界 |
 |---|---|---|
-| [全语音 MOD 1.0.7，杏雨浩](https://www.bilibili.com/video/BV1wAeg6DEEJ/) | 从作者发布的更新器配置读取公开清单；检查纯追加、去羊、全替换三包的 ZIP 目录并仅提取 EXE | 三包都含同一份修改过的 EXE，可离线复现连接拒绝，见下文 |
-| [科洛丝战斗／主动语音替换，春落木祈雨](https://www.bilibili.com/video/BV1Teeg68Exq/) | 作者说明和网盘链接 | 浏览器安全策略拒绝该网盘 URL，未绕过；未取得压缩包，不能仅由标题断定不改 EXE |
-| 截图中的 DLC 补丁站 `h.juji.fun` | 截图域名；本机访问解析失败 | 未取得包，不能归因或声称兼容 |
+| [全语音 MOD 1.0.7，杏雨浩](https://www.bilibili.com/video/BV1wAeg6DEEJ/) | 公开更新清单，纯追加／去羊／全替换三个 ZIP 目录及同一 EXE | 本轮用 EXE 单独替换做连接复现；未安装完整语音／场景资源包 |
+| [科洛丝战斗／主动语音替换，春落木祈雨](https://www.bilibili.com/video/BV1Teeg68Exq/) | 作者说明和网盘链接 | 未取得文件，不能宣称实测兼容 |
+| 用户截图中的 DLC 补丁站 | 域名访问失败 | 未取得文件，不能归因或宣称实测兼容 |
 
-全语音包 EXE 长度 13,472,768，SHA-256 `b9bfd04877277ea0a4512da2e5fd7d7ec6d8e7c86227e5c16c2c12c3a7b13414`。三个包中 EXE 的 CRC 与摘要一致；未运行更新器或 EXE，也未向游戏目录安装。作者清单及目录留在本地 `generated/patch-inspection`，游戏代码不提交或分发。
+全语音 EXE 长度 13,472,768，SHA-256 `b9bfd04877277ea0a4512da2e5fd7d7ec6d8e7c86227e5c16c2c12c3a7b13414`。原版摘要为 `d8b2911d1576216bdc22d070550e4f531e105de7ed2981885849669f4acf8aaf`。样本仅留本机 `generated/patch-inspection`，不提交或分发。
 
-该 EXE 不只是改了文件信息。其 `.text/.rdata/.data/.pdata` 等虚拟地址及大小与当前原版不同，旧 67 个固定入口均不能原址复用。检查完整 `.pdata` 函数和两个叶函数，保留指令、内部跳转、字段偏移及常量，仅归一化跨函数相对引用；68 个位置（67 POINTS 加文件读取器）全部能定位，其中 66 个对应区间归一化相同，另两个确有改码。**定位成功不等于 ABI 兼容**：被归一化遮去的引用及对象生命周期仍须逐项证明。
+用户授权替换后，语音 EXE 成功进入标题界面，显示 Ver.1.03.2；DEV3（组件 `b94347e944a4c1a2`）报 AddressOfEntryPoint 等 18 项布局差异，尚未安装 hook。随后从菜单正常退出，原 EXE 恢复并校验，56 个存档文件摘要不变。同一 DEV3 对原版则达到 ready、resident 和 runtimeFonts ready。这证明旧门禁造成的真实失败，而不是由字体资源不足推测连接失败。
 
-具体涉及免重启字体的改动：
+静态审查发现 68 个使用位置可对应（67 native 点加文件读取器），但两个字体函数有实质跳板变化。153 组 RIP 目标已分类；普通内部调用不作为新增全部校验要求。审查还构造三个实际反例：字体读取跳到错误出口、reader 入口跳到 RET、acquire 的 CHAININFO 续段常量被改；新合同必须全部拒绝。记录：
+- `generated/patch-inspection/standards-function-complete.json`
+- `generated/patch-inspection/voice-rip-target-audit.json`
+- `generated/patch-inspection/native-contract-review-counterexamples.json`
+- `generated/patch-inspection/voice-font-contract-review.json`
+- `generated/voice-live-test-20261004`
 
-- 图像读取 CALL 从 `0x5c6103` 移至 `0x5c5db3`；所在函数有四处跳转到补丁代码，前置路径会改文件路径、缓存 hash 和 flags，CALL 后紧接补丁 JMP。
-- 文件读取器从 `0x654640` 移至 `0x6542b0`，入口也被 detour。静态正常返回路径保留参数、栈及返回值；绝对路径有跳过二次重定向的分支。
-- 两张虚表的 RTTI 与 18 个槽位函数归一化相符，已命名 globals 有对应 RIP 引用。但全部 153 组 RIP 目标只完成 7 组命名对象定位，不能据此宣称所有数据引用兼容。
+这些公开包不等于反馈用户的最终补丁组合。完整语音包还会修改松散场景脚本和表资源；成功连接不证明所有对白身份、字幕配对和组合 MOD 已验收。
 
-因此该包具备专门适配的依据，但当前代码**没有接纳该 EXE**，没有用摘要白名单绕过原生合同。下一步必须建立独立地址表，核对其余引用，并扩展隐藏宿主覆盖 Frida 对 CALL＋补丁 JMP 的指令搬迁、字体缓存命中／未命中与普通资源读取；还需在隔离游戏副本验证首次字体加载、语言切换和退出恢复。
-
-这三包还附带大量松散场景脚本与语言表。即使 EXE 适配通过，新增语音指令也可能改变场景资源摘要／调用位置；还需检查 `runtime_identity` 对修改脚本的对白 ID 关联，不能用“成功连接”替代双语正确性。当前公开包分析不等于已确定反馈用户安装顺序、最终 EXE 或补丁组合。
-
-完整只读定位证据：`generated/patch-inspection/standards-function-complete.json`。原版地址布局与该补丁不匹配，是当前可复现的具体失败原因；没有发现按正版／破解身份拒绝连接的代码。
-
-单个用户副本的只读诊断入口（候选代码及内置运行环境）：
+只读用户诊断命令：
 
 ```powershell
 python -m sora_bilingual.game.exe_compatibility --exe "游戏目录/sora_2nd.exe" --output compatibility.json
 ```
 
-输出仅包含文件名、摘要、适配构建及结果，不采集账号、存档或游戏文本。对于核心修改，仍需原 EXE 样本才能定位具体改动；仅靠摘要不能证明 ABI 兼容。
+输出文件名、诊断摘要、合同标识及具体缺失依赖，不采集账号、存档或游戏文本。
