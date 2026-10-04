@@ -91,13 +91,26 @@ class RuntimeText {
     constructor(model) {
         this.model = model;
         const detailRows=model.detail_numeric||[],shadowed=new Set(detailRows.map(([pattern])=>pattern));
-        this.numeric = (model.numeric || []).filter(([pattern])=>!shadowed.has(pattern)).map(([pattern, pair]) => [new RegExp('^(?:'+pattern+')$'), pair]);
+        const numericByPattern=new Map();
+        const compileNumeric=([pattern,pair])=>{const expression=new RegExp('^(?:'+pattern+')$');numericByPattern.set(pattern,expression);return [expression,pair];};
+        this.numeric = (model.numeric || []).filter(([pattern])=>!shadowed.has(pattern)).map(compileNumeric);
         this.rawNumeric = (model.raw_numeric || []).map(([pattern,pair])=>[new RegExp('^(?:'+pattern+')$'),pair]);
         this.producerNumeric = (model.producer_numeric || []).map(([pattern,pair,styles])=>[new RegExp('^(?:'+pattern+')$'),pair,styles]);
-        this.detailNumeric = detailRows.map(([pattern,pair])=>[new RegExp('^(?:'+pattern+')$'),pair]);
+        this.detailNumeric = detailRows.map(compileNumeric);
         const inlineRows=model.detail_inline_icons||[];
         this.detailInlineIcons=inlineRows.map(([pattern,pair])=>[new RegExp(pattern,'g'),pair]);
         this.detailContexts=model.detail_contexts||{};
+        this.detailJoin=model.detail_join||null;
+        this.detailJoinLiterals=new Set(model.detail_join_literals||[]);
+        const joinRows=(model.detail_join_numeric||[]).filter(pattern=>numericByPattern.has(pattern)).map(pattern=>[pattern,null]);
+        this.detailJoinNumeric=joinRows.map(([pattern])=>[numericByPattern.get(pattern),null]);
+        this.detailJoinNumericIndex=RuntimeText.numericIndex(this.detailJoinNumeric,joinRows);
+        this.detailJoinCandidateCache=new Map();
+        this.detailJoinBlockedLiterals=new Set(model.detail_join_blocked_literals||[]);
+        const blockedJoinRows=(model.detail_join_blocked_numeric||[]).map(pattern=>[pattern,null]);
+        this.detailJoinBlockedNumeric=blockedJoinRows.map(([pattern])=>[new RegExp('^(?:'+pattern+')$'),null]);
+        this.detailJoinBlockedIndex=RuntimeText.numericIndex(this.detailJoinBlockedNumeric,blockedJoinRows);
+        this.detailJoinBlockedCache=new Map();
         this.numericIndex=RuntimeText.numericIndex(this.numeric,model.numeric||[],shadowed);
         this.detailNumericIndex=RuntimeText.numericIndex(this.detailNumeric,detailRows);
         this.detailInlineIconIndex=RuntimeText.numericIndex(this.detailInlineIcons,inlineRows);
@@ -265,6 +278,48 @@ class RuntimeText {
         return Object.keys(values).some(span=>{
             let at=source.indexOf(span);while(at>=0) {if(!RuntimeText.overlaps([at,at+span.length],ranges))return true;at=source.indexOf(span,at+span.length);}return false;
         });
+    }
+    detailJoinPair(source) {
+        if(!this.detailJoin)return null;
+        const [separator,...targets]=this.detailJoin,short=separator.trimEnd();
+        const partialTail=Boolean(short&&short!==separator&&source.endsWith(short)&&!source.endsWith(separator));
+        const expanded=partialTail?source+separator.slice(short.length):source,parts=expanded.split(separator);
+        if(parts.length<2||!parts.some(Boolean)||parts.slice(1,-1).some(part=>!part))return null;
+        const pairs=parts[0]?[]:[['','']],stop=parts.length-(parts[parts.length-1]?0:1);
+        let start=parts[0]?0:1;
+        while(start<stop) {
+            let matched=false;
+            // Prefer an entire proven constructor to shorter labels.
+            for(let end=stop;end>start;end--) {
+                const member=parts.slice(start,end).join(separator);
+                if(this.detailJoinBlockedLiterals.has(member)||RuntimeText.numericCandidates(member,this.detailJoinBlockedIndex,this.detailJoinBlockedCache).some(([pattern])=>pattern.test(member)))return null;
+                if(this.ambiguousDisplay.has(member)||!(this.detailJoinLiterals.has(member)||
+                    RuntimeText.numericCandidates(member,this.detailJoinNumericIndex,this.detailJoinCandidateCache).some(([pattern])=>pattern.test(member))))continue;
+                const pair=this.pair(member);
+                if(pair){pairs.push(pair);start=end;matched=true;break;}
+            }
+            if(!matched)return null;
+        }
+        if(!parts[parts.length-1])pairs.push(['','']);
+        return targets.map((target,side)=>{
+            let value=pairs.map(pair=>pair[side]).join(target);
+            if(partialTail&&target!==target.trimEnd())value=value.slice(0,-target.length)+target.trimEnd();
+            return value;
+        });
+    }
+    componentParts(source) {
+        const parts=source.split(COMPONENT_SEPARATORS);
+        if(this.detailJoin) {
+            const separator=this.detailJoin[0];let at=1;
+            while(at<parts.length-1) {
+                if(parts[at]!==separator){at+=2;continue;}
+                let end=at;while(end+2<parts.length&&parts[end+2]===separator)end+=2;
+                const combined=parts.slice(at-1,end+2).join('');
+                if(this.detailJoinPair(combined))parts.splice(at-1,end-at+3,combined);
+                else at=end+2;
+            }
+        }
+        return parts.length===1?source.split(COMPONENT_LINKS):parts;
     }
     replaceDetailContext(source,mode,description) {
         const values=this.detailContexts[description]||{},ranges=RuntimeText.rubyRanges(source);
@@ -564,6 +619,7 @@ class RuntimeText {
             this.rawPair(source.replace(/^(?:<#[^<>]*>)+/,''))!==null||
             Boolean(anchored&&anchored[0].hasDetailInlineIcon(source))||
             Boolean(anchored&&anchored[0].hasDetailContext(source,anchored[1]))||
+            Boolean(anchored&&anchored[0].detailJoinIconRuns(source))||
             (Object.hasOwn(this.keyed,key)&&this.keyed[key].source===source);
         const prefix=(a.match(/^(?:<#[^<>]*>)*/)||[''])[0],body=a.slice(prefix.length),visibleB=RuntimeText.visualSecondary(b);
         if(mode==='annotation'&&known&&!/[<>]/.test(body+visibleB)&&
@@ -590,7 +646,8 @@ class RuntimeText {
         if(!hasAlphanumeric(source))return source;
         // Icon counts and other numeric-only runs retain their native form.
         if(/[0-9０-９]/.test(source)&&/^[\s×+−\-0-9０-９.,，．%％]+$/.test(source))return source;
-        const pair=this.pair(source);
+        const literal=Object.hasOwn(this.model.plain_pairs,source)?this.model.plain_pairs[source]:null;
+        const pair=this.detailJoin?(literal||this.detailJoinPair(source)||this.pair(source)):this.pair(source);
         if(pair) {
             const [a,b]=pair;
             if(mode==='primary')return a;
@@ -604,8 +661,7 @@ class RuntimeText {
         }
         // Middle dots join inline lists of any length, not just bullets.
         // Whole resource pairs above retain priority over decomposition.
-        let parts=source.split(COMPONENT_SEPARATORS);
-        if(parts.length===1)parts=source.split(COMPONENT_LINKS);
+        const parts=this.componentParts(source);
         if(parts.length>1)return parts.map((p,i)=>i%2?p:this.component(p,mode)).join('');
         return source;
     }
@@ -616,6 +672,12 @@ class RuntimeText {
         const result=this.resolve(source,mode,key,scope,detailContext);
         if(this.cache.size>=20000)this.cache.clear();
         this.cache.set(ck,result);return result;
+    }
+    detailJoinIconRuns(source) {
+        if(!(this.detailJoin&&source.includes('<I')&&!source.includes('<R>')&&source.includes(this.detailJoin[0])&&!this.rawPair(source)))return null;
+        const runs=source.split(/(<\/?[Cc][0-9a-fA-F]*>|<[sS]\d+>|\r\n|\n|\\n)/),joined=new Set();
+        runs.forEach((run,index)=>{if(!(index%2)&&run.includes('<I')&&this.detailJoinPair(run))joined.add(index);});
+        return joined.size?[runs,joined]:null;
     }
     resolve(source,mode,key,scope,detailContext='') {
         if(mode==='bilingual')mode='annotation';
@@ -628,6 +690,16 @@ class RuntimeText {
         const anchored=this.anchoredDetails(source);
         if(anchored)return anchored[0].translate(source,mode,'','',anchored[1]);
         if(detailContext)source=this.replaceDetailContext(source,mode,detailContext);
+        const joinedRuns=this.detailJoinIconRuns(source);
+        if(joinedRuns) {
+            const [runs,joined]=joinedRuns;
+            if(joined.size)return runs.map((run,index)=>{
+                if(index%2)return run;
+                if(joined.has(index))return this.component(run,mode);
+                if(this.detailInlineIcons.length)run=this.replaceDetailInlineIcons(run,mode);
+                return run.split(/(<[^<>]*>|\r\n|\n|\\n)/).map((part,offset)=>offset%2?part:this.component(part,mode)).join('');
+            }).join('');
+        }
         if(this.detailInlineIcons.length)source=this.replaceDetailInlineIcons(source,mode);
         if(this.ambiguousDisplay.has(source)||this.ambiguousDisplay.has(source.replace(/^(?:<#[^<>]*>)+/,'')))return source;
         const pair=this.rawPair(source);

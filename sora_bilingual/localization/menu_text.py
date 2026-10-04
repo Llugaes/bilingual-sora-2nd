@@ -31,6 +31,72 @@ def _render_format(template, values):
     return FORMAT_TOKEN.sub(lambda match: "%" if match.group() == "%%" else next(values), template)
 
 
+def _format_pattern(source, matches):
+    chunks, at = [], 0
+    for match in matches:
+        chunks.extend(
+            (
+                re.escape(source[at : match.start()].replace("%%", "%")),
+                r"([^<>\r\n]{1,512}?)"
+                if match.group()[-1] == "s"
+                else r"([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)"
+                if match.group()[-1] == "g"
+                else r"([+-]?\d+)",
+            )
+        )
+        at = match.end()
+    chunks.append(re.escape(source[at:].replace("%%", "%")))
+    return re.compile("".join(chunks))
+
+
+def _detail_join_rule(entries, primary, secondary, source_language):
+    """Keep FORMAT8 as constructor metadata, never a punctuation dictionary pair."""
+    candidates = set()
+    for entry in entries:
+        if (
+            not entry.get("detail_join_only")
+            or entry.get("key") != "table/t_text.tbl/TXT_ITEM_HELP_FORMAT8"
+        ):
+            continue
+        texts = entry.get("texts", {})
+        values = tuple(
+            texts.get(language, "") for language in (source_language, primary, secondary)
+        )
+        if all(value.strip() for value in values) and all(
+            not any(char.isalnum() or char in "<>%\r\n" for char in value) for value in values
+        ):
+            candidates.add(values)
+    return next(iter(candidates)) if len(candidates) == 1 else None
+
+
+def _detail_join_members(entries, primary, secondary, source_language):
+    """Effect fields, proven typed constructors and native extra-effect labels."""
+    flags = {"DEBUFF_CANCEL", "DELAY_SHORT", "HITTING", "STUN_L", "STUN_LL"}
+    candidates = {}
+    for entry in entries:
+        if not (
+            entry.get("key", "").startswith("table/t_itemhelp.tbl/SkillEffectHelpData/")
+            or entry.get("item_help_contract")
+            or entry.get("key", "").removeprefix("table/t_text.tbl/TXT_ITEM_HELP_") in flags
+        ):
+            continue
+        text = entry.get("texts", {}).get(source_language)
+        if not text or not any(char.isalnum() for char in text):
+            continue
+        pair = complete_pair(entry["texts"], primary, secondary)
+        kinds = [match.group()[-1] for match in _format_fields(text)]
+        if pair and any(
+            [match.group()[-1] for match in _format_fields(value)] != kinds for value in pair
+        ):
+            pair = None
+        # A raw printf escape without a numeric slot has no compiled runtime
+        # formatter here. Do not introduce its doubled percent into a list.
+        if any("%%" in value and not _format_fields(value) for value in (text, *(pair or ()))):
+            pair = None
+        candidates.setdefault(plain(text), set()).add(tuple(map(plain, pair)) if pair else None)
+    return candidates
+
+
 def _detail_context_rules(entries, primary, secondary, source_language):
     """Compile raw-resource-authorized spans keyed by an exact description."""
     candidates = {}
@@ -685,6 +751,13 @@ def item_help_detail_entries(entries):
         and all("%" not in t for t in e["texts"].values())
         and any(any(c.isalpha() for c in plain(t)) for t in e["texts"].values())
     ]
+    # The native builder appends FORMAT8 before effect names and Sure Hit.
+    # It owns locale punctuation; only anchored details may interpret it.
+    result += [
+        {**e, "detail_join_only": True}
+        for e in entries
+        if e.get("key") == "table/t_text.tbl/TXT_ITEM_HELP_FORMAT8"
+    ]
     result += item_help_recovery_entries(entries)
     result += [
         {
@@ -771,6 +844,22 @@ class MenuTranslator:
         # Book bodies have locale-dependent pagination and a dedicated native
         # document resolver. They must never enter the page/string dictionary.
         entries = [entry for entry in entries if "book_pages" not in entry]
+        self.detail_join = (
+            _detail_join_rule(entries, primary, secondary, source_language)
+            if _details_only
+            else None
+        )
+        join_candidates = (
+            _detail_join_members(entries, primary, secondary, source_language)
+            if self.detail_join
+            else {}
+        )
+        join_members = {
+            source: next(iter(pairs))
+            for source, pairs in join_candidates.items()
+            if len(pairs) == 1 and None not in pairs
+        }
+        entries = [entry for entry in entries if not entry.get("detail_join_only")]
         # A resource-identified menu header authorizes the same detail scope
         # as a full description. Its arguments remain opaque native data.
         self.detail_headers = sorted(
@@ -1064,6 +1153,26 @@ class MenuTranslator:
         self.numeric = []
         self.raw_numeric = []
         self.detail_numeric = []
+        self.detail_join_literals = {
+            source
+            for source, pair in join_members.items()
+            if normalized.get(source) == pair and not _format_fields(source)
+        }
+        self.detail_join_numeric = []
+        self.detail_join_blocked_literals = set()
+        self.detail_join_blocked_numeric = []
+        for source in join_candidates:
+            if source in join_members and normalized.get(source) == join_members[source]:
+                continue
+            matches = _format_fields(source)
+            if not matches:
+                self.detail_join_blocked_literals.add(source)
+            elif (
+                len(matches) <= 4
+                and all(match.group()[-1] != "s" and "$" not in match.group() for match in matches)
+                and "%" not in _format_remainder(source)
+            ):
+                self.detail_join_blocked_numeric.append(_format_pattern(source, matches))
         for source, pair, is_raw in [(s, p, False) for s, p in normalized.items()] + [
             (s, p, True) for s, p in self.pairs.items() if "<" in s
         ]:
@@ -1085,25 +1194,80 @@ class MenuTranslator:
                 continue
             if "s" in kinds and len(_format_remainder(source).strip()) < 2:
                 continue
-            chunks = []
-            at = 0
-            for m in matches:
-                chunks.extend(
-                    (
-                        re.escape(source[at : m.start()].replace("%%", "%")),
-                        r"([^<>\r\n]{1,512}?)"
-                        if m.group()[-1] == "s"
-                        else r"([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)"
-                        if m.group()[-1] == "g"
-                        else r"([+-]?\d+)",
-                    )
-                )
-                at = m.end()
-            chunks.append(re.escape(source[at:].replace("%%", "%")))
-            rule = (re.compile("".join(chunks)), pair)
+            rule = (_format_pattern(source, matches), pair)
             (self.raw_numeric if is_raw else self.numeric).append(rule)
             if not is_raw and source in detail_authority and "s" not in kinds:
                 self.detail_numeric.append(rule)
+            if not is_raw and join_members.get(source) == pair and "s" not in kinds:
+                self.detail_join_numeric.append(rule[0])
+
+    def _detail_join_pair(self, source):
+        if not self.detail_join:
+            return None
+        separator, *targets = self.detail_join
+        short = separator.rstrip()
+        partial_tail = bool(
+            short
+            and short != separator
+            and source.endswith(short)
+            and not source.endswith(separator)
+        )
+        expanded = source + separator[len(short) :] if partial_tail else source
+        parts = expanded.split(separator)
+        if len(parts) < 2 or not any(parts) or any(not part for part in parts[1:-1]):
+            return None
+        pairs = [("", "")] if not parts[0] else []
+        start, stop = int(not parts[0]), len(parts) - int(not parts[-1])
+        while start < stop:
+            # A proven constructor may itself contain FORMAT8 (e.g. revive +
+            # recovery). Preserve the complete resource pair before splitting
+            # it into shorter labels with potentially different official words.
+            for end in range(stop, start, -1):
+                member = separator.join(parts[start:end])
+                if member in self.detail_join_blocked_literals or any(
+                    pattern.fullmatch(member) for pattern in self.detail_join_blocked_numeric
+                ):
+                    return None
+                if member in self.ambiguous_display or not (
+                    member in self.detail_join_literals
+                    or any(pattern.fullmatch(member) for pattern in self.detail_join_numeric)
+                ):
+                    continue
+                pair = self.pair(member)
+                if pair:
+                    pairs.append(pair)
+                    start = end
+                    break
+            else:
+                return None
+        if not parts[-1]:
+            pairs.append(("", ""))
+        result = []
+        for side, target in enumerate(targets):
+            value = target.join(pair[side] for pair in pairs)
+            if partial_tail and target != target.rstrip():
+                value = value[: -len(target)] + target.rstrip()
+            result.append(value)
+        return tuple(result)
+
+    def _component_parts(self, source):
+        parts = SEPARATORS.split(source)
+        if self.detail_join:
+            separator = self.detail_join[0]
+            at = 1
+            while at < len(parts) - 1:
+                if parts[at] != separator:
+                    at += 2
+                    continue
+                end = at
+                while end + 2 < len(parts) and parts[end + 2] == separator:
+                    end += 2
+                combined = "".join(parts[at - 1 : end + 2])
+                if self._detail_join_pair(combined):
+                    parts[at - 1 : end + 2] = [combined]
+                else:
+                    at = end + 2
+        return COMPONENT_LINKS.split(source) if len(parts) == 1 else parts
 
     def has_detail_context(self, source, description):
         values = self.detail_contexts.get(description, {})
@@ -1343,7 +1507,13 @@ class MenuTranslator:
             r"[\s×+−\-0-9０-９.,，．%％]+", source
         ):
             return source
-        pair = self.pair(source)
+        # Complete literals keep priority. A validated effect list is stronger
+        # than a free-form %s template consuming previous effects as an argument.
+        pair = (
+            self.plain_pairs.get(source) or self._detail_join_pair(source) or self.pair(source)
+            if self.detail_join
+            else self.pair(source)
+        )
         if pair:
             a, b = pair
             if mode == "primary":
@@ -1362,17 +1532,29 @@ class MenuTranslator:
             if inner != stripped:
                 start = source.index(stripped)
                 return source[:start] + inner + source[start + len(stripped) :]
-        parts = SEPARATORS.split(source)
-        if len(parts) > 1:
-            return "".join(
-                self.component(p, mode) if i % 2 == 0 else p for i, p in enumerate(parts)
-            )
-        parts = COMPONENT_LINKS.split(source)
+        parts = self._component_parts(source)
         if len(parts) > 1:
             return "".join(
                 self.component(p, mode) if i % 2 == 0 else p for i, p in enumerate(parts)
             )
         return source
+
+    def _detail_join_icon_runs(self, source):
+        if not (
+            self.detail_join
+            and "<I" in source
+            and "<R>" not in source
+            and self.detail_join[0] in source
+            and not self.raw_pair(source)
+        ):
+            return None
+        runs = re.split(r"(" + STYLE.pattern + r"|<S\d+>|\r\n|\n|\\n)", source)
+        joined = {
+            index
+            for index, run in enumerate(runs)
+            if index % 2 == 0 and "<I" in run and self._detail_join_pair(run)
+        }
+        return (runs, joined) if joined else None
 
     def translate(self, source, mode="annotation", detail_context=None):
         if mode == "bilingual":
@@ -1388,6 +1570,27 @@ class MenuTranslator:
             return details.translate(source, mode, detail_context=context)
         if detail_context:
             source = self._replace_detail_context(source, mode, detail_context)
+        if joined_runs := self._detail_join_icon_runs(source):
+            # An inline icon is data inside a proven effect member, not a
+            # boundary between that member and the neighboring effects.
+            runs, joined = joined_runs
+            if joined:
+                translated = []
+                for index, run in enumerate(runs):
+                    if index % 2:
+                        translated.append(run)
+                    elif index in joined:
+                        translated.append(self.component(run, mode))
+                    else:
+                        if self.detail_inline_icons:
+                            run = self._replace_detail_inline_icons(run, mode)
+                        translated.append(
+                            "".join(
+                                part if offset % 2 else self.component(part, mode)
+                                for offset, part in enumerate(TOKEN.split(run))
+                            )
+                        )
+                return "".join(translated)
         if self.detail_inline_icons:
             source = self._replace_detail_inline_icons(source, mode)
         # Only admitted complete literals reach this path. Mutable emotion
@@ -1467,6 +1670,7 @@ class MenuTranslator:
             or self.raw_pair(display_text(source)) is not None
             or bool(anchored and anchored[0].has_detail_inline_icon(source))
             or bool(anchored and anchored[0].has_detail_context(source, anchored[1]))
+            or bool(anchored and anchored[0]._detail_join_icon_runs(source))
         )
         if mode == "annotation" and known:
             prefix = re.match(r"^(?:<#[^<>]*>)*", a)[0]
@@ -1554,6 +1758,13 @@ class MenuTranslator:
                 (pattern.pattern, pair) for pattern, pair in self.detail_inline_icons
             ],
             "detail_contexts": self.detail_contexts,
+            "detail_join": self.detail_join,
+            "detail_join_literals": sorted(self.detail_join_literals),
+            "detail_join_numeric": [pattern.pattern for pattern in self.detail_join_numeric],
+            "detail_join_blocked_literals": sorted(self.detail_join_blocked_literals),
+            "detail_join_blocked_numeric": [
+                pattern.pattern for pattern in self.detail_join_blocked_numeric
+            ],
             "same_language": self.same_language,
             "ambiguous_display": sorted(self.ambiguous_display),
             "keyed": keyed,
