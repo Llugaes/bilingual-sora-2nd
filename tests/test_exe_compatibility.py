@@ -1,6 +1,9 @@
 """Parse real synthetic PE files; never start or attach a game."""
 
 import hashlib
+import contextlib
+import io
+import json
 from pathlib import Path
 import struct
 import tempfile
@@ -75,6 +78,7 @@ class ExecutableCompatibilityTests(unittest.TestCase):
             ("checksum", 0xD8),
             ("resource", 0xC40),
             ("padding", 0x4A0),
+            ("header padding", 0x3FF),
         ):
             changed = self.raw.copy()
             changed[offset] ^= 0x40
@@ -93,6 +97,62 @@ class ExecutableCompatibilityTests(unittest.TestCase):
                 self.assertEqual(report["compatibility"], "compatible_image")
                 self.assertEqual(report["hooks"][0]["rva"], 0x1000)
                 self.assertEqual(report["sha256"], hashlib.sha256(raw).hexdigest())
+
+    def test_debug_symbols_are_not_runtime_contract_but_neighboring_constants_are(self):
+        # A real IMAGE_DEBUG_DIRECTORY and RSDS record inside .rdata.
+        raw = self.raw.copy()
+        struct.pack_into("<II", raw, 0x98 + 112 + 6 * 8, 0x2000, 28)
+        struct.pack_into("<IIHHIIII", raw, 0x600, 0, 123, 0, 0, 2, 32, 0x2030, 0x630)
+        raw[0x630:0x634] = b"RSDS"
+        raw[0x648:0x650] = b"old.pdb\0"
+        with pefile.PE(data=raw, fast_load=True) as pe:
+            self.profile = compatibility.image_profile(pe)
+        for offset in (0x634, 0x644, 0x648):
+            changed = raw.copy()
+            changed[offset] ^= 1
+            with self.subTest(offset=offset):
+                self.assertEqual(self.verify(changed)["compatibility"], "compatible_image")
+        # The record's type, signature, location, extent and adjacent bytes
+        # cannot enlarge the ignored range or hide changed application data.
+        for offset in (0x60C, 0x610, 0x614, 0x630, 0x650):
+            changed = raw.copy()
+            changed[offset] ^= 1
+            with (
+                self.subTest(offset=offset),
+                self.assertRaises(compatibility.ExecutableCompatibilityError),
+            ):
+                self.verify(changed)
+
+    def test_cli_digest_and_result_come_from_one_verified_snapshot(self):
+        verified = {"compatibility": "compatible_image", "sha256": "a" * 64, "hooks": []}
+        with (
+            patch("sys.argv", ["compatibility", "--exe", "unused.exe"]),
+            patch.object(hooks, "verify_target", return_value=verified) as verify,
+            patch.object(Path, "read_bytes", side_effect=AssertionError("second snapshot")),
+            contextlib.redirect_stdout(io.StringIO()) as output,
+        ):
+            self.assertEqual(compatibility.main(), 0)
+        self.assertEqual(json.loads(output.getvalue())["sha256"], verified["sha256"])
+        verify.assert_called_once()
+
+    def test_rejected_snapshot_keeps_its_digest_without_reading_file_again(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            exe = Path(tmp) / "sora_2nd.exe"
+            raw = b"invalid executable snapshot"
+            exe.write_bytes(raw)
+            with patch.object(Path, "read_bytes", return_value=raw) as read:
+                with self.assertRaises(compatibility.ExecutableCompatibilityError) as caught:
+                    hooks.verify_target(exe)
+            read.assert_called_once()
+            self.assertEqual(caught.exception.sha256, hashlib.sha256(raw).hexdigest())
+            with (
+                patch("sys.argv", ["compatibility", "--exe", str(exe)]),
+                patch.object(hooks, "verify_target", side_effect=caught.exception),
+                patch.object(Path, "read_bytes", side_effect=AssertionError("second snapshot")),
+                contextlib.redirect_stdout(io.StringIO()) as output,
+            ):
+                self.assertEqual(compatibility.main(), 1)
+            self.assertEqual(json.loads(output.getvalue())["sha256"], caught.exception.sha256)
 
     def test_every_core_section_rejects_changes_beyond_hook_entry(self):
         for i, name in enumerate((".text", ".rdata", ".data", ".pdata", ".rsrc", ".reloc")):

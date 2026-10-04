@@ -88,6 +88,8 @@ def classify_runtime_values(references, values):
     expected = dict(references.values)
     votes = []
     matched = []
+    unknown = []
+    ambiguous = []
     for key, value in values.items():
         if key not in expected or not isinstance(value, str):
             continue
@@ -97,16 +99,25 @@ def classify_runtime_values(references, values):
             if value == expected_value
         ]
         if not candidates:
-            return SourceLanguageResult(None, "unknown_value")
+            unknown.append(key)
+            continue
         if len(candidates) != 1:
-            return SourceLanguageResult(None, "ambiguous_value")
+            ambiguous.append(key)
+            continue
         votes.append(candidates[0])
         matched.append(key)
-    if len(votes) < MIN_MATCHES:
-        return SourceLanguageResult(None, "insufficient_samples", tuple(matched))
-    if len(set(votes)) != 1:
+    if len(set(votes)) > 1:
         return SourceLanguageResult(None, "inconsistent_samples", tuple(matched))
-    return SourceLanguageResult(votes[0], "matched", tuple(matched))
+    if len(votes) >= MIN_MATCHES:
+        return SourceLanguageResult(votes[0], "matched", tuple(matched))
+    # A modified or ambiguous sample must remain visible when there is no
+    # independent threshold-sized agreement.  Once three keys do agree, it is
+    # unrelated noise and must not override that result.
+    if ambiguous:
+        return SourceLanguageResult(None, "ambiguous_value", tuple(matched))
+    if unknown:
+        return SourceLanguageResult(None, "unknown_value", tuple(matched))
+    return SourceLanguageResult(None, "insufficient_samples", tuple(matched))
 
 
 def _probe_source(global_rva, keys):
@@ -116,7 +127,9 @@ def _probe_source(global_rva, keys):
         + json.dumps(global_rva)
         + ";const KEYS=new Set("
         + json.dumps(keys)
-        + ");rpc.exports={read(){try{"
+        + ");const MIN_MATCHES="
+        + json.dumps(MIN_MATCHES)
+        + ";rpc.exports={read(){try{"
         + "const base=Process.getModuleByName('sora_2nd.exe').base;"
         + "const manager=base.add(GLOBAL).readPointer();if(manager.isNull())return {state:'unready'};"
         + "const table=manager.add(0x6b8).readPointer();if(table.isNull())return {state:'unready'};"
@@ -131,7 +144,7 @@ def _probe_source(global_rva, keys):
         + "if(!key.startsWith('TXT_')||key.length>256)return {state:'unready'};"
         + "if(KEYS.has(key)){const value=record.add(8).readPointer().readUtf8String();"
         + "if(value.length>16384)return {state:'unready'};values[key]=value;}}"
-        + "return Object.keys(values).length===KEYS.size?{state:'ready',values:values}:{state:'unready'};"
+        + "return Object.keys(values).length>=MIN_MATCHES?{state:'ready',values:values}:{state:'unready'};"
         + "}catch(e){return {state:'unready'}}}};"
     )
 

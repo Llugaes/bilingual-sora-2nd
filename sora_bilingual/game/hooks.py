@@ -51,7 +51,9 @@ def verified_target_image(exe: Path):
     try:
         pe = pefile.PE(data=raw, fast_load=True)
     except pefile.PEFormatError as exc:
-        raise ExecutableCompatibilityError("游戏 EXE 格式无法识别：" + str(exc)) from exc
+        raise ExecutableCompatibilityError(
+            "游戏 EXE 格式无法识别：" + str(exc), sha256=digest
+        ) from exc
     try:
         compatibility = verify_image(pe, digest)
         hooks = []
@@ -78,6 +80,9 @@ def verified_target_image(exe: Path):
                 "hooks": hooks,
             },
         )
+    except ExecutableCompatibilityError as exc:
+        exc.sha256 = digest
+        raise
     finally:
         pe.close()
 

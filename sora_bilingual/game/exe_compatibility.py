@@ -7,6 +7,7 @@ globals, unwind data and relocations must still match a reviewed build.
 import hashlib
 import json
 from pathlib import Path
+import struct
 
 TARGET_SHA256 = "d8b2911d1576216bdc22d070550e4f531e105de7ed2981885849669f4acf8aaf"
 BUILD_ID = "25386012"
@@ -15,9 +16,10 @@ BUILD_ID = "25386012"
 # sources here but deliberately reject arbitrary data files in this directory.
 KNOWN_IMAGE = {
     "header": "18d70e5abfb13554f801b5170279bf475b6fb06ebea231bc9a55c604a263664e",
+    "debug_metadata": [[0xB6DEDC, 89]],  # trusted CodeView GUID/age/PDB path
     "sections": {
         ".text": "391bfb798c017892e9b97363d22ba80c00cc990283d8d1b3acece02d48c8910c",
-        ".rdata": "dbce29cd2d041541d14aa4ade511f4a9af7669f0a69d2dee79a138a8f0cf9bfb",
+        ".rdata": "a2d93c2e713aabfb5f160b449725f66859a7d86237aaf85c2b829eda16ebd54c",
         ".data": "35d2f4a6c74b6eea3e33363af672f32356e30b1761600cc8c7f09fc941f74c5e",
         ".pdata": "d5089978aa79e5b8fad4fb0dfe61735a6b19ed09eb62a5092950b8de9ce31b03",
         ".reloc": "61f3bee006e262a101a38aa4038bd1eaaeef2ba3f6321c8f190093d6b5efc7ca",
@@ -28,6 +30,10 @@ KNOWN_IMAGE = {
 class ExecutableCompatibilityError(ValueError):
     """The executable cannot satisfy this adapter's verified native contract."""
 
+    def __init__(self, message, *, sha256=None):
+        super().__init__(message)
+        self.sha256 = sha256
+
 
 def _header_fingerprint(pe):
     """Keep every header field except explicitly allowed non-ABI changes."""
@@ -35,7 +41,11 @@ def _header_fingerprint(pe):
     if size > len(pe.__data__) or len(pe.OPTIONAL_HEADER.DATA_DIRECTORY) < 5:
         raise ExecutableCompatibilityError("游戏 EXE 文件头不完整")
     header = bytearray(pe.__data__[:size])
+    table_end = max(s.get_file_offset() + s.sizeof() for s in pe.sections)
+    if table_end > size:
+        raise ExecutableCompatibilityError("游戏 EXE 区段表越界")
     ignored = [
+        (table_end, size - table_end),  # alignment slack after the section table
         (pe.FILE_HEADER.get_field_absolute_offset("TimeDateStamp"), 4),
         (pe.OPTIONAL_HEADER.get_field_absolute_offset("CheckSum"), 4),
         (pe.OPTIONAL_HEADER.DATA_DIRECTORY[2].get_file_offset(), 8),  # resource directory
@@ -62,14 +72,60 @@ def _mapped_bytes(pe, section):
 
 def image_profile(pe):
     """Build hashes for a trusted developer baseline, never learn from users' EXEs."""
+    debug_metadata = _trusted_debug_metadata(pe)
     return {
         "header": _header_fingerprint(pe),
+        "debug_metadata": debug_metadata,
         "sections": {
-            s.Name.rstrip(b"\0").decode("ascii"): hashlib.sha256(_mapped_bytes(pe, s)).hexdigest()
+            s.Name.rstrip(b"\0").decode("ascii"): hashlib.sha256(
+                _normalized_section(pe, s, debug_metadata)
+            ).hexdigest()
             for s in pe.sections
             if s.Name.rstrip(b"\0") != b".rsrc"
         },
     }
+
+
+def _trusted_debug_metadata(pe):
+    """Locate PDB identity/path bytes only while building the trusted profile.
+
+    Runtime candidates cannot choose their own ignored spans. The containing
+    directory, RSDS signature and all neighboring bytes remain fingerprinted.
+    """
+    if len(pe.OPTIONAL_HEADER.DATA_DIRECTORY) <= 6:
+        return []
+    directory = pe.OPTIONAL_HEADER.DATA_DIRECTORY[6]
+    if not directory.Size:
+        return []
+    entries = pe.get_data(directory.VirtualAddress, directory.Size)
+    if len(entries) != directory.Size or directory.Size % 28:
+        raise ExecutableCompatibilityError("游戏 EXE 调试目录不完整")
+    spans = []
+    for offset in range(0, len(entries), 28):
+        _, _, _, _, kind, size, rva, raw = struct.unpack_from("<IIHHIIII", entries, offset)
+        if kind != 2 or size < 24 or pe.get_data(rva, 4) != b"RSDS":
+            continue
+        section = pe.get_section_by_rva(rva)
+        if (
+            section is None
+            or rva + size > section.VirtualAddress + section.Misc_VirtualSize
+            or pe.get_offset_from_rva(rva) != raw
+            or len(pe.get_data(rva, size)) != size
+        ):
+            raise ExecutableCompatibilityError("游戏 EXE 调试记录越界")
+        spans.append([rva + 4, size - 4])
+    return spans
+
+
+def _normalized_section(pe, section, debug_metadata):
+    data = bytearray(_mapped_bytes(pe, section))
+    for rva, size in debug_metadata:
+        offset = rva - section.VirtualAddress
+        if 0 <= offset < len(data):
+            if size < 0 or offset + size > len(data):
+                raise ExecutableCompatibilityError("已适配调试记录范围越界")
+            data[offset : offset + size] = bytes(size)
+    return data
 
 
 def _load_profile():
@@ -90,7 +146,7 @@ def verify_image(pe, digest):
     resources = None
     for section in pe.sections:
         name = section.Name.rstrip(b"\0").decode("ascii")
-        data = _mapped_bytes(pe, section)
+        data = _normalized_section(pe, section, profile.get("debug_metadata", []))
         start, size = section.PointerToRawData, section.SizeOfRawData
         if start % pe.OPTIONAL_HEADER.FileAlignment or any(
             start < end and begin < start + size for begin, end in raw_ranges
@@ -134,13 +190,17 @@ def main():
     args = parser.parse_args()
     result = {"file": args.exe.name, "adapter_build": BUILD_ID}
     try:
-        result["sha256"] = hashlib.sha256(args.exe.read_bytes()).hexdigest()
         report = verify_target(args.exe)
         result.update(
-            compatible=True, compatibility=report["compatibility"], hooks=len(report["hooks"])
+            sha256=report["sha256"],
+            compatible=True,
+            compatibility=report["compatibility"],
+            hooks=len(report["hooks"]),
         )
     except (OSError, ValueError) as exc:
         result.update(compatible=False, error=str(exc))
+        if getattr(exc, "sha256", None):
+            result["sha256"] = exc.sha256
     encoded = json.dumps(result, ensure_ascii=False, indent=2) + "\n"
     if args.output:
         args.output.write_text(encoded, encoding="utf-8")

@@ -34,6 +34,18 @@ def main():
 
     allowed["timestamp"] = mutate(pe.FILE_HEADER.get_field_absolute_offset("TimeDateStamp"))
     allowed["checksum"] = mutate(pe.OPTIONAL_HEADER.get_field_absolute_offset("CheckSum"))
+    allowed["header padding"] = mutate(pe.OPTIONAL_HEADER.SizeOfHeaders - 1)
+    pe.parse_data_directories(directories=[6])
+    codeview = next(
+        entry.struct
+        for entry in pe.DIRECTORY_ENTRY_DEBUG
+        if entry.struct.Type == 2 and pe.get_data(entry.struct.AddressOfRawData, 4) == b"RSDS"
+    )
+    for name, offset in (("PDB GUID", 4), ("PDB age", 20), ("PDB path", 24)):
+        allowed[name] = mutate(codeview.PointerToRawData + offset)
+    rejected["CodeView signature"] = mutate(codeview.PointerToRawData)
+    rejected["CodeView neighboring data"] = mutate(codeview.PointerToRawData + codeview.SizeOfData)
+    rejected["CodeView extent"] = mutate(codeview.get_field_absolute_offset("SizeOfData"))
     allowed["overlay"] = raw + b"test publisher metadata"
     certificate = bytearray(raw + bytes(16))
     struct.pack_into(
