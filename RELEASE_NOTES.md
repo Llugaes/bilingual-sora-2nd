@@ -2,6 +2,7 @@
 
 - 恢复 Steam build 25721473（游戏 EXE 1.4.0.0）的原生函数定位，修复更新后无法连接的问题。
 - 仅归一化已审查日志诊断调用的源码行号，同时校验对应诊断函数；对象字段、内部控制流、调用关系和进程指令快照检查继续保留。
+- 已安装旧版合并字体时，只有本安装的完整受管收据、旧缓存和当前字体及加载器全部校验一致，才把旧字体作为新候选的替换源；未知或混杂字体继续拒绝。
 - 保留 0.4.2 功能及手动更新方式。本次为版本兼容热修，动态效果描述的后续改进留待 1.0。
 
 请正常退出游戏和工具后更新，再重新启动。兼容范围以已验证原生合同为准，不保证任意未来版本或 MOD 组合。
@@ -10,6 +11,7 @@
 
 - Restores native-function resolution for Steam build 25721473 (game EXE 1.4.0.0), fixing connection failures after the game update.
 - Normalizes reviewed diagnostic source-line arguments while checking their diagnostic callee. Object fields, internal control flow, call relationships and live instruction checks remain required.
+- Accepts a prior merged font only when this installation's complete managed receipt, cached font package, current fonts and audited loader all agree. Unknown or mixed files remain rejected.
 - Keeps 0.4.2 features and manual updates. Further dynamic-effect text improvements remain planned for 1.0.
 
 Exit the game and tool normally before updating, then relaunch. Compatibility requires the verified native contracts; arbitrary future builds and MOD combinations are not guaranteed.
@@ -18,6 +20,7 @@ Exit the game and tool normally before updating, then relaunch. Compatibility re
 
 - Steam build 25721473（ゲーム EXE 1.4.0.0）の関数検出を修正し、ゲーム更新後の接続失敗に対応しました。
 - 検証済みの診断呼び出しのソース行番号のみを正規化し、呼び出し先も検証します。オブジェクトのフィールド、分岐、呼び出し関係、実行中の命令照合は引き続き必須です。
+- 旧版の統合フォントは、このゲームの管理記録、完全なキャッシュ、現在のフォントと確認済みローダーがすべて一致する場合のみ認識します。不明または混在したファイルは拒否します。
 - 0.4.2 の機能と手動更新を維持します。動的な効果説明の改善は 1.0 で継続する予定です。
 
 ゲームとツールを通常の方法で終了してから更新し、再起動してください。任意の将来のバージョンや Mod の組み合わせを保証するものではありません。
