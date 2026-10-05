@@ -50,6 +50,11 @@ def sha256(data):
     return hashlib.sha256(data).hexdigest()
 
 
+def metadata_identity(meta):
+    """Pin the complete validated metadata across confirmation/provider refresh."""
+    return sha256(json.dumps(meta, sort_keys=True, separators=(",", ":")).encode("utf-8"))
+
+
 GITHUB_HOSTS = (
     "api.github.com",
     "github.com",
@@ -150,6 +155,9 @@ class ReleaseClient:
             raise ValueError("更新清单过大")
         if asset.get("digest") and asset["digest"] != "sha256:" + sha256(raw):
             raise ValueError("更新清单摘要不匹配")
+        return self._metadata(raw, release, modern)
+
+    def _metadata(self, raw, release, modern):
         meta = json.loads(raw)
         if (
             not isinstance(meta, dict)
@@ -162,7 +170,7 @@ class ReleaseClient:
             raise ValueError("发布标签与包版本不一致")
         if meta.get("repository") != self.repository:
             raise ValueError("更新包仓库不匹配")
-        if not isinstance(meta.get("size"), int) or not 0 < meta["size"] <= MAX_PACKAGE:
+        if type(meta.get("size")) is not int or not 0 < meta["size"] <= MAX_PACKAGE:
             raise ValueError("更新包大小不合法")
         if not re.fullmatch("[0-9a-f]{64}", str(meta.get("sha256"))):
             raise ValueError("更新包没有有效摘要")

@@ -1,3 +1,20 @@
+# 0.4.4 — 更新通道修复（本地候选，未发布）
+
+- 国内版本发现、历史版本、清单与包下载改用静态索引和固定 tag 附件，不依赖 Gitee releases/attachments API；GitHub 继续作为备用源。
+- 保留版本、仓库、主机、大小和完整 SHA 校验，新增索引身份、HTML/重复字段、版本回退及同版清单变化拒绝。
+- 缓存与失败退避跨重启保留，手动检查至少间隔 60 秒；两源失败时提供国内手动下载与 GitHub 备用入口。
+- 延续 0.4.3 的游戏版本适配、外置字体默认行为及其他已验收功能，不包含 1.0 未验收功能。
+
+新索引尚未公开；候选需 root 独立审查、索引端点验证与用户验收后才允许发布。已发 0.4.3 对象保持不变，旧客户端两源均不可用时需一次手动 Setup 迁移。raw 本机匿名验证成功不代表全国或永久可用。
+
+## English
+
+The local 0.4.4 candidate removes Gitee release-API dependence from discovery and component updates using a scoped static index and immutable release assets. Version, repository, HTTPS, size and SHA checks remain required. Cached checks and failure backoff survive restarts; both-source failures offer manual downloads. The new index is not public yet, and this candidate is not released. Existing 0.4.3 clients may require a one-time manual Setup migration.
+
+## 日本語
+
+0.4.4 のローカル候補では、限定された静的索引と固定タグの添付ファイルで国内更新を行います。バージョン・リポジトリ・HTTPS・サイズ・SHA の検証を維持し、確認結果と失敗時の待機時間を再起動後も保持します。新しい索引は未公開で、この候補も未リリースです。0.4.3 の既存クライアントは、一度手動で Setup を適用する必要があります。
+
 # 0.4.3 — 新官方游戏版本兼容热修
 
 - 恢复 Steam build 25721473（游戏 EXE 1.4.0.0）的原生函数定位，修复更新后无法连接的问题。

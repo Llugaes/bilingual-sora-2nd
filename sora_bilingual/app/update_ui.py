@@ -69,6 +69,11 @@ class UpdatePage(QWidget):
             lambda: QDesktopServices.openUrl(QUrl(self.service.download_url))
         )
         layout.addWidget(self.download)
+        self.backup_download = QPushButton("GitHub 备用下载")
+        self.backup_download.clicked.connect(
+            lambda: QDesktopServices.openUrl(QUrl(self.service.backup_download_url))
+        )
+        layout.addWidget(self.backup_download)
         self.recovery = QLabel(
             "安装版请运行下载的 Setup；便携版请完整解压后运行 EXE。"
             "迁移到新目录前先退出旧工具，复制 generated/native-control.json 和 generated/overlay-window.ini；"
@@ -150,7 +155,7 @@ class UpdatePage(QWidget):
         if self._announced_available != available:
             self._announced_available = available
             self.availability_changed.emit(available)
-        self.check.setEnabled(not s.busy)
+        self.check.setEnabled(s.can_check)
         installable = (s.root / "installed-manifest.json").exists() and not s.installed
         self.install.setText("下载安装 " + s.available if available else "下载安装")
         self.install.setVisible(available)
@@ -172,6 +177,7 @@ class UpdatePage(QWidget):
         self.rollback.setEnabled(installable and not s.busy and bool(tags))
         self.download.setText("下载安装程序" if s.download_is_installer else "下载完整包（含 EXE）")
         self.download.setVisible(s.failed)
+        self.backup_download.setVisible(s.failed and s.has_domestic_source)
         self.recovery.setVisible(s.failed)
         self.logs.setVisible(s.failed)
         self.state.setText(s.message + (f" {s.progress:.0%}" if s.progress is not None else ""))

@@ -65,7 +65,7 @@ launch.py 是稳定桌面入口，bootstrap.py 是组装入口：先恢复未完
 
 发布文件由 release-files.json 明确列出。架构测试验证完整运行时已列入、开发工具与本地状态未列入。GitHub Actions 只有带版本标签、测试通过的提交能发布；全部资源先传到草稿，随后公开。版本一致性同时检查标签、distribution.json 与 pyproject.toml。
 
-`release_client.py` 统一元数据和下载校验，GitHub/Gitee 仅适配版本发现及受限来源。`release_sources.py` 优先选取完整的 Gitee 稳定版，镜像缺失、不完整或失败时回退 GitHub；当前镜像没有更高版本时也查询 GitHub。下载回退绑定原版本、大小及 SHA-256，不替换成另一版。Gitee `/latest` 会包含预览版，因此使用倒序发行列表筛选稳定版。Gitee 允许缺少完整便携 ZIP，但必须具备清单中的所有组件；安装事务仍由同一个 `UpdateService`/安装器执行。旧 GitHub ETag 不复用于 Gitee。
+`release_client.py` 统一元数据和下载校验。0.4.4 候选的 `static_gitee_updates.py` 使用同仓库受限 raw 索引，国内发现、历史、清单与下载不调用 releases/attachments API；`gitee_updates.py` 保留给维护者发布盘点及旧合同回归。索引绑定固定 tag、清单大小与 SHA，拒绝 HTML、重复字段、未知身份、已见版本回退及同版摘要变化，索引与二进制主机分开限制。`release_sources.py` 优先完整 Gitee 稳定版，缺失、不完整或失败时回退 GitHub；镜像没有更高版本时也查 GitHub。确认的完整元数据和下载回退固定摘要，不能换版或改写同版。检查间隔、失败退避与通知跨重启保留，历史/清单复用缓存。Gitee 可缺完整 ZIP，但须具备所有组件和 Setup；安装事务不变。GitHub ETag 不复用于 Gitee。候选索引尚未上线，发布顺序与证据见 [静态索引](UPDATE_INDEX.md)。
 
 发布保持 GitHub 单一构建来源，由维护者本机中转原始附件到 Gitee，见 `docs/LOCAL_RELEASE_RELAY.md`。推送标签后主动执行一次 `local_release_relay.ps1 -Mode Run -Tag <版本> -WaitForRelease`，在本次前台任务中限时等待正式发布，然后中转，结束就退出；没有日常定时轮询或后台接收程序。`tools.relay_gitee` 只读取公开稳定版，通过 GitHub 清单摘要绑定原包，复用已验证缓存；成功收据核对两端附件身份，重复执行不再传大包。PowerShell 入口提供 DPAPI 加密凭据及旧定时任务迁移，不进入玩家安装包，也不注册通用 CI runner。`gitee-mirror.yml` 仅保留为手动应急工具，跨站上传实测见 `docs/verification/GITEE_DISTRIBUTION.md`。
 

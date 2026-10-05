@@ -334,6 +334,10 @@ GitHub 发行版本|GitHub releases|GitHub リリース
 等待检查更新|Waiting to check for updates|更新確認待ち
 正在检查 GitHub 稳定版…|Checking GitHub stable releases…|GitHub の安定版を確認中…
 正在检查稳定版更新…|Checking stable releases…|安定版の更新を確認中…
+GitHub 备用下载|Alternative download on GitHub|GitHub の代替ダウンロード
+上次检查发现 |Last check found |前回の確認：
+；确认后才会下载安装|; download and installation require confirmation|。確認後にダウンロード・適用します
+上次更新检查未完成；请稍后重试，或使用下载入口手动重新安装|The last update check did not finish. Retry later or reinstall manually from the download page.|前回の更新確認を完了できませんでした。後で再試行するか、ダウンロードページから手動で再インストールしてください。
 仓库尚未发布稳定版|No stable release published yet|安定版はまだ公開されていません
 当前已经是最新稳定版|Already on the latest stable release|最新の安定版です
 正在下载 |Downloading |ダウンロード中：
