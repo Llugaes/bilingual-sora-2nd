@@ -1,6 +1,6 @@
 """Update settings surface; service is started explicitly by the live controller."""
 
-from sora_bilingual.paths import ROOT
+from sora_bilingual.paths import ROOT, build_label
 from PySide6.QtCore import QTimer, QUrl, Signal
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QMessageBox
@@ -18,7 +18,7 @@ class UpdatePage(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 16, 16, 16)
         d = self.service.distribution
-        layout.addWidget(QLabel("当前版本：" + str(d["version"])))
+        layout.addWidget(QLabel("当前版本：" + build_label(self.service.root, d["version"])))
         self.available_version = QLabel()
         self.available_version.setObjectName("sectionTitle")
         layout.addWidget(self.available_version)

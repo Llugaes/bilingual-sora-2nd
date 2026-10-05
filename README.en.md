@@ -65,7 +65,7 @@ The tool automatically finds Steam installations. After the first game launch, i
 
 ### Fonts for additional languages
 
-Some language pairs need an expanded game font to avoid missing characters appearing as question marks. Fonts are prepared from local game resources: installed while the game is closed, or loaded together with their atlas into the running game without a font-related restart. Preparation, loading, readiness, and failure are shown separately. Game fonts are not distributed here; two supplementary glyphs are bundled under the OFL.
+Some language pairs need an expanded game font to avoid missing characters appearing as question marks. Fonts are prepared in an external cache from current local game resources and loaded together with their atlas into memory on connection. Startup, game exit, and reconnection never automatically write to the game directory; no font-related restart is needed. Preparation, verification, loading, readiness, and failure are shown separately. Game fonts are not distributed here; two supplementary glyphs are bundled under the OFL.
 
 ## Controls and configuration
 

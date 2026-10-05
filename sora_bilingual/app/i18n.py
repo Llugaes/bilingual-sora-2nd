@@ -264,17 +264,16 @@ Sora 双语控制台|Sora bilingual controls|Sora 二言語コントロール
 双语|Bilingual|二言語
 连接异常|Connection error|接続エラー
 正在准备多语言字体，当前连接继续运行|Preparing multilingual fonts; connection remains active|多言語フォントを準備中。接続は継続します
-字体已准备，等待安全安装|Fonts prepared; waiting to install safely|フォント準備完了。安全にインストールできるまで待機中
+字体已准备，正在校验运行时资源|Fonts prepared; verifying runtime resources|フォント準備完了。実行時リソースを検証中
 字体待安装：退出游戏后自动安装，下次启动生效|Fonts pending: installed after game exit, active next launch|フォントはゲーム終了後に自動インストールされ、次回起動時に有効になります
-字体安装遇到已有 MOD 文件，请查看详情|Font installation conflicts with existing mod files; see details|既存の MOD ファイルと競合しています。詳細をご確認ください
-字体准备或安装失败，请查看详情|Font preparation or installation failed; see details|フォントの準備またはインストールに失敗しました。詳細をご確認ください
+检测到现有字体相关文件，当前工具无法确认其归属，暂未覆盖。可能来自其他版本工具或 MOD，请查看详情。|Existing font-related files could not be verified as owned by this installation and were left unchanged. They may come from another tool version or a MOD; see details.|既存のフォント関連ファイルがこのツールの管理対象か確認できないため、上書きしていません。他のツール版や MOD による可能性があります。詳細をご確認ください。
+字体准备或校验失败，请查看详情|Font preparation or verification failed; see details|フォントの準備または検証に失敗しました。詳細をご確認ください
 多语言字体已就绪|Multilingual fonts ready|多言語フォントの準備完了
 多语言字体已安装|Multilingual fonts installed|多言語フォントをインストールしました
 正在从本机游戏资源准备多语言字体|Preparing multilingual fonts from local game resources|ローカルのゲームデータから多言語フォントを準備中
 字体已准备；请退出并重启游戏后生效|Fonts prepared; exit and restart the game to apply|フォント準備完了。ゲームを終了して再起動すると有効になります
-字体安装与已有 MOD 文件冲突|Font installation conflicts with existing mod files|フォントのインストールが既存の MOD ファイルと競合しています
 字体准备失败|Font preparation failed|フォントの準備に失敗しました
-字体安装失败|Font installation failed|フォントのインストールに失敗しました
+字体资源校验失败|Font resource verification failed|フォントリソースの検証に失敗しました
 游戏兼容检查未通过，未安装字体|Game compatibility check failed; fonts were not installed|ゲームの互換性確認に失敗したため、フォントはインストールされていません
 正在连接游戏|Connecting to game|ゲームに接続中
 已连接|Connected|接続済み

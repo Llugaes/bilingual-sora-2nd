@@ -8,7 +8,7 @@ from sora_bilingual.app.auto_connect import ConnectionPolicy
 
 
 class AutoConnectTests(unittest.TestCase):
-    def test_first_install_prepares_fonts_without_choices_or_mapping_build(self):
+    def test_first_start_prepares_external_fonts_without_installing_or_mapping_build(self):
         from sora_bilingual.app.auto_connect import AutoConnector
 
         with (
@@ -25,7 +25,11 @@ class AutoConnectTests(unittest.TestCase):
                 return_value=Path(tmp) / "fonts",
             ) as fonts,
             patch(
-                "sora_bilingual.fonts.font_delivery.ensure", return_value={"state": "installed"}
+                "sora_bilingual.fonts.runtime_fonts.runtime_manifest", return_value={"faces": []}
+            ) as verify,
+            patch(
+                "sora_bilingual.fonts.font_delivery.ensure",
+                side_effect=AssertionError("Automatic font installation is forbidden"),
             ) as install,
             patch("sora_bilingual.game.native_loading.prepare_fresh") as mappings,
             patch("sora_bilingual.app.auto_connect.subprocess.Popen") as launch,
@@ -38,14 +42,16 @@ class AutoConnectTests(unittest.TestCase):
             auto = AutoConnector(status)
             try:
                 end = time.monotonic() + 2
-                while auto.font_status.get("state") != "installed" and time.monotonic() < end:
+                while (
+                    auto.font_status.get("state") != "runtime-required" and time.monotonic() < end
+                ):
                     auto.wake.set()
                     time.sleep(0.01)
-                self.assertEqual(auto.font_status["state"], "installed")
-                self.assertEqual(auto.message, "字体已就绪，可以启动游戏")
+                self.assertEqual(auto.font_status["state"], "runtime-required")
+                self.assertEqual(auto.message, "字体已准备，连接后将在游戏内加载，无需重启")
                 fonts.assert_called_once_with(Path(tmp), cancel=auto.stop)
-                self.assertFalse(install.call_args.kwargs["game_running"])
-                self.assertFalse(install.call_args.kwargs["is_game_running"]())
+                verify.assert_called_once_with(Path(tmp), Path(tmp) / "fonts")
+                install.assert_not_called()
                 mappings.assert_not_called()
                 launch.assert_not_called()
                 self.assertFalse(
@@ -244,8 +250,7 @@ class AutoConnectTests(unittest.TestCase):
                 return_value=Path(tmp) / "fonts",
             ),
             patch(
-                "sora_bilingual.fonts.font_delivery.ensure",
-                return_value={"state": "runtime-required"},
+                "sora_bilingual.fonts.runtime_fonts.runtime_manifest", return_value={"faces": []}
             ),
             patch(
                 "sora_bilingual.app.auto_connect.subprocess.Popen",
