@@ -23,16 +23,13 @@ import pefile
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from sora_bilingual.game.native_runtime import POINTS
+from sora_bilingual.game.native_runtime import native_report
 
-PE_SHA256 = "d8b2911d1576216bdc22d070550e4f531e105de7ed2981885849669f4acf8aaf"
 RECORD_BASE = 0x1604EC
 RECORD_FLAGS = 0x160674
 RECORD_SIZE = 0x18C
 PAYLOAD_SIZE = 0x188
 SLOT_COUNT = 1600
-NORMAL_START, NORMAL_END, NORMAL_COMMIT = 0x43E197, 0x43E214, 0x43E209
-APPEND_START, APPEND_END, APPEND_COMMIT = 0x43E214, 0x43E2C1, 0x43E2A9
 
 
 def _instructions(code: bytes, start: int) -> list[dict[str, object]]:
@@ -49,63 +46,70 @@ def _instructions(code: bytes, start: int) -> list[dict[str, object]]:
 
 
 def clone_spec(executable: Path) -> dict[str, object]:
-    """Read the exact two branch bodies and reject a changed game build."""
+    """Read both branch bodies after production contract resolution."""
     assert executable.is_file(), f"missing game executable: {executable}"
-    assert POINTS["log_write_commit"] == NORMAL_COMMIT
-    assert POINTS["log_write_append_commit"] == APPEND_COMMIT
-    digest = hashlib.file_digest(executable.open("rb"), "sha256").hexdigest()
-    assert digest == PE_SHA256, f"unexpected executable sha256: {digest}"
+    report = native_report(executable)
+    native = {name: row["rva"] for name, row in report["native"].items()}
+    normal_commit, append_commit = native["log_write_commit"], native["log_write_append_commit"]
+    normal_start, normal_end = normal_commit - 0x72, normal_commit + 0xB
+    append_start, append_end = normal_end, append_commit + 0x18
+    present_start = native["log_present_append"] - 0x2D
+    measure_start = native["log_row_append"] - 0x17
     pe = pefile.PE(str(executable), fast_load=True)
     try:
-        normal = pe.get_data(NORMAL_START, NORMAL_END - NORMAL_START)
-        append = pe.get_data(APPEND_START, APPEND_END - APPEND_START)
-        present = _instructions(pe.get_data(0x35F930, 0x6E), 0x35F930)
-        measure = _instructions(pe.get_data(0x3623F4, 0x1C), 0x3623F4)
+        normal = pe.get_data(normal_start, normal_end - normal_start)
+        append = pe.get_data(append_start, append_end - append_start)
+        present = _instructions(pe.get_data(present_start, 0x6E), present_start)
+        measure = _instructions(pe.get_data(measure_start, 0x1C), measure_start)
     finally:
         pe.close()
-    assert len(normal) == NORMAL_END - NORMAL_START
-    assert len(append) == APPEND_END - APPEND_START
-    normal_rows = _instructions(normal, NORMAL_START)
-    append_rows = _instructions(append, APPEND_START)
-    normal_text = {row["rva"]: f"{row['mnemonic']} {row['op_str']}" for row in normal_rows}
-    append_text = {row["rva"]: f"{row['mnemonic']} {row['op_str']}" for row in append_rows}
-    present_text = {row["rva"]: f"{row['mnemonic']} {row['op_str']}" for row in present}
-    measure_text = {row["rva"]: f"{row['mnemonic']} {row['op_str']}" for row in measure}
+    assert len(normal) == normal_end - normal_start
+    assert len(append) == append_end - append_start
+    normal_rows = _instructions(normal, normal_start)
+    append_rows = _instructions(append, append_start)
+
+    def local_text(rows, start):
+        return {int(row["rva"], 16) - start: f"{row['mnemonic']} {row['op_str']}" for row in rows}
+
+    normal_text = local_text(normal_rows, normal_start)
+    append_text = local_text(append_rows, append_start)
+    present_text = local_text(present, present_start)
+    measure_text = local_text(measure, measure_start)
     # The visible append loop's RBX is a relative counter, unlike the hidden
     # builder's RBX. Both supply the actual ring-body pointer in RDX.
-    assert present_text.get("0x35f935") == "sub ecx, ebx"
-    assert present_text.get("0x35f948") == "imul rdx, rax, 0x18c"
-    assert present_text.get("0x35f94f") == "add r10, 0x160550"
-    assert present_text.get("0x35f956") == "add rdx, r10"
-    assert present_text.get("0x35f95d") == "call 0x37dd0"
-    assert measure_text.get("0x3623f4") == "mov eax, ebx"
-    assert measure_text.get("0x3623f6") == "imul rcx, rax, 0x18c"
-    assert measure_text.get("0x3623fd") == "add rcx, 0x160550"
-    assert measure_text.get("0x362404") == "add rdx, rcx"
-    assert measure_text.get("0x36240b") == "call 0x37dd0"
-    assert normal_text.get("0x43e197") == "lea rcx, [r8 + 0x1604ec]"
-    assert normal_text.get("0x43e209") == "mov eax, dword ptr [rdx + 8]"
-    assert append_text.get("0x43e214") == "lea eax, [rdx + 1]"
-    assert append_text.get("0x43e227") == "imul rcx, rax, 0x18c"
-    assert append_text.get("0x43e2a9") == "mov eax, dword ptr [rdx + 8]"
+    assert present_text.get(5) == "sub ecx, ebx"
+    assert present_text.get(0x18) == "imul rdx, rax, 0x18c"
+    assert present_text.get(0x1F) == "add r10, 0x160550"
+    assert present_text.get(0x26) == "add rdx, r10"
+    assert present_text.get(0x2D, "").startswith("call ")
+    assert measure_text.get(0) == "mov eax, ebx"
+    assert measure_text.get(2) == "imul rcx, rax, 0x18c"
+    assert measure_text.get(9) == "add rcx, 0x160550"
+    assert measure_text.get(0x10) == "add rdx, rcx"
+    assert measure_text.get(0x17) == present_text[0x2D]
+    assert normal_text.get(0) == "lea rcx, [r8 + 0x1604ec]"
+    assert normal_text.get(normal_commit - normal_start) == "mov eax, dword ptr [rdx + 8]"
+    assert append_text.get(0) == "lea eax, [rdx + 1]"
+    assert append_text.get(0x13) == "imul rcx, rax, 0x18c"
+    assert append_text.get(append_commit - append_start) == "mov eax, dword ptr [rdx + 8]"
     # The normal branch ends at its common-loop jump; the append branch ends
     # at its corresponding common-loop jump.  The hidden host replaces only
     # those exits with RET, never changes the copied payload instructions.
     assert normal[-5:] == bytes.fromhex("e9cb000000")
     assert append[-2:] == bytes.fromhex("eb1e")
     return {
-        "exe_sha256": digest,
+        "exe_sha256": report["sha256"],
         "ring_body_inputs": {"visible_append": present, "measuring_append": measure},
         "normal": {
-            "start": NORMAL_START,
-            "commit_offset": NORMAL_COMMIT - NORMAL_START,
+            "start": normal_start,
+            "commit_offset": normal_commit - normal_start,
             "bytes": list(normal),
             "sha256": hashlib.sha256(normal).hexdigest(),
             "instructions": normal_rows,
         },
         "append": {
-            "start": APPEND_START,
-            "commit_offset": APPEND_COMMIT - APPEND_START,
+            "start": append_start,
+            "commit_offset": append_commit - append_start,
             "bytes": list(append),
             "sha256": hashlib.sha256(append).hexdigest(),
             "instructions": append_rows,

@@ -1738,12 +1738,13 @@ CONTRACT = {
                     "chained": [
                         {
                             "size": 802,
-                            "sha256": "9d32100397456b94e5f5c74d8f57fc0844d6f9e3e6516dc55cf8c9116813b49d",
+                            "sha256": "03add7d58da0cc5fb650483c6d09d94feb67b2f365ca3aa871db116463dfe527",
                             "masks": [
                                 [7, 4],
                                 [206, 4],
                                 [264, 4],
                                 [723, 4],
+                                [729, 4],
                                 [736, 4],
                                 [746, 4],
                                 [762, 4],
@@ -1751,11 +1752,17 @@ CONTRACT = {
                             ],
                             "links": [
                                 {
+                                    "displacement": [746, 4],
+                                    "next": 750,
+                                    "function": "diagnostic_report",
+                                    "addend": 0,
+                                },
+                                {
                                     "displacement": [801, 1],
                                     "next": 802,
                                     "function": "log_write",
                                     "addend": 881,
-                                }
+                                },
                             ],
                             "globals": [],
                             "offset": 65,
@@ -1777,12 +1784,13 @@ CONTRACT = {
             "variants": [
                 {
                     "size": 802,
-                    "sha256": "9d32100397456b94e5f5c74d8f57fc0844d6f9e3e6516dc55cf8c9116813b49d",
+                    "sha256": "03add7d58da0cc5fb650483c6d09d94feb67b2f365ca3aa871db116463dfe527",
                     "masks": [
                         [7, 4],
                         [206, 4],
                         [264, 4],
                         [723, 4],
+                        [729, 4],
                         [736, 4],
                         [746, 4],
                         [762, 4],
@@ -1791,11 +1799,17 @@ CONTRACT = {
                     "points": {"log_write_commit": 536, "log_write_append_commit": 696},
                     "links": [
                         {
+                            "displacement": [746, 4],
+                            "next": 750,
+                            "function": "diagnostic_report",
+                            "addend": 0,
+                        },
+                        {
                             "displacement": [801, 1],
                             "next": 802,
                             "function": "log_write",
                             "addend": 881,
-                        }
+                        },
                     ],
                     "globals": [],
                     "chained": [
@@ -1953,7 +1967,7 @@ CONTRACT = {
             "variants": [
                 {
                     "size": 1974,
-                    "sha256": "312817b6cd3ea3154143ced230f511c8a9460912bdafaaf917b40f2aa6d7b107",
+                    "sha256": "642f370ed55555390efdb85c44a6446156238af3b319b1b650293fbb21599e11",
                     "masks": [
                         [48, 4],
                         [160, 4],
@@ -1978,6 +1992,7 @@ CONTRACT = {
                         [750, 4],
                         [791, 4],
                         [803, 4],
+                        [809, 4],
                         [816, 4],
                         [826, 4],
                         [843, 4],
@@ -1999,6 +2014,7 @@ CONTRACT = {
                         [1500, 4],
                         [1564, 4],
                         [1576, 4],
+                        [1582, 4],
                         [1589, 4],
                         [1599, 4],
                         [1645, 4],
@@ -2023,6 +2039,18 @@ CONTRACT = {
                         "log_present_single": 654,
                     },
                     "links": [
+                        {
+                            "displacement": [826, 4],
+                            "next": 830,
+                            "function": "diagnostic_report",
+                            "addend": 0,
+                        },
+                        {
+                            "displacement": [1599, 4],
+                            "next": 1603,
+                            "function": "diagnostic_report",
+                            "addend": 0,
+                        },
                         {
                             "displacement": [1645, 4],
                             "next": 1649,
@@ -2116,7 +2144,7 @@ CONTRACT = {
             "variants": [
                 {
                     "size": 1838,
-                    "sha256": "ad7fb35f032f0c013559c2ce671bbcce47df9d33c044d0f3999051e058324e31",
+                    "sha256": "728b238e5cf022827de1919e60830dcee47223b4303686768dbe0ce04d6d294d",
                     "masks": [
                         [39, 4],
                         [74, 4],
@@ -2165,6 +2193,7 @@ CONTRACT = {
                         [1248, 4],
                         [1263, 4],
                         [1275, 4],
+                        [1281, 4],
                         [1288, 4],
                         [1298, 4],
                         [1317, 4],
@@ -2197,7 +2226,14 @@ CONTRACT = {
                         "log_row_single": 1015,
                         "log_row_commit": 861,
                     },
-                    "links": [],
+                    "links": [
+                        {
+                            "displacement": [1298, 4],
+                            "next": 1302,
+                            "function": "diagnostic_report",
+                            "addend": 0,
+                        }
+                    ],
                     "globals": [
                         {"name": "log_owner_global", "displacement": [115, 4], "next": 119},
                         {"name": "log_owner_global", "displacement": [374, 4], "next": 378},
@@ -3265,6 +3301,19 @@ CONTRACT = {
                         }
                     ],
                 },
+            ],
+        },
+        "diagnostic_report": {
+            "leaf": False,
+            "variants": [
+                {
+                    "size": 140,
+                    "sha256": "902d60ac0da5f9aaecb5a1b96207db8a2cacccb635fb2107fad94d23a8f460ba",
+                    "masks": [[26, 4], [67, 4], [95, 4], [110, 4], [126, 4]],
+                    "points": {},
+                    "links": [],
+                    "globals": [],
+                }
             ],
         },
     },

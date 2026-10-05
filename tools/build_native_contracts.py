@@ -30,6 +30,52 @@ BASE_GLOBALS = {
     "log_owner_global": 0xC60E50,
 }
 
+# Reviewed diagnostic ABI: ECX=severity, RDX=source file, R8D=source
+# line, R9=format. This evidence RVA is used only by the compiler.
+BASE_DIAGNOSTIC_REPORT = 0x57C1D0
+SOURCE_LINE_FUNCTIONS = {"log_write_commit", "log_record_bind", "log_rows_build"}
+
+
+def diagnostic_source_line(instructions, index, functions):
+    """Normalize a source line only at the reviewed diagnostic call boundary."""
+    handler = functions.get("diagnostic_report")
+    if handler is None or index < 1 or index + 3 >= len(instructions):
+        return False
+    previous, line, file_, severity, call = instructions[index - 1 : index + 4]
+
+    def rip_lea(ins, register):
+        return (
+            ins.mnemonic == "lea"
+            and len(ins.operands) == 2
+            and ins.operands[0].type == capstone.x86.X86_OP_REG
+            and ins.operands[0].reg == register
+            and ins.operands[1].type == capstone.x86.X86_OP_MEM
+            and ins.operands[1].mem.base == capstone.x86.X86_REG_RIP
+        )
+
+    def immediate_mov(ins, register):
+        return (
+            ins.mnemonic == "mov"
+            and len(ins.operands) == 2
+            and ins.operands[0].type == capstone.x86.X86_OP_REG
+            and ins.operands[0].reg == register
+            and ins.operands[1].type == capstone.x86.X86_OP_IMM
+        )
+
+    return (
+        rip_lea(previous, capstone.x86.X86_REG_R9)
+        and immediate_mov(line, capstone.x86.X86_REG_R8D)
+        and line.imm_size == 4
+        and rip_lea(file_, capstone.x86.X86_REG_RDX)
+        and immediate_mov(severity, capstone.x86.X86_REG_ECX)
+        and severity.operands[1].imm == 3
+        and call.mnemonic == "call"
+        and len(call.operands) == 1
+        and call.operands[0].type == capstone.x86.X86_OP_IMM
+        and call.operands[0].imm == handler[0]
+    )
+
+
 # Developer evidence boundaries, not allowed image identities. These are
 # displaced parts of the font entry points and the helpers that preserve the
 # tool's reader/path/return contract. Runtime follows references, not RVAs.
@@ -120,9 +166,20 @@ class Image:
         masks, links, globals_refs, continuations, equal_targets = [], [], [], [], []
         consumed = 0
         instructions = list(self.md.disasm(raw, start))
+        source_line_function = any(
+            name in SOURCE_LINE_FUNCTIONS and span == function_span
+            for name, function_span in functions.items()
+        )
         for index, ins in enumerate(instructions):
             offset = ins.address - start
             consumed = offset + ins.size
+            if source_line_function and diagnostic_source_line(instructions, index, functions):
+                # The full instruction sequence remains hashed. Its CALL
+                # gets the normal explicit link to diagnostic_report below;
+                # only the ABI's non-rendering source-line immediate varies.
+                at, width = offset + ins.imm_offset, ins.imm_size
+                masks.append([at, width])
+                masked[at : at + width] = bytes(width)
             for operand in ins.operands:
                 kind = None
                 if (
@@ -151,6 +208,12 @@ class Image:
                             globals_refs.append({"name": name, **ref})
                 else:
                     link = self.function_link(target, functions)
+                    if (
+                        link
+                        and link["function"] == "diagnostic_report"
+                        and not source_line_function
+                    ):
+                        link = None
                     if link:
                         links.append({**ref, **link})
                     elif target in self.continuations:
@@ -273,6 +336,19 @@ def compile_contract(baseline, variant, mapping):
         groups.setdefault(span, {})[name] = rva
     old_functions = {next(iter(names)): span for span, names in groups.items()}
     new_functions = {key: tuple(rows[key]["new_function"]) for key in old_functions}
+    old_diagnostic = baseline.owner(BASE_DIAGNOSTIC_REPORT)
+    assert old_diagnostic and old_diagnostic[0] == BASE_DIAGNOSTIC_REPORT
+    diagnostic_template = baseline.template(old_diagnostic, {}, {}, {})
+    diagnostic_candidates = [
+        span
+        for span in variant.functions
+        if span[1] - span[0] == diagnostic_template["size"]
+        and variant.template(span, {}, {}, {}) == diagnostic_template
+    ]
+    assert len(diagnostic_candidates) == 1, "Diagnostic dependency is not unique"
+    old_functions["diagnostic_report"] = old_diagnostic
+    new_functions["diagnostic_report"] = diagnostic_candidates[0]
+    groups[old_diagnostic] = {}
     new_globals = {}
     for row in mapping["global_dependencies"]:
         assert len(row["new_candidates"]) == 1
