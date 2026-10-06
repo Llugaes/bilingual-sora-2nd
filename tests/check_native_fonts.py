@@ -161,6 +161,33 @@ rpc.exports.check=()=>{
     check(rejected,'must not patch an already changed call site');
     return {passed:true,checks:8,scope:'owned hidden process; no GPU upload or game mutation'};
 };
+// Independently authored instruction fixtures, never bytes extracted from an
+// attachment. Show why the reviewed LEA form and old address arithmetic cannot
+// be described as arbitrary semantic equivalents at a JS/SF consumer.
+rpc.exports.loaderFlags=function(){
+    const allocated=[];
+    function build(preserve){
+        const entry=Memory.alloc(128);allocated.push(entry);
+        const code=preserve
+            ? [0x84,0xc9,0x4c,0x8d,0x1d,0x37,0,0,0,0x41,0xff,0xe3]
+            : [0x84,0xc9,0x4c,0x8d,0x1d,0xf7,0xff,0xff,0xff,
+               0x49,0x81,0xeb,0,0x10,0,0,0x49,0x81,0xc3,0x40,0x10,0,0,
+               0x41,0xff,0xe3];
+        Memory.protect(entry,128,'rwx');entry.writeByteArray(code);
+        entry.add(64).writeByteArray([0x0f,0x88,3,0,0,0,0x31,0xc0,0xc3,
+            0xb8,1,0,0,0,0xc3]);
+        return new NativeFunction(entry,'int',['uint']);
+    }
+    const old=build(false),reviewed=build(true),samples=[];
+    for(const value of [0,1,127,128,255]){
+        const before=old(value),after=reviewed(value),expected=(value&128)?1:0;
+        check(after===expected,'LEA failed to preserve TEST SF for JS');
+        check(before===0,'address arithmetic fixture must overwrite SF');
+        samples.push({value,old:before,reviewed:after});
+    }
+    return {passed:true,checks:10,samples,
+        scope:'owned host; authored TEST/LEA and TEST/SUB/ADD shapes; no MOD execution'};
+};
 """
         source += "\nconst voiceCode=" + json.dumps(VOICE_CODE) + ";\n"
         source += r"""
@@ -268,6 +295,8 @@ rpc.exports.voice=()=>{
         result = script.exports_sync.check()
         result["voice"] = script.exports_sync.voice()
         result["checks"] += result["voice"]["checks"]
+        result["loader_flags"] = script.exports_sync.loader_flags()
+        result["checks"] += result["loader_flags"]["checks"]
         from test_font_delivery import _candidate, _fnt
 
         with tempfile.TemporaryDirectory() as tmp:

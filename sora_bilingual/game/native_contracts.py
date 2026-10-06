@@ -8,10 +8,12 @@ approved operand masks, and only the globals that injected code dereferences.
 from __future__ import annotations
 
 import hashlib
+import json
 import struct
 from collections import defaultdict
 
 
+_IMAGE_DIRECTORY_ENTRY_IMPORT = 1
 _IMAGE_DIRECTORY_ENTRY_EXCEPTION = 3
 _IMAGE_SCN_MEM_EXECUTE = 0x20000000
 _IMAGE_SCN_MEM_READ = 0x40000000
@@ -243,7 +245,27 @@ def _template_links_match(pe, start: int, template: dict, candidates) -> bool:
     return True
 
 
-def _equal_targets_match(pe, start: int, template: dict) -> bool:
+def _equal_target(pe, start: int, template: dict, side: dict) -> int:
+    """Read one side of an audited address pair.
+
+    A side normally lives in the template itself.  ``continuation`` names one
+    of the template's own, already verified continuations instead, so a helper
+    can be required to use the very table its reviewed callee reads.
+    """
+    name = side.get("continuation")
+    if name is None:
+        return _reference_target(pe, start, side)
+    refs = [
+        ref
+        for ref in template.get("continuations", [])
+        if isinstance(ref, dict) and ref.get("name") == name
+    ]
+    if len(refs) != 1:
+        raise _error("原生合同等价目标引用的 continuation 不唯一")
+    return _reference_target(pe, _reference_target(pe, start, refs[0]), side)
+
+
+def _equal_target_rows(template: dict):
     for row in template.get("equal_targets", []):
         if (
             not isinstance(row, dict)
@@ -251,9 +273,105 @@ def _equal_targets_match(pe, start: int, template: dict) -> bool:
             or not isinstance(row.get("right"), dict)
         ):
             raise _error("原生合同等价目标格式无效")
-        if _reference_target(pe, start, row["left"]) != _reference_target(pe, start, row["right"]):
-            return False
-    return True
+        yield row
+
+
+def _equal_targets_match(pe, start: int, template: dict) -> bool:
+    return all(
+        _equal_target(pe, start, template, row["left"])
+        == _equal_target(pe, start, template, row["right"])
+        for row in _equal_target_rows(template)
+    )
+
+
+def _import_at(pe, slot: int):
+    """Name the import bound to one IAT slot from the import directory itself."""
+    directories = pe.OPTIONAL_HEADER.DATA_DIRECTORY
+    if len(directories) <= _IMAGE_DIRECTORY_ENTRY_IMPORT:
+        return None
+    directory = directories[_IMAGE_DIRECTORY_ENTRY_IMPORT]
+    if not directory.VirtualAddress:
+        return None
+    bindings = []
+    terminated = False
+    try:
+        for offset in range(0, max(0, directory.Size - 19), 20):
+            lookup, _stamp, _forwarder, library, thunks = struct.unpack(
+                "<5I", _read(pe, directory.VirtualAddress + offset, 20)
+            )
+            if not (lookup or _stamp or _forwarder or library or thunks):
+                terminated = True
+                break
+            index, remainder = divmod(slot - thunks, 8)
+            if not thunks or index < 0 or remainder or index >= 0x10000:
+                continue
+            # The slot belongs to this DLL only inside its null-terminated
+            # thunk list.  The lookup table still names it once the loader
+            # has bound the address table.
+            names = lookup or thunks
+            entry = 0
+            for position in range(index + 1):
+                entry = struct.unpack("<Q", _read(pe, names + position * 8, 8))[0]
+                if not entry:
+                    break
+            if not entry:
+                continue
+            if entry >> 32:
+                return None  # Imported by ordinal: there is no name to review.
+            _read(pe, slot, 8)
+            bindings.append(
+                (
+                    _read_c_string(pe, library, label="导入库名").lower(),
+                    _read_c_string(pe, entry + 2, label="导入符号名"),
+                )
+            )
+    except ValueError:
+        return None
+    return bindings[0] if terminated and len(bindings) == 1 else None
+
+
+def _import_rows(template: dict):
+    for row in template.get("imports", []):
+        if (
+            not isinstance(row, dict)
+            or not isinstance(row.get("dll"), str)
+            or not isinstance(row.get("name"), str)
+        ):
+            raise _error("原生合同导入引用格式无效")
+        yield row
+
+
+def _import_matches(pe, start: int, row: dict) -> bool:
+    return _import_at(pe, _reference_target(pe, start, row)) == (row["dll"].lower(), row["name"])
+
+
+def _imports_match(pe, start: int, template: dict) -> bool:
+    return all(_import_matches(pe, start, row) for row in _import_rows(template))
+
+
+def _data_rows(template: dict):
+    for row in template.get("data_refs", []):
+        if (
+            not isinstance(row, dict)
+            or not isinstance(row.get("size"), int)
+            or not 0 < row["size"] <= 65536
+            or not isinstance(row.get("alignment"), int)
+            or row["alignment"] <= 0
+            or not isinstance(row.get("sha256"), str)
+        ):
+            raise _error("原生合同数据引用格式无效")
+        yield row
+
+
+def _data_matches(pe, start: int, row: dict) -> bool:
+    target = _reference_target(pe, start, row)
+    if target % row["alignment"]:
+        return False
+    try:
+        data = _read(pe, target, row["size"])
+    except ValueError:
+        return False
+    return hashlib.sha256(data).hexdigest() == row["sha256"]
 
 
 def _nested_templates_match(
@@ -261,7 +379,9 @@ def _nested_templates_match(
 ) -> bool:
     if not _template_links_match(pe, start, template, candidates):
         return False
-    if not _equal_targets_match(pe, start, template):
+    if not _imports_match(pe, start, template):
+        return False
+    if not all(_data_matches(pe, start, row) for row in _data_rows(template)):
         return False
     for ref in template.get("continuations", []):
         if not isinstance(ref, dict) or not isinstance(ref.get("template"), dict):
@@ -269,6 +389,9 @@ def _nested_templates_match(
         target = _reference_target(pe, start, ref)
         if not _template_matches(pe, target, ref["template"], candidates, entries, chain_index):
             return False
+    # After the continuations: a pair may read inside one of their bodies.
+    if not _equal_targets_match(pe, start, template):
+        return False
     return _chained_templates_match(pe, start, template, candidates, entries, chain_index)
 
 
@@ -385,15 +508,25 @@ def _template_failure(
             if nested is not None:
                 return nested
 
-    for index, row in enumerate(template.get("equal_targets", [])):
-        if (
-            not isinstance(row, dict)
-            or not isinstance(row.get("left"), dict)
-            or not isinstance(row.get("right"), dict)
+    for index, row in enumerate(_equal_target_rows(template)):
+        if _equal_target(pe, start, template, row["left"]) != _equal_target(
+            pe, start, template, row["right"]
         ):
-            raise _error("原生合同等价目标格式无效")
-        if _reference_target(pe, start, row["left"]) != _reference_target(pe, start, row["right"]):
             return _failure(function, f"{path}.equal_targets[{index}]", "已审计目标地址不相等")
+
+    for index, row in enumerate(_import_rows(template)):
+        if not _import_matches(pe, start, row):
+            return _failure(
+                function,
+                f"{path}.imports[{index}]",
+                f"导入表槽位不是 {row['dll']}!{row['name']}",
+            )
+
+    for index, row in enumerate(_data_rows(template)):
+        if not _data_matches(pe, start, row):
+            return _failure(
+                function, f"{path}.data_refs[{index}]", "已审计数据的范围、对齐或内容摘要不匹配"
+            )
 
     for index, link in enumerate(template.get("links", [])):
         target_name = link.get("function")
@@ -497,9 +630,7 @@ def _variant_semantics(pe, start: int, variant: dict):
     continuations = tuple(
         (
             _reference_target(pe, start, ref),
-            ref["template"].get("size"),
-            ref["template"].get("sha256"),
-            tuple(tuple(mask) for mask in ref["template"].get("masks", [])),
+            json.dumps(ref["template"], sort_keys=True),
         )
         for ref in variant.get("continuations", [])
     )
@@ -565,6 +696,7 @@ def _resolve_functions(pe, functions):
     body_failures = []
     local_failures = []
     link_failures = []
+    locally_valid = set()
     hash_cache = {}
     for name, spec in functions.items():
         if spec["leaf"]:
@@ -594,6 +726,8 @@ def _resolve_functions(pe, functions):
                     pe, row, candidates, entries, chain_index
                 )
                 links_match = _candidate_links_match(pe, row, candidates)
+                if nested_matches:
+                    locally_valid.add(name)
                 if nested_matches and links_match:
                     filtered.append(row)
                     continue
@@ -627,10 +761,17 @@ def _resolve_functions(pe, functions):
         resolved[name] = start
         variants[name] = _select_variant(pe, name, start, rows)
     if unresolved:
-        detail = next(
-            (row for row in local_failures if row["function"] in unresolved),
-            None,
-        )
+        local = [row for row in local_failures if row["function"] in unresolved]
+        # A function with one complete reviewed variant was only lost through
+        # a failed callee; its other variants' mismatches are not the cause.
+        local = [row for row in local if row["function"] not in locally_valid] or local
+        detail = None
+        if local:
+            # Of several reviewed variants, report the one matched furthest.
+            detail = max(
+                (row for row in local if row["function"] == local[0]["function"]),
+                key=lambda row: row["path"].count("."),
+            )
         if detail is None:
             detail = next((row for row in body_failures if row["function"] in unresolved), None)
         if detail is None:
@@ -667,7 +808,7 @@ def _rva_from_va_or_rva(pe, value: int) -> int:
     return value
 
 
-def _read_c_string(pe, rva: int, *, limit: int = 1024) -> str:
+def _read_c_string(pe, rva: int, *, limit: int = 1024, label: str = "原生 RTTI 类型名") -> str:
     value = bytearray()
     for index in range(limit):
         byte = _read(pe, rva + index, 1)[0]
@@ -675,9 +816,9 @@ def _read_c_string(pe, rva: int, *, limit: int = 1024) -> str:
             try:
                 return value.decode("ascii")
             except UnicodeDecodeError as exc:
-                raise _error("原生 RTTI 类型名不是 ASCII") from exc
+                raise _error(f"{label}不是 ASCII") from exc
         value.append(byte)
-    raise _error("原生 RTTI 类型名没有终止符")
+    raise _error(f"{label}没有终止符")
 
 
 def _validate_rtti(pe, rva: int, expected: str):

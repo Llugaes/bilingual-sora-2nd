@@ -7,6 +7,7 @@ mapping supplies corresponding functions; it is not shipped as an EXE gate.
 
 import argparse
 import bisect
+import copy
 import hashlib
 import json
 from pathlib import Path
@@ -92,9 +93,39 @@ FONT_CONTINUATIONS = {
     "file_reader_helper": (0xCF057F, 0xCF078F),
     "absolute_path_predicate": (0xCEF36B, 0xCEF3A0),
 }
+FONT_CONTINUATION_BASE = 0xCEF000
+
+# Game routines a loader helper reaches as ``image base + RVA``. Such a
+# routine is compiled as that helper's own continuation, never trusted by RVA.
+IMAGE_RELATIVE_CALLEES = {"cache_hash_helper": "path_hash_update"}
+
+
+def crc32_table():
+    """The fixed IEEE CRC-32 polynomial, independent of any evidence EXE."""
+    values = []
+    for value in range(256):
+        for _ in range(8):
+            value = (value >> 1) ^ (0xEDB88320 if value & 1 else 0)
+        values.append(value)
+    return struct.pack("<256I", *values)
+
+
+def font_continuations(base=FONT_CONTINUATION_BASE):
+    """The reviewed loader layout, rebased onto one sample's loader section."""
+    delta = base - FONT_CONTINUATION_BASE
+    return {
+        start + delta: (name, (start + delta, end + delta))
+        for name, (start, end) in FONT_CONTINUATIONS.items()
+    }
 
 
 class Image:
+    # A relinked loader carries image-base-relative RVAs in its helpers. Only
+    # ``extend_contract`` turns them into verified references; the original
+    # baseline/variant compilation keeps its reviewed output unchanged.
+    image_relative = False
+    _imports = None
+
     def __init__(self, path):
         self.raw = path.read_bytes()
         self.digest = hashlib.sha256(self.raw).hexdigest()
@@ -158,12 +189,60 @@ class Image:
                 return point, ins.address
         raise ValueError(f"No reviewed leaf extent at {point:x}")
 
+    def import_at(self, slot):
+        if self._imports is None:
+            self.pe.parse_data_directories(directories=[1])
+            base = self.pe.OPTIONAL_HEADER.ImageBase
+            self._imports = {
+                row.address - base: (entry.dll.decode("ascii"), row.name.decode("ascii"))
+                for entry in getattr(self.pe, "DIRECTORY_ENTRY_IMPORT", [])
+                for row in entry.imports
+                if row.name
+            }
+        return self._imports.get(slot)
+
+    def in_image(self, value):
+        return self.pe.sections[0].VirtualAddress <= value < self.pe.OPTIONAL_HEADER.SizeOfImage
+
+    @staticmethod
+    def reaches_call(instructions, register):
+        """True when ``register`` is next used, unmodified, as an indirect CALL target."""
+        for ins in instructions:
+            if ins.mnemonic == "call":
+                return (
+                    ins.operands[0].type == capstone.x86.X86_OP_REG
+                    and ins.operands[0].reg == register
+                )
+            if ins.mnemonic.startswith(("j", "ret")) or register in ins.regs_access()[1]:
+                return False
+        return False
+
+    def rip_references(self, span):
+        start, end = span
+        for ins in self.md.disasm(self.pe.get_data(start, end - start), start):
+            for operand in ins.operands:
+                if (
+                    operand.type == capstone.x86.X86_OP_MEM
+                    and operand.mem.base == capstone.x86.X86_REG_RIP
+                ):
+                    offset = ins.address - start
+                    yield (
+                        [offset + ins.disp_offset, ins.disp_size],
+                        offset + ins.size,
+                        ins.address + ins.size + operand.mem.disp,
+                    )
+
     def template(self, span, points, functions, globals_, *, with_chains=True, stack=()):
         start, end = span
         raw = self.pe.get_data(start, end - start)
         assert len(raw) == end - start
         masked = bytearray(raw)
         masks, links, globals_refs, continuations, equal_targets = [], [], [], [], []
+        imports, shared_data, callees, data_refs = [], [], {}, []
+        role, known = self.continuations.get(start, ("", None))
+        role = role if known == span else ""
+        wrapper = role.endswith("wrapper")
+        helper = self.image_relative and role.endswith("helper")
         consumed = 0
         instructions = list(self.md.disasm(raw, start))
         source_line_function = any(
@@ -229,11 +308,115 @@ class Image:
                         )
                         child.pop("points")
                         continuations.append({**ref, "name": name, "template": child})
-            if span in (
-                value for name, value in FONT_CONTINUATIONS.items() if name.endswith("wrapper")
-            ):
-                # Audited LEA/SUB image-base pairs and ADD/JMP resume RVAs.
+            if helper:
                 operands = ins.operands
+                for operand in operands:
+                    # ``[image base + RVA]``: stack frames and the loader's
+                    # own RIP-relative state are not image references.
+                    if (
+                        operand.type != capstone.x86.X86_OP_MEM
+                        or operand.mem.base
+                        in (
+                            capstone.x86.X86_REG_INVALID,
+                            capstone.x86.X86_REG_RIP,
+                            capstone.x86.X86_REG_RSP,
+                            capstone.x86.X86_REG_RBP,
+                        )
+                        or not self.in_image(operand.mem.disp)
+                    ):
+                        continue
+                    at, width = offset + ins.disp_offset, ins.disp_size
+                    assert width == 4
+                    imported = self.import_at(operand.mem.disp)
+                    if imported and operand.mem.index == capstone.x86.X86_REG_INVALID:
+                        imports.append(
+                            {
+                                "displacement": [at, width],
+                                "encoding": "rva32",
+                                "dll": imported[0],
+                                "name": imported[1],
+                            }
+                        )
+                    else:
+                        # A scaled table read is accepted only when a callee
+                        # compiled below reads the very same table.
+                        assert operand.mem.index != capstone.x86.X86_REG_INVALID, (
+                            "unreviewed image-relative operand",
+                            hex(ins.address),
+                        )
+                        assert role == "cache_hash_helper" and operand.mem.scale == 4, (
+                            "unreviewed helper data read",
+                            hex(ins.address),
+                        )
+                        shared_data.append(([at, width], operand.mem.disp))
+                    masks.append([at, width])
+                    masked[at : at + width] = bytes(width)
+                if (
+                    ins.mnemonic == "add"
+                    and len(operands) == 2
+                    and operands[0].type == capstone.x86.X86_OP_REG
+                    and operands[1].type == capstone.x86.X86_OP_IMM
+                    and self.in_image(operands[1].imm)
+                    and self.reaches_call(instructions[index + 1 :], operands[0].reg)
+                ):
+                    name = IMAGE_RELATIVE_CALLEES[role]
+                    target = operands[1].imm
+                    child_span = self.owner(target) or self.leaf(target)
+                    assert child_span[0] == target, ("call into a function body", hex(target))
+                    assert name not in callees and start not in stack
+                    child = self.template(
+                        child_span,
+                        {},
+                        functions,
+                        globals_,
+                        with_chains=False,
+                        stack=(*stack, start),
+                    )
+                    child.pop("points")
+                    at, width = offset + ins.imm_offset, ins.imm_size
+                    assert width == 4
+                    masks.append([at, width])
+                    masked[at : at + width] = bytes(width)
+                    callees[name] = child_span
+                    continuations.append(
+                        {
+                            "displacement": [at, width],
+                            "encoding": "rva32",
+                            "name": name,
+                            "template": child,
+                        }
+                    )
+            if wrapper:
+                # Audited resume addresses: a direct LEA/JMP, or LEA/SUB
+                # image-base pairs followed by ADD/JMP resume RVAs.
+                operands = ins.operands
+                if (
+                    ins.mnemonic == "lea"
+                    and len(operands) == 2
+                    and operands[1].type == capstone.x86.X86_OP_MEM
+                    and operands[1].mem.base == capstone.x86.X86_REG_RIP
+                ):
+                    following = next(
+                        (row for row in instructions[index + 1 :] if row.mnemonic != "nop"), None
+                    )
+                    if (
+                        following
+                        and following.mnemonic == "jmp"
+                        and following.operands[0].type == capstone.x86.X86_OP_REG
+                        and following.operands[0].reg == operands[0].reg
+                    ):
+                        # Flag-preserving resume: the address is loaded in
+                        # one LEA instead of the SUB/ADD image-base pair.
+                        target = ins.address + ins.size + operands[1].mem.disp
+                        link = self.function_link(target, functions)
+                        assert link, ("unresolved continuation return", ins.address)
+                        links.append(
+                            {
+                                "displacement": [offset + ins.disp_offset, ins.disp_size],
+                                "next": offset + ins.size,
+                                **link,
+                            }
+                        )
                 if (
                     ins.mnemonic == "sub"
                     and len(operands) == 2
@@ -285,6 +468,39 @@ class Image:
                         masked[at : at + width] = bytes(width)
                         links.append({"displacement": [at, width], "encoding": "rva32", **link})
         assert consumed == len(raw), (span, consumed, len(raw))
+        for displacement, target in shared_data:
+            shared = [
+                (name, reference)
+                for name, child_span in callees.items()
+                for reference in self.rip_references(child_span)
+                if reference[2] == target
+            ]
+            assert len(shared) == 1, ("table is not the one a reviewed callee reads", hex(target))
+            name, (callee_displacement, callee_next, _target) = shared[0]
+            expected = crc32_table()
+            assert target % 4 == 0 and self.pe.get_data(target, len(expected)) == expected, (
+                "path hash table is not the reviewed IEEE CRC-32 table",
+                hex(target),
+            )
+            data_refs.append(
+                {
+                    "displacement": displacement,
+                    "encoding": "rva32",
+                    "size": len(expected),
+                    "alignment": 4,
+                    "sha256": hashlib.sha256(expected).hexdigest(),
+                }
+            )
+            equal_targets.append(
+                {
+                    "left": {"displacement": displacement, "encoding": "rva32"},
+                    "right": {
+                        "continuation": name,
+                        "displacement": callee_displacement,
+                        "next": callee_next,
+                    },
+                }
+            )
         result = {
             "size": len(raw),
             "sha256": hashlib.sha256(masked).hexdigest(),
@@ -297,6 +513,10 @@ class Image:
             result["continuations"] = continuations
         if equal_targets:
             result["equal_targets"] = equal_targets
+        if imports:
+            result["imports"] = imports
+        if data_refs:
+            result["data_refs"] = data_refs
         if with_chains and self.parts(span):
             result["chained"] = []
             for part in self.parts(span):
@@ -323,7 +543,7 @@ class Image:
 def compile_contract(baseline, variant, mapping):
     assert baseline.digest == mapping["old_sha256"]
     assert variant.digest == mapping["new_sha256"]
-    variant.continuations = {span[0]: (name, span) for name, span in FONT_CONTINUATIONS.items()}
+    variant.continuations = font_continuations()
     points = {**POINTS, "font_file_read": 0x654640}
     rows = {row["name"]: row for row in mapping["points"]}
     assert set(points) == set(rows)
@@ -393,23 +613,97 @@ def compile_contract(baseline, variant, mapping):
     return contract
 
 
+def extend_contract(contract, sample):
+    """Verify relocation against reviewed bodies; never learn unknown code.
+
+    Address normalization should make a relinked sample compile to an existing
+    template. A different continuation body needs an independent review and
+    explicit contract edit, rather than a production bypass in this compiler.
+    """
+    from sora_bilingual.game.native_contracts import resolve_native_contracts
+
+    resolved = resolve_native_contracts(sample.pe, contract)
+    starts = resolved["functions"]
+    spans = {
+        name: (start, sample.entries[start][0]) if start in sample.entries else sample.leaf(start)
+        for name, start in starts.items()
+    }
+    bases = set()
+    for name, row in contract["functions"].items():
+        for variant in row["variants"]:
+            body = bytearray(sample.pe.get_data(starts[name], variant["size"]))
+            for at, width in variant["masks"]:
+                body[at : at + width] = bytes(width)
+            if hashlib.sha256(body).hexdigest() != variant["sha256"]:
+                continue
+            for ref in variant.get("continuations", []):
+                if ref.get("name") not in FONT_CONTINUATIONS:
+                    continue
+                at, width = ref["displacement"]
+                raw = sample.pe.get_data(starts[name] + at, width)
+                target = starts[name] + ref["next"] + int.from_bytes(raw, "little", signed=True)
+                bases.add(FONT_CONTINUATION_BASE + target - FONT_CONTINUATIONS[ref["name"]][0])
+    assert len(bases) <= 1, ("loader continuations do not share the reviewed layout", bases)
+    if bases:
+        sample.continuations = font_continuations(bases.pop())
+    sample.image_relative = True
+    for name, row in contract["functions"].items():
+        points = {point for variant in row["variants"] for point in variant["points"]}
+        template = sample.template(
+            spans[name],
+            {point: resolved["points"][point] for point in points},
+            spans,
+            resolved["globals"],
+        )
+        assert template in row["variants"], ("unreviewed template requires explicit audit", name)
+    return []
+
+
+def write_contract(path, contract):
+    path.write_text(
+        '"""Reviewed native-function contracts; metadata identifies evidence, not allowed EXEs."""\n\n'
+        + "CONTRACT = "
+        + pprint.pformat(contract, width=100, sort_dicts=False)
+        + "\n",
+        "utf-8",
+    )
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--baseline", type=Path, required=True)
-    parser.add_argument("--variant", type=Path, required=True)
-    parser.add_argument("--mapping", type=Path, required=True)
+    parser.add_argument("--baseline", type=Path)
+    parser.add_argument("--variant", type=Path)
+    parser.add_argument("--mapping", type=Path)
+    parser.add_argument(
+        "--extend",
+        type=Path,
+        action="append",
+        default=[],
+        help="verify a relocated sample recompiles to reviewed templates; never learn bodies",
+    )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
+    if args.extend:
+        if args.baseline or args.variant or args.mapping:
+            parser.error("--extend starts from the committed contract, not from evidence images")
+        from sora_bilingual.game.native_contract_data import CONTRACT
+
+        result, added = copy.deepcopy(CONTRACT), {}
+        for path in args.extend:
+            sample = Image(path)
+            try:
+                added[sample.digest] = extend_contract(result, sample)
+            finally:
+                sample.pe.close()
+        write_contract(args.output, result)
+        print(json.dumps({"added_variants": added, "output": str(args.output)}))
+        return
+    if not (args.baseline and args.variant and args.mapping):
+        parser.error("--baseline, --variant and --mapping are required without --extend")
     baseline, variant = Image(args.baseline), Image(args.variant)
     try:
         result = compile_contract(baseline, variant, json.loads(args.mapping.read_text("utf-8")))
-        args.output.write_text(
-            '"""Reviewed native-function contracts; metadata identifies evidence, not allowed EXEs."""\n\n'
-            + "CONTRACT = "
-            + pprint.pformat(result, width=100, sort_dicts=False)
-            + "\n",
-            "utf-8",
-        )
+        write_contract(args.output, result)
         print(
             json.dumps(
                 {
