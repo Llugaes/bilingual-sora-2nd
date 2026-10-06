@@ -1,3 +1,19 @@
+# 0.4.5 — 语音 MOD 兼容热修
+
+- 修复游戏 1.04 对应的新语音 MOD EXE 在字体读取跳板合同处被拒绝的问题；保留新旧官方与已审查旧语音加载器支持。
+- 对已用路径哈希例程、标准 CRC 表、线程 ID 导入槽及恢复点按局部合同验证，兼容安全的迁址；未知指令、布局、调用约定和接管点冲突继续拒绝。
+- 修复旧语音变体对 CRC／导入身份验证的旁路。仅调整兼容检查，不修改游戏文本、双语解析、排版、默认外置字体或更新协议。
+
+正常退出游戏和工具后更新，再重新启动。已完成的静态预检、隔离宿主与候选包验证不代表真实语音 MOD 的实机连接／资源包验收；任意 MOD 组合不保证兼容。详情见 [兼容合同](docs/verification/exe-compatibility.md)。
+
+## English
+
+Fixes native compatibility rejection for the updated voice MOD EXE accompanying game 1.04. Reviewed function, CRC data, import-slot and resume contracts permit safe relocation while rejecting unknown code, layouts and hook conflicts. Older voice variants receive the same checks. Game text, rendering, external-font behavior and the update protocol are unchanged. Exit the game and tool before updating and relaunching. Static and isolated-host checks do not establish real-game voice MOD acceptance.
+
+## 日本語
+
+ゲーム 1.04 対応の音声 MOD EXE がフォント読み込み契約で拒否される問題を修正しました。検証済み関数、CRC データ、インポートと復帰位置を確認し、安全な再配置に対応します。旧音声版にも同じ検証を適用し、不明なコード・構造・フック競合は拒否します。ゲーム文章・描画・外部フォント・更新方式の変更はありません。更新前にゲームとツールを終了し、更新後に再起動してください。静的検査と独立テストプロセスの結果は、実ゲームでの音声 MOD 検証を意味しません。
+
 # 0.4.4 — 更新通道修复（本地候选，未发布）
 
 - 国内版本发现、历史版本、清单与包下载改用静态索引和固定 tag 附件，不依赖 Gitee releases/attachments API；GitHub 继续作为备用源。
