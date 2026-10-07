@@ -28,9 +28,26 @@ from sora_bilingual.app.native_overlay import (
 from sora_bilingual.platform.inputs import InputManager
 from sora_bilingual.app.i18n import tr, current_language, set_language
 from sora_bilingual.app.presentation import with_font_status
+from sora_bilingual.paths import build_label
 
 
 class OverlayStatusTests(unittest.TestCase):
+    def test_packaged_dev_marker_identifies_only_its_matching_version(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "distribution.json").write_text('{"version":"0.4.3"}', "utf-8")
+            self.assertEqual(build_label(root), "DEV 0.4.3")
+            (root / "installed-manifest.json").write_text("{}", "utf-8")
+            self.assertEqual(build_label(root), "0.4.3")
+            (root / "generated").mkdir()
+            marker = root / "generated/development-version.txt"
+            marker.write_text("0.4.3\n", "utf-8")
+            self.assertEqual(build_label(root), "DEV 0.4.3")
+            marker.write_text("1.0.0\n", "utf-8")
+            self.assertEqual(build_label(root), "0.4.3")
+            marker.write_bytes(b"\xff")
+            self.assertEqual(build_label(root), "0.4.3")
+
     def test_runtime_font_notice_does_not_claim_connection_failed(self):
         state = {"title": "双语同时显示", "connected": True, "detail": "设置实时生效"}
         value = with_font_status(state, {"state": "runtime-required"})
@@ -45,6 +62,9 @@ class OverlayStatusTests(unittest.TestCase):
         value = with_font_status(state, {"state": "conflict", "detail": ["xinput1_4.dll"]})
         self.assertEqual(value["detail"], "existing failure")
         self.assertEqual(value["font_detail"], "xinput1_4.dll")
+        self.assertIn("无法确认其归属", value["font_notice"])
+        self.assertIn("暂未覆盖", value["font_notice"])
+        self.assertNotIn("已有 MOD 文件", value["font_notice"])
         language_before = current_language()
         try:
             for language in ("en", "ja"):

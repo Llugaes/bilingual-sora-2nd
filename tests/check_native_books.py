@@ -66,39 +66,45 @@ rpc.exports.run=()=>({clean:runBootstrap(false),foreign:runBootstrap(true),game_
 
 
 def inspect(exe):
+    from sora_bilingual.game.native_runtime import native_report
+
+    native = {name: row["rva"] for name, row in native_report(exe)["native"].items()}
+    count, page, update = native["book_count"], native["book_page"], native["book_update"]
+    saved, opened = native["book_saved_page"], native["book_open_return"]
     with pefile.PE(str(exe), fast_load=True) as pe:
-        code = decoded(pe, 0x23C1E0, 0x120)
-        require(code, 0x23C1E9, "movzx", "esi, dx")
-        require(code, 0x23C23A, "cmp", "word ptr [rcx + rbx], si")
-        require(code, 0x23C240, "movzx", "edx, word ptr [rcx + rbx + 2]")
-        require(code, 0x23C248, "cmova", "r9d, edx")
-        require(code, 0x23C28A, "movzx", "edi, dx")
-        require(code, 0x23C2CC, "cmp", "word ptr [rax], di")
-        require(code, 0x23C2D1, "cmp", "word ptr [rax + 2], r8w")
-        require(code, 0x23C2E0, "xor", "eax, eax")
-        reader = decoded(pe, 0x4079C0, 0x590)
-        require(reader, 0x4079E6, "mov", "rsi, rcx")
-        require(reader, 0x4079E3, "mov", "r14d, edx")
-        require(reader, 0x407AAA, "cmovb", "eax, r14d")
-        require(reader, 0x407AB5, "mov", "dword ptr [rsi + 0x1a4], eax")
-        require(reader, 0x407D65, "movzx", "r8d, word ptr [rsi + 0x1a4]")
-        require(reader, 0x407D6D, "movzx", "edx, word ptr [rsi + 0x1a8]")
-        assert direct_target(reader[0x407D74]) == 0x23C270
-        require(reader, 0x407D7C, "mov", "rdx, qword ptr [rax + 8]")
-        assert direct_target(reader[0x407D80]) == 0x588A40
-        image = decoded(pe, 0x407432, 0x22)
-        assert direct_target(image[0x407444]) == 0x23C270
-        require(image, 0x407449, "mov", "rbx, qword ptr [rax + 0x10]")
-        save = decoded(pe, 0x40714C, 0x22)
-        require(save, 0x407153, "movzx", "eax, byte ptr [rsi + 0x1a4]")
-        require(save, 0x40715A, "mov", "byte ptr [rcx + 0x20b388], al")
-        opening = decoded(pe, 0x406C0F, 0x65)
-        require(opening, 0x406C16, "movzx", "eax, byte ptr [rdx + 0x20b388]")
-        require(opening, 0x406C65, "mov", "edx, r14d")
-        assert direct_target(opening[0x406C6B]) == 0x4079C0
+        code = decoded(pe, count, 0x83)
+        require(code, count + 9, "movzx", "esi, dx")
+        require(code, count + 0x5A, "cmp", "word ptr [rcx + rbx], si")
+        require(code, count + 0x60, "movzx", "edx, word ptr [rcx + rbx + 2]")
+        require(code, count + 0x68, "cmova", "r9d, edx")
+        code = decoded(pe, page, 0x82)
+        require(code, page + 0x1A, "movzx", "edi, dx")
+        require(code, page + 0x5C, "cmp", "word ptr [rax], di")
+        require(code, page + 0x61, "cmp", "word ptr [rax + 2], r8w")
+        require(code, page + 0x70, "xor", "eax, eax")
+        reader = decoded(pe, update, 0x590)
+        require(reader, update + 0x26, "mov", "rsi, rcx")
+        require(reader, update + 0x23, "mov", "r14d, edx")
+        require(reader, update + 0xEA, "cmovb", "eax, r14d")
+        require(reader, update + 0xF5, "mov", "dword ptr [rsi + 0x1a4], eax")
+        require(reader, update + 0x3A5, "movzx", "r8d, word ptr [rsi + 0x1a4]")
+        require(reader, update + 0x3AD, "movzx", "edx, word ptr [rsi + 0x1a8]")
+        assert direct_target(reader[update + 0x3B4]) == page
+        require(reader, update + 0x3BC, "mov", "rdx, qword ptr [rax + 8]")
+        assert direct_target(reader[update + 0x3C0]) == native["set_text"]
+        image = decoded(pe, saved + 0x2D8, 0x22)
+        assert direct_target(image[saved + 0x2EA]) == page
+        require(image, saved + 0x2EF, "mov", "rbx, qword ptr [rax + 0x10]")
+        save = decoded(pe, saved - 0xE, 0x22)
+        require(save, saved - 7, "movzx", "eax, byte ptr [rsi + 0x1a4]")
+        require(save, saved, "mov", "byte ptr [rcx + 0x20b388], al")
+        opening = decoded(pe, opened - 0x61, 0x65)
+        require(opening, opened - 0x5A, "movzx", "eax, byte ptr [rdx + 0x20b388]")
+        require(opening, opened - 0xB, "mov", "edx, r14d")
+        assert direct_target(opening[opened - 5]) == update
         return {
-            "count": pe.get_data(0x23C1E0, 0x83).hex(),
-            "page": pe.get_data(0x23C270, 0x82).hex(),
+            "count": pe.get_data(count, 0x83).hex(),
+            "page": pe.get_data(page, 0x82).hex(),
         }
 
 

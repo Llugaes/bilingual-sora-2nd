@@ -1,3 +1,63 @@
+# 0.4.5 — 语音 MOD 兼容热修
+
+- 修复游戏 1.04 对应的新语音 MOD EXE 在字体读取跳板合同处被拒绝的问题；保留新旧官方与已审查旧语音加载器支持。
+- 对已用路径哈希例程、标准 CRC 表、线程 ID 导入槽及恢复点按局部合同验证，兼容安全的迁址；未知指令、布局、调用约定和接管点冲突继续拒绝。
+- 修复旧语音变体对 CRC／导入身份验证的旁路。仅调整兼容检查，不修改游戏文本、双语解析、排版、默认外置字体或更新协议。
+
+正常退出游戏和工具后更新，再重新启动。已完成的静态预检、隔离宿主与候选包验证不代表真实语音 MOD 的实机连接／资源包验收；任意 MOD 组合不保证兼容。详情见 [兼容合同](docs/verification/exe-compatibility.md)。
+
+## English
+
+Fixes native compatibility rejection for the updated voice MOD EXE accompanying game 1.04. Reviewed function, CRC data, import-slot and resume contracts permit safe relocation while rejecting unknown code, layouts and hook conflicts. Older voice variants receive the same checks. Game text, rendering, external-font behavior and the update protocol are unchanged. Exit the game and tool before updating and relaunching. Static and isolated-host checks do not establish real-game voice MOD acceptance.
+
+## 日本語
+
+ゲーム 1.04 対応の音声 MOD EXE がフォント読み込み契約で拒否される問題を修正しました。検証済み関数、CRC データ、インポートと復帰位置を確認し、安全な再配置に対応します。旧音声版にも同じ検証を適用し、不明なコード・構造・フック競合は拒否します。ゲーム文章・描画・外部フォント・更新方式の変更はありません。更新前にゲームとツールを終了し、更新後に再起動してください。静的検査と独立テストプロセスの結果は、実ゲームでの音声 MOD 検証を意味しません。
+
+# 0.4.4 — 更新通道修复（本地候选，未发布）
+
+- 国内版本发现、历史版本、清单与包下载改用静态索引和固定 tag 附件，不依赖 Gitee releases/attachments API；GitHub 继续作为备用源。
+- 保留版本、仓库、主机、大小和完整 SHA 校验，新增索引身份、HTML/重复字段、版本回退及同版清单变化拒绝。
+- 缓存与失败退避跨重启保留，手动检查至少间隔 60 秒；两源失败时提供国内手动下载与 GitHub 备用入口。
+- 延续 0.4.3 的游戏版本适配、外置字体默认行为及其他已验收功能，不包含 1.0 未验收功能。
+
+新索引尚未公开；候选需 root 独立审查、索引端点验证与用户验收后才允许发布。已发 0.4.3 对象保持不变，旧客户端两源均不可用时需一次手动 Setup 迁移。raw 本机匿名验证成功不代表全国或永久可用。
+
+## English
+
+The local 0.4.4 candidate removes Gitee release-API dependence from discovery and component updates using a scoped static index and immutable release assets. Version, repository, HTTPS, size and SHA checks remain required. Cached checks and failure backoff survive restarts; both-source failures offer manual downloads. The new index is not public yet, and this candidate is not released. Existing 0.4.3 clients may require a one-time manual Setup migration.
+
+## 日本語
+
+0.4.4 のローカル候補では、限定された静的索引と固定タグの添付ファイルで国内更新を行います。バージョン・リポジトリ・HTTPS・サイズ・SHA の検証を維持し、確認結果と失敗時の待機時間を再起動後も保持します。新しい索引は未公開で、この候補も未リリースです。0.4.3 の既存クライアントは、一度手動で Setup を適用する必要があります。
+
+# 0.4.3 — 新官方游戏版本兼容热修
+
+- 恢复 Steam build 25721473（游戏 EXE 1.4.0.0）的原生函数定位，修复更新后无法连接的问题。
+- 仅归一化已审查日志诊断调用的源码行号，同时校验对应诊断函数；对象字段、内部控制流、调用关系和进程指令快照检查继续保留。
+- 已安装旧版合并字体时，只有本安装的完整受管收据、旧缓存和当前字体及加载器全部校验一致，才把旧字体作为新候选的替换源；未知或混杂字体继续拒绝。
+- 保留 0.4.2 功能及手动更新方式。本次为版本兼容热修，动态效果描述的后续改进留待 1.0。
+
+请正常退出游戏和工具后更新，再重新启动。兼容范围以已验证原生合同为准，不保证任意未来版本或 MOD 组合。
+
+## English
+
+- Restores native-function resolution for Steam build 25721473 (game EXE 1.4.0.0), fixing connection failures after the game update.
+- Normalizes reviewed diagnostic source-line arguments while checking their diagnostic callee. Object fields, internal control flow, call relationships and live instruction checks remain required.
+- Accepts a prior merged font only when this installation's complete managed receipt, cached font package, current fonts and audited loader all agree. Unknown or mixed files remain rejected.
+- Keeps 0.4.2 features and manual updates. Further dynamic-effect text improvements remain planned for 1.0.
+
+Exit the game and tool normally before updating, then relaunch. Compatibility requires the verified native contracts; arbitrary future builds and MOD combinations are not guaranteed.
+
+## 日本語
+
+- Steam build 25721473（ゲーム EXE 1.4.0.0）の関数検出を修正し、ゲーム更新後の接続失敗に対応しました。
+- 検証済みの診断呼び出しのソース行番号のみを正規化し、呼び出し先も検証します。オブジェクトのフィールド、分岐、呼び出し関係、実行中の命令照合は引き続き必須です。
+- 旧版の統合フォントは、このゲームの管理記録、完全なキャッシュ、現在のフォントと確認済みローダーがすべて一致する場合のみ認識します。不明または混在したファイルは拒否します。
+- 0.4.2 の機能と手動更新を維持します。動的な効果説明の改善は 1.0 で継続する予定です。
+
+ゲームとツールを通常の方法で終了してから更新し、再起動してください。任意の将来のバージョンや Mod の組み合わせを保証するものではありません。
+
 # 0.4.2 — EXE 兼容与非中文游戏语言支持
 
 - 按工具实际使用的原生函数和数据定位 EXE，允许已识别函数迁址；无关文件信息、代码和资源变化不再阻止连接。原版 EXE 和全语音 MOD 1.0.7 附带 EXE 已通过连接及双语显示实测。

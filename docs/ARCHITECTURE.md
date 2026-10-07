@@ -65,7 +65,7 @@ launch.py 是稳定桌面入口，bootstrap.py 是组装入口：先恢复未完
 
 发布文件由 release-files.json 明确列出。架构测试验证完整运行时已列入、开发工具与本地状态未列入。GitHub Actions 只有带版本标签、测试通过的提交能发布；全部资源先传到草稿，随后公开。版本一致性同时检查标签、distribution.json 与 pyproject.toml。
 
-`release_client.py` 统一元数据和下载校验，GitHub/Gitee 仅适配版本发现及受限来源。`release_sources.py` 优先选取完整的 Gitee 稳定版，镜像缺失、不完整或失败时回退 GitHub；当前镜像没有更高版本时也查询 GitHub。下载回退绑定原版本、大小及 SHA-256，不替换成另一版。Gitee `/latest` 会包含预览版，因此使用倒序发行列表筛选稳定版。Gitee 允许缺少完整便携 ZIP，但必须具备清单中的所有组件；安装事务仍由同一个 `UpdateService`/安装器执行。旧 GitHub ETag 不复用于 Gitee。
+`release_client.py` 统一元数据和下载校验。0.4.4 候选的 `static_gitee_updates.py` 使用同仓库受限 raw 索引，国内发现、历史、清单与下载不调用 releases/attachments API；`gitee_updates.py` 保留给维护者发布盘点及旧合同回归。索引绑定固定 tag、清单大小与 SHA，拒绝 HTML、重复字段、未知身份、已见版本回退及同版摘要变化，索引与二进制主机分开限制。`release_sources.py` 优先完整 Gitee 稳定版，缺失、不完整或失败时回退 GitHub；镜像没有更高版本时也查 GitHub。确认的完整元数据和下载回退固定摘要，不能换版或改写同版。检查间隔、失败退避与通知跨重启保留，历史/清单复用缓存。Gitee 可缺完整 ZIP，但须具备所有组件和 Setup；安装事务不变。GitHub ETag 不复用于 Gitee。候选索引尚未上线，发布顺序与证据见 [静态索引](UPDATE_INDEX.md)。
 
 发布保持 GitHub 单一构建来源，由维护者本机中转原始附件到 Gitee，见 `docs/LOCAL_RELEASE_RELAY.md`。推送标签后主动执行一次 `local_release_relay.ps1 -Mode Run -Tag <版本> -WaitForRelease`，在本次前台任务中限时等待正式发布，然后中转，结束就退出；没有日常定时轮询或后台接收程序。`tools.relay_gitee` 只读取公开稳定版，通过 GitHub 清单摘要绑定原包，复用已验证缓存；成功收据核对两端附件身份，重复执行不再传大包。PowerShell 入口提供 DPAPI 加密凭据及旧定时任务迁移，不进入玩家安装包，也不注册通用 CI runner。`gitee-mirror.yml` 仅保留为手动应急工具，跨站上传实测见 `docs/verification/GITEE_DISTRIBUTION.md`。
 
@@ -81,9 +81,9 @@ launch.py 是稳定桌面入口，bootstrap.py 是组装入口：先恢复未完
 
 ## 多语言字体交付
 
-游戏文字使用自己的 FNT 和 BC7 字形图集，不依赖 Windows 安装的字体。AutoConnector 在独立后台任务中从本机各语言 PAC 生成字形并集，保持各源语言已有字形；不分发游戏资源。发行包内含经过摘要校验的 MIT 资源加载器。游戏未运行时按原流程安装；已经运行时通过游戏自己的资源加载入口准备独立字库和贴图，完成后在 Update 切换整个 font face，无需修改游戏目录或晚加载 DLL。映射和字体都就绪后才显示双语。运行时字体方案的验证层级见 [runtime-fonts.md](verification/runtime-fonts.md)。
+游戏文字使用自己的 FNT 和 BC7 字形图集，不依赖 Windows 安装的字体。AutoConnector 在独立后台任务中从当前本机各语言 PAC 生成外置字形并集，保持各源语言已有字形；不分发游戏资源。默认流程仅准备外置缓存并完整校验运行时清单，游戏启动、退出、重连和 UI 重启均不调用磁盘安装。连接后通过游戏自己的资源加载入口准备独立字库和贴图，完成后在 Update 切换整个 font face，无需修改游戏目录或晚加载 DLL。映射和字体都就绪后才显示双语。运行时字体方案的验证层级见 [runtime-fonts.md](verification/runtime-fonts.md)。
 
-生成物按游戏目录和源资源指纹缓存，安装前校验 FNT、DDS、SHA-256 和游戏版本契约；解压后图集不得超过已验证的 32 MiB 原生缓冲区。界面与后端使用 platform/file_lock.py 的同一个字体构建锁，等待后重新检查缓存；进程被结束时 OS 释放锁。安装记录按游戏目录隔离，内容完全一致的旧文件可以收养；未知的加载器或其他 MOD 字体不覆盖。写入失败恢复原文件。UI 单独显示准备、游戏内加载、冲突或失败状态，尚未完成加载不能显示双语已就绪。
+生成物按游戏目录、源 PAC 名称/大小/修改时间及构建算法和补充字形摘要缓存；该缓存键不等同于完整 PAC 内容摘要。候选逐文件校验 FNT、DDS、SHA-256，原生连接另验证游戏版本契约；解压后图集不得超过已验证的 32 MiB 原生缓冲区。界面与后端使用 platform/file_lock.py 的同一个字体构建锁，等待后重新检查缓存；进程被结束时 OS 释放锁。原始 PAC 字体或本安装完整受管的旧字体可作为运行时来源，未知、混杂、跨安装来源继续拒绝。历史显式 `install_font_patch` 命令保留可回滚磁盘安装能力及已审核加载器，默认 UI 和后台不会触发它，也不自动删除历史安装文件。UI 单独显示准备、校验、游戏内加载或失败状态，尚未完成加载不能显示双语已就绪。
 
 运行时清单包含四个字库家族的源 FNT 摘要，按实际 face 内容识别，不依赖用户选择的语言。已有对应并集字库时直接复用；否则从已校验缓存加载新 FNT 和独立名称的 DDS。图片文件读取只在 image-cache 的已验证 CALL 位置接入 C 回调，原有全局文件读取器（含资源加载器的跳转）保持不变。字库来源在游戏 Update 中取得；文件读取、哈希和贴图创建在独立事件循环中执行。准备完成后以单个指针切换完整 face，旧资源保持存活；更新 font generation，使未翻译的原文也重建字形，下一帧不重复刷新。退出工具在下一次 Update 恢复原 face；游戏 reset 前恢复引擎原本拥有的对象，新 face 保留在有界缓存中供重新启用复用。原生模块更新仍只在新游戏进程安装，不能把首次字体免重启误写成旧驻留脚本可热卸载。
 

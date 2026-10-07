@@ -46,6 +46,8 @@ def build(version, repository, output, root=ROOT, *, extra=None, runtime_id=None
     }
     if distribution.get("gitee_mirror") is True and repository == distribution["repository"]:
         release_distribution["gitee_mirror"] = True
+        if "gitee_index" in distribution:
+            release_distribution["gitee_index"] = distribution["gitee_index"]
     contents["distribution.json"] = json.dumps(
         release_distribution,
         indent=2,

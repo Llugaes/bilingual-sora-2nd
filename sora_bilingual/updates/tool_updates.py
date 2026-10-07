@@ -65,6 +65,7 @@ GROUPS = {
         "sora_bilingual/updates/github_updates.py",
         "sora_bilingual/updates/release_client.py",
         "sora_bilingual/updates/gitee_updates.py",
+        "sora_bilingual/updates/static_gitee_updates.py",
         "sora_bilingual/updates/release_sources.py",
         "sora_bilingual/updates/update_installer.py",
         "sora_bilingual/updates/update_service.py",

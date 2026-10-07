@@ -1,4 +1,4 @@
-"""Background game discovery. Never launches games or replaces live hooks."""
+"""Background discovery and external caches. Never writes game installation files."""
 
 import json
 from pathlib import Path
@@ -73,7 +73,8 @@ class AutoConnector:
         from sora_bilingual.localization.native_catalog import fingerprint, model_path
         from sora_bilingual.localization.model_wire import wire_ready
         from sora_bilingual.updates.tool_updates import ReleaseWatch
-        from sora_bilingual.fonts.font_delivery import ensure, source_fingerprint
+        from sora_bilingual.fonts.font_delivery import source_fingerprint
+        from sora_bilingual.fonts.runtime_fonts import runtime_manifest
 
         releases = ReleaseWatch()
         device = None
@@ -85,23 +86,8 @@ class AutoConnector:
             lambda c: prepare_fonts_fresh(c["game"], cancel=self.stop), lambda c: c
         )
 
-        def is_game_running():
-            try:
-                return any(
-                    process.name.lower() == "sora_2nd.exe"
-                    for process in frida.get_local_device().enumerate_processes()
-                )
-            except Exception:
-                # Font delivery fails closed if a fresh process query is unavailable.
-                return True
-
         font_apply = ModelPreparation(
-            lambda c: ensure(
-                c["game"],
-                c["candidate"],
-                game_running=c["game_running"],
-                is_game_running=is_game_running,
-            ),
+            lambda c: runtime_manifest(c["game"], c["candidate"]),
             lambda c: c,
         )
         self.preparations = [preparation, font_preparation, font_apply]
@@ -203,45 +189,25 @@ class AutoConnector:
                         font_action = None
                         self.font_status = {
                             "state": "prepared",
-                            "message": "字体已准备，等待安全安装",
+                            "message": "字体已准备，正在校验运行时资源",
                             "candidate": str(font_candidate),
                         }
                 fonts_applied = font_apply.poll()
                 if fonts_applied and fonts_applied[0]["game"] == installed_game:
-                    applied_config, result, error = fonts_applied
-                    font_action = (
-                        str(applied_config["candidate"]),
-                        bool(applied_config["game_running"]),
-                    )
+                    applied_config, _, error = fonts_applied
+                    font_action = str(applied_config["candidate"])
                     if error:
                         self.font_status = {
                             "state": "error",
-                            "message": "字体安装失败",
+                            "message": "字体资源校验失败",
                             "detail": str(error),
                         }
                     else:
-                        state = result["state"]
-                        messages = {
-                            "healthy": "多语言字体已就绪",
-                            "installed": "多语言字体已安装",
-                            "runtime-required": "字体已准备，连接后将在游戏内加载，无需重启",
-                            "conflict": "字体安装与已有 MOD 文件冲突",
-                            "unsupported-exe": "游戏兼容检查未通过，未安装字体",
-                        }
                         self.font_status = {
-                            "state": state,
-                            "message": messages.get(state, "字体状态未知"),
-                            "detail": result.get("detail")
-                            or result.get("conflicts")
-                            or result.get("missing")
-                            or [],
+                            "state": "runtime-required",
+                            "message": "字体已准备，连接后将在游戏内加载，无需重启",
                             "restart_required": False,
                         }
-                        if state == "runtime-required":
-                            # The fresh pre-write query can see a game that
-                            # started after the snapshot. Treat it as the
-                            # running action until the process later exits.
-                            font_action = (str(applied_config["candidate"]), True)
                 # Resolving a running process is read-only and lets font
                 # preparation start without waiting for the live backend.
                 if len(games) == 1:
@@ -279,7 +245,7 @@ class AutoConnector:
                         }
                     else:
                         if self.font_status.get("state") == "error" and font_candidate is not None:
-                            # Retry a transient installation error at this
+                            # Retry a transient verification error at this
                             # low-frequency boundary, never each connection tick.
                             font_action = None
                         if current_font_fingerprint != font_fingerprint:
@@ -292,17 +258,14 @@ class AutoConnector:
                             }
                             font_preparation.request({"game": installed_game})
                 if font_candidate is not None and not font_preparation.active:
-                    # A game process may keep its atlas in memory. Never alter
-                    # its files until it is gone. Verification and the
-                    # transaction run off this connection coordinator so they
-                    # cannot delay attaching an already healthy backend.
-                    action = (str(font_candidate), bool(games))
+                    # Verify external resources off the coordinator. Starting,
+                    # exiting or reconnecting a game never installs loose files.
+                    action = str(font_candidate)
                     if action != font_action and not font_apply.active:
                         font_apply.request(
                             {
                                 "game": installed_game,
                                 "candidate": font_candidate,
-                                "game_running": bool(games),
                             }
                         )
                 # Offline prewarming can only use a language confirmed during
@@ -350,15 +313,17 @@ class AutoConnector:
                     self.policy.attempted.discard(selected)
                     selected = None
                 if not games:
+                    if self.font_status.get("state") == "runtime-ready":
+                        self.font_status = {
+                            "state": "runtime-required",
+                            "message": "字体已准备，连接后将在游戏内加载，无需重启",
+                            "restart_required": False,
+                        }
                     self.error = None
                     source_retry_identity = None
                     source_retry_count = 0
                     next_source_retry = 0
-                    self.message = (
-                        "字体已就绪，可以启动游戏"
-                        if self.font_status.get("state") in ("healthy", "installed")
-                        else self.font_status.get("message", "自动连接已开启，等待游戏启动")
-                    )
+                    self.message = self.font_status.get("message", "自动连接已开启，等待游戏启动")
                 elif len(games) > 1:
                     self.message = "检测到多个游戏进程，请保留一个"
                 elif busy:

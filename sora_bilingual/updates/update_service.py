@@ -1,11 +1,13 @@
 """Background stable-release checks; no network or archive work on Qt's thread."""
 
 import json
+import math
 from pathlib import Path
 import threading
 import time
 from sora_bilingual.updates.github_updates import GitHubClient, version_tuple
 from sora_bilingual.updates.release_sources import ReleaseSources
+from sora_bilingual.updates.release_client import metadata_identity
 from sora_bilingual.updates.update_installer import install, UpdateBusy, RuntimeRequired, write_json
 
 INTERVAL = 6 * 3600
@@ -26,7 +28,13 @@ class UpdateService:
             self.policy = "notify"
             write_json(self.preferences, {"policy": self.policy})
         self.client = client or (
-            ReleaseSources(self.distribution["repository"], self.distribution["version"])
+            ReleaseSources(
+                self.distribution["repository"],
+                self.distribution["version"],
+                gitee_index=self.distribution.get("gitee_index"),
+                directory=self.directory,
+                clock=self.clock,
+            )
             if self.distribution.get("gitee_mirror") is True
             else GitHubClient(self.distribution["repository"])
         )
@@ -38,12 +46,71 @@ class UpdateService:
         self.installed = False
         self.failed = False
         self.download_is_installer = False
-        self.download_url = f"https://github.com/{self.distribution['repository']}/releases/latest"
+        self.backup_download_url = (
+            f"https://github.com/{self.distribution['repository']}/releases/latest"
+        )
+        self.has_domestic_source = self.distribution.get("gitee_mirror") is True
+        self.download_url = (
+            f"https://gitee.com/{self.distribution['repository']}/releases"
+            if self.has_domestic_source
+            else self.backup_download_url
+        )
         self.progress = None
-        self.last_check = 0
-        self.next_check = 0
+        state = self._read(self.directory / "check-state.json")
+        if (
+            state.get("version") != self.distribution["version"]
+            or state.get("repository") != self.distribution["repository"]
+        ):
+            state = {}
+        now = self.clock()
+        number = lambda value: value if type(value) in (int, float) and math.isfinite(value) else 0
+        self.last_check = min(max(number(state.get("last_check")), 0), now)
+        self.next_check = min(max(number(state.get("next_check")), 0), now + INTERVAL)
+        self.manual_after = min(max(number(state.get("manual_after")), 0), now + 60)
+        self.failure_until = min(max(number(state.get("failure_until")), 0), now + INTERVAL)
+        self.failure_count = min(max(int(number(state.get("failure_count"))), 0), 5)
+        self.history_checked_at = 0
         self._thread = None
         self._lock = threading.Lock()
+        remembered = state.get("release")
+        if isinstance(remembered, dict):
+            try:
+                if version_tuple(remembered.get("tag_name")) > version_tuple(
+                    self.distribution["version"]
+                ):
+                    self.available = remembered["tag_name"]
+                    self.release = remembered
+                    self.message = f"上次检查发现 {self.available}；确认后才会下载安装"
+            except ValueError:
+                pass
+        if state.get("failed") is True:
+            self.failed = True
+            self.message = "上次更新检查未完成；请稍后重试，或使用下载入口手动重新安装"
+
+    def _save_check_state(self):
+        release = None
+        if self.release:
+            release = {
+                key: self.release[key]
+                for key in ("tag_name", "name", "_source", "_manifest_identity")
+                if key in self.release
+            }
+        write_json(
+            self.directory / "check-state.json",
+            {
+                "version": self.distribution["version"],
+                "repository": self.distribution["repository"],
+                "last_check": self.last_check,
+                "next_check": self.next_check
+                if math.isfinite(self.next_check)
+                else self.clock() + INTERVAL,
+                "manual_after": self.manual_after,
+                "failure_until": self.failure_until,
+                "failure_count": self.failure_count,
+                "failed": self.failed,
+                "release": release,
+            },
+        )
 
     @staticmethod
     def _read(path):
@@ -57,25 +124,42 @@ class UpdateService:
     def busy(self):
         return bool(self._thread and self._thread.is_alive())
 
+    @property
+    def _can_request(self):
+        return not self.installed and not self.busy and self.clock() >= self.failure_until
+
+    @property
+    def can_check(self):
+        return self._can_request and self.clock() >= self.manual_after
+
     def set_policy(self, value):
         if value not in POLICIES:
             raise ValueError("未知更新策略")
         self.policy = value
         write_json(self.preferences, {"policy": value})
-        self.next_check = 0
         if not self.busy:
             self.message = "等待检查更新" if value == "notify" else "自动检查已关闭"
 
     def tick(self, manual=False):
-        if (
-            self.installed
-            or self.busy
-            or (not manual and (self.policy == "off" or self.clock() < self.next_check))
+        if not self.can_check or (
+            not manual and (self.policy == "off" or self.clock() < self.next_check)
         ):
+            return
+        # Persist before spawning: a restart during a request must not reset
+        # the manual cooldown and repeatedly hammer either provider.
+        self.manual_after = self.clock() + 60
+        try:
+            self._save_check_state()
+        except OSError as exc:
+            self._record_failure(exc)
             return
         self._start(self._check)
 
     def load_history(self):
+        if not self._can_request or (
+            self.history_loaded and 0 <= self.clock() - self.history_checked_at < INTERVAL
+        ):
+            return
         self._start(self._load_history)
 
     def install_release(self, release):
@@ -90,6 +174,23 @@ class UpdateService:
         )
         self._thread.start()
 
+    def _record_failure(self, exc):
+        self.failed = True
+        self.message = (
+            "版本操作未完成。请重试，或使用下方下载入口重新安装；"
+            "原目录与配置请保留。详细原因见日志。"
+        )
+        self.failure_count = min(self.failure_count + 1, 5)
+        self.failure_until = self.clock() + min(900 * 2 ** (self.failure_count - 1), INTERVAL)
+        self.next_check = self.failure_until
+        try:
+            write_json(
+                self.directory / "last-error.json",
+                {"time": self.clock(), "error": str(exc)},
+            )
+        except OSError:
+            pass  # A read-only/full disk must not also break the recovery UI.
+
     def _run(self, action, *args):
         # A process may terminate during network work; installer transactions
         # recover at next bootstrap. Native hooks never belong to this worker.
@@ -101,21 +202,13 @@ class UpdateService:
                 self.message = str(exc)
                 self.next_check = self.clock() + INTERVAL
             except Exception as exc:
-                self.failed = True
-                self.message = (
-                    "版本操作未完成。请重试，或使用下方下载入口重新安装；"
-                    "原目录与配置请保留。详细原因见日志。"
-                )
-                self.next_check = self.clock() + 900
-                try:
-                    write_json(
-                        self.directory / "last-error.json",
-                        {"time": self.clock(), "error": str(exc)},
-                    )
-                except OSError:
-                    pass  # A read-only/full disk must not also break the recovery UI.
+                self._record_failure(exc)
             finally:
                 self.progress = None
+                try:
+                    self._save_check_state()
+                except OSError:
+                    pass
 
     def _check(self, manual=False):
         self.message = "正在检查稳定版更新…"
@@ -123,22 +216,29 @@ class UpdateService:
         write_json(self.directory / "release-cache.json", cache)
         self.last_check = self.clock()
         self.next_check = self.clock() + INTERVAL
+        self.manual_after = self.clock() + 60
+        self.failure_until = self.failure_count = 0
+        self.failed = False
+        self.history_loaded = False
         if not release or version_tuple(release["tag_name"]) <= version_tuple(
             self.distribution["version"]
         ):
             self.available = None
             self.release = None
             self.message = "当前已是最新稳定版" if release else "仓库尚未发布稳定版"
+            self._save_check_state()
             return
         self.available = release["tag_name"]
         self.release = release
         self.message = f"发现 {self.available}；点击下载安装后才会更新"
+        self._save_check_state()
 
     def _load_history(self):
         self.message = "正在获取历史稳定版本…"
         current = version_tuple(self.distribution["version"])
         self.history = [r for r in self.client.history() if version_tuple(r["tag_name"]) < current]
         self.history_loaded = True
+        self.history_checked_at = self.clock()
         self.message = "请选择要回退的稳定版本" if self.history else "没有可回退的稳定版本"
 
     def _install(self, selection):
@@ -157,6 +257,10 @@ class UpdateService:
         if release["tag_name"] != tag:
             raise ValueError("所选版本发生变化")
         meta, asset = self.client.metadata(release)
+        if selection.get("_manifest_identity") and selection[
+            "_manifest_identity"
+        ] != metadata_identity(meta):
+            raise ValueError("所确认版本的更新清单发生变化，请重新检查并确认")
         self.download_url = asset["browser_download_url"] if asset else self.download_url
         if "installer" in meta:
             setup = self.client.component_asset(release, meta["installer"])

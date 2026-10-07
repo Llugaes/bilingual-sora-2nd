@@ -108,10 +108,10 @@ def with_font_status(state, fonts):
     """Keep connection truth while surfacing font setup independently."""
     notices = {
         "preparing": "正在准备多语言字体，当前连接继续运行",
-        "prepared": "字体已准备，等待安全安装",
+        "prepared": "字体已准备，正在校验运行时资源",
         "runtime-required": "字体已准备，连接后在游戏内加载，无需重启",
-        "conflict": "字体安装遇到已有 MOD 文件，请查看详情",
-        "error": "字体准备或安装失败，请查看详情",
+        "conflict": "检测到现有字体相关文件，当前工具无法确认其归属，暂未覆盖。可能来自其他版本工具或 MOD，请查看详情。",
+        "error": "字体准备或校验失败，请查看详情",
         "unsupported-exe": "游戏兼容检查未通过，未安装字体",
     }
     notice = notices.get(fonts.get("state"))

@@ -1738,12 +1738,13 @@ CONTRACT = {
                     "chained": [
                         {
                             "size": 802,
-                            "sha256": "9d32100397456b94e5f5c74d8f57fc0844d6f9e3e6516dc55cf8c9116813b49d",
+                            "sha256": "03add7d58da0cc5fb650483c6d09d94feb67b2f365ca3aa871db116463dfe527",
                             "masks": [
                                 [7, 4],
                                 [206, 4],
                                 [264, 4],
                                 [723, 4],
+                                [729, 4],
                                 [736, 4],
                                 [746, 4],
                                 [762, 4],
@@ -1751,11 +1752,17 @@ CONTRACT = {
                             ],
                             "links": [
                                 {
+                                    "displacement": [746, 4],
+                                    "next": 750,
+                                    "function": "diagnostic_report",
+                                    "addend": 0,
+                                },
+                                {
                                     "displacement": [801, 1],
                                     "next": 802,
                                     "function": "log_write",
                                     "addend": 881,
-                                }
+                                },
                             ],
                             "globals": [],
                             "offset": 65,
@@ -1777,12 +1784,13 @@ CONTRACT = {
             "variants": [
                 {
                     "size": 802,
-                    "sha256": "9d32100397456b94e5f5c74d8f57fc0844d6f9e3e6516dc55cf8c9116813b49d",
+                    "sha256": "03add7d58da0cc5fb650483c6d09d94feb67b2f365ca3aa871db116463dfe527",
                     "masks": [
                         [7, 4],
                         [206, 4],
                         [264, 4],
                         [723, 4],
+                        [729, 4],
                         [736, 4],
                         [746, 4],
                         [762, 4],
@@ -1791,11 +1799,17 @@ CONTRACT = {
                     "points": {"log_write_commit": 536, "log_write_append_commit": 696},
                     "links": [
                         {
+                            "displacement": [746, 4],
+                            "next": 750,
+                            "function": "diagnostic_report",
+                            "addend": 0,
+                        },
+                        {
                             "displacement": [801, 1],
                             "next": 802,
                             "function": "log_write",
                             "addend": 881,
-                        }
+                        },
                     ],
                     "globals": [],
                     "chained": [
@@ -1953,7 +1967,7 @@ CONTRACT = {
             "variants": [
                 {
                     "size": 1974,
-                    "sha256": "312817b6cd3ea3154143ced230f511c8a9460912bdafaaf917b40f2aa6d7b107",
+                    "sha256": "642f370ed55555390efdb85c44a6446156238af3b319b1b650293fbb21599e11",
                     "masks": [
                         [48, 4],
                         [160, 4],
@@ -1978,6 +1992,7 @@ CONTRACT = {
                         [750, 4],
                         [791, 4],
                         [803, 4],
+                        [809, 4],
                         [816, 4],
                         [826, 4],
                         [843, 4],
@@ -1999,6 +2014,7 @@ CONTRACT = {
                         [1500, 4],
                         [1564, 4],
                         [1576, 4],
+                        [1582, 4],
                         [1589, 4],
                         [1599, 4],
                         [1645, 4],
@@ -2023,6 +2039,18 @@ CONTRACT = {
                         "log_present_single": 654,
                     },
                     "links": [
+                        {
+                            "displacement": [826, 4],
+                            "next": 830,
+                            "function": "diagnostic_report",
+                            "addend": 0,
+                        },
+                        {
+                            "displacement": [1599, 4],
+                            "next": 1603,
+                            "function": "diagnostic_report",
+                            "addend": 0,
+                        },
                         {
                             "displacement": [1645, 4],
                             "next": 1649,
@@ -2116,7 +2144,7 @@ CONTRACT = {
             "variants": [
                 {
                     "size": 1838,
-                    "sha256": "ad7fb35f032f0c013559c2ce671bbcce47df9d33c044d0f3999051e058324e31",
+                    "sha256": "728b238e5cf022827de1919e60830dcee47223b4303686768dbe0ce04d6d294d",
                     "masks": [
                         [39, 4],
                         [74, 4],
@@ -2165,6 +2193,7 @@ CONTRACT = {
                         [1248, 4],
                         [1263, 4],
                         [1275, 4],
+                        [1281, 4],
                         [1288, 4],
                         [1298, 4],
                         [1317, 4],
@@ -2197,7 +2226,14 @@ CONTRACT = {
                         "log_row_single": 1015,
                         "log_row_commit": 861,
                     },
-                    "links": [],
+                    "links": [
+                        {
+                            "displacement": [1298, 4],
+                            "next": 1302,
+                            "function": "diagnostic_report",
+                            "addend": 0,
+                        }
+                    ],
                     "globals": [
                         {"name": "log_owner_global", "displacement": [115, 4], "next": 119},
                         {"name": "log_owner_global", "displacement": [374, 4], "next": 378},
@@ -2876,7 +2912,7 @@ CONTRACT = {
                                         "name": "cache_hash_helper",
                                         "template": {
                                             "size": 1133,
-                                            "sha256": "fa4c19cde8030c3cd844269888e739fb56fa52070efd6324d16c0fc4c0b531f4",
+                                            "sha256": "904503397555773d661328bd2b7d056a3f6e90877a7ee3b276ba15a1c025204b",
                                             "masks": [
                                                 [9, 4],
                                                 [194, 4],
@@ -2905,6 +2941,8 @@ CONTRACT = {
                                                 [696, 4],
                                                 [701, 4],
                                                 [723, 4],
+                                                [831, 4],
+                                                [837, 4],
                                                 [884, 4],
                                                 [892, 4],
                                                 [903, 4],
@@ -2917,6 +2955,42 @@ CONTRACT = {
                                             ],
                                             "links": [],
                                             "globals": [],
+                                            "continuations": [
+                                                {
+                                                    "displacement": [837, 4],
+                                                    "encoding": "rva32",
+                                                    "name": "path_hash_update",
+                                                    "template": {
+                                                        "size": 41,
+                                                        "sha256": "d97ceb64e51a71f13deaae6e18fd5c79a516ed0f856478a681a37b63e91b335c",
+                                                        "masks": [[16, 4]],
+                                                        "links": [],
+                                                        "globals": [],
+                                                    },
+                                                }
+                                            ],
+                                            "equal_targets": [
+                                                {
+                                                    "left": {
+                                                        "displacement": [831, 4],
+                                                        "encoding": "rva32",
+                                                    },
+                                                    "right": {
+                                                        "continuation": "path_hash_update",
+                                                        "displacement": [16, 4],
+                                                        "next": 20,
+                                                    },
+                                                }
+                                            ],
+                                            "data_refs": [
+                                                {
+                                                    "displacement": [831, 4],
+                                                    "encoding": "rva32",
+                                                    "size": 1024,
+                                                    "alignment": 4,
+                                                    "sha256": "12f3e0576d447eb37b36d82ba0c1c5481b8f0d12fdc70347ce4a076b229d4c86",
+                                                }
+                                            ],
                                         },
                                     }
                                 ],
@@ -2929,6 +3003,366 @@ CONTRACT = {
                                         "left": {"displacement": [67, 4], "next": 71},
                                         "right": {"displacement": [74, 4], "encoding": "rva32"},
                                     },
+                                ],
+                            },
+                        },
+                        {
+                            "displacement": [779, 4],
+                            "next": 783,
+                            "name": "cache_precall_wrapper",
+                            "template": {
+                                "size": 100,
+                                "sha256": "2512568d134916ef947c5ea13dc5305d2570bc7d95727101931b4851673f5013",
+                                "masks": [[17, 4], [24, 4], [32, 4], [79, 4], [86, 4], [93, 4]],
+                                "links": [
+                                    {
+                                        "displacement": [93, 4],
+                                        "encoding": "rva32",
+                                        "function": "font_image_read_call",
+                                        "addend": 787,
+                                    }
+                                ],
+                                "globals": [],
+                                "continuations": [
+                                    {
+                                        "displacement": [32, 4],
+                                        "next": 36,
+                                        "name": "cache_precall_helper",
+                                        "template": {
+                                            "size": 262,
+                                            "sha256": "c65ad1cc3e1e2a6d7064b6eda5c3d380fc7781aa08b85d6da2a42455fe370083",
+                                            "masks": [
+                                                [9, 4],
+                                                [115, 4],
+                                                [123, 4],
+                                                [134, 4],
+                                                [142, 4],
+                                                [164, 4],
+                                                [169, 4],
+                                            ],
+                                            "links": [],
+                                            "globals": [],
+                                        },
+                                    }
+                                ],
+                                "equal_targets": [
+                                    {
+                                        "left": {"displacement": [17, 4], "next": 21},
+                                        "right": {"displacement": [24, 4], "encoding": "rva32"},
+                                    },
+                                    {
+                                        "left": {"displacement": [79, 4], "next": 83},
+                                        "right": {"displacement": [86, 4], "encoding": "rva32"},
+                                    },
+                                ],
+                            },
+                        },
+                        {
+                            "displacement": [793, 4],
+                            "next": 797,
+                            "name": "cache_postcall_wrapper",
+                            "template": {
+                                "size": 97,
+                                "sha256": "d3c865afa652507414d06e7365e8ab0d7ed6b4fdd2e276f82c3fdbc96912a96f",
+                                "masks": [
+                                    [11, 4],
+                                    [18, 4],
+                                    [29, 4],
+                                    [52, 4],
+                                    [59, 4],
+                                    [66, 4],
+                                    [76, 4],
+                                    [83, 4],
+                                    [90, 4],
+                                ],
+                                "links": [
+                                    {
+                                        "displacement": [66, 4],
+                                        "encoding": "rva32",
+                                        "function": "font_image_read_call",
+                                        "addend": 800,
+                                    },
+                                    {
+                                        "displacement": [90, 4],
+                                        "encoding": "rva32",
+                                        "function": "font_image_read_call",
+                                        "addend": 872,
+                                    },
+                                ],
+                                "globals": [],
+                                "continuations": [
+                                    {
+                                        "displacement": [29, 4],
+                                        "next": 33,
+                                        "name": "cache_postcall_helper",
+                                        "template": {
+                                            "size": 275,
+                                            "sha256": "b5a6ed80539a650984ea7b159c6dea93814e7116fb22dff0868034c415e6e35f",
+                                            "masks": [
+                                                [17, 4],
+                                                [120, 4],
+                                                [128, 4],
+                                                [139, 4],
+                                                [147, 4],
+                                                [158, 4],
+                                                [169, 4],
+                                                [185, 4],
+                                            ],
+                                            "links": [],
+                                            "globals": [],
+                                        },
+                                    }
+                                ],
+                                "equal_targets": [
+                                    {
+                                        "left": {"displacement": [11, 4], "next": 15},
+                                        "right": {"displacement": [18, 4], "encoding": "rva32"},
+                                    },
+                                    {
+                                        "left": {"displacement": [52, 4], "next": 56},
+                                        "right": {"displacement": [59, 4], "encoding": "rva32"},
+                                    },
+                                    {
+                                        "left": {"displacement": [76, 4], "next": 80},
+                                        "right": {"displacement": [83, 4], "encoding": "rva32"},
+                                    },
+                                ],
+                            },
+                        },
+                    ],
+                },
+                {
+                    "size": 1457,
+                    "sha256": "a35d7ddd9ce6747a54c0a8707b30cc736318e0d09b2a02e12bc921788bf79009",
+                    "masks": [
+                        [1, 4],
+                        [28, 4],
+                        [59, 4],
+                        [102, 4],
+                        [107, 4],
+                        [124, 4],
+                        [133, 4],
+                        [168, 4],
+                        [187, 4],
+                        [205, 4],
+                        [217, 4],
+                        [241, 4],
+                        [302, 4],
+                        [386, 4],
+                        [404, 4],
+                        [420, 4],
+                        [564, 4],
+                        [569, 4],
+                        [652, 4],
+                        [667, 4],
+                        [761, 4],
+                        [779, 4],
+                        [788, 4],
+                        [793, 4],
+                        [808, 4],
+                        [821, 4],
+                        [831, 4],
+                        [851, 4],
+                        [921, 4],
+                        [937, 4],
+                        [950, 4],
+                        [960, 4],
+                        [976, 4],
+                        [1004, 4],
+                        [1012, 4],
+                        [1027, 4],
+                        [1213, 4],
+                        [1229, 4],
+                        [1237, 4],
+                        [1252, 4],
+                        [1284, 4],
+                        [1364, 4],
+                        [1411, 4],
+                        [1427, 4],
+                        [1452, 4],
+                    ],
+                    "points": {"font_image_read_call": 787},
+                    "links": [
+                        {
+                            "displacement": [569, 4],
+                            "next": 573,
+                            "function": "font_image_acquire",
+                            "addend": 0,
+                        },
+                        {
+                            "displacement": [788, 4],
+                            "next": 792,
+                            "function": "font_file_read",
+                            "addend": 0,
+                        },
+                    ],
+                    "globals": [
+                        {"name": "image_cache_global", "displacement": [564, 4], "next": 568}
+                    ],
+                    "continuations": [
+                        {
+                            "displacement": [1, 4],
+                            "next": 5,
+                            "name": "cache_entry_wrapper",
+                            "template": {
+                                "size": 110,
+                                "sha256": "5d5ff0122e5d40d0862a8dc9218965f6f9c54b00a3b6e05f014fe1a0409f2a2f",
+                                "masks": [[27, 4], [34, 4], [54, 4], [89, 4], [96, 4], [103, 4]],
+                                "links": [
+                                    {
+                                        "displacement": [103, 4],
+                                        "encoding": "rva32",
+                                        "function": "font_image_read_call",
+                                        "addend": 5,
+                                    }
+                                ],
+                                "globals": [],
+                                "continuations": [
+                                    {
+                                        "displacement": [54, 4],
+                                        "next": 58,
+                                        "name": "cache_entry_helper",
+                                        "template": {
+                                            "size": 281,
+                                            "sha256": "6d4ca2ecceb48c8501518ecb9a3614769b0b8d9ef2093129dd03b6c084a2b9ce",
+                                            "masks": [
+                                                [95, 4],
+                                                [107, 4],
+                                                [121, 4],
+                                                [140, 4],
+                                                [148, 4],
+                                                [172, 4],
+                                                [192, 4],
+                                                [200, 4],
+                                            ],
+                                            "links": [],
+                                            "globals": [],
+                                        },
+                                    }
+                                ],
+                                "equal_targets": [
+                                    {
+                                        "left": {"displacement": [27, 4], "next": 31},
+                                        "right": {"displacement": [34, 4], "encoding": "rva32"},
+                                    },
+                                    {
+                                        "left": {"displacement": [89, 4], "next": 93},
+                                        "right": {"displacement": [96, 4], "encoding": "rva32"},
+                                    },
+                                ],
+                            },
+                        },
+                        {
+                            "displacement": [217, 4],
+                            "next": 221,
+                            "name": "cache_hash_wrapper",
+                            "template": {
+                                "size": 88,
+                                "sha256": "a497680efa09ae0393b9f93e0b73b640541a559b891299909b070b9705ea60f4",
+                                "masks": [[11, 4], [18, 4], [33, 4], [67, 4], [74, 4]],
+                                "links": [
+                                    {
+                                        "displacement": [74, 4],
+                                        "next": 78,
+                                        "function": "font_image_read_call",
+                                        "addend": 223,
+                                    }
+                                ],
+                                "globals": [],
+                                "continuations": [
+                                    {
+                                        "displacement": [33, 4],
+                                        "next": 37,
+                                        "name": "cache_hash_helper",
+                                        "template": {
+                                            "size": 1133,
+                                            "sha256": "904503397555773d661328bd2b7d056a3f6e90877a7ee3b276ba15a1c025204b",
+                                            "masks": [
+                                                [9, 4],
+                                                [194, 4],
+                                                [216, 4],
+                                                [223, 4],
+                                                [228, 4],
+                                                [265, 4],
+                                                [290, 4],
+                                                [329, 4],
+                                                [342, 4],
+                                                [371, 4],
+                                                [413, 4],
+                                                [426, 4],
+                                                [434, 4],
+                                                [445, 4],
+                                                [453, 4],
+                                                [476, 4],
+                                                [508, 4],
+                                                [591, 4],
+                                                [598, 4],
+                                                [612, 4],
+                                                [629, 4],
+                                                [637, 4],
+                                                [653, 4],
+                                                [661, 4],
+                                                [696, 4],
+                                                [701, 4],
+                                                [723, 4],
+                                                [831, 4],
+                                                [837, 4],
+                                                [884, 4],
+                                                [892, 4],
+                                                [903, 4],
+                                                [911, 4],
+                                                [935, 4],
+                                                [955, 4],
+                                                [982, 4],
+                                                [999, 4],
+                                                [1018, 4],
+                                            ],
+                                            "links": [],
+                                            "globals": [],
+                                            "continuations": [
+                                                {
+                                                    "displacement": [837, 4],
+                                                    "encoding": "rva32",
+                                                    "name": "path_hash_update",
+                                                    "template": {
+                                                        "size": 41,
+                                                        "sha256": "d97ceb64e51a71f13deaae6e18fd5c79a516ed0f856478a681a37b63e91b335c",
+                                                        "masks": [[16, 4]],
+                                                        "links": [],
+                                                        "globals": [],
+                                                    },
+                                                }
+                                            ],
+                                            "equal_targets": [
+                                                {
+                                                    "left": {
+                                                        "displacement": [831, 4],
+                                                        "encoding": "rva32",
+                                                    },
+                                                    "right": {
+                                                        "continuation": "path_hash_update",
+                                                        "displacement": [16, 4],
+                                                        "next": 20,
+                                                    },
+                                                }
+                                            ],
+                                            "data_refs": [
+                                                {
+                                                    "displacement": [831, 4],
+                                                    "encoding": "rva32",
+                                                    "size": 1024,
+                                                    "alignment": 4,
+                                                    "sha256": "12f3e0576d447eb37b36d82ba0c1c5481b8f0d12fdc70347ce4a076b229d4c86",
+                                                }
+                                            ],
+                                        },
+                                    }
+                                ],
+                                "equal_targets": [
+                                    {
+                                        "left": {"displacement": [11, 4], "next": 15},
+                                        "right": {"displacement": [18, 4], "encoding": "rva32"},
+                                    }
                                 ],
                             },
                         },
@@ -3211,12 +3645,13 @@ CONTRACT = {
                                         "name": "file_reader_helper",
                                         "template": {
                                             "size": 528,
-                                            "sha256": "6f10b6f3301b69df7df69e5192628fe6a07344de070310ba2c085223be6704d8",
+                                            "sha256": "79a28899d0f286265328f2b1fa831420ae98050498b946d5336582f1ad6e03d1",
                                             "masks": [
                                                 [135, 4],
                                                 [146, 4],
                                                 [157, 4],
                                                 [169, 4],
+                                                [181, 4],
                                                 [219, 4],
                                                 [230, 4],
                                                 [251, 4],
@@ -3248,6 +3683,14 @@ CONTRACT = {
                                                     },
                                                 }
                                             ],
+                                            "imports": [
+                                                {
+                                                    "displacement": [181, 4],
+                                                    "encoding": "rva32",
+                                                    "dll": "KERNEL32.dll",
+                                                    "name": "GetCurrentThreadId",
+                                                }
+                                            ],
                                         },
                                     }
                                 ],
@@ -3265,6 +3708,19 @@ CONTRACT = {
                         }
                     ],
                 },
+            ],
+        },
+        "diagnostic_report": {
+            "leaf": False,
+            "variants": [
+                {
+                    "size": 140,
+                    "sha256": "902d60ac0da5f9aaecb5a1b96207db8a2cacccb635fb2107fad94d23a8f460ba",
+                    "masks": [[26, 4], [67, 4], [95, 4], [110, 4], [126, 4]],
+                    "points": {},
+                    "links": [],
+                    "globals": [],
+                }
             ],
         },
     },
@@ -3287,5 +3743,8 @@ CONTRACT = {
         "variant_evidence_sha256": "b9bfd04877277ea0a4512da2e5fd7d7ec6d8e7c86227e5c16c2c12c3a7b13414",
         "review": "docs/verification/exe-compatibility.md",
         "point_count": 68,
+        "extended_evidence_sha256": [
+            "ae79759703f26ea750b46deadb3ed0ed11377c25950b8f9454e9d89f3020d966"
+        ],
     },
 }

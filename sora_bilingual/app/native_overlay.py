@@ -51,11 +51,13 @@ from sora_bilingual.app.handbook import (
     paint_surface,
 )
 from sora_bilingual.app.appearance import apply_appearance, appearance_for, stylesheet
+from sora_bilingual.paths import build_label
 
 # Kept as a public alias because preview and regression tests import STYLE.
 STYLE = NATIVE_THEME
-DEVELOPMENT = not (ROOT / "installed-manifest.json").is_file()
-BUILD_SUFFIX = " · DEV" if DEVELOPMENT else ""
+BUILD_LABEL = build_label(ROOT)
+DEVELOPMENT = BUILD_LABEL.startswith("DEV ")
+BUILD_SUFFIX = " · " + BUILD_LABEL if DEVELOPMENT else ""
 
 
 class JsonSnapshot:

@@ -65,7 +65,7 @@ The tool automatically finds Steam installations. After the first game launch, i
 
 ### Fonts for additional languages
 
-Some language pairs need an expanded game font to avoid missing characters appearing as question marks. Fonts are prepared from local game resources: installed while the game is closed, or loaded together with their atlas into the running game without a font-related restart. Preparation, loading, readiness, and failure are shown separately. Game fonts are not distributed here; two supplementary glyphs are bundled under the OFL.
+Some language pairs need an expanded game font to avoid missing characters appearing as question marks. Fonts are prepared in an external cache from current local game resources and loaded together with their atlas into memory on connection. Startup, game exit, and reconnection never automatically write to the game directory; no font-related restart is needed. Preparation, verification, loading, readiness, and failure are shown separately. Game fonts are not distributed here; two supplementary glyphs are bundled under the OFL.
 
 ## Controls and configuration
 
@@ -122,7 +122,9 @@ For smoother play, select **Single-language mode → Hold for secondary language
 
 ## Updates and rollback
 
-**Automatically check for updates** is enabled by default. The tool checks on startup and every six hours and shows a red dot. It does not download or install until you click **Download and install** and confirm the target version. Exit the game first; a busy connection requires another explicit click later. Settings, caches and window state are preserved. Existing automatic-install preferences become check-only.
+**Automatically check for updates** is enabled by default. Successful checks run every six hours; their timing and notifications survive restarts. Manual checks are at least 60 seconds apart, and failures defer retries. Download and installation require confirmation of the target version. Exit the game first; a busy connection requires another explicit click later. Settings, caches and window state are preserved. Existing automatic-install preferences become check-only.
+
+The local 0.4.4 candidate discovers domestic releases through a small public static index, with fixed tags and SHA validation instead of Gitee release APIs. The new index is not public yet; see [the rollout contract](docs/UPDATE_INDEX.md). If both sources fail, manual domestic and GitHub download links are available. Existing 0.4.3 clients may need one manual Setup migration to learn the new channel.
 
 To roll back, choose an older stable version and confirm it. Settings are preserved and automatic checks are turned off so older clients cannot automatically upgrade again. Manual checks remain available. Drafts, prereleases and withdrawn versions are excluded.
 

@@ -333,6 +333,130 @@ def continuation_fixture(
     return raw, contract
 
 
+def relinked_helper_fixture(
+    *,
+    routine_rva: int = 0x1080,
+    table_rva: int = 0x2040,
+    imports: tuple[str, ...] = ("GetCurrentThreadId",),
+    library: bytes = b"KERNEL32.dll",
+) -> tuple[bytearray, dict]:
+    """A loader helper that reaches game code and imports as ``image base + RVA``."""
+    raw = _pe_raw()
+    raw[_offset(0x1000) : _offset(0x1008)] = bytes((0xE9, 0, 0, 0, 0, 0x90, 0x90, 0x90))
+    _write_rel32(raw, 0x1001, 0x1005, 0x1040)
+    slot_rva = 0x2380 + 8 * imports.index("GetCurrentThreadId")
+    helper = bytearray(
+        bytes.fromhex("8b9490")
+        + bytes(4)  # mov edx, [rax + rdx*4 + table]
+        + bytes.fromhex("4805")
+        + bytes(4)  # add rax, routine
+        + bytes.fromhex("ffd0")  # call rax
+        + bytes.fromhex("498b8424")
+        + bytes(4)  # mov rax, [r12 + import slot]
+        + bytes.fromhex("4c8d1d")
+        + bytes(4)  # lea r11, [rip + resume]
+        + bytes.fromhex("41ffe3")  # jmp r11
+    )
+    struct.pack_into("<I", helper, 3, table_rva)
+    struct.pack_into("<I", helper, 9, routine_rva)
+    struct.pack_into("<I", helper, 19, slot_rva)
+    raw[_offset(0x1040) : _offset(0x1040) + len(helper)] = helper
+    _write_rel32(raw, 0x1040 + 26, 0x1040 + 30, 0x1005)
+    routine = bytes.fromhex("488d05") + bytes(4) + b"\xc3" + b"\x90" * 8
+    raw[_offset(routine_rva) : _offset(routine_rva) + len(routine)] = routine
+    _write_rel32(raw, routine_rva + 3, routine_rva + 7, table_rva)
+
+    # One import descriptor; lookup and address tables carry the same names.
+    struct.pack_into("<5I", raw, _offset(0x2300), 0x2340, 0, 0, 0x2330, 0x2380)
+    raw[_offset(0x2330) : _offset(0x2330) + len(library)] = library
+    for index, name in enumerate(imports):
+        hint_name = 0x23C0 + 0x20 * index
+        raw[_offset(hint_name + 2) : _offset(hint_name + 2) + len(name)] = name.encode("ascii")
+        for table in (0x2340, 0x2380):
+            struct.pack_into("<Q", raw, _offset(table + 8 * index), hint_name)
+    struct.pack_into("<II", raw, 0x98 + 112 + 1 * 8, 0x2300, 40)
+    struct.pack_into("<III", raw, _offset(PDATA_RVA), 0x1000, 0x1008, 0)
+    struct.pack_into("<I", raw, 0x98 + 112 + 3 * 8 + 4, 12)
+
+    helper_masks = [[3, 4], [9, 4], [19, 4], [26, 4]]
+    contract = {
+        "schema": 1,
+        "functions": {
+            "root": {
+                "leaf": False,
+                "variants": [
+                    {
+                        "size": 8,
+                        "sha256": _masked_hash(raw, 0x1000, 8, [[1, 4]]),
+                        "masks": [[1, 4]],
+                        "points": {"root_hook": 0},
+                        "links": [],
+                        "globals": [],
+                        "continuations": [
+                            {
+                                "displacement": [1, 4],
+                                "next": 5,
+                                "name": "helper",
+                                "template": {
+                                    "size": len(helper),
+                                    "sha256": _masked_hash(raw, 0x1040, len(helper), helper_masks),
+                                    "masks": helper_masks,
+                                    "links": [
+                                        {
+                                            "displacement": [26, 4],
+                                            "next": 30,
+                                            "function": "root",
+                                            "addend": 5,
+                                        }
+                                    ],
+                                    "globals": [],
+                                    "continuations": [
+                                        {
+                                            "displacement": [9, 4],
+                                            "encoding": "rva32",
+                                            "name": "routine",
+                                            "template": {
+                                                "size": 16,
+                                                "sha256": _masked_hash(
+                                                    raw, routine_rva, 16, [[3, 4]]
+                                                ),
+                                                "masks": [[3, 4]],
+                                                "links": [],
+                                                "globals": [],
+                                            },
+                                        }
+                                    ],
+                                    "equal_targets": [
+                                        {
+                                            "left": {"displacement": [3, 4], "encoding": "rva32"},
+                                            "right": {
+                                                "continuation": "routine",
+                                                "displacement": [3, 4],
+                                                "next": 7,
+                                            },
+                                        }
+                                    ],
+                                    "imports": [
+                                        {
+                                            "displacement": [19, 4],
+                                            "encoding": "rva32",
+                                            "dll": "KERNEL32.dll",
+                                            "name": "GetCurrentThreadId",
+                                        }
+                                    ],
+                                },
+                            }
+                        ],
+                    }
+                ],
+            },
+        },
+        "global_specs": {},
+        "metadata": {"contract_id": "relinked-helper"},
+    }
+    return raw, contract
+
+
 class NativeContractTests(unittest.TestCase):
     def resolve(self, raw: bytes, contract: dict):
         pe = pefile.PE(data=raw, fast_load=True)
@@ -482,3 +606,77 @@ class NativeContractTests(unittest.TestCase):
         broken[_offset(0x1050)] = 0x90
         with self.assertRaisesRegex(ExecutableCompatibilityError, "root.*chained"):
             self.resolve(broken, chained)
+
+    def test_relinked_helper_follows_moved_routine_table_and_import_slot(self):
+        _, contract = relinked_helper_fixture()
+        moved, _ = relinked_helper_fixture(
+            routine_rva=0x10A0,
+            table_rva=0x2060,
+            imports=("ExitProcess", "GetCurrentThreadId"),
+            library=b"kernel32.DLL",
+        )
+        self.assertEqual(self.resolve(moved, contract)["functions"], {"root": 0x1000})
+
+    def test_relinked_helper_addresses_must_name_the_reviewed_objects(self):
+        baseline, contract = relinked_helper_fixture()
+        cases = {}
+
+        other_table = baseline.copy()
+        struct.pack_into("<I", other_table, _offset(0x1040 + 3), 0x2044)
+        cases["equal_targets"] = (other_table, "地址不相等")
+
+        other_routine = baseline.copy()
+        struct.pack_into("<I", other_routine, _offset(0x1040 + 9), 0x1090)
+        cases["continuation[routine]"] = (other_routine, "摘要")
+
+        changed_routine = baseline.copy()
+        changed_routine[_offset(0x1080 + 7)] = 0x90
+        cases["continuation[routine] "] = (changed_routine, "摘要")
+
+        neighbour, _ = relinked_helper_fixture(imports=("GetCurrentThreadId", "ExitProcess"))
+        struct.pack_into("<I", neighbour, _offset(0x1040 + 19), 0x2388)
+        cases["imports"] = (neighbour, "GetCurrentThreadId")
+
+        other_library, _ = relinked_helper_fixture(library=b"USER32.dll")
+        cases["imports "] = (other_library, "KERNEL32.dll")
+
+        outside = baseline.copy()
+        struct.pack_into("<I", outside, _offset(0x1040 + 19), 0x2390)
+        cases["imports  "] = (outside, "GetCurrentThreadId")
+
+        wrong_resume = baseline.copy()
+        _write_rel32(wrong_resume, 0x1040 + 26, 0x1040 + 30, 0x1006)
+        cases["links"] = (wrong_resume, "root")
+
+        for path, (raw, reason) in cases.items():
+            with self.subTest(path=path.strip()):
+                with self.assertRaises(ExecutableCompatibilityError) as caught:
+                    self.resolve(raw, contract)
+                detail = caught.exception.details[0]
+                self.assertEqual(detail["function"], "root")
+                self.assertIn("continuation[helper]." + path.strip(), detail["path"])
+                self.assertIn(reason, detail["reason"])
+
+    def test_failure_names_the_reviewed_variant_that_matched_furthest(self):
+        baseline, contract = relinked_helper_fixture()
+        # An older reviewed helper pinned the same addresses instead of
+        # verifying them: it no longer matches once the loader is relinked.
+        pinned = copy.deepcopy(contract["functions"]["root"]["variants"][0])
+        helper = pinned["continuations"][0]["template"]
+        helper["masks"] = [[26, 4]]
+        helper["sha256"] = _masked_hash(baseline, 0x1040, helper["size"], helper["masks"])
+        for key in ("continuations", "equal_targets", "imports"):
+            del helper[key]
+        contract["functions"]["root"]["variants"].insert(0, pinned)
+        with self.assertRaisesRegex(ExecutableCompatibilityError, "同址变体语义不一致"):
+            self.resolve(baseline, contract)
+
+        relinked, _ = relinked_helper_fixture(
+            routine_rva=0x10A0, imports=("ExitProcess", "GetCurrentThreadId")
+        )
+        self.assertEqual(self.resolve(relinked, contract)["functions"], {"root": 0x1000})
+        struct.pack_into("<I", relinked, _offset(0x1040 + 19), 0x2380)
+        with self.assertRaises(ExecutableCompatibilityError) as caught:
+            self.resolve(relinked, contract)
+        self.assertIn("imports[0]", caught.exception.details[0]["path"])
+        self.assertIn("GetCurrentThreadId", str(caught.exception))
