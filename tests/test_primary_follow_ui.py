@@ -34,6 +34,7 @@ class PrimaryFollowUiTests(unittest.TestCase):
                 "game_language": "en",
                 "primary": "en",
                 "secondary": "ja",
+                "ui_language": "zh-Hans",
                 "sources": ["keep"],
                 "line_gap": 6,
             },
