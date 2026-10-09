@@ -1,0 +1,42 @@
+[
+  {
+    "id": "ItemTableData/898/description",
+    "resource_key": "table/t_item.tbl/sha256:e5176fca7306dd203be514f30f5bbbbb9e7032486257035d47de34ec5d3a4a4c/description",
+    "source": "<c698>Increases chance of being targeted during Quick and Command Battles</C>",
+    "pair": [
+      "<c698>フィールドおよびコマンドバトル中、敵から狙われやすくなる</C>",
+      "<c698>在原野及指令战斗中，更容易被敌人锁定。"
+    ],
+    "source_origin": "actual physical resource field; not captured final UI setter input"
+  },
+  {
+    "id": "ItemTableData/937/description",
+    "resource_key": "table/t_item.tbl/sha256:05472745e1bdc31260b6f399f58f06001769e80dbc76a714bf091f1839820d32/description",
+    "source": "<c698>Inflict Cancel Arts/Delay (XS) with attacks (30% chance)</C>",
+    "pair": [
+      "<c698>攻撃時に確率30％で「駆動解除／遅延極小」</C>",
+      "<c698>攻击时有30％概率造成“解除驱动／延迟极小”"
+    ],
+    "source_origin": "actual physical resource field; not captured final UI setter input"
+  },
+  {
+    "id": "ItemTableData/9/description",
+    "resource_key": "table/t_item.tbl/sha256:8c6080f9c3b72eedcabbdc5a741d3a6a62e77f81772d6cf380906efcdf91ddec/description",
+    "source": "A notebook issued to all senior bracers for record-keeping.\nBracers are required to take detailed case notes.",
+    "pair": [
+      "すべての正遊撃士に支給される記録用の手帳。\n依頼内容の詳細な記録を残すことは遊撃士の義務とされる。",
+      "发配给正游击士全体的记录用手册。\n将委托内容详细记录下来也是游击士的义务之一。"
+    ],
+    "source_origin": "actual physical resource field; not captured final UI setter input"
+  },
+  {
+    "id": "ItemTableData/150/description",
+    "resource_key": "table/t_item.tbl/sha256:11be37b085f9eb341c8074a1773a4cfc4fabda47405af82d7952124b24d51e5d/description",
+    "source": "A capsule containing orbal energy. Fully restores EP.",
+    "pair": [
+      "導力を充填したカプセル。ＥＰを全回復する。",
+      "装填了导力的胶囊。可完全回复EP。"
+    ],
+    "source_origin": "actual physical resource field; not captured final UI setter input"
+  }
+]

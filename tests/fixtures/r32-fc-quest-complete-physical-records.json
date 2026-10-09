@@ -1,0 +1,389 @@
+{
+  "physical_resource": "table/t_quest_fc.tbl",
+  "native_identity": "3F5530 exact uint16 quest_id@+0/progress_id@+2, flag@+16, completebody@+8",
+  "official_resource_sha256": {
+    "ja": "a72a13f59e8cc213934bab062ce1eac89916aec4fa7db6962ae80bba392b31c8",
+    "en": "fbddf4f686d596c04597ad2451add4bfaded15fecdede1170c0455ecacc1600a",
+    "zh-Hans": "5ffcd2388f3a793d286d321bc9e516f34aaae4ae7c708de863f33a2e48d090ac",
+    "zh-Hant": "1b7602f77748bb6cd19b1716c44999ce56d29de2a503978393a2075e7782f712"
+  },
+  "entries": [
+    {
+      "key": "table/t_quest_fc.tbl/QuestText/group:0/sequence:f3b4626d8f4bc4fb4a99a4dea3677a67f6947d01b5dc8a020115e11e2f24bc5f/record:69/body",
+      "ordinal": 69,
+      "quest_id": 158,
+      "progress_id": 0,
+      "flag": 0,
+      "texts": {
+        "ja": "父さんの乗っていた定期船が\nボース地方で行方不明に………\n消息を確かめるため、\nシェラ姉と一緒にボースに向かうことに。\n\nボース市の市長さんから、\n事件について調査依頼が出ているそうだ。\n詳細については、直接市長さんに伺うこと。",
+        "en": "The airliner Dad was on went missing in the\nBose region... We're heading to Bose with\nSchera to investigate what happened.\n\nIt seems the mayor of Bose requested an\nofficial investigation. We should speak with\nher to get more information.",
+        "zh-Hans": "父亲搭乘的定期船\n在柏斯地区失踪了……\n为了确认消息，\n和雪拉姐一起前往柏斯。\n\n柏斯市的市长\n似乎发出了事件调查的委托。\n详情请直接向市长询问。",
+        "zh-Hant": "父親搭乘的定期船\n在柏斯地區失蹤了……\n為了確認消息，\n和雪拉姐一起前往柏斯。\n\n柏斯市的市長\n似乎發出了事件調查的委託。\n詳情請直接向市長詢問。"
+      }
+    },
+    {
+      "key": "table/t_quest_fc.tbl/QuestText/group:0/sequence:f3b4626d8f4bc4fb4a99a4dea3677a67f6947d01b5dc8a020115e11e2f24bc5f/record:70/body",
+      "ordinal": 70,
+      "quest_id": 158,
+      "progress_id": 1,
+      "flag": 11002,
+      "texts": {
+        "ja": "★ボース地方はロレントの西にある。\n　ミルヒ街道からヴェルテ橋に行こう。",
+        "en": "★ The Bose region is west of Rolent.\nLet's take the Milch Main Road to\nVerte Bridge.",
+        "zh-Hans": "★柏斯地区位在洛连特的西边。\n　就从米尔西街道到威尔特桥吧。",
+        "zh-Hant": "★柏斯地區位在洛連特的西邊。\n　就從梅爾菲街道到威爾特橋吧。"
+      }
+    },
+    {
+      "key": "table/t_quest_fc.tbl/QuestText/group:0/sequence:f3b4626d8f4bc4fb4a99a4dea3677a67f6947d01b5dc8a020115e11e2f24bc5f/record:71/body",
+      "ordinal": 71,
+      "quest_id": 158,
+      "progress_id": 2,
+      "flag": 11287,
+      "texts": {
+        "ja": "★通行許可を見せ門を開けてもらった。\n　ボース側に出たら戻れないので注意。",
+        "en": "★ We showed our passes and the\ngate opened for us. We should be\ncareful though. Once we cross\ninto Bose, we won't be able\nto go back.",
+        "zh-Hans": "★拿出通行许可请守卫开了门。\n　要留意一旦到柏斯就没办法回头。",
+        "zh-Hant": "★拿出通行許可請守衛開了門。\n　要留意一旦到柏斯就沒辦法回頭。"
+      }
+    },
+    {
+      "key": "table/t_quest_fc.tbl/QuestText/group:0/sequence:f3b4626d8f4bc4fb4a99a4dea3677a67f6947d01b5dc8a020115e11e2f24bc5f/record:72/body",
+      "ordinal": 72,
+      "quest_id": 158,
+      "progress_id": 3,
+      "flag": 11010,
+      "texts": {
+        "ja": "★市長さんの屋敷は町の西口にある。\n　まずは行って話を聞かないと。",
+        "en": "★ The mayor's residence is on\nthe western side of town. Let's start\nthere and hear what she has\nto say.",
+        "zh-Hans": "★市长住处位在城市的西边出口处。\n　要先过去询问一下。",
+        "zh-Hant": "★市長住處位在城市的西邊出口處。\n　要先過去詢問一下。"
+      }
+    },
+    {
+      "key": "table/t_quest_fc.tbl/QuestText/group:0/sequence:f3b4626d8f4bc4fb4a99a4dea3677a67f6947d01b5dc8a020115e11e2f24bc5f/record:73/body",
+      "ordinal": 73,
+      "quest_id": 158,
+      "progress_id": 4,
+      "flag": 11011,
+      "texts": {
+        "ja": "★市長さんは礼拝に行って留守……",
+        "en": "★ The mayor is at the church...",
+        "zh-Hans": "★市长去做礼拜，不在家……",
+        "zh-Hant": "★市長去做禮拜，不在家……"
+      }
+    },
+    {
+      "key": "table/t_quest_fc.tbl/QuestText/group:0/sequence:f3b4626d8f4bc4fb4a99a4dea3677a67f6947d01b5dc8a020115e11e2f24bc5f/record:74/body",
+      "ordinal": 74,
+      "quest_id": 158,
+      "progress_id": 5,
+      "flag": 11012,
+      "texts": {
+        "ja": "★礼拝堂でメイドさんを発見！\n　市長はマーケットにいるそうだ。",
+        "en": "★ We found her maid!\nShe said the mayor is at the market.",
+        "zh-Hans": "★在礼拜堂看到了女仆！\n　市长说是在超市。",
+        "zh-Hant": "★在禮拜堂看到了女僕！\n　市長說是在超市。"
+      }
+    },
+    {
+      "key": "table/t_quest_fc.tbl/QuestText/group:0/sequence:f3b4626d8f4bc4fb4a99a4dea3677a67f6947d01b5dc8a020115e11e2f24bc5f/record:75/body",
+      "ordinal": 75,
+      "quest_id": 158,
+      "progress_id": 6,
+      "flag": 11015,
+      "texts": {
+        "ja": "★メイベル市長の依頼は、\n　定期船失踪事件の調査と解決だ。",
+        "en": "★ Mayor Maybelle asked us to\ninvestigate the airliner mystery.",
+        "zh-Hans": "★梅贝尔市长的委托是\n　调查及解决定期船失踪事件。",
+        "zh-Hant": "★梅貝爾市長的委託是\n　調查及解決定期船失蹤事件。"
+      }
+    },
+    {
+      "key": "table/t_quest_fc.tbl/QuestText/group:0/sequence:f3b4626d8f4bc4fb4a99a4dea3677a67f6947d01b5dc8a020115e11e2f24bc5f/record:76/body",
+      "ordinal": 76,
+      "quest_id": 158,
+      "progress_id": 7,
+      "flag": 11015,
+      "texts": {
+        "ja": "★モルガン将軍への依頼状をもらった。",
+        "en": "★ Received a letter requesting\ninformation, addressed to General\nMorgan.",
+        "zh-Hans": "★取得一封要给摩尔根将军的委托信。",
+        "zh-Hant": "★取得一封要給摩爾根將軍的委託信。"
+      }
+    },
+    {
+      "key": "table/t_quest_fc.tbl/QuestText/group:0/sequence:f3b4626d8f4bc4fb4a99a4dea3677a67f6947d01b5dc8a020115e11e2f24bc5f/record:77/body",
+      "ordinal": 77,
+      "quest_id": 158,
+      "progress_id": 8,
+      "flag": 11015,
+      "texts": {
+        "ja": "★将軍は国境のハーケン門にいる。\n　ハーケン門は東ボース街道の北だ。",
+        "en": "★ The general is stationed at\nHaken Gate on the border.\nHaken Gate is north along\nEast Bose Highway.",
+        "zh-Hans": "★将军人在国境的哈肯大门。\n　哈肯大门位在东柏斯街道的北边。",
+        "zh-Hant": "★將軍人在國境的哈肯大門。\n　哈肯大門位在東柏斯街道的北邊。"
+      }
+    },
+    {
+      "key": "table/t_quest_fc.tbl/QuestText/group:0/sequence:f3b4626d8f4bc4fb4a99a4dea3677a67f6947d01b5dc8a020115e11e2f24bc5f/record:78/body",
+      "ordinal": 78,
+      "quest_id": 158,
+      "progress_id": 9,
+      "flag": 11018,
+      "texts": {
+        "ja": "★モルガン将軍は出かけてるそうだ。\n　砦の中の休憩所で帰りを待とう。",
+        "en": "★ General Morgan appears to be\nout. Let's wait for him to return\nin the fortress' rest area.",
+        "zh-Hans": "★摩尔根将军似乎是外出了。\n　就在堡垒里的休息站等人吧。",
+        "zh-Hant": "★摩爾根將軍似乎是外出了。\n　就在堡壘裡的休息站等人吧。"
+      }
+    },
+    {
+      "key": "table/t_quest_fc.tbl/QuestText/group:0/sequence:f3b4626d8f4bc4fb4a99a4dea3677a67f6947d01b5dc8a020115e11e2f24bc5f/record:79/body",
+      "ordinal": 79,
+      "quest_id": 158,
+      "progress_id": 10,
+      "flag": 11024,
+      "texts": {
+        "ja": "★将軍と面会！　カプア一家から\n　身代金の要求があったそうだ。",
+        "en": "★ We met with the general!\nApparently, the Capua Family\nhas demanded a ransom.",
+        "zh-Hans": "★与将军会面了！卡普亚一家\n　似乎有要求赎金。",
+        "zh-Hant": "★與將軍會面了！卡普亞一家\n　似乎有要求贖金。"
+      }
+    },
+    {
+      "key": "table/t_quest_fc.tbl/QuestText/group:0/sequence:f3b4626d8f4bc4fb4a99a4dea3677a67f6947d01b5dc8a020115e11e2f24bc5f/record:80/body",
+      "ordinal": 80,
+      "quest_id": 158,
+      "progress_id": 11,
+      "flag": 11024,
+      "texts": {
+        "ja": "★ギルドと市長さんに報告に行こう。",
+        "en": "★ Let's report back to the guild\nand mayor.",
+        "zh-Hans": "★去向协会和市长汇报吧。",
+        "zh-Hant": "★去向協會和市長回報吧。"
+      }
+    },
+    {
+      "key": "table/t_quest_fc.tbl/QuestText/group:0/sequence:f3b4626d8f4bc4fb4a99a4dea3677a67f6947d01b5dc8a020115e11e2f24bc5f/record:81/body",
+      "ordinal": 81,
+      "quest_id": 158,
+      "progress_id": 12,
+      "flag": 11027,
+      "texts": {
+        "ja": "★報告完了！\n　でもこの先の手掛かりはなし……",
+        "en": "★ Report completed!\nUnfortunately, we don't have any\nmore leads...",
+        "zh-Hans": "★汇报完毕！\n　不过手上并没有下一步的线索……",
+        "zh-Hant": "★回報完畢！\n　不過手上並沒有下一步的線索……"
+      }
+    },
+    {
+      "key": "table/t_quest_fc.tbl/QuestText/group:0/sequence:f3b4626d8f4bc4fb4a99a4dea3677a67f6947d01b5dc8a020115e11e2f24bc5f/record:82/body",
+      "ordinal": 82,
+      "quest_id": 158,
+      "progress_id": 13,
+      "flag": 11028,
+      "texts": {
+        "ja": "★記者のナイアルは何か掴んでる？\n　探し出して話を聞こう。",
+        "en": "★ Maybe Nial the reporter knows\nsomething? Let's find him and see\nwhat he has to say.",
+        "zh-Hans": "★记者奈尔好像有掌握什么？\n　去找他问问吧。",
+        "zh-Hant": "★記者奈爾好像有掌握什麼？\n　去找他問問吧。"
+      }
+    },
+    {
+      "key": "table/t_quest_fc.tbl/QuestText/group:0/sequence:f3b4626d8f4bc4fb4a99a4dea3677a67f6947d01b5dc8a020115e11e2f24bc5f/record:185/body",
+      "ordinal": 185,
+      "quest_id": 168,
+      "progress_id": 0,
+      "flag": 0,
+      "texts": {
+        "ja": "ルーアン市長邸で不思議な力を発揮した\nあの黒いオーブメント……\n\n工房都市と呼ばれるツァイスなら\nその正体について何か手掛かりが\n得られるかもしれない。",
+        "en": "The Black Orbment we received\ndisplayed mysterious powers at the\nmayor's residence in Ruan.\n\nWe may be able to learn more about it\nat Zeiss, the Industrial City...",
+        "zh-Hans": "在卢安市长官邸发挥不可思议力量的\n那个黑色导力器……\n\n在被称为工房都市的蔡斯，\n或许能找到一些\n关于它真面目的线索。",
+        "zh-Hant": "在盧安市長官邸發揮不可思議力量的\n那個黑色導力器……\n\n在被稱為工房都市的蔡斯，\n或許能找到一些\n關於它真面目的線索。"
+      }
+    },
+    {
+      "key": "table/t_quest_fc.tbl/QuestText/group:0/sequence:f3b4626d8f4bc4fb4a99a4dea3677a67f6947d01b5dc8a020115e11e2f24bc5f/record:186/body",
+      "ordinal": 186,
+      "quest_id": 168,
+      "progress_id": 1,
+      "flag": 13015,
+      "texts": {
+        "ja": "★ツァイス支部の手配で中央工房の\n　工房長さんに相談することに。",
+        "en": "★ The Zeiss branch has arranged\nfor us to meet with the head\nof the Central Factory.",
+        "zh-Hans": "★蔡斯分部吩咐要去找\n　中央工房的工房长谈工作。",
+        "zh-Hant": "★蔡斯分部吩咐要去找\n　中央工房的工房長談工作。"
+      }
+    },
+    {
+      "key": "table/t_quest_fc.tbl/QuestText/group:0/sequence:f3b4626d8f4bc4fb4a99a4dea3677a67f6947d01b5dc8a020115e11e2f24bc5f/record:187/body",
+      "ordinal": 187,
+      "quest_id": 168,
+      "progress_id": 2,
+      "flag": 13016,
+      "texts": {
+        "ja": "★受付の人に紹介状を渡した。\n　工房長さんの部屋は２階にある。",
+        "en": "★ Handed our letter of introduction\nto the receptionist. The Factory\nChief's office is on the 2nd\nfloor.",
+        "zh-Hans": "★将介绍信交给了柜台人员。\n　工房长的房间就在二楼。",
+        "zh-Hant": "★將介紹信交給了櫃檯人員。\n　工房長的房間就在二樓。"
+      }
+    },
+    {
+      "key": "table/t_quest_fc.tbl/QuestText/group:0/sequence:f3b4626d8f4bc4fb4a99a4dea3677a67f6947d01b5dc8a020115e11e2f24bc5f/record:188/body",
+      "ordinal": 188,
+      "quest_id": 168,
+      "progress_id": 3,
+      "flag": 13018,
+      "texts": {
+        "ja": "★マードック工房長から\n　ラッセル博士を紹介された。",
+        "en": "★ Factory Chief Murdock told us\nabout Professor Russell.",
+        "zh-Hans": "★玛多克工房长介绍我们去找\n　拉赛尔博士。",
+        "zh-Hant": "★瑪多克工房長介紹我們去找\n　拉賽爾博士。"
+      }
+    },
+    {
+      "key": "table/t_quest_fc.tbl/QuestText/group:0/sequence:f3b4626d8f4bc4fb4a99a4dea3677a67f6947d01b5dc8a020115e11e2f24bc5f/record:189/body",
+      "ordinal": 189,
+      "quest_id": 168,
+      "progress_id": 4,
+      "flag": 13018,
+      "texts": {
+        "ja": "★博士の研究所は町の南西にある。",
+        "en": "★ The professor's laboratory is\nlocated in the southwest\npart of town.",
+        "zh-Hans": "★博士的研究所位在城市的西南方。",
+        "zh-Hant": "★博士的研究所位在城市的西南方。"
+      }
+    },
+    {
+      "key": "table/t_quest_fc.tbl/QuestText/group:0/sequence:f3b4626d8f4bc4fb4a99a4dea3677a67f6947d01b5dc8a020115e11e2f24bc5f/record:190/body",
+      "ordinal": 190,
+      "quest_id": 168,
+      "progress_id": 5,
+      "flag": 13028,
+      "texts": {
+        "ja": "★実験中に異変が……！？\n　町中の導力が止まったようだ。",
+        "en": "★ Something went terribly wrong\nduring the experiment! It seems\nall the orbments in town have\nstopped working!",
+        "zh-Hans": "★在实验时发生了异象……！？\n　整座城市的导力都停了。",
+        "zh-Hant": "★在實驗時發生了異象……！？\n　整座城市的導力都停了。"
+      }
+    },
+    {
+      "key": "table/t_quest_fc.tbl/QuestText/group:0/sequence:f3b4626d8f4bc4fb4a99a4dea3677a67f6947d01b5dc8a020115e11e2f24bc5f/record:191/body",
+      "ordinal": 191,
+      "quest_id": 168,
+      "progress_id": 6,
+      "flag": 13028,
+      "texts": {
+        "ja": "★博士はもう工房に出かけたそうだ。\n　早く行って手伝えることを探そう。",
+        "en": "★ The professor already went to\nthe factory. Let's hurry over\nand see how we can help.",
+        "zh-Hans": "★博士似乎已经离开前往工房。\n　赶紧过去看看有什么可以帮忙的。",
+        "zh-Hant": "★博士似乎已經離開前往工房。\n　趕快過去看看有什麼可以幫忙的。"
+      }
+    },
+    {
+      "key": "table/t_quest_fc.tbl/QuestText/group:0/sequence:f3b4626d8f4bc4fb4a99a4dea3677a67f6947d01b5dc8a020115e11e2f24bc5f/record:192/body",
+      "ordinal": 192,
+      "quest_id": 168,
+      "progress_id": 7,
+      "flag": 13028,
+      "texts": {
+        "ja": "★博士は３階の工作室にいるみたい。",
+        "en": "★ It seems the Professor is in the\nworkshop on the 3rd floor.",
+        "zh-Hans": "★博士人好像是在三楼的工作室。",
+        "zh-Hant": "★博士人好像是在三樓的工作室。"
+      }
+    },
+    {
+      "key": "table/t_quest_fc.tbl/QuestText/group:0/sequence:f3b4626d8f4bc4fb4a99a4dea3677a67f6947d01b5dc8a020115e11e2f24bc5f/record:193/body",
+      "ordinal": 193,
+      "quest_id": 168,
+      "progress_id": 8,
+      "flag": 13030,
+      "texts": {
+        "ja": "★工作機械を改造するためには\n　内燃機関とガソリンが必要だ。",
+        "en": "★ To modify the workshop\nmachinery, we'll need an internal\ncombustion engine and gasoline.",
+        "zh-Hans": "★为了改造机床，\n　要有内燃引擎和汽油才行。",
+        "zh-Hant": "★為了改造工業機械，\n　要有內燃機和汽油才行。"
+      }
+    },
+    {
+      "key": "table/t_quest_fc.tbl/QuestText/group:0/sequence:f3b4626d8f4bc4fb4a99a4dea3677a67f6947d01b5dc8a020115e11e2f24bc5f/record:194/body",
+      "ordinal": 194,
+      "quest_id": 168,
+      "progress_id": 9,
+      "flag": 13030,
+      "texts": {
+        "ja": "★まず５階の演算室に行って\n　保管場所を調べて来ないと。",
+        "en": "★ First, we need to go to the\noperations room on the 5th floor\nand find out where they're stored.",
+        "zh-Hans": "★得先到五楼的演算室\n　调查保管场所才行。",
+        "zh-Hant": "★得先到五樓的演算室\n　調查保管場所才行。"
+      }
+    },
+    {
+      "key": "table/t_quest_fc.tbl/QuestText/group:0/sequence:f3b4626d8f4bc4fb4a99a4dea3677a67f6947d01b5dc8a020115e11e2f24bc5f/record:195/body",
+      "ordinal": 195,
+      "quest_id": 168,
+      "progress_id": 10,
+      "flag": 13032,
+      "texts": {
+        "ja": "★内燃機関は発着場にいる\n　グスタフ整備長が管理している。",
+        "en": "★ The internal combustion engine\nis managed by Maintenance Chief\nGustav at the landing port.",
+        "zh-Hans": "★内燃引擎是由在起降坪的\n　格斯塔夫维修长所保管。",
+        "zh-Hant": "★內燃機是由在起降場的\n　格斯塔夫維修長所保管。"
+      }
+    },
+    {
+      "key": "table/t_quest_fc.tbl/QuestText/group:0/sequence:f3b4626d8f4bc4fb4a99a4dea3677a67f6947d01b5dc8a020115e11e2f24bc5f/record:196/body",
+      "ordinal": 196,
+      "quest_id": 168,
+      "progress_id": 11,
+      "flag": 13032,
+      "texts": {
+        "ja": "★ガソリンは中央工房の地下の\n　オーブメント生産工場にある。",
+        "en": "★ The gasoline is located in the\norbment production factory\nin the basement.",
+        "zh-Hans": "★汽油放在中央工房地下的\n　导力器制造工厂中。",
+        "zh-Hant": "★汽油放在中央工房地下的\n　導力器製造工廠中。"
+      }
+    },
+    {
+      "key": "table/t_quest_fc.tbl/QuestText/group:0/sequence:f3b4626d8f4bc4fb4a99a4dea3677a67f6947d01b5dc8a020115e11e2f24bc5f/record:197/body",
+      "ordinal": 197,
+      "quest_id": 168,
+      "progress_id": 12,
+      "flag": 13034,
+      "texts": {
+        "ja": "★内燃機関ユニットを受け取った！",
+        "en": "★ Received the internal combustion\nengine!",
+        "zh-Hans": "★收下了内燃引擎组件！",
+        "zh-Hant": "★收下了內燃機組件！"
+      }
+    },
+    {
+      "key": "table/t_quest_fc.tbl/QuestText/group:0/sequence:f3b4626d8f4bc4fb4a99a4dea3677a67f6947d01b5dc8a020115e11e2f24bc5f/record:198/body",
+      "ordinal": 198,
+      "quest_id": 168,
+      "progress_id": 13,
+      "flag": 13284,
+      "texts": {
+        "ja": "★ガソリンタンクを手に入れた！",
+        "en": "★ Got the gasoline tank!",
+        "zh-Hans": "★得到了汽油罐！",
+        "zh-Hant": "★得到了汽油桶！"
+      }
+    },
+    {
+      "key": "table/t_quest_fc.tbl/QuestText/group:0/sequence:f3b4626d8f4bc4fb4a99a4dea3677a67f6947d01b5dc8a020115e11e2f24bc5f/record:199/body",
+      "ordinal": 199,
+      "quest_id": 168,
+      "progress_id": 14,
+      "flag": 13292,
+      "texts": {
+        "ja": "★さあ、工作室に戻ろう。",
+        "en": "★ Now, let's return to the\nworkshop.",
+        "zh-Hans": "★回工作室去吧。",
+        "zh-Hant": "★回工作室去吧。"
+      }
+    }
+  ]
+}

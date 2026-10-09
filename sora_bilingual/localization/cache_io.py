@@ -61,5 +61,9 @@ def read_model(path):
             ):
                 return None
         return value
+    except PermissionError:
+        # An inaccessible model is not a corrupt/missing model. Preserve the
+        # original failure; never rebuild or replace it to hide access denial.
+        raise
     except OSError, ValueError:
         return None

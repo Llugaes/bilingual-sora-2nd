@@ -327,7 +327,19 @@ def _import_at(pe, slot: int):
             )
     except ValueError:
         return None
-    return bindings[0] if terminated and len(bindings) == 1 else None
+    if not terminated or len(bindings) != 1:
+        return None
+    if hasattr(pe, "DIRECTORY_ENTRY_IMPORT"):
+        parsed = [
+            (descriptor.dll.lower(), imported.name)
+            for descriptor in pe.DIRECTORY_ENTRY_IMPORT
+            for imported in descriptor.imports
+            if imported.address - _image_base(pe) == slot
+        ]
+        expected = tuple(value.encode("ascii") for value in bindings[0])
+        if parsed != [expected]:
+            return None
+    return bindings[0]
 
 
 def _import_rows(template: dict):
@@ -335,10 +347,11 @@ def _import_rows(template: dict):
         if (
             not isinstance(row, dict)
             or not isinstance(row.get("dll"), str)
-            or not isinstance(row.get("name"), str)
+            or not isinstance(row.get("name", row.get("symbol")), str)
+            or ("name" in row and "symbol" in row and row["name"] != row["symbol"])
         ):
             raise _error("原生合同导入引用格式无效")
-        yield row
+        yield {**row, "name": row.get("name", row.get("symbol"))}
 
 
 def _import_matches(pe, start: int, row: dict) -> bool:
@@ -353,14 +366,16 @@ def _data_rows(template: dict):
     for row in template.get("data_refs", []):
         if (
             not isinstance(row, dict)
-            or not isinstance(row.get("size"), int)
+            or type(row.get("size")) is not int
             or not 0 < row["size"] <= 65536
-            or not isinstance(row.get("alignment"), int)
-            or row["alignment"] <= 0
+            or type(row.get("alignment", 1)) is not int
+            or row.get("alignment", 1) <= 0
             or not isinstance(row.get("sha256"), str)
+            or len(row["sha256"]) != 64
+            or any(c not in "0123456789abcdef" for c in row["sha256"])
         ):
             raise _error("原生合同数据引用格式无效")
-        yield row
+        yield {**row, "alignment": row.get("alignment", 1)}
 
 
 def _data_matches(pe, start: int, row: dict) -> bool:
@@ -368,10 +383,27 @@ def _data_matches(pe, start: int, row: dict) -> bool:
     if target % row["alignment"]:
         return False
     try:
+        section, _ = _section_for_rva(pe, target, row["size"])
+        if section.Characteristics & _IMAGE_SCN_MEM_WRITE:
+            return False
         data = _read(pe, target, row["size"])
     except ValueError:
         return False
     return hashlib.sha256(data).hexdigest() == row["sha256"]
+
+
+def _indirect_dependency_failure(pe, start: int, template: dict):
+    """Use the same data/import checks for leaf diagnostics and matching."""
+    for index, row in enumerate(_data_rows(template)):
+        if not _data_matches(pe, start, row):
+            return (
+                f"data_refs[{index}]",
+                "Reviewed data bounds, permissions, alignment or digest differ",
+            )
+    for index, row in enumerate(_import_rows(template)):
+        if not _import_matches(pe, start, row):
+            return f"imports[{index}]", "Reviewed IAT binding differs"
+    return None
 
 
 def _nested_templates_match(
@@ -554,7 +586,7 @@ def _candidate_link_failure(pe, candidate, candidates, function: str):
     return None
 
 
-def _derive_leaf_candidates(pe, functions, candidates):
+def _derive_leaf_candidates(pe, functions, candidates, local_failures):
     """Recover no-pdata leaves only from a contract link in an already found caller."""
     changed = False
     for caller_name, caller_candidates in candidates.items():
@@ -570,6 +602,17 @@ def _derive_leaf_candidates(pe, functions, candidates):
                 for leaf_variant in functions[leaf_name].get("variants", []):
                     try:
                         matches = _variant_matches(pe, leaf_start, leaf_variant)
+                        # Immutable data/IAT failures cannot become valid as
+                        # other function candidates are discovered. Reject them
+                        # before insertion, otherwise the fixed point repeatedly
+                        # reintroduces a leaf eliminated later in the same pass.
+                        if matches:
+                            failure = _indirect_dependency_failure(pe, leaf_start, leaf_variant)
+                            if failure is not None:
+                                detail = _failure(leaf_name, "body." + failure[0], failure[1])
+                                if detail not in local_failures:
+                                    local_failures.append(detail)
+                                matches = False
                     except ValueError:
                         # An unselected/false caller candidate can name an
                         # address outside the image.  Ignore it and let its
@@ -612,6 +655,27 @@ def _apply_reverse_link_constraints(pe, candidates):
     return changed
 
 
+def _semantic_body(pe, start: int, template: dict):
+    # Both pinned and relocated operands are permitted only after their full
+    # template and dependency checks. Compare the same reviewed addresses in
+    # one normal form, rather than treating a pinned IAT operand as new code.
+    masks = {tuple(mask) for mask in template.get("masks", [])}
+    for row in (
+        *template.get("links", []),
+        *template.get("globals", []),
+        *template.get("continuations", []),
+        *_data_rows(template),
+        *_import_rows(template),
+    ):
+        masks.add(tuple(row["displacement"]))
+    normalized = sorted(masks)
+    return (
+        template["size"],
+        _masked_hash(_read(pe, start, template["size"], executable=True), normalized),
+        tuple(normalized),
+    )
+
+
 def _variant_semantics(pe, start: int, variant: dict):
     points = tuple(
         sorted((name, start + offset) for name, offset in variant.get("points", {}).items())
@@ -630,20 +694,35 @@ def _variant_semantics(pe, start: int, variant: dict):
     continuations = tuple(
         (
             _reference_target(pe, start, ref),
-            json.dumps(ref["template"], sort_keys=True),
+            *_semantic_body(pe, _reference_target(pe, start, ref), ref["template"]),
+            _variant_semantics(pe, _reference_target(pe, start, ref), ref["template"]),
         )
         for ref in variant.get("continuations", [])
     )
     chained = tuple(
         (
             row.get("offset"),
-            row.get("size"),
-            row.get("sha256"),
-            tuple(tuple(mask) for mask in row.get("masks", [])),
+            *_semantic_body(pe, start + row["offset"], row),
+            _variant_semantics(pe, start + row["offset"], row),
         )
         for row in variant.get("chained", [])
     )
-    return points, globals_, links, continuations, chained
+    data_refs = tuple(
+        (_reference_target(pe, start, row), row["size"], row["alignment"], row["sha256"])
+        for row in _data_rows(variant)
+    )
+    imports = tuple(
+        (_reference_target(pe, start, row), row["dll"].lower(), row["name"])
+        for row in _import_rows(variant)
+    )
+    equal_targets = tuple(
+        (
+            _equal_target(pe, start, variant, row["left"]),
+            _equal_target(pe, start, variant, row["right"]),
+        )
+        for row in _equal_target_rows(variant)
+    )
+    return points, globals_, links, continuations, chained, data_refs, imports, equal_targets
 
 
 def _select_variant(pe, name: str, start: int, rows):
@@ -717,7 +796,7 @@ def _resolve_functions(pe, functions):
             body_failures.append(_failure(name, "body", "没有匹配已审计 PDATA 函数体"))
 
     while True:
-        changed = _derive_leaf_candidates(pe, functions, candidates)
+        changed = _derive_leaf_candidates(pe, functions, candidates, local_failures)
         changed = _apply_reverse_link_constraints(pe, candidates) or changed
         for name, rows in candidates.items():
             filtered = []

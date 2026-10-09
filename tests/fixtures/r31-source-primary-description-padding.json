@@ -1,0 +1,45 @@
+{
+  "source": "unchanged compatible physical catalogue records",
+  "catalog_sha256": "5dc6a9081b20e028b39f05e67f2167770aaf0e95817daeee801ef3d3e9544e77",
+  "rows": [
+    {
+      "key": "table/t_item.tbl/sha256:00bafd125a3774b2b65561963536c1749d958ce505cf48f6723b354267ac35c7/description",
+      "texts": {
+        "ja": "七耀教会が掲げる星杯の紋章を象った装飾品。",
+        "en": "An accessory shaped like the Septian Church's Holy Grail emblem.  ",
+        "zh-Hans": "刻有七耀教会的星杯纹章的装饰品。",
+        "zh-Hant": "刻有七耀教會的星杯紋章的裝飾品。",
+        "ko": "칠요교회가 내세우는 성배를 새긴 장식품.",
+        "fr": "Un accessoire ayant la forme du Saint Calice de l'église des Sept.  ",
+        "de": "Schmuck in Form des Heiligen-Gral-Emblems der Kirche.  ",
+        "es": "Accesorio con la forma del emblema del Santo Grial.  "
+      }
+    },
+    {
+      "key": "table/t_item.tbl/sha256:a19b4695f70042cee4437a4c4b64b2332eb3f94e3826ecebbd7f4ed62219f162/description",
+      "texts": {
+        "ja": "七耀教会が掲げる星杯の紋章を象った装飾品。",
+        "en": "An accessory shaped like the Septian Church's Holy Grail emblem.",
+        "zh-Hans": "刻有七耀教会的星杯纹章的装饰品。",
+        "zh-Hant": "刻有七耀教會的星杯紋章的裝飾品。",
+        "ko": "칠요교회가 내세우는 성배를 새긴 장식품.",
+        "fr": "Un accessoire ayant la forme du Saint Calice de l'église des Sept.",
+        "de": "Schmuck in Form des Heiligen-Gral-Emblems der Kirche.",
+        "es": "Accesorio con la forma del emblema del Santo Grial."
+      }
+    },
+    {
+      "key": "table/t_item.tbl/sha256:d17ea7fd41634610db3d9a0a3395462c5e329275bca8e41ecf923ff8c9fe64e0/description",
+      "texts": {
+        "ja": "七耀教会が掲げる星杯の紋章を象った装飾品。",
+        "en": "An accessory shaped like the Septian Church's Holy Grail emblem.  ",
+        "zh-Hans": "刻有七耀教会的星杯纹章的装饰品。",
+        "zh-Hant": "刻有七耀教會的星杯紋章的裝飾品。",
+        "ko": "칠요교회가 내세우는 성배를 새긴 장식품.",
+        "fr": "Un accessoire ayant la forme du Saint Calice de l'église des Sept.  ",
+        "de": "Schmuck in Form des Heiligen-Gral-Emblems der Kirche.  ",
+        "es": "Accesorio con la forma del emblema del Santo Grial.  "
+      }
+    }
+  ]
+}

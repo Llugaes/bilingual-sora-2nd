@@ -17,7 +17,7 @@ import mmap
 import re
 import struct
 from collections import Counter, defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Iterable
 
@@ -136,6 +136,55 @@ class Called:
 PANEL_FLAGS = frozenset((7, 8, 9, 13, 14, 15, 16, 19, 20, 22, 24, 26, 28))
 
 
+def literal_item_panel_parts(call: Called) -> tuple[tuple, tuple] | None:
+    """Command-8 literals around finite opcode-17 item IDs, never variables.
+
+    0x4ad670's opcode 17 resolves the following item operand; static strings
+    and newline 10 are the same builder grammar as static_panel_parts.
+    Keep the item order, window/voice/flags in identity. Locale text chunks
+    and hard wrapping are payload, preserved in the returned parts.
+    """
+    if (
+        call.kind != 3
+        or len(call.args) < 5
+        or call.args[:2] != (("int", 5), ("int", 8))
+        or call.args[2][0] != "int"
+    ):
+        return None
+    parts, controls, has_item = [], [], False
+    i = 3
+    while i < len(call.args):
+        kind, value = call.args[i]
+        if kind == "string":
+            parts.append(str(value))
+        elif (kind, value) == ("int", 10):
+            parts.append("\n")
+        elif kind == "int" and value in PANEL_FLAGS:
+            controls.append((value,))
+        elif kind == "int" and value in (11, 12, 17):
+            if i + 1 >= len(call.args) or call.args[i + 1][0] != "int":
+                return None
+            operand = call.args[i + 1][1]
+            if value == 17:
+                if not isinstance(operand, int) or operand <= 0:
+                    return None
+                parts.append(("item", operand))
+                has_item = True
+            controls.append((value, operand))
+            i += 1
+        else:
+            return None
+        i += 1
+    if not has_item:
+        return None
+    return (call.target, call.kind, call.args[:3], tuple(controls)), tuple(parts)
+
+
+def _literal_item_panel_shape(call):
+    decoded = literal_item_panel_parts(call)
+    return decoded[0] if decoded and decoded[1] else None
+
+
 def static_panel_parts(call: Called) -> tuple[str, tuple] | None:
     """Decode command 8's verified static text and non-text control stream.
 
@@ -228,6 +277,7 @@ class Function:
     called: tuple[Called, ...]
     code_shape: tuple[tuple[object, ...], ...]
     code_strings: tuple[str, ...]
+    local_arg_types: tuple[tuple[str, tuple[int, ...]], ...] = ()
 
     def shape(self) -> tuple[object, ...]:
         return (
@@ -533,6 +583,7 @@ def parse_scp(data: bytes) -> Script:
     if len({item[1] for item in ordered}) != len(ordered):
         raise FormatError("duplicate function code offsets")
     functions: dict[str, Function] = {}
+    local_types = {row[0]: row[3] for row in raw}
     for index, (name, code_at, flags, arg_types, called_count, called_at, number) in enumerate(
         ordered
     ):
@@ -564,7 +615,15 @@ def parse_scp(data: bytes) -> Script:
         code_shape, code_strings = _parse_code(
             data, code_at, end, number, tuple(names), tuple(globals_)
         )
-        functions[name] = Function(name, flags, arg_types, tuple(called), code_shape, code_strings)
+        helpers = tuple(
+            (target, local_types[target])
+            for target in sorted(
+                {call.target for call in called if call.kind == 0 and call.target in local_types}
+            )
+        )
+        functions[name] = Function(
+            name, flags, arg_types, tuple(called), code_shape, code_strings, helpers
+        )
     return Script(functions)
 
 
@@ -684,6 +743,10 @@ def _item_notification_metadata_shape(call: Called):
         "ITEM_ADD_MESSAGE2_EV": ("EV", 3),
         "ITEM_ADD_MESSAGE_TK": ("TK", 2),
         "ITEM_ADD_MESSAGE2_TK": ("TK", 3),
+        "ITEM_SUB_MESSAGE_EV": ("EV", 2),
+        "ITEM_SUB_MESSAGE2_EV": ("EV", 3),
+        "ITEM_SUB_MESSAGE_TK": ("TK", 2),
+        "ITEM_SUB_MESSAGE2_TK": ("TK", 3),
     }
     if call.kind != 0 or call.target not in targets:
         return None
@@ -697,11 +760,16 @@ def _item_notification_metadata_shape(call: Called):
     style = call.args[required:] or (("int", 9),) if family == "EV" else ()
     if any(kind != "int" for kind, _ in style):
         return None
-    return "item-notification", family, call.args[0], style
+    operation = "remove" if call.target.startswith("ITEM_SUB_") else "add"
+    return "item-notification", operation, family, call.args[0], style
 
 
 def _same_known_payload(left: Called, right: Called) -> bool:
-    for shape in (_speaker_payload_shape, _item_notification_metadata_shape):
+    for shape in (
+        _speaker_payload_shape,
+        _item_notification_metadata_shape,
+        _literal_item_panel_shape,
+    ):
         value = shape(left)
         if value is not None and value == shape(right):
             return True
@@ -790,6 +858,13 @@ def _aligned_call_map(reference: Function, candidate: Function) -> dict[int, int
                 # This differing dialogue keeps the sequence aligned but is
                 # itself rejected because actor/voice identity is not equal.
                 continue
+            if _dynamic_dialogue_layout(left) is not None and _dynamic_dialogue_layout(
+                left
+            ) == _dynamic_dialogue_layout(right):
+                # Keep the ordered sequence across locale hard wrapping, but
+                # do not publish this unproven dynamic payload as a pair.
+                # Its consumer must separately prove the actual producer.
+                continue
             break
         return mapped
 
@@ -823,6 +898,178 @@ def _aligned_call_map(reference: Function, candidate: Function) -> dict[int, int
     return mapped
 
 
+def _static_menu_regions(function, *, with_code=False):
+    """Whole static menu lifecycles, independently bounded by their bytecode.
+
+    This is not a resynchronization of arbitrary calls after a dynamic gap.
+    Only the menu records are returned. Repeated contracts are not assigned
+    by ordinal; branches into or within a partial lifecycle are refused.
+    """
+    regions = defaultdict(list)
+    code = function.code_shape
+    string_positions = [i for i, ins in enumerate(code) if ins == ("push", "string")]
+    if len(string_positions) != len(function.code_strings):
+        return {}
+    code_strings = dict(zip(string_positions, function.code_strings, strict=True))
+    string_ordinals = {position: ordinal for ordinal, position in enumerate(string_positions)}
+    local = [
+        (i, instruction[1]) for i, instruction in enumerate(code) if instruction[0] == "local-call"
+    ]
+    calls = function.called
+    for start, create in enumerate(calls):
+        if (
+            create.kind != 0
+            or create.target != "menu_create"
+            or len(create.args) != 4
+            or any(k != "int" for k, _ in create.args)
+        ):
+            continue
+        menu_id = create.args[0]
+        end = start + 1
+        while end < len(calls) and calls[end].target == "menu_additem":
+            end += 1
+        options = calls[start + 1 : end]
+        if (
+            not 1 <= len(options) <= 32
+            or any(
+                c.kind != 0
+                or len(c.args) != 3
+                or c.args[0] != menu_id
+                or c.args[1][0] != "string"
+                or c.args[2][0] != "int"
+                for c in options
+            )
+            or len({c.args[2] for c in options}) != len(options)
+        ):
+            continue
+        tail = calls[end : end + 3]
+        if (
+            len(tail) != 3
+            or tuple(c.target for c in tail) != ("menu_open", "menu_wait", "menu_close")
+            or any(
+                c.kind != 0
+                or not c.args
+                or c.args[0] != menu_id
+                or any(k != "int" for k, _ in c.args)
+                for c in tail
+            )
+        ):
+            continue
+        if tuple(len(c.args) for c in tail) != (4, 1, 1):
+            continue
+        sequence = calls[start : end + 3]
+        targets = tuple(c.target for c in sequence)
+        windows = []
+        for at in range(len(local) - len(sequence) + 1):
+            span = local[at : at + len(sequence)]
+            if tuple(t for _, t in span) != targets:
+                continue
+            prepared = []
+            label_positions = set()
+            menu_code_slots = []
+            for (position, _), call in zip(span, sequence, strict=True):
+                pushes = tuple(
+                    ("push", "string") if k == "string" else ("push", k, v)
+                    for k, v in reversed(call.args)
+                )
+                if position < len(pushes) or code[position - len(pushes) : position] != pushes:
+                    break
+                string_arguments = [
+                    (position - 1 - index, value)
+                    for index, (kind, value) in enumerate(call.args)
+                    if kind == "string"
+                ]
+                if any(code_strings.get(i) != text for i, text in string_arguments):
+                    break
+                label_positions.update(i for i, _ in string_arguments)
+                if call.target == "menu_additem":
+                    menu_code_slots.append(string_ordinals[string_arguments[0][0]])
+                before = position - len(pushes) - 1
+                # Native default arguments may add literal pushes not present
+                # in the physical called descriptor (e.g. menu_open's title).
+                while before >= 0 and code[before][0] == "push":
+                    before -= 1
+                if before < 0 or code[before] != ("prepare-local", position + 1):
+                    break
+                prepared.append(before)
+            if len(prepared) != len(sequence):
+                continue
+            lo, hi = prepared[0], span[-1][0]
+            if any(
+                ins[0] == "branch" and (lo <= i <= hi or lo < ins[-1] <= hi)
+                for i, ins in enumerate(code)
+            ):
+                continue
+            body = code[lo : hi + 1]
+            if any(
+                ins[0] not in ("prepare-local", "push", "local-call", "line", "pop", "byte", "slot")
+                or (ins[0] == "byte" and ins != ("byte", 9, 0))
+                or (ins[0] == "slot" and ins[1] != 5)
+                for ins in body
+            ):
+                continue
+            normalized = tuple(
+                (ins[0], ins[1] - lo)
+                if ins[0] == "prepare-local"
+                else (*ins, code_strings[i])
+                if ins == ("push", "string") and i not in label_positions
+                else ins
+                for i, ins in enumerate(body, lo)
+            )
+            windows.append((normalized, tuple(menu_code_slots)))
+        if len(windows) == 1:
+            signature = (
+                function.flags,
+                function.arg_types,
+                tuple(c.shape() for c in sequence),
+                windows[0][0],
+            )
+            regions[signature].append((tuple(range(start + 1, end)), windows[0][1]))
+    return {
+        signature: rows[0] if with_code else rows[0][0]
+        for signature, rows in regions.items()
+        if len(rows) == 1
+    }
+
+
+def _aligned_menu_call_map(reference, candidate):
+    right = _static_menu_regions(candidate)
+    return {
+        a: b
+        for signature, left in _static_menu_regions(reference).items()
+        if signature in right
+        for a, b in zip(left, right[signature], strict=True)
+    }
+
+
+def _dynamic_dialogue_layout(call):
+    """Skip-only builder layout; never a translation or a variable value."""
+    if (
+        call.kind != 3
+        or len(call.args) < 4
+        or call.args[:1] != (("int", 5),)
+        or call.args[1] not in (("int", 0), ("int", 6), ("int", 19))
+        or call.args[2][0] != "int"
+        or not any(kind == "var" for kind, _ in call.args[3:])
+        or any(kind in ("call", "expr") for kind, _ in call.args[3:])
+    ):
+        return None
+    # Retain variable positions between literal spans and every non-newline
+    # control. Only the already verified static builder grammar may surround
+    # a variable. Empty replacement here checks syntax, never emits text.
+    static = replace(
+        call, args=tuple(("string", "") if k == "var" else (k, v) for k, v in call.args)
+    )
+    if assembled_dialogue(static) is None:
+        return None
+    spans = []
+    for kind, value in call.args[3:]:
+        part = ("text",) if kind == "string" or (kind, value) == ("int", 10) else (kind, value)
+        if part != ("text",) or not spans or spans[-1] != part:
+            spans.append(part)
+    return call.target, call.kind, call.args[:3], tuple(spans)
+
+
 def _speaker_ids(functions, called_ids):
     result = {}
     for language, called in called_ids.items():
@@ -845,6 +1092,11 @@ def _aligned_display_records(path, function_name, functions, called_shapes, audi
         language: _aligned_call_map(reference, functions[language])
         for language in sorted(functions)
     }
+    menu_mappings = {language: dict(mapping) for language, mapping in mappings.items()}
+    for language in sorted(functions):
+        for left, right in _aligned_menu_call_map(reference, functions[language]).items():
+            if left not in menu_mappings[language] or menu_mappings[language][left] == right:
+                menu_mappings[language][left] = right
     called_groups = defaultdict(set)
     dialogue_groups = defaultdict(set)
     for language, function in functions.items():
@@ -860,6 +1112,48 @@ def _aligned_display_records(path, function_name, functions, called_shapes, audi
     )
     entries = []
     for reference_called, reference_call in enumerate(reference.called):
+        # menu_additem is a separate script display producer, not a talk
+        # command. Its option ID and menu ID remain part of the exact call
+        # shape. A later localized reward helper must not discard this proven
+        # prefix. Do not infer menu records from their displayed wording.
+        if (
+            reference_call.kind == 0
+            and reference_call.target == "menu_additem"
+            and len(reference_call.args) == 3
+            and reference_call.args[0][0] == "int"
+            and reference_call.args[1][0] == "string"
+            and reference_call.args[2][0] == "int"
+        ):
+            called_ids = {
+                language: called
+                for language in sorted(functions)
+                if (called := menu_mappings[language].get(reference_called)) is not None
+                and functions[language].called[called].shape() == reference_call.shape()
+            }
+            languages = set(called_ids)
+            if len(languages) >= 2 and not any(
+                languages <= group for group in called_groups.values()
+            ):
+                identity = (
+                    "menu-record",
+                    reference_language,
+                    reference_called,
+                    tuple(sorted(called_ids.items())),
+                    reference_call.shape(),
+                )
+                suffix = "/alignment/" + hashlib.sha256(repr(identity).encode()).hexdigest()
+                entries.append(
+                    {
+                        "key": f"{path}/{function_name}/called/{reference_called}/arg/1{suffix}",
+                        "texts": {
+                            language: str(functions[language].called[called].args[1][1])
+                            for language, called in called_ids.items()
+                        },
+                        "display_role": "script_menu",
+                        "called_ids": called_ids,
+                    }
+                )
+                _add_counter(audit, "menu_record_alignments")
         if (
             reference_call.target == "chr_set_display_name"
             and len(reference_call.args) >= 2
@@ -965,6 +1259,14 @@ def align_functions(path, function_name, functions, audit):
     """
     entries = []
     called_shapes = {lang: fn.called_sequence_shape() for lang, fn in functions.items()}
+    menu_code_ids = {
+        lang: {
+            ordinal: called
+            for calls, ordinals in _static_menu_regions(fn, with_code=True).values()
+            for called, ordinal in zip(calls, ordinals, strict=True)
+        }
+        for lang, fn in functions.items()
+    }
     for family, method in (
         ("called", "called_sequence_shape"),
         ("code", "shape"),
@@ -1021,6 +1323,11 @@ def align_functions(path, function_name, functions, audit):
                         f"code/{ordinal}",
                         {l: functions[l].code_strings[ordinal] for l in languages},
                     )
+                    if all(ordinal in menu_code_ids[l] for l in languages):
+                        entries[-1]["display_role"] = "script_menu"
+                        entries[-1]["menu_called_ids"] = {
+                            l: menu_code_ids[l][ordinal] for l in languages
+                        }
                 continue
             for index, call in enumerate(reference.called):
                 complete = {l: assembled_dialogue(functions[l].called[index]) for l in languages}
@@ -1062,6 +1369,9 @@ def align_functions(path, function_name, functions, audit):
                         "speaker" if call.target == "chr_set_display_name" and slot == 1 else None,
                     )
     entries.extend(_aligned_display_records(path, function_name, functions, called_shapes, audit))
+    from sora_bilingual.localization.control_dialogue import align_control_dialogue_calls
+
+    entries.extend(align_control_dialogue_calls(path, function_name, functions, audit))
     return entries
 
 

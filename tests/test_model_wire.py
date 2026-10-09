@@ -14,6 +14,44 @@ from sora_bilingual.localization.model_wire import (
 
 
 class WireTests(unittest.TestCase):
+    def test_wire_ready_permission_is_not_a_cache_miss(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "model.json"
+            source.write_text("{}", encoding="utf-8")
+            with patch.object(Path, "read_text", side_effect=PermissionError("stamp denied")):
+                with self.assertRaisesRegex(PermissionError, "stamp denied"):
+                    wire_ready(source)
+
+    def test_wire_preparation_permission_errors_never_rebuild(self):
+        for schema in (1, 2):
+            for stage in ("stamp", "payload"):
+                with self.subTest(schema=schema, stage=stage), tempfile.TemporaryDirectory() as tmp:
+                    source = Path(tmp) / "model.json"
+                    source.write_text("{}", encoding="utf-8")
+                    model = {"pairs": {"source": ["日本語", "中文"]}}
+                    target = prepare_wire(source, model, schema=schema)
+                    original_open = Path.open
+
+                    def denied_open(path, *args, **kwargs):
+                        if (
+                            stage == "payload"
+                            and path == target
+                            or stage == "stamp"
+                            and path.name.endswith(".stamp.json")
+                        ):
+                            raise PermissionError("owned fixture denied")
+                        return original_open(path, *args, **kwargs)
+
+                    with (
+                        patch.object(Path, "open", new=denied_open),
+                        patch("sora_bilingual.localization.model_wire.publish_indexed") as indexed,
+                        patch("sora_bilingual.localization.model_wire.publish_json") as legacy,
+                    ):
+                        with self.assertRaisesRegex(PermissionError, "owned fixture denied"):
+                            prepare_wire(source, model, schema=schema)
+                        indexed.assert_not_called()
+                        legacy.assert_not_called()
+
     def test_legacy_and_indexed_cache_stamps_do_not_invalidate_each_other(self):
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / "model.json"

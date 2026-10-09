@@ -69,7 +69,7 @@ class AutoConnector:
             prepare_fonts_fresh,
         )
         from sora_bilingual.config.locales import LOCALES
-        from sora_bilingual.config.native_config import read_config
+        from sora_bilingual.config.native_config import read_config, apply_detected_game_language
         from sora_bilingual.localization.native_catalog import fingerprint, model_path
         from sora_bilingual.localization.model_wire import wire_ready
         from sora_bilingual.updates.tool_updates import ReleaseWatch
@@ -284,7 +284,7 @@ class AutoConnector:
                         ):
                             config = None
                         else:
-                            config = {**config, "game_language": previous_source}
+                            config = apply_detected_game_language(config, previous_source)
                     else:
                         config = None
                     if config is not None:

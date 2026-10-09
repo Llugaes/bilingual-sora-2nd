@@ -10,8 +10,37 @@ from sora_bilingual.localization.item_help_composition import (
     ItemHelpContractError,
     _iter_effect_groups,
     compile_item_help_grammar,
+    compile_item_description_printf,
 )
 from sora_bilingual.localization.menu_text import MenuTranslator
+
+
+class ItemDescriptionPrintfTests(unittest.TestCase):
+    def test_zero_argument_printf_is_resource_role_local_and_preserves_controls(self):
+        key = "table/t_item.tbl/sha256:resource/description"
+        texts = {
+            "en": "<c698>Attack (80%% chance)</C>\nnext",
+            "ja": "<c698>攻撃80％</C>\n次",
+            "zh-Hans": "<c698>攻击80％\n下一行",
+        }
+        rows = [{"key": key, "texts": texts}]
+        proof = [{"key": key, "id": 4304, "formatter": "item_description_printf"}]
+        aliases, refusals = compile_item_description_printf(rows, proof, tuple(texts))
+        self.assertEqual(refusals, [])
+        self.assertEqual(len(aliases), 1)
+        tr = MenuTranslator(rows + aliases, "ja", "zh-Hans", "en")
+        source = texts["en"].replace("%%", "%")
+        self.assertEqual(tr.translate(source, "primary"), texts["ja"])
+        self.assertEqual(tr.translate(source, "secondary"), texts["zh-Hans"])
+        inverse = MenuTranslator(rows + aliases, "en", "zh-Hans", "ja")
+        self.assertEqual(inverse.translate(texts["ja"], "primary"), source)
+        # No phrase/percent transformation for an unproved resource or a real
+        # dynamic/unsupported printf slot. Native controls are never stripped.
+        for contract in ([], [{**proof[0], "formatter": "literal_copy"}]):
+            self.assertEqual(compile_item_description_printf(rows, contract, tuple(texts))[0], [])
+        for dynamic in ("<c698>%s 80%%</C>", "<c698>%n 80%%</C>"):
+            entries = [{"key": key, "texts": {**texts, "en": dynamic}}]
+            self.assertEqual(compile_item_description_printf(entries, proof, tuple(texts))[0], [])
 
 
 STATUS = {
@@ -951,6 +980,26 @@ class ItemHelpAggregateTests(unittest.TestCase):
             translator.details.has_detail_context(malformed_ruby, "<C0><C9>Skill description")
         )
         self.assertIn("<c698>CP Regen</C>", translator.translate(malformed_ruby, "primary"))
+        family = json.loads(
+            (Path(__file__).parent / "fixtures/r22-malformed-ruby-family.json").read_text("utf8")
+        )
+        for case in family["cases"]:
+            original = case["prefix"] + family["suffix"]
+            for mode in ("annotation", "primary", "secondary"):
+                with self.subTest(malformed=case["name"], mode=mode):
+                    fresh = MenuTranslator(
+                        entries
+                        + [description]
+                        + grammar["status_entries"]
+                        + grammar["detail_entries"],
+                        "zh-Hans",
+                        "ja",
+                        "en",
+                    )
+                    plan = fresh.render(original, mode)
+                    self.assertEqual(plan["text"], original)
+                    self.assertFalse(plan["layers"])
+                    self.assertEqual(fresh.translate(original, mode), original)
 
     def test_element_title_localizes_labels_without_duplicating_icon_arguments(self):
         entries, metadata, groups = fixture()
@@ -1316,12 +1365,22 @@ for(const c of data.cases) {
                     source=source_language, primary=primary, secondary=secondary, mode="annotation"
                 ):
                     plan = translator.render(source_value, "annotation")
-                    self.assertEqual(plan["kind"], "ruby")
-                    self.assertEqual(plan["layers"], [])
+                    self.assertEqual(plan["kind"], "layered")
+                    effects = [layer for layer in plan["layers"] if layer.get("semantic_ids")]
+                    # The native recovery constructor owns these combined
+                    # fields; keep that verified aggregate atomic.
+                    self.assertEqual(len(effects), 1)
+                    self.assertEqual(effects[0]["primary"], primary_header)
+                    self.assertEqual(effects[0]["text"], secondary_header)
+                    self.assertIn(headers[0]["key"], effects[0]["semantic_ids"])
                     self.assertIn(primary_header, plan["text"])
-                    self.assertIn(secondary_header, plan["text"])
                     self.assertIn(description["texts"][primary], plan["text"])
-                    self.assertIn(description["texts"][secondary], plan["text"])
+                    body_lanes = [
+                        layer for layer in plan["layers"] if not layer.get("semantic_ids")
+                    ]
+                    self.assertEqual(len(body_lanes), 1)
+                    self.assertIn(description["texts"][secondary], body_lanes[0]["text"])
+                    self.assertIn(description["texts"][primary], body_lanes[0]["primary"])
 
 
 if __name__ == "__main__":

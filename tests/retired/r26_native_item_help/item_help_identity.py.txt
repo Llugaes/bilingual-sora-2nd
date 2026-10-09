@@ -1,0 +1,194 @@
+"""Compile the dependencies of the reviewed mode-zero, kind-zero item help copy.
+
+This is a record constructor contract, independent of the direct-field full
+pool contract. No word, item ID, or executable RVA selects eligible records.
+"""
+
+import hashlib
+import struct
+from collections import Counter, defaultdict
+from pathlib import Path
+
+from sora_bilingual.localization.resources import FpacArchive
+from sora_bilingual.localization.tables import _TABLE_ARCHIVES, _logical_tables
+from sora_bilingual.localization.menu_tables import sections, schema_for, record_identity
+from sora_bilingual.localization.menu_text import MenuTranslator, complete_pair
+
+
+LIMITS = {"selector_prefix": 64, "string_bytes": 2048,
+          "record_string_bytes": 4096, "input_bytes": 2048,
+          "callback_bytes": 16384, "candidates": 4}
+
+
+def _table(data, kind):
+    layout = sections(data)
+    matches = [(i, row) for i, row in enumerate(layout) if row[0] == kind]
+    if len(matches) != 1:
+        raise ValueError("item help identity requires one physical section")
+    index, (_, start, stride, count) = matches[0]
+    schema = schema_for("table/t_item.tbl" if kind == "ItemTableData"
+                        else "table/t_itemhelp.tbl", kind)
+    if stride != schema.size:
+        raise ValueError("item help identity section stride changed")
+    floor = max(at + size * total for _, at, size, total in layout)
+    return {"header": data[:8].hex(),
+            "descriptor": data[8 + index * 80:88 + index * 80].hex(),
+            "section_index": index, "start": start, "stride": stride,
+            "count": count, "floor": floor, "size": len(data)}, schema
+
+
+def _record(data, table, schema, row):
+    at = table["start"] + row * table["stride"]
+    scalar = bytearray(data[at:at + schema.size])
+    strings = []
+    for field in schema.pointers:
+        offset = struct.unpack_from("<Q", scalar, field)[0]
+        if not table["floor"] <= offset < table["size"]:
+            raise ValueError("record string outside compiled pool")
+        if schema.size == 256 and field == 8:
+            count = struct.unpack_from("<Q", scalar, 16)[0]
+            if count > 1024 or offset + count * 2 > len(data):
+                raise ValueError("item array exceeds compiled budget")
+            value = data[offset:offset + count * 2]
+            strings.append({"field": field, "offset": offset, "bytes": value.hex(), "kind": "array"})
+            scalar[field:field + 8] = bytes(8)
+            continue
+        end = data.find(b"\0", offset, min(len(data), offset + LIMITS["string_bytes"]))
+        if end < 0:
+            raise ValueError("record string exceeds bounded NUL limit")
+        value = data[offset:end + 1]
+        value[:-1].decode("utf-8", "strict")
+        converted = schema.size == 256 and field in (24, 32)
+        strings.append({"field": field, "offset": offset, "bytes": value.hex(),
+                        "kind": "scalar_source" if converted else "text"})
+        if converted:
+            if field == 24:
+                # The reviewed parser starts with EAX=0 and returns it for
+                # an empty source. Nonempty flag conversion is not covered.
+                if value != b"\0":
+                    raise ValueError("nonempty native flag parser source is uncovered")
+                mask = 0
+            else:
+                # Actual loader jump destinations; this is the native field
+                # grammar, not an item-name or translation allowlist.
+                bits = {"1": 1 << 20, "2": 1 << 21, "D": 1, "L": 2,
+                        "M": 4, "F": 8, "G": 16, "R": 32, "H": 64}
+                mask = 0
+                for char in value[:-1].decode("ascii", "strict"):
+                    mask |= bits.get(char, 0)
+            struct.pack_into("<I", scalar, field, mask)
+        else:
+            scalar[field:field + 8] = bytes(8)
+    return {"at": at, "scalar": scalar.hex(), "strings": strings}
+
+
+def compile_item_help_identities(game, entries, primary, secondary, language):
+    """Keep every rejected row in the audit, without touching global pairs."""
+    entries = list(entries)
+    physical = defaultdict(list)
+    stable = defaultdict(list)
+    for entry in entries:
+        key = entry.get("key", "")
+        path = ("table/t_itemhelp.tbl/ItemKindHelpData" if key.startswith(
+            "table/t_itemhelp.tbl/ItemKindHelpData/") else
+            "table/t_item.tbl" if key.startswith("table/t_item.tbl/") else None)
+        if path is None:
+            continue
+        if "table_rows" not in entry:
+            stable[key].append(entry)
+        field = key.rsplit("/", 1)[-1]
+        rows = entry.get("table_rows", {}).get(language, [])
+        if len(rows) == 1:
+            physical[path, rows[0], field].append(entry)
+    audit = Counter()
+    records, models = {}, {}
+    archive = FpacArchive(Path(game) / "pac/steam" / _TABLE_ARCHIVES[language])
+    try:
+        logical = _logical_tables(archive)
+        if any(path not in logical for path in ("table/t_item.tbl", "table/t_itemhelp.tbl")):
+            return {"schema": 1, "limits": LIMITS, "records": {}, "models": {},
+                    "audit": {"missing_tables": 1}}
+        item = archive.read(logical["table/t_item.tbl"])
+        help_data = archive.read(logical["table/t_itemhelp.tbl"])
+        it, item_schema = _table(item, "ItemTableData")
+        ht, help_schema = _table(help_data, "ItemKindHelpData")
+        if item_schema.size != 256 or help_schema.size != 32:
+            raise ValueError("item help identity record layout changed")
+        selectors = [struct.unpack_from("<HHI", help_data, ht["start"] + row * 32)
+                     for row in range(ht["count"])]
+        for row in range(it["count"]):
+            audit["physical_rows"] += 1
+            at = it["start"] + row * 256
+            mode, category, third = struct.unpack_from("<BBH", item, at + 40)
+            help_row = next((i for i, (a, b, c) in enumerate(selectors)
+                             if a == mode and b == category and (c == 0 or c == third)), None)
+            if help_row is None:
+                audit["no_selector"] += 1
+                continue
+            ha = ht["start"] + help_row * 32
+            if (struct.unpack_from("<I", help_data, ha + 16)[0] != 0 or
+                    struct.unpack_from("<H", item, at + 60)[0] == 0x9b):
+                audit["uncovered_constructor_branch"] += 1
+                continue
+            if help_row > LIMITS["selector_prefix"]:
+                audit["selector_budget"] += 1
+                continue
+            body_key = "table/t_item.tbl/" + record_identity(item, at, "ItemTableData", item_schema, it["floor"]) + "/description"
+            head_key = "table/t_itemhelp.tbl/ItemKindHelpData/" + record_identity(help_data, ha, "ItemKindHelpData", help_schema, ht["floor"]) + "/description"
+            bodies = physical["table/t_item.tbl", row, "description"] or stable[body_key]
+            heads = physical["table/t_itemhelp.tbl/ItemKindHelpData", help_row, "description"] or stable[head_key]
+            if len(bodies) != 1 or len(heads) != 1:
+                audit["missing_or_ambiguous_alignment"] += 1
+                continue
+            body, head = bodies[0], heads[0]
+            if not all(complete_pair(e["texts"], primary, secondary) for e in (body, head)):
+                audit["missing_target"] += 1
+                continue
+            # The reviewed formatter places one header above one body. The
+            # first-line geometry is unavailable for a multiline header in
+            # the actual source or either rendered target.
+            if any(separator in head["texts"].get(locale, "")
+                   for locale in {language, primary, secondary}
+                   for separator in ("\n", "\r", "\\n")):
+                audit["multiline_header"] += 1
+                continue
+            try:
+                ir, hr = _record(item, it, item_schema, row), _record(help_data, ht, help_schema, help_row)
+            except (ValueError, UnicodeDecodeError):
+                audit["unbounded_record_string"] += 1
+                continue
+            total_strings = sum(len(s["bytes"]) // 2 for r in (ir, hr) for s in r["strings"])
+            if total_strings > LIMITS["record_string_bytes"]:
+                audit["record_string_budget"] += 1
+                continue
+            actual_body = next(s for s in ir["strings"] if s["field"] == 232)
+            actual_head = next(s for s in hr["strings"] if s["field"] == 8)
+            if (bytes.fromhex(actual_body["bytes"])[:-1].decode("utf-8") != body["texts"].get(language) or
+                    bytes.fromhex(actual_head["bytes"])[:-1].decode("utf-8") != head["texts"].get(language)):
+                audit["alignment_source_mismatch"] += 1
+                continue
+            texts = {locale: head["texts"][locale] + "\n" + body["texts"][locale]
+                     for locale in head["texts"].keys() & body["texts"].keys()}
+            source = texts.get(language, "")
+            if "%" in body["texts"][language]:
+                audit["uncovered_printf"] += 1
+                continue
+            encoded = source.encode("utf-8") + b"\0"
+            if len(encoded) > LIMITS["input_bytes"]:
+                audit["input_budget"] += 1
+                continue
+            key = "item_help/mode0/" + body["key"] + "/" + head["key"]
+            one = MenuTranslator([{"key": key, "texts": texts}], primary, secondary, language, True).runtime_model()
+            models[key] = {"source": source, "model": one}
+            records[str(at)] = {"key": key, "source": source, "input": encoded.hex(),
+                                "item": ir, "help": hr,
+                                "selector_prefix": help_data[ht["start"]:ha].hex()
+                                if help_row == 0 else "".join(help_data[ht["start"] + i * 32:ht["start"] + i * 32 + 8].hex()
+                                                           for i in range(help_row))}
+            audit["admitted_records"] += 1
+        generation = hashlib.sha256((language + primary + secondary).encode() + item + help_data).hexdigest()
+        return {"schema": 1, "source_language": language, "generation": generation,
+                "limits": LIMITS, "item_table": it, "help_table": ht,
+                "records": records, "models": models, "audit": dict(audit)}
+    finally:
+        archive.close()

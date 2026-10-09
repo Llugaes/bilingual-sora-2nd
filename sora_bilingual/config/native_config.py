@@ -16,6 +16,7 @@ from sora_bilingual.config.locales import (
 
 from sora_bilingual.paths import ROOT
 from sora_bilingual.platform.gamepad_labels import LABEL_STYLES
+from sora_bilingual.platform.file_lock import preparation_lock
 
 CONTROL = ROOT / "generated" / "native-control.json"
 LANGUAGE_DEFAULTS_PENDING = "language_defaults_pending"
@@ -28,6 +29,7 @@ DEFAULTS = {
     "primary": DEFAULT_PRIMARY,
     "secondary": DEFAULT_SECONDARY,
     "game_language": DEFAULT_PRIMARY,
+    "experimental_primary": False,
     "scope": "all",
     "sources": [],
     "enabled": True,
@@ -72,7 +74,11 @@ def switch_binding(value):
 
 
 def read_config(path=CONTROL):
-    value = json.loads(Path(path).read_text(encoding="utf-8")) if Path(path).exists() else {}
+    value = (
+        json.loads(Path(path).read_text(encoding="utf-8"))
+        if Path(path).exists()
+        else {LANGUAGE_DEFAULTS_PENDING: True}
+    )
     return normalize_config(value)
 
 
@@ -95,6 +101,16 @@ def normalize_config(value):
         for k in ("primary", "secondary", "game_language")
     ):
         raise ValueError("未知语言")
+    if type(result["experimental_primary"]) is not bool:
+        raise ValueError("实验性主语言开关必须是布尔值")
+    if not result["experimental_primary"]:
+        previous_primary = result["primary"]
+        game_language = result["game_language"]
+        if result["secondary"] == game_language and previous_primary != game_language:
+            result["secondary"] = previous_primary
+        result["primary"] = game_language
+    if result["primary"] == result["secondary"]:
+        result["secondary"] = LOCALES[result["primary"]].default_secondary
     if not isinstance(result["enabled"], bool):
         raise ValueError("启用状态必须是布尔值")
     if result.get("scope") not in ("all", "menu", "selected"):
@@ -195,6 +211,8 @@ def normalize_config(value):
 
 def apply_pending_language_defaults(config, game_language):
     """Consume a new-user default marker after source detection succeeds."""
+    if game_language not in LOCALES:
+        raise ValueError("未检测到游戏文字语言")
     if config.get(LANGUAGE_DEFAULTS_PENDING) is not True:
         return config
     result = deepcopy(config)
@@ -203,17 +221,37 @@ def apply_pending_language_defaults(config, game_language):
     return result
 
 
-def apply_startup_language(config, game_language, session, *, previous_primary):
-    """Sync once per game process; reconnects and later user edits retain their choice."""
+def apply_detected_game_language(config, game_language):
+    """Apply a confirmed source to the effective and persisted display pair.
+
+    Normal mode follows the source and swaps only on a secondary collision.
+    Experimental display choices use the existing manual-primary behavior.
+    Missing/uncertain probes never call this function with a guessed source.
+    """
     if game_language not in LOCALES:
         raise ValueError("未检测到游戏文字语言")
-    if config.get("language_startup_session") == session:
-        return config
-    result = deepcopy(apply_pending_language_defaults(config, game_language))
-    if config["primary"] == previous_primary:
-        result["primary"] = game_language
-    result["language_startup_session"] = session
-    return result
+    if config.get("experimental_primary", False):
+        result = deepcopy(config)
+        result.pop(LANGUAGE_DEFAULTS_PENDING, None)
+    else:
+        result = apply_pending_language_defaults(config, game_language)
+    return normalize_config({**result, "game_language": game_language})
+
+
+def control_lock(path=CONTROL):
+    """Reuse the existing OS lock for short UI/backend control transactions."""
+    path = Path(path)
+    return preparation_lock(path.parent, path.name + ".lock")
+
+
+def update_config(change, path=CONTROL):
+    """Apply backend-owned changes to a fresh snapshot under the shared lock."""
+    with control_lock(path):
+        latest = read_config(path)
+        result = change(deepcopy(latest))
+        if result != latest or not Path(path).exists():
+            write_config(normalize_config(result), path)
+        return read_config(path)
 
 
 def replace_file(source, destination):

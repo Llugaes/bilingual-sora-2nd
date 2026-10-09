@@ -65,6 +65,7 @@ from sora_bilingual.config.native_config import (
     ACTIONS,
     LANGUAGE_DEFAULTS_PENDING,
     replace_file,
+    control_lock,
 )
 from sora_bilingual.config.locales import (
     LOCALES,
@@ -172,6 +173,11 @@ def update_control(patch: dict[str, Any], path: Path = CONTROL_PATH) -> dict[str
     ``sources`` and ``stop`` are backend-owned and are always left untouched.
     Per-action updates preserve the other actions and unedited binding fields.
     """
+    with control_lock(path):
+        return _update_control_locked(patch, path)
+
+
+def _update_control_locked(patch: dict[str, Any], path: Path) -> dict[str, Any]:
     if "sources" in patch or "stop" in patch:
         raise ValueError("sources 和 stop 由后端管理，设置窗口不能修改")
     latest = _read_json_object(path)
@@ -185,6 +191,7 @@ def update_control(patch: dict[str, Any], path: Path = CONTROL_PATH) -> dict[str
     for key in (
         "primary",
         "secondary",
+        "experimental_primary",
         "ui_language",
         "switch_binding",
         "enabled",
@@ -205,8 +212,16 @@ def update_control(patch: dict[str, Any], path: Path = CONTROL_PATH) -> dict[str
         if key in patch:
             result[key] = deepcopy(patch[key])
     if language_changed:
+        before = read_config(path)
+        if (
+            patch.get("primary") == before["secondary"]
+            and patch.get("secondary", before["secondary"]) == before["secondary"]
+        ):
+            result["secondary"] = before["primary"]
         # A form may submit both language values with an unrelated setting.
         # Cancel the new-user defaults only when a value actually changed.
+        result.pop(LANGUAGE_DEFAULTS_PENDING, None)
+    if patch.get("experimental_primary") is True:
         result.pop(LANGUAGE_DEFAULTS_PENDING, None)
     if "hotkey" in patch:
         requested = patch["hotkey"]
@@ -398,6 +413,19 @@ class NativeSettingsWindow(QWidget):
         style_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapAllRows)
         self.primary = QComboBox()
         self.secondary = QComboBox()
+        self.follow_game_primary = QLabel("跟随游戏内语言（等待检测）")
+        self.follow_game_primary.setWordWrap(True)
+        self.experimental_primary = QCheckBox("Experimental")
+        self.experimental_primary.setAccessibleName(tr("Experimental：手动设置主语言"))
+        self.experimental_primary.setProperty("ui_accessible_name", "Experimental：手动设置主语言")
+        experimental_title = QLabel("手动设置主语言")
+        experimental_title.setWordWrap(True)
+        self.experimental_primary_note = QLabel(
+            "此功能属于实验性质，可能引入较多不稳定性、不确定性及 bug。"
+            "如需体验其他主语言，建议直接在游戏内设置语言。"
+        )
+        self.experimental_primary_note.setObjectName("helpText")
+        self.experimental_primary_note.setWordWrap(True)
         self.detected_game_language = QLabel("等待检测")
         self.detected_game_language.setObjectName("liveBadge")
         self.detected_game_language.setAccessibleName("检测到的游戏内文字语言")
@@ -497,11 +525,17 @@ class NativeSettingsWindow(QWidget):
             languages.addWidget(label, 0, column)
             languages.addWidget(control, 1, column)
             languages.setColumnStretch(column, 1)
+        languages.addWidget(self.follow_game_primary, 1, 0)
         language_layout.addLayout(languages)
-        language_note = QLabel("每次游戏启动时同步主语言；本次运行中可自行调整。")
+        language_note = QLabel("主语言自动跟随游戏内语言；如需体验其他主语言，建议在游戏内切换。")
         language_note.setWordWrap(True)
         language_note.setObjectName("helpText")
         language_layout.addWidget(language_note)
+        experimental_row = QHBoxLayout()
+        experimental_row.addWidget(self.experimental_primary)
+        experimental_row.addWidget(experimental_title, 1)
+        language_layout.addLayout(experimental_row)
+        language_layout.addWidget(self.experimental_primary_note)
         self.connection_button = QPushButton("连接游戏")
         self.connection_button.setObjectName("primaryAction")
         self.connection_button.setAccessibleName("手动连接游戏")
@@ -660,6 +694,8 @@ class NativeSettingsWindow(QWidget):
         self.binding_label = QLabel()
         self.record_keyboard = QPushButton("录制键盘组合")
         self.record_controller = QPushButton("录制手柄组合")
+        self.clear_controller = QPushButton("清除手柄绑定")
+        self.clear_controller.clicked.connect(self._clear_controller)
         for label, button in (
             (self.hotkey_label, self.record_keyboard),
             (self.binding_label, self.record_controller),
@@ -668,6 +704,14 @@ class NativeSettingsWindow(QWidget):
             row = QFormLayout()
             row.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapAllRows)
             row.addRow(label, button)
+            if button is self.record_controller:
+                row.removeWidget(button)
+                buttons = QWidget()
+                self.controller_buttons = QHBoxLayout(buttons)
+                self.controller_buttons.setContentsMargins(0, 0, 0, 0)
+                self.controller_buttons.addWidget(button, 1)
+                self.controller_buttons.addWidget(self.clear_controller, 1)
+                row.setWidget(0, QFormLayout.ItemRole.FieldRole, buttons)
             binding_layout.addLayout(row)
         style_help = QLabel(
             "自动按手柄显示键名；Steam Input 转接后可手动选择。仅改变名称，不改变绑定。"
@@ -680,9 +724,6 @@ class NativeSettingsWindow(QWidget):
         self.capture_help.setWordWrap(True)
         self.capture_help.hide()
         binding_layout.addWidget(self.capture_help)
-        self.clear_controller = QPushButton("清除手柄绑定")
-        self.clear_controller.clicked.connect(self._clear_controller)
-        binding_layout.addWidget(self.clear_controller)
         self.cancel_capture = QPushButton("取消录制")
         self.cancel_capture.clicked.connect(self._cancel_capture)
         self.cancel_capture.hide()
@@ -706,8 +747,8 @@ class NativeSettingsWindow(QWidget):
         layout.addWidget(self.status_footer)
 
         for signal in (
-            self.primary.currentIndexChanged,
             self.secondary.currentIndexChanged,
+            self.experimental_primary.toggled,
             self.enabled.toggled,
             self.annotation_scale.valueChanged,
             self.ui_language.currentIndexChanged,
@@ -718,6 +759,9 @@ class NativeSettingsWindow(QWidget):
             self.line_gap.valueChanged,
         ):
             signal.connect(self._save_form)
+        self.primary.currentIndexChanged.connect(self._primary_changed)
+        for combo in (self.primary, self.secondary):
+            combo.activated.connect(lambda *_: self._save_form(language_selection=True))
         self.secondary_color.colorChanged.connect(self._save_form)
         self.secondary_color.opacityChanged.connect(self._save_form)
         self.secondary_color.opacityChanged.connect(self._sync_secondary_opacity)
@@ -995,7 +1039,12 @@ class NativeSettingsWindow(QWidget):
         self._updating = True
         self._set_combo(self.ui_language, control["ui_language"])
         self._set_combo(self.primary, str(control["primary"]))
-        self._set_combo(self.secondary, str(control["secondary"]))
+        self._secondary_languages(str(control["primary"]), str(control["secondary"]))
+        experimental = control["experimental_primary"]
+        self.experimental_primary.setChecked(experimental)
+        self.primary.setVisible(experimental)
+        self.primary.setEnabled(experimental)
+        self.follow_game_primary.setVisible(not experimental)
         self.secondary_color.set_color(
             control.get("secondary_color", DEFAULTS["secondary_color"]),
             opacity=control.get("secondary_opacity", DEFAULTS["secondary_opacity"]),
@@ -1020,13 +1069,32 @@ class NativeSettingsWindow(QWidget):
         self._updating = False
         self._loaded = control
 
-    def _save_form(self, *_: Any) -> None:
+    def _secondary_languages(self, primary, secondary):
+        with QSignalBlocker(self.secondary):
+            self.secondary.clear()
+            for code, label in LANGUAGES:
+                if code != primary:
+                    self.secondary.addItem(label, code)
+            self._set_combo(self.secondary, secondary)
+
+    def _primary_changed(self, *_):
+        if self._updating or not self.experimental_primary.isChecked():
+            return
+        primary = self.primary.currentData()
+        secondary = self.secondary.currentData()
+        if primary == secondary:
+            secondary = self._loaded["primary"]
+        self._secondary_languages(primary, secondary)
+        self._save_form()
+
+    def _save_form(self, *_: Any, language_selection: bool = False) -> None:
         if self._updating:
             return
         values = {
             "ui_language": self.ui_language.currentData(),
             "primary": self.primary.currentData(),
             "secondary": self.secondary.currentData(),
+            "experimental_primary": self.experimental_primary.isChecked(),
             "enabled": self.enabled.isChecked(),
             "interaction": self._selected_interaction(),
             "annotation_scale": self.annotation_scale.value(),
@@ -1039,6 +1107,10 @@ class NativeSettingsWindow(QWidget):
             "line_gap": self.line_gap.value(),
         }
         patch = {k: v for k, v in values.items() if v != self._loaded.get(k)}
+        if language_selection and self._loaded.get(LANGUAGE_DEFAULTS_PENDING) is True:
+            # Selecting the displayed default is still a deliberate choice.
+            # Combo activation is user-only; reload/style signals cannot freeze it.
+            patch[LANGUAGE_DEFAULTS_PENDING] = False
         if patch:
             if "interaction" in patch:
                 patch["mode_request"] = time.time_ns()
@@ -1088,9 +1160,11 @@ class NativeSettingsWindow(QWidget):
             label = LOCALES[detected].name
             suffix = " · " + source_status if source_status else ""
             self.detected_game_language.setText(label + suffix)
+            self.follow_game_primary.setText(label)
             self.detected_game_language.setToolTip("后端已检测到游戏内文字语言。")
         else:
             self.detected_game_language.setText("等待检测")
+            self.follow_game_primary.setText("跟随游戏内语言（等待检测）")
             self.detected_game_language.setToolTip(
                 "等待后端检测游戏内文字语言。"
                 + (" 检测状态：" + source_status if source_status else "")
@@ -1200,6 +1274,12 @@ class NativeSettingsWindow(QWidget):
         except (OSError, ValueError) as exc:
             self.backend_label.setText("配置读取失败：" + str(exc))
             return
+        if any(
+            control.get(key) != self._loaded.get(key)
+            for key in ("primary", "secondary", "game_language", "experimental_primary")
+        ):
+            self.reload_control()
+            self.settings_changed.emit()
         self._present_font_preparation()
         if self.isVisible() and self.tabs.currentIndex() == 2:
             self._label_devices = self._controller.devices()

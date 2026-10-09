@@ -9,6 +9,7 @@ from sora_bilingual.updates.github_updates import GitHubClient, version_tuple
 from sora_bilingual.updates.release_sources import ReleaseSources
 from sora_bilingual.updates.release_client import metadata_identity
 from sora_bilingual.updates.update_installer import install, UpdateBusy, RuntimeRequired, write_json
+from sora_bilingual.paths import build_label
 
 INTERVAL = 6 * 3600
 POLICIES = {"notify", "off"}
@@ -242,7 +243,7 @@ class UpdateService:
         self.message = "请选择要回退的稳定版本" if self.history else "没有可回退的稳定版本"
 
     def _install(self, selection):
-        if not (self.root / "installed-manifest.json").is_file():
+        if build_label(self.root, self.distribution["version"]).startswith("DEV"):
             self.message = "开发目录不会被覆盖，请使用发行包"
             return
         tag = selection["tag_name"]

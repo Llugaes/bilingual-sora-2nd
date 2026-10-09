@@ -152,9 +152,12 @@ function readIndexedModel(buffer) {
     let staged=null;
     rpc.exports.modelwireversion=()=>2;
     rpc.exports.modelpackedfile=function(path,mode,active,scale,layout) {
-        if(path.endsWith('.wire.bin'))
-            return rpc.exports.load(readIndexedModel(File.readAllBytes(path)),mode,active,scale,layout);
-        const payload=JSON.parse(File.readAllText(path));
+        if(path.endsWith('.wire.bin')){
+            const buffer=File.readAllBytes(path);
+            return rpc.exports.load(readIndexedModel(buffer),mode,active,scale,layout,
+                {format:'indexed-v2',path,bytes:buffer.byteLength});
+        }
+        const text=File.readAllText(path),payload=JSON.parse(text);
         if(payload.schema!==1||!Array.isArray(payload.nodes)||payload.nodes.length>4000000)
             throw Error('Invalid packed model');
         const nodes=payload.nodes;
@@ -183,7 +186,8 @@ function readIndexedModel(buffer) {
                 nodes[i]=value;
             } else throw Error('Invalid model node');
         }
-        return rpc.exports.load(reference(payload.root,nodes.length),mode,active,scale,layout);
+        return rpc.exports.load(reference(payload.root,nodes.length),mode,active,scale,layout,
+            {format:'packed-v1',path,code_units:text.length});
     };
     rpc.exports.modelbegin=function(token) {
         if(typeof token!=='string'||!token)throw Error('Invalid model transfer');
@@ -203,6 +207,6 @@ function readIndexedModel(buffer) {
         const transfer=staged;staged=null;
         let text=transfer.chunks.join('');transfer.chunks.length=0;
         const model=JSON.parse(text);text=null;
-        return rpc.exports.load(model,mode,active,scale,layout);
+        return rpc.exports.load(model,mode,active,scale,layout,{format:'json-rpc',code_units:length});
     };
 })();

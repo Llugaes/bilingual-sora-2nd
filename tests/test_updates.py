@@ -310,8 +310,12 @@ class InstallationTests(unittest.TestCase):
             "a\\b.py",
             "name.py.",
             "assets/../x.py",
+            "sora_bilingual/localization/config.json",
         ]:
             self.assertFalse(installer.relative_file(name), name)
+        self.assertTrue(
+            installer.relative_file("sora_bilingual/localization/annotation_break_data.json")
+        )
 
     def test_tampered_and_extra_archive_files(self):
         wrong = {**self.meta, "sha256": "0" * 64}

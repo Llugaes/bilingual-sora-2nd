@@ -1,0 +1,57 @@
+{
+  "catalog_sha256": "5dc6a9081b20e028b39f05e67f2167770aaf0e95817daeee801ef3d3e9544e77",
+  "entries": [
+    {
+      "key": "table/t_quest.tbl/QuestText/sha256:279345c2ba6783d0625843227507936025e2ffbf884a604f3d1516d43b579b3e/body",
+      "texts": {
+        "ja": "・男子寮を解放した！\n　●パークス用務員\n　●ロディー\n　●ロイス",
+        "en": "・ The boys' dorm hostages have been\nreleased!\n● Janitor Parkes\n● Rody\n● Royce",
+        "zh-Hans": "·解放了男生宿舍！\n　●勤务员巴克斯\n　●罗迪\n　●罗伊斯",
+        "zh-Hant": "・解放了男生宿舍！\n　●工友巴克斯\n　●羅迪\n　●路易斯",
+        "ko": "・남자 기숙사를 탈환했다!\n●파크스 수위\n●로디\n●로이스",
+        "fr": "・Les otages dans le dortoir des\ngarçons ont été libérés !\n● Le concierge Parkes\n● Rody\n● Royce",
+        "de": "・ Die Geiseln im Jungenwohnheim wurden\nbefreit!\n● Hausmeister Parkes\n● Rody\n● Royce",
+        "es": "・ ¡Hemos liberado a los rehenes del\ndormitorio de los chicos!\n● Conserje Parkes\n● Rody\n● Royce"
+      }
+    },
+    {
+      "key": "table/t_quest.tbl/QuestText/sha256:35b172722d34f6059fba9266feb0b2d196aa9fa420219cd30e0552da2caea2c3/body",
+      "texts": {
+        "ja": "★内燃機関を受け取った！",
+        "en": "★ Received the internal combustion\nengine!",
+        "zh-Hans": "★拿到内燃引擎了！",
+        "zh-Hant": "★拿到內燃機了！",
+        "ko": "★내연기관을 받았다!",
+        "fr": "★ Moteur à combustion interne\nrécupéré !",
+        "de": "★ Verbrennungsmotor erhalten!",
+        "es": "★ ¡Hemos recibido el motor\nde combustión interna!"
+      }
+    },
+    {
+      "key": "table/t_quest.tbl/QuestText/sha256:f51f6b07d66b4bbdee3f595d4adcb74ccef3add90078d9ad909f2eda7384201c/body",
+      "texts": {
+        "ja": "・社会科教室を解放した！\n　●ロジック\n　●アジル\n　●モニカ\n　●セルマ…etc",
+        "en": "・ The social studies classroom\nhostages have been released!\n● Logan \n● Argyle\n● Monika\n● Thelma and others",
+        "zh-Hans": "·解放了社会科教室！\n　●罗基克\n　●亚吉鲁\n　●莫妮卡\n　●莎玛…etc",
+        "zh-Hant": "・解放了社會科教室！\n　●羅基克\n　●亞基爾\n　●莫妮卡\n　●莎瑪…etc",
+        "ko": "・사회과 교실을 탈환했다!\n●로직\n●아질\n●모니카\n●셀마 등",
+        "fr": "・Les otages dans la salle de classe\n(sciences sociales) ont été libérés !\n● Logan \n● Argyle\n● Monika\n● Thelma et d'autres",
+        "de": "・ Die Geiseln im Sozialkunde-\nklassenzimmer wurden befreit!\n● Logan \n● Argyle\n● Monika\n● Thelma und die anderen",
+        "es": "・ ¡Hemos liberado a los rehenes del\naula de Ciencias Sociales!\n● Logan \n● Argyle\n● Mónica\n● Thelma, etc."
+      }
+    },
+    {
+      "key": "table/t_quest_fc.tbl/QuestText/sha256:81a483a6d84dbc67dcd7bfae24d3fd5e5cf8352e8e650e3d50eddaf56ea3b0d2/body",
+      "texts": {
+        "ja": "★内燃機関ユニットを受け取った！",
+        "en": "★ Received the internal combustion\nengine!",
+        "zh-Hans": "★收下了内燃引擎组件！",
+        "zh-Hant": "★收下了內燃機組件！",
+        "ko": "★내연기관 유닛을 받았다!",
+        "fr": "★ Moteur à combustion interne\nrécupéré !",
+        "de": "★ Verbrennungsmotor erhalten!",
+        "es": "★ ¡Hemos recibido el motor\nde combustión interna!"
+      }
+    }
+  ]
+}

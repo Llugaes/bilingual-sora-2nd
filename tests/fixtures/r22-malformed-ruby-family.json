@@ -1,0 +1,14 @@
+{
+  "suffix": "<c698>CP Regen</C>\n<C0><C9>Skill description",
+  "cases": [
+    {"name": "stray closing reading", "prefix": "</RCP Regen>"},
+    {"name": "stray empty closing", "prefix": "</R>"},
+    {"name": "unclosed opening", "prefix": "<R>"},
+    {"name": "unclosed closing", "prefix": "<R>base</Rreading"},
+    {"name": "nested opening", "prefix": "<R><R>base</Rreading></Router>"},
+    {"name": "extra closing after valid R", "prefix": "<R>base</Rreading></Rtail>"},
+    {"name": "invalid opening token", "prefix": "<Rbad>"},
+    {"name": "invalid opening before valid R", "prefix": "<Rbad><R>base</Rreading>"}
+  ],
+  "level": "Bounded same-contract malformed-R family; no captured setter or pixel claim."
+}

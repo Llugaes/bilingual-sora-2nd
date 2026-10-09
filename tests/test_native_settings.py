@@ -8,6 +8,28 @@ from sora_bilingual.app.native_settings import read_control, update_control, val
 
 
 class NativeSettingsTests(unittest.TestCase):
+    def test_external_primary_only_update_swaps_and_preserves_bindings(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "control.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "primary": "en",
+                        "secondary": "ja",
+                        "experimental_primary": True,
+                        "backend_token": "keep",
+                        "switch_binding": {"keyboard": ["F7"], "gamepad": {"buttons": [2]}},
+                    }
+                ),
+                "utf-8",
+            )
+            after = update_control({"primary": "ja"}, path)
+            self.assertEqual((after["primary"], after["secondary"]), ("ja", "en"))
+            self.assertEqual(after["backend_token"], "keep")
+            self.assertEqual(
+                after["switch_binding"], {"keyboard": ["F7"], "gamepad": {"buttons": [2]}}
+            )
+
     def test_changing_mode_preserves_the_migrated_controller_binding(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "control.json"
@@ -161,7 +183,10 @@ class NativeSettingsTests(unittest.TestCase):
     def test_read_control_fills_only_missing_defaults(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "native-control.json"
-            path.write_text(json.dumps({"primary": "en", "sources": ["x"]}), encoding="utf-8")
+            path.write_text(
+                json.dumps({"primary": "en", "sources": ["x"], "experimental_primary": True}),
+                encoding="utf-8",
+            )
             result = read_control(path)
             self.assertEqual(result["primary"], "en")
             self.assertEqual(result["secondary"], "ja")

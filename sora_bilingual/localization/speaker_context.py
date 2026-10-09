@@ -5,6 +5,7 @@ set only; same-speaker wording conflicts still use the normal admission gate.
 """
 
 from collections import defaultdict
+from functools import lru_cache
 from pathlib import Path
 import struct
 
@@ -109,7 +110,10 @@ def _static_speaker_name_candidates(entries, primary, secondary):
         if setter is None or not values:
             continue
         pair = complete_pair(texts, primary, secondary)
-        for source in values:
+        # Source-localized labels are a set, but their insertion order reaches
+        # the shared history name index and its serialized fallback. Keep the
+        # complete ambiguity set; stabilize only its traversal, not selection.
+        for source in sorted(values):
             physical_claims[setter][source].add(pair)
 
     candidates = defaultdict(set)
@@ -133,6 +137,14 @@ def compile_history_contexts(entries, names_by_locale, primary, secondary):
     speakers = defaultdict(lambda: defaultdict(set))
     pending = defaultdict(list)
     selected = [entry for entry in entries if entry.get("display_role") == "dialogue"]
+    # Equal resource payloads recur across source languages, partial alignment
+    # rows and speaker buckets. Memoize only these pure normalizations within
+    # this compilation; target decisions and ambiguities are never cached here.
+    body_text = lru_cache(maxsize=16384)(display_text)
+
+    @lru_cache(maxsize=16384)
+    def padded_pair(pair):
+        return tuple(_without_line_padding(value) for value in pair)
 
     def physical_call(entry, locale, body):
         key = entry.get("key", "").split("/alignment/", 1)[0]
@@ -149,11 +161,11 @@ def compile_history_contexts(entries, names_by_locale, primary, secondary):
         if complete_pair(entry["texts"], primary, secondary):
             continue
         available = tuple(
-            display_text(entry["texts"][locale]) if locale in entry["texts"] else None
+            body_text(entry["texts"][locale]) if locale in entry["texts"] else None
             for locale in (primary, secondary)
         )
         for locale, value in entry["texts"].items():
-            body = display_text(value)
+            body = body_text(value)
             if not body.strip():
                 continue
             actor = entry.get("speaker_ids", {}).get(locale)
@@ -164,9 +176,9 @@ def compile_history_contexts(entries, names_by_locale, primary, secondary):
         pair = complete_pair(entry["texts"], primary, secondary)
         if not pair:
             continue
-        pair = tuple(display_text(value) for value in pair)
+        pair = tuple(body_text(value) for value in pair)
         for locale, value in entry["texts"].items():
-            body = display_text(value)
+            body = body_text(value)
             if not body.strip():
                 continue
             texts[body].add(pair)
@@ -206,7 +218,7 @@ def compile_history_contexts(entries, names_by_locale, primary, secondary):
     def compact(candidates):
         result = {}
         for source, pairs in candidates.items():
-            normalized = {tuple(_without_line_padding(t) for t in pair) for pair in pairs if pair}
+            normalized = {padded_pair(pair) for pair in pairs if pair}
             if None in pairs or len(normalized) != 1:
                 result[source] = -1
                 continue
@@ -224,7 +236,7 @@ def compile_history_contexts(entries, names_by_locale, primary, secondary):
             normalized = defaultdict(list)
             for pair in pairs:
                 if pair is not None:
-                    normalized[tuple(_without_line_padding(value) for value in pair)].append(pair)
+                    normalized[padded_pair(pair)].append(pair)
             if not normalized:
                 continue
             key = min(normalized)

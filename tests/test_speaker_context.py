@@ -1,5 +1,10 @@
 import unittest
 import struct
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
 
 from sora_bilingual.localization.speaker_context import (
     compile_history_contexts,
@@ -25,6 +30,35 @@ def speaker(label, target, key="script/a.dat/Talk/called/1/arg/1", **texts):
 
 
 class SpeakerContextTests(unittest.TestCase):
+    def test_history_model_bytes_are_stable_without_sorting_expected(self):
+        source = """
+import json
+from sora_bilingual.localization.speaker_context import compile_history_contexts
+entries = [{"key": "script/a.dat/Talk/called/1/arg/1", "display_role": "speaker",
+    "texts": {"en": "Voice", "ja": "声", "zh-Hans": "声音", "zh-Hant": "聲音", "fr": "Voix", "de": "Stimme"}},
+    {"key": "script/b.dat/Talk/called/1/arg/1", "display_role": "speaker",
+    "texts": {"en": "Other voice", "ja": "他の声", "zh-Hans": "声音", "zh-Hant": "聲音"}}]
+print(json.dumps(compile_history_contexts(entries, {}, "en", "ja"), ensure_ascii=False))
+"""
+        outputs = [
+            subprocess.run(
+                [sys.executable, "-B", "-X", "utf8", "-c", source],
+                cwd=Path(__file__).resolve().parents[1],
+                env={**os.environ, "PYTHONHASHSEED": str(seed)},
+                capture_output=True,
+                check=True,
+                encoding="utf-8",
+            ).stdout
+            for seed in range(1, 11)
+        ]
+        self.assertTrue(
+            all(value == outputs[0] for value in outputs[1:]),
+            "native model bytes must be deterministic before any sorted test serialization",
+        )
+        model = json.loads(outputs[0])
+        self.assertEqual(model["names"]["声音"], -1)
+        self.assertIn("声音", model["fallback_names"])
+
     def test_old_history_keeps_all_source_locales_with_shared_target_pairs(self):
         texts = {
             "zh-Hans": "<#E_4>欢迎来到中央工房。",

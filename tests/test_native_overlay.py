@@ -24,6 +24,7 @@ from sora_bilingual.app.native_overlay import (
     OverlayController,
     StatusBar,
     STYLE,
+    build_suffix,
 )
 from sora_bilingual.platform.inputs import InputManager
 from sora_bilingual.app.i18n import tr, current_language, set_language
@@ -31,7 +32,73 @@ from sora_bilingual.app.presentation import with_font_status
 from sora_bilingual.paths import build_label
 
 
+class BuildIdentityTests(unittest.TestCase):
+    def test_dev_manifest_identity_is_consistent_for_overlay_and_update_page(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "distribution.json").write_text('{"version":"0.4.2"}', "utf-8")
+            (root / "dev-manifest.json").write_text('{"display_version":"1.0.0-dev5-r13"}', "utf-8")
+            self.assertEqual(build_label(root), "DEV 1.0.0-dev5-r13")
+            self.assertEqual(build_label(root, "0.4.2"), "DEV 1.0.0-dev5-r13")
+            self.assertEqual(build_suffix(root), " · DEV 1.0.0-dev5-r13")
+
+    def test_candidate_label_is_dev_only(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for label in ("1.0.0-dev3", "1.0.0-dev4-r2"):
+                (root / "dev-manifest.json").write_text(
+                    json.dumps({"display_version": label}), encoding="utf-8"
+                )
+                self.assertEqual(build_suffix(root), " · DEV " + label)
+            (root / "installed-manifest.json").write_text("{}", encoding="utf-8")
+            self.assertEqual(build_suffix(root), "")
+
+    def test_legacy_and_invalid_manifest_keep_dev_marker(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.assertEqual(build_suffix(root), " · DEV")
+            for value in ("not json", "[]", '{"display_version":"<b>1.0</b>"}'):
+                (root / "dev-manifest.json").write_text(value, encoding="utf-8")
+                self.assertEqual(build_suffix(root), " · DEV")
+
+
 class OverlayStatusTests(unittest.TestCase):
+    def setUp(self):
+        language_before = current_language()
+        set_language("zh-Hans")
+        self.addCleanup(set_language, language_before)
+
+    def test_compact_states_have_text_symbols_and_contrast_in_every_theme(self):
+        from sora_bilingual.app.appearance import APPEARANCES
+        from sora_bilingual.app.presentation import STATUS_COLORS, COMPACT_STATUS
+
+        app = QApplication.instance() or QApplication([])
+        bar = StatusBar()
+        try:
+            for theme in APPEARANCES:
+                bar.set_appearance(theme)
+                for tone in COMPACT_STATUS:
+                    state = dict(
+                        title="已停用 · 游戏原文" if tone == "disabled" else tone,
+                        detail="detail",
+                        connected=tone in ("ready", "disabled"),
+                        pair="EN → JA",
+                        color=STATUS_COLORS.get(tone, STATUS_COLORS["waiting"])[0],
+                        marker="■" if tone == "disabled" else "○",
+                    )
+                    if tone != "disabled":
+                        state["activity"] = dict(tone=tone, title=tone, detail="detail")
+                    bar.present(state, "Ctrl + Shift + F9")
+                    self.assertEqual(bar.property("statusTone"), tone)
+                    symbol, foreground, background = COMPACT_STATUS[tone]
+                    self.assertEqual(bar.marker.text(), symbol)
+                    self.assertIn(foreground, bar.status.styleSheet())
+                    self.assertEqual(bar._status_palette[1], background)
+                    self.assertIn(state["title"], bar.status.text())
+        finally:
+            bar.deleteLater()
+            app.processEvents()
+
     def test_packaged_dev_marker_identifies_only_its_matching_version(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -245,11 +312,72 @@ class OverlayStatusTests(unittest.TestCase):
 
 
 class OverlayUiTests(unittest.TestCase):
+    def test_candidate_identity_is_visible_on_panel_tray_and_about(self):
+        with patch("sora_bilingual.app.native_overlay.BUILD_SUFFIX", " · DEV 1.0.0-dev3"):
+            controller = OverlayController(
+                self.control, self.status, start_timers=False, auto_connect=False
+            )
+            try:
+                self.assertIn("1.0.0-dev3", controller.panel.windowTitle())
+                self.assertIn("1.0.0-dev3", controller.panel.grip.text())
+                self.assertIn("1.0.0-dev3", controller.tray.toolTip())
+                with patch("sora_bilingual.app.native_overlay.QMessageBox.about") as about:
+                    controller.panel.show_about()
+                self.assertIn(
+                    controller.panel.settings.updates.service.distribution["version"]
+                    + " · DEV 1.0.0-dev3",
+                    about.call_args.args[2],
+                )
+            finally:
+                controller.close_interface()
+                controller.panel.deleteLater()
+                controller.bar.deleteLater()
+                controller.deleteLater()
+                self.app.processEvents()
+
+    def test_primary_swap_updates_disk_once_and_secondary_options_exclude_primary(self):
+        from sora_bilingual.config.locales import LOCALES
+
+        for primary in LOCALES:
+            secondary = "en" if primary == "ja" else "ja"
+            update_control(
+                {"primary": primary, "secondary": secondary, "experimental_primary": True},
+                self.control,
+            )
+            self.window.reload_control()
+            self.assertEqual(self.window.secondary.findData(primary), -1)
+            self.window.primary.setCurrentIndex(self.window.primary.findData(secondary))
+            saved = read_config(self.control)
+            self.assertEqual((saved["primary"], saved["secondary"]), (secondary, primary))
+            self.assertEqual(self.window.secondary.currentData(), primary)
+            self.assertEqual(self.window.secondary.findData(secondary), -1)
+            self.assertEqual(saved["sources"], ["keep"])
+            self.assertFalse(saved["stop"])
+
+    def test_controller_record_and_clear_share_two_columns(self):
+        self.assertEqual(self.window.controller_buttons.count(), 2)
+        self.assertIs(
+            self.window.controller_buttons.itemAt(0).widget(), self.window.record_controller
+        )
+        self.assertIs(
+            self.window.controller_buttons.itemAt(1).widget(), self.window.clear_controller
+        )
+        self.assertEqual(
+            [self.window.binding_action.itemData(i) for i in range(2)], ["switch", "overlay"]
+        )
+        self.assertEqual(
+            [self.window.controller_style.itemData(i) for i in range(4)],
+            ["auto", "playstation", "xbox", "switch"],
+        )
+
     def test_language_settings_grouping_and_wheel_does_not_change_saved_selection(self):
         from PySide6.QtCore import QPointF
         from PySide6.QtGui import QWheelEvent
 
         window = self.window
+        # Manual primary is explicitly experimental; keep the original
+        # geometry and accidental-wheel checks on the enabled manual form.
+        window.experimental_primary.setChecked(True)
         window.show()
         self.app.processEvents()
         self.assertTrue(window.appearance_page.isAncestorOf(window.ui_language))
@@ -388,7 +516,7 @@ class OverlayUiTests(unittest.TestCase):
                 self.assertEqual(page.horizontalScrollBar().maximum(), 0)
 
     def test_layout_update_preserves_external_language_and_backend_state(self):
-        update_control({"primary": "en"}, self.control)
+        update_control({"primary": "en", "experimental_primary": True}, self.control)
         self.window.ruby_offset_x.setValue(7)
         config = read_config(self.control)
         self.assertEqual(config["primary"], "en")
@@ -843,7 +971,8 @@ class OverlayUiTests(unittest.TestCase):
             self.app.processEvents()
             rendered = controller.bar.grab().toImage()
             ratio = controller.bar.devicePixelRatioF()
-            self.assertLessEqual(rendered.pixelColor(QPoint(176, 16) * ratio).alpha(), 2)
+            # Sample the spare top margin, outside status text and its new badge.
+            self.assertLessEqual(rendered.pixelColor(QPoint(176, 3) * ratio).alpha(), 2)
             for button in (
                 controller.bar.open_button,
                 controller.bar.minimize_button,

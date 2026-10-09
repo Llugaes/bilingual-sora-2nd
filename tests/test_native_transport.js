@@ -1,9 +1,9 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs'),path=require('node:path');
 function transport(payload){
-    let active={old:true};const rpc={exports:{load(m){if(m.invalid)throw Error('Invalid model');active=m;return true;}}};
+    let active={old:true},provenance=null;const rpc={exports:{load(m,_mode,_active,_scale,_layout,p){if(m.invalid)throw Error('Invalid model');active=m;provenance=p;return true;}}};
     vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../sora_bilingual/game/scripts/native_transport.js'),'utf8'),{rpc,File:{readAllText:()=>JSON.stringify(payload)}});
-    return {rpc:rpc.exports,active:()=>active};
+    return {rpc:rpc.exports,active:()=>active,provenance:()=>provenance};
 }
 test('packed caches preserve multilingual values, shared arrays and prototype-like keys',()=>{
     const {rpc,active}=transport({schema:1,root:6,nodes:['ja','日本語 / 한국어','__proto__',[0,1], [1,0,3], 'nested', [1,2,1,0,3,5,4]]});
@@ -31,11 +31,13 @@ test('partial, reordered and malformed transfers never replace the active model'
     assert.throws(()=>rpc.modelcommit('b',1,1,'primary',true,1,{}));assert.ok(active().old);
 });
 test('only successful complete transfer commits; failed load preserves old model',()=>{
-    const {rpc,active}=transport(),text=JSON.stringify({v:'日本語 / français / 한국어'});
+    const {rpc,active,provenance}=transport(),text=JSON.stringify({v:'日本語 / français / 한국어'});
     rpc.modelbegin('a');rpc.modelpart('a',0,text.slice(0,9));rpc.modelpart('a',1,text.slice(9));
     assert.equal(rpc.modelcommit('a',2,text.length,'annotation',true,.9,{}),true);
     assert.equal(active().v,'日本語 / français / 한국어');
+    assert.equal(provenance().format,'json-rpc');assert.equal(provenance().code_units,text.length);
     const invalid=JSON.stringify({invalid:true});rpc.modelbegin('b');rpc.modelpart('b',0,invalid);
     assert.throws(()=>rpc.modelcommit('b',1,invalid.length,'primary',true,1,{}));
     assert.equal(active().v,'日本語 / français / 한국어');
+    assert.equal(provenance().code_units,text.length,'failed transfer retains actual loaded provenance');
 });

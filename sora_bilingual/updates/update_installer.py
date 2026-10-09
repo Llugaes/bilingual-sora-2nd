@@ -68,7 +68,12 @@ def relative_file(name, internal=False):
     if parts[0].lower() in PROTECTED or any(p.startswith(".") for p in parts):
         return False
     return (
-        name in ("BilingualSora2nd.exe", "runtime/current.txt")
+        name
+        in (
+            "BilingualSora2nd.exe",
+            "runtime/current.txt",
+            "sora_bilingual/localization/annotation_break_data.json",
+        )
         or (len(parts) == 2 and parts[0] == "licenses" and Path(name).suffix == ".txt")
         or (
             len(parts) >= 3

@@ -1,7 +1,8 @@
 'use strict';
 // UI mutations run on UI callbacks. Font RPC stages independent resources;
 // publication and reflow happen at Update, never during background loading.
-const base = Process.getModuleByName('sora_2nd.exe').base;
+const gameModule = Process.getModuleByName('sora_2nd.exe');
+const base = gameModule.base;
 // Validate every site before constructing any adapter: factories may install
 // hooks immediately, and a NativeFunction call flushes their pending patches.
 for (const [name, point] of Object.entries(REPORT.native)) {
@@ -29,9 +30,10 @@ let secondaryColor = [230/255,230/255,230/255];
 let secondaryOpacity=.9,bilingualOffsetY=0;
 let resolver=null, renderMode='annotation';
 let activeModel=null;
+let modelProvenance=null;
 let TextFactory=RuntimeText, ScriptFactory=typeof ScriptIdentities==='undefined'?null:ScriptIdentities;
 let TableFactory=typeof TableIdentities==='undefined'?null:TableIdentities;
-let ParagraphFactory=typeof RuntimeParagraphs==='undefined'?null:RuntimeParagraphs,paragraphs=null;
+let ParagraphFactory=typeof RuntimeParagraphs==='undefined'?null:RuntimeParagraphs,paragraphs=null,fcParagraphs=null;
 let BooksFactory=typeof RuntimeBooks==='undefined'?null:RuntimeBooks,books=null;
 const nativeBooks=typeof createNativeBooks==='function'?createNativeBooks(base,REPORT,()=>({
     active:enabled&&!failed&&(!runtimeFonts||runtimeFonts.isReady()),books,mode:renderMode,
@@ -39,6 +41,21 @@ const nativeBooks=typeof createNativeBooks==='function'?createNativeBooks(base,R
 })):null;
 let immediateWrites=0;
 let scriptIdentities=null,tableIdentities=null,identityHits=0,identityMisses=0,tableIdentityHits=0;
+const inputIdentityDiagnostics=new Map(); // opt-in, last 64 identified inputs only
+function inputDiagnosticStatus(){
+    return {schema:2,enabled:!!REPORT.diagnostics,module_base:String(base),module_size:gameModule.size||null,
+        executable_sha256:identityDiagnosticText(REPORT.sha256,64),native_contract_id:identityDiagnosticText(REPORT.native_contract_id,128),
+        model_loaded:!!activeModel,model_provenance:modelProvenance,
+        source_language:identityDiagnosticText(scriptIdentities?.sourceLanguage,32),epoch,render_mode:renderMode};
+}
+function collectInputIdentityTrace(diagnostic,family,event){
+    try{
+        const safe=identityTraceEvent(event,event?.stage);
+        diagnostic[family+'_events_total']++;diagnostic[family+'_final_stage']=safe.stage;
+        if(diagnostic[family].length<12)diagnostic[family].push(safe);
+        else {diagnostic[family+'_events_dropped']++;diagnostic[family+'_trace_truncated']=true;}
+    }catch(_){diagnostic[family+'_trace_error']=true;}
+}
 const dialogueFrames=new Map();
 const logOrigins=typeof LogIdentities==='function'?new LogIdentities():null;
 const logWriteFrames=new Map(),logPresentFrames=new Map();
@@ -121,29 +138,42 @@ function scanLayouts() {
 }
 function translationKey(row) {
     scanLayouts();
-    const entry=textKeys.size ? textKeys.get(row.pointer.add(0x2ec).readU32()) : null;
+    const watchTitleOwner=!!row.titleOwnership;
+    row.titleOwnership=null;row.scope=null;
+    // A reviewed native copy commit carries the actual dynamic resource key.
+    // Never let the widget's unchanged initial layout key override that owner.
+    const nativeKey=row.nativeKeySource===row.original?row.nativeTextKey:null;
+    const entry=row.nativeKeyDomain?null:(textKeys.size ? textKeys.get(row.pointer.add(0x2ec).readU32()) : null);
     // A dynamic widget may retain its layout's initial text key. Use that key
     // only when its source still agrees with the game's current text table.
     const keySource=entry&&(resolver?resolver.keyed[entry.key]?.source:entry.source);
-    row.textKey=entry && keySource===row.original ? entry.key : null;
+    const keyMatch=entry&&resolver?.keyedMatch?resolver.keyedMatch(entry.key,row.original):null;
+    const nativeMatch=nativeKey&&resolver?.keyedMatch?.(nativeKey,row.original);
+    row.textKey=nativeMatch?.matched?nativeKey:entry && (keySource===row.original||keyMatch?.matched) ? entry.key : null;
+    row.textKeyReason=nativeKey?(nativeMatch?.matched?'native_resource_copy':nativeMatch?.reason||'native_key_model_missing'):
+        row.nativeKeyDomain?'native_resource_rejected_or_revoked':
+        keySource===row.original?'exact_key_source':keyMatch?.reason||'layout_key_missing_or_source_mismatch';
     const keyed=row.textKey ? '\x01'+row.textKey+'\x00'+row.original : '';
     if(keyed && Object.hasOwn(dictionary,keyed))return keyed;
-    row.scope=null;
     row.surface='standard';row.surfaceRoot=null;
     row.dialogueSpeaker=false;
     if(REPORT.node_names) {
         let p=row.pointer;
         const names=[];
-        let subtitle=false,insetRoot=null,layoutId=null;
+        const ownership=[];
+        let subtitle=false,insetRoot=null,layoutId=null,layoutRoot=null;
         for(let i=0;i<12&&!p.isNull();i++) {
-            if(layoutId===null&&layoutKinds.has(String(p)))layoutId=layoutKinds.get(String(p));
+            if(layoutId===null&&layoutKinds.has(String(p))){layoutId=layoutKinds.get(String(p));layoutRoot=String(p);}
             if(subtitleRoots.has(String(p)))subtitle=true;
             if(insetRoots.has(String(p)))insetRoot=String(p);
             const np=p.add(0x88).readPointer();
             const name=np.isNull()?'':np.readUtf8String();
             if(name.length>256)throw Error('Unvalidated node name');
-            names.push(name);p=p.add(0x80).readPointer();
+            const parent=p.add(0x80).readPointer();
+            ownership.push({node:p,parent,namePointer:np,layoutId:layoutKinds.get(String(p))??null});
+            names.push(name);p=parent;
         }
+        if(REPORT.diagnostics){const d=inputIdentityDiagnostics.get(String(row.pointer));if(d&&d.source===row.original.slice(0,2048)){d.node_path=names;d.layout_id=layoutId;}}
         if(subtitle&&names[0]==='text')row.surface='subtitle';
         const insetSurface=insetRoots.get(insetRoot);
         if(names[0]==='text'&&((insetSurface==='active_voice'&&names[1]==='item'&&names[2]==='items')||
@@ -158,10 +188,29 @@ function translationKey(row) {
         const savedPrompt=layoutId===8&&names[0]==='text'&&names[1]==='root'&&
             (resolver?.model.save_confirmation_prefixes||[]).some(prefix=>row.original.startsWith(prefix));
         if(savedField||savedPrompt)row.scope='save_summary';
+        // CAB62 3FA500 appends whole NoteMainHistory bodies to this one copied
+        // label. Reuse the existing bounded ancestry read, without a new hook.
+        if(layoutId===61&&names.length===4&&names[0]==='history'&&
+                names[1]==='top_page_contents'&&names[2]==='note_base'&&names[3]==='root')
+            row.scope='bracer_history';
         if(names[0]==='name'&&names.includes('item_template'))row.scope='item_name';
+        // Layout 36's seven installed quartz labels copy ItemTableData names.
+        // Their exact captured ancestry differs from the inventory template;
+        // grant the same item-only scope, never a global homograph alias.
+        if(layoutId===36&&names[0]==='text'&&/^name_[0-6]$/.test(names[1])&&
+                names[2]==='name'&&names[3]==='origin'&&names[4]==='orbment'&&
+                names[5]==='orbment_root'&&names[6]==='root')row.scope='item_name';
         // Both engine spot-name builders copy and join the original table
         // string before SetText, so its native table pointer is no longer here.
         if(names[0]==='spot_name')row.scope='map_spot';
+        // Disk layout + executable: note_help (59) shares Help/Tips list
+        // templates; help (89) writes Tips +40 only under tips_contents/title.
+        // Their copy setter owns +0x318, so the update input is no table pointer.
+        if(layoutId===59&&names[0]==='text'&&names[1]==='item_template'&&
+                names.includes('list_root')&&!names.includes('tab_root'))row.scope='note_help_title';
+        if(layoutId===89&&names[0]==='title'&&names[1]==='tips_contents')row.scope='tips_title';
+        if(watchTitleOwner||layoutId===59||layoutId===89)row.titleOwnership={
+            nodes:ownership,root:layoutRoot,layoutId};
         if(names[0]==='name' && names.includes('skill_template')) {
             if(names.includes('ability_list')||names.includes('temp_ability_list'))row.scope='support';
             if(names.includes('overdrive_list')||names.includes('temp_overdrive_list'))row.scope='overdrive';
@@ -171,6 +220,15 @@ function translationKey(row) {
     return scoped && Object.hasOwn(dictionary,scoped) ? scoped : row.original;
 }
 function isLabel(p) { return p.readPointer().equals(base.add(REPORT.vtable)); }
+function titleOwnershipChanged(row) {
+    const owner=row.titleOwnership;
+    if(!owner)return false;
+    try {
+        return owner.nodes.some(({node,parent,namePointer,layoutId})=>
+            (layoutKinds.get(String(node))??null)!==layoutId||
+            !node.add(0x80).readPointer().equals(parent)||!node.add(0x88).readPointer().equals(namePointer));
+    }catch(_){return true;}
+}
 function readText(p) {
     const value = p.add(0x318).readPointer();
     if (value.isNull()) return '';
@@ -182,6 +240,7 @@ function remember(p, text) {
     const key = String(p);
     if (!labels.has(key) && labels.size >= 10000) throw Error('Label tracking limit');
     const row = {pointer:p, original:text, displayed:text, epoch:-1,
+        nativeKeyDomain:!!labels.get(key)?.nativeKeyDomain,
         fontGeneration:labels.get(key)?.fontGeneration};
     labels.set(key,row);
     return row;
@@ -203,7 +262,7 @@ function activeRewrite(p) {
     return null;
 }
 const sourceOnlyDialogue={model:{pairs:{},plain_pairs:{}}};
-function wantedText(row,allocateLayers=true) {
+function wantedText(row,allocateLayers=true,sourceOnly=false) {
     const started=Date.now();
     const p=row.pointer,key=translationKey(row);
     row.renderSize=p.add(0x304).readU32();
@@ -213,7 +272,8 @@ function wantedText(row,allocateLayers=true) {
     row.nativeRanges=null;
     row.animated=!!(p.add(0x2e8).readU32()&4);
     row.plan={text:wanted,layers:[],kind:'plain'};
-    if(enabled&&!failed&&(!runtimeFonts||runtimeFonts.isReady())) {
+    row.detailFirstLineEnd=null;
+    if(!sourceOnly&&enabled&&!failed&&(!runtimeFonts||runtimeFonts.isReady())) {
         if(resolver) {
             const mode=renderMode==='bilingual'?'annotation':renderMode;
             const strictDialogue=Number.isInteger(row.scriptIdentity?.callId);
@@ -226,20 +286,27 @@ function wantedText(row,allocateLayers=true) {
                 (row.tableIdentity&&tableIdentities?tableIdentities.lookup(row.tableIdentity,row.original):null)||
                 (row.logKind?resolver.historyContext(row.logSpeaker||'',row.original,row.logKind):null)||
                 (row.logSpeaker?resolver.speakerContext(row.logSpeaker,row.original):null));
-            if(context&&!context.tr)context.tr=new TextFactory(context.model);
+            if(context&&!context.tr)context.tr=new TextFactory(context.model,context.identity||null);
             const local=context?.tr;
             const useLocal=local&&(strictDialogue||context.strict||Object.hasOwn(local.model.pairs,row.original)||
                 local.translate(row.original,'secondary')!==row.original||local.translate(row.original,'primary')!==row.original);
             const translator=useLocal?local:resolver;
-            const paragraph=row.paragraph&&paragraphs?paragraphs.lookup(row.paragraph.source,row.paragraph.index,row.original,mode):null;
+            const paragraphResolver=row.paragraph?.scope==='fc_quest_notes'?fcParagraphs:paragraphs;
+            const paragraph=row.paragraph&&paragraphResolver?paragraphResolver.lookup(row.paragraph.source,row.paragraph.index,row.original,mode):null;
             row.plan=paragraph||translator.render(row.original,mode,row.textKey||'',row.scope||'');
+            // Only an admitted layered detail with an exact resource body
+            // owns this correction. Save/dialogue/unknown labels never do.
+            const detailBoundary=mode==='annotation'&&row.plan.kind==='layered'&&translator.detailBodyBoundary?.(row.original);
+            const firstBreak=/\r\n|\n|\\n/.exec(row.plan.text);
+            if(detailBoundary&&firstBreak&&/\r\n|\n|\\n/.exec(row.original)?.index===detailBoundary.start)
+                row.detailFirstLineEnd=RuntimeText.byteLength(row.plan.text.slice(0,firstBreak.index+firstBreak[0].length));
             // Inline native ruby is only emitted when its closing tag is
             // parsed. Animated lines need the same independent prefix lane
             // as formatted dialogue so it can reveal alongside the main run.
             if(row.plan.kind==='ruby'&&(p.add(0x2e8).readU32()&4)) {
-                const a=paragraph?paragraphs.lookup(row.paragraph.source,row.paragraph.index,row.original,'primary').text:
+                const a=paragraph?paragraphResolver.lookup(row.paragraph.source,row.paragraph.index,row.original,'primary').text:
                     translator.translate(row.original,'primary',row.textKey||'',row.scope||'');
-                const b=paragraph?paragraphs.lookup(row.paragraph.source,row.paragraph.index,row.original,'secondary').text:
+                const b=paragraph?paragraphResolver.lookup(row.paragraph.source,row.paragraph.index,row.original,'secondary').text:
                     translator.translate(row.original,'secondary',row.textKey||'',row.scope||'');
                 row.plan=TextFactory.annotationPlan(a,b);
             }
@@ -254,16 +321,28 @@ function wantedText(row,allocateLayers=true) {
     if(wanted.length+(row.plan.layers||[]).reduce((n,v)=>n+v.text.length,0)>32768)
         throw Error('Rendered text and annotation payload exceed limit');
     row.matched=wanted!==row.original;
+    if(REPORT.diagnostics){
+        const diagnostic=inputIdentityDiagnostics.get(String(row.pointer));
+        if(diagnostic&&diagnostic.source===row.original.slice(0,2048))Object.assign(diagnostic,{
+            scope:row.scope,global_pair:!!resolver&&Object.hasOwn(resolver.model.pairs,row.original),
+            table_key:identityDiagnosticText(row.tableIdentity,512),presentation:row.plan.kind});
+    }
     let prefixLength=0;
     const shrink=row.plan.kind==='ruby'||row.plan.kind==='layered';
     // Original readings/size commands must keep their parser advances, but
     // still receive the same owned-glyph scale as other bilingual text.
     // Readings confined to the secondary never exempt the main paragraph.
-    const primaryReadings=row.plan.kind==='layered'&&row.plan.layers.some(layer=>(layer.primary||'').includes('<R>'));
+    const primaryReadings=row.plan.kind==='layered'&&(row.plan.layers.some(layer=>(layer.primary||'').includes('<R>'))||
+        (RuntimeText.rubyRanges(wanted)||[]).some(([start,end])=>wanted.slice(start,end)!=='<R></R_>'));
     const primaryMetrics=primaryReadings||(row.plan.kind==='layered'&&/<[sS]\d+>/.test(row.original));
     const hasText=text=>/[A-Za-z0-9\u00c0-\uffff]/.test(text.replace(/<[^<>]*>/g,''));
     const uncovered=row.plan.kind==='ruby'?hasText(wanted.replace(/<R>[^<>]*<\/R[^<>]*>/g,'')):
-        row.plan.kind==='layered'&&wanted.split(/\r\n|\n|\\n/).some(line=>!line.includes('<R></R_>')&&hasText(line));
+        row.plan.kind==='layered'&&wanted.split(/\r\n|\n|\\n/).some(line=>{
+            if(line.includes('<R></R_>'))return false;
+            const ranges=RuntimeText.rubyRanges(line);if(ranges===null)return hasText(line);
+            let at=0,outside='';for(const [start,end] of ranges){outside+=line.slice(at,start);at=end;}
+            return hasText(outside+line.slice(at));
+        });
     // A native label may use a small/late-bound base size or explicit <s>
     // commands. That is not a connection failure. Outside the validated
     // size-command range, keep its native parser metrics and scale only the
@@ -294,6 +373,7 @@ function wantedText(row,allocateLayers=true) {
         }
     }
     row.layerBuffers=allocateLayers?(row.plan.layers||[]).map(layer=>({layer:{...layer,offset:layer.offset+prefixLength},buffer:Memory.allocUtf8String(layer.text),primaryBuffer:Memory.allocUtf8String(layer.primary||row.original)})):[];
+    if(row.detailFirstLineEnd!==null)row.detailFirstLineEnd+=prefixLength;
     if(wanted.length>32768)throw Error('Rendered text exceeds limit');
     recordTiming('resolve',started);
     return wanted;
@@ -347,7 +427,7 @@ function auxiliaryLayer(p,parser,row=ownedRow(p)) {
     return item ? {...item,row,parser} : null;
 }
 function finishStaticRuby(row,array,count) {
-    if(!adjustStaticRuby||row.animated||row.preservePrimaryLayout||row.plan.kind!=='ruby')return false;
+    if(!adjustStaticRuby||row.animated||row.preservePrimaryLayout||row.plan.kind!=='ruby'||row.detailFirstLineEnd!==null)return false;
     const lanes=row.glyphLanes;
     // Partial/layered runs still use the incremental JS path. A descriptor
     // contains only indices: never retain native glyph pointers across parses.
@@ -483,11 +563,31 @@ function finishAnnotationLanes(row) {
             g.color.push(saved.alpha*secondaryOpacity*reveal);
         }
     }
+    const rememberY=(index,g)=>{
+        row.offsetPositions??=new Map();
+        if(!row.offsetPositions.has(index))row.offsetPositions.set(index,{q:g.q,y:g.y});
+    };
+    if(row.detailFirstLineEnd!==null) {
+        const body=lanes.find(lane=>lane.layer&&lane.layerOffset>=row.detailFirstLineEnd);
+        if(body&&body.start>0&&body.start<body.end&&body.end<=count) {
+            const header=bounds(0,body.start,true),annotation=bounds(body.start,body.end,true);
+            // This compact header meets the body's ruby lane, rather than
+            // another full text line. Scale its clearance by the measured
+            // ruby share of the two visible heights; normal UI line gaps and
+            // body baselines retain their existing metrics.
+            const headerHeight=header.bottom-header.top,annotationHeight=annotation.bottom-annotation.top;
+            const detailGap=headerHeight>0&&annotationHeight>0
+                ?rubyLineGap*annotationHeight/(headerHeight+annotationHeight):rubyLineGap;
+            const lift=Math.max(0,header.bottom+detailGap-annotation.top);
+            if(Number.isFinite(lift)&&lift>0)for(let i=0;i<body.start;i++) {
+                const g=glyph(i);rememberY(i,g);g.y=Math.fround(g.y-lift);
+            }
+        }
+    }
     if(bilingualOffsetY!==0) {
-        row.offsetPositions=new Map();
         for(let i=0;i<count;i++) {
             const g=glyph(i);
-            row.offsetPositions.set(i,{q:g.q,y:g.y});g.y=Math.fround(g.y+bilingualOffsetY);
+            rememberY(i,g);g.y=Math.fround(g.y+bilingualOffsetY);
         }
     }
     for(const g of glyphs.values()) {
@@ -592,7 +692,8 @@ function beginAnnotationLane(p,parser,phase,row=ownedRow(p)) {
         // Empty layered anchors have no base; their primary run comes later.
         if(phase==='primary'&&!layer)return;
         if(!row.glyphLanes||count===0){row.glyphLanes=[];row.offsetPositions=null;}
-        row.glyphLanes.push({primaryStart:count,parser:key,layer:!!layer,unitStart:parser.add(0x1c).readU32()});
+        row.glyphLanes.push({primaryStart:count,parser:key,layer:!!layer,
+            ...(layer?{layerOffset:layer.layer.offset}:{}),unitStart:parser.add(0x1c).readU32()});
     } else {
         const lane=row.glyphLanes?.findLast(v=>v.parser===key&&v[phase]===undefined);
         if(lane)lane[phase]=count;
@@ -932,6 +1033,7 @@ Interceptor.attach(base.add(REPORT.native.destroy.rva), {onEnter(args) {
     const group=logTextGroups.get(String(args[0]));
     if(group){group.retired=true;logTextGroups.delete(String(group.name));logTextGroups.delete(String(group.body));}
     if (labels.delete(String(args[0]))) destroyed++;
+    inputIdentityDiagnostics.delete(String(args[0]));
     nativeBooks?.forget(args[0]);
 }});
 // actor_name_set copies a script literal into actor+2c0; actor_name_get
@@ -1351,11 +1453,13 @@ for(const point of ['log_row_start','log_row_append','log_row_single','log_row_c
 // Quest history builds a complete paragraph before splitting it into labels.
 // Keep that exact source only for the verified synchronous builder/callsite;
 // isolated lines must never be matched against an unrelated quest paragraph.
-if(REPORT.native.quest_builder&&REPORT.native.quest_paragraph_ready&&ParagraphFactory) {
-    Interceptor.attach(base.add(REPORT.native.quest_builder.rva),{
+for(const [scope,prefix] of [['quest_notes','quest'],['fc_quest_notes','fc_quest']]) {
+    const builder=REPORT.native[prefix+'_builder'],ready=REPORT.native[prefix+'_paragraph_ready'],lineReturn=REPORT.native[prefix+'_line_return'];
+    if(!builder||!ready||!lineReturn||!ParagraphFactory)continue;
+    Interceptor.attach(base.add(builder.rva),{
         onEnter(){
             const thread=Process.getCurrentThreadId(),stack=questFrames.get(thread)||[];
-            this.questThread=thread;this.questFrame={source:null,slots:[],next:0};
+            this.questThread=thread;this.questFrame={source:null,slots:[],next:0,scope,lineReturn:base.add(lineReturn.rva)};
             stack.push(this.questFrame);questFrames.set(thread,stack);
         },
         onLeave(){
@@ -1364,7 +1468,7 @@ if(REPORT.native.quest_builder&&REPORT.native.quest_paragraph_ready&&ParagraphFa
             if(!stack?.length)questFrames.delete(this.questThread);
         }
     });
-    Interceptor.attach(base.add(REPORT.native.quest_paragraph_ready.rva),{
+    Interceptor.attach(base.add(ready.rva),{
         onEnter(){
             const frame=questFrames.get(Process.getCurrentThreadId())?.at(-1);
             if(!frame)return;
@@ -1379,25 +1483,46 @@ if(REPORT.native.quest_builder&&REPORT.native.quest_paragraph_ready&&ParagraphFa
     });
 }
 function questLineContext(incoming,caller) {
-    if(!REPORT.native.quest_line_return||!caller?.equals(base.add(REPORT.native.quest_line_return.rva)))return null;
     const frame=questFrames.get(Process.getCurrentThreadId())?.at(-1);
-    if(!frame?.source)return null;
+    if(!frame?.source||!caller?.equals(frame.lineReturn))return null;
     const index=frame.next++;
     if(frame.slots[index]?.text!==incoming){frame.source=null;return null;}
-    return {source:frame.source,index};
+    return {source:frame.source,index,scope:frame.scope};
 }
 function identifyInput(row,input,caller) {
+    let diagnostic=null;
+    if(REPORT.diagnostics){
+        diagnostic={phase:'setter_input',input:String(input),caller:caller?String(caller):null,source:row.original.slice(0,2048),source_code_units:row.original.length,
+            truncated:row.original.length>2048,table:[],table_event_limit:12,table_events_total:0,
+            table_events_dropped:0,table_trace_truncated:false,table_final_stage:null,
+            script:[],script_event_limit:12,script_events_total:0,script_events_dropped:0,
+            script_trace_truncated:false,script_final_stage:null};
+        // Pointer arithmetic only; no stack walk or additional memory reads.
+        const rva=caller?Number(String(caller))-Number(String(base)):null;
+        diagnostic.caller_rva=Number.isSafeInteger(rva)&&rva>=0&&rva<gameModule.size?rva:null;
+        const token=String(row.pointer);inputIdentityDiagnostics.delete(token);inputIdentityDiagnostics.set(token,diagnostic);
+        if(inputIdentityDiagnostics.size>64)inputIdentityDiagnostics.delete(inputIdentityDiagnostics.keys().next().value);
+    }
     row.book=nativeBooks?.input(input,row.original,caller)||null;
     nativeBooks?.bind(row.pointer,row.book);
     row.logSpeaker=null;
     row.logKind=null;
     row.logIdentity=null;
     row.paragraph=questLineContext(row.original,caller);
+    if(diagnostic&&row.paragraph) {
+        diagnostic.paragraph_source=identityDiagnosticText(row.paragraph.source,2048);
+        diagnostic.paragraph_source_truncated=row.paragraph.source.length>2048;
+        diagnostic.paragraph_line_index=row.paragraph.index;
+        diagnostic.paragraph_scope=resolver?.model.scoped?.[row.paragraph.scope]?row.paragraph.scope:null;
+    }
     const frame=dialogueFrames.get(Process.getCurrentThreadId())?.at(-1);
     const origin=frame?.outputs.get(String(input));
     if(origin&&origin.source===row.original){row.scriptIdentity=origin.identity;identityHits++;}
     row.scriptPointer=ownedNameIdentity(input,row.original)||row.scriptPointer;
     const needsIdentity=!resolver||!Object.hasOwn(resolver.model.pairs,row.original);
+    if(diagnostic){
+        diagnostic.table_skip=!needsIdentity?'global_pair':row.scriptIdentity?'captured_identity':!tableIdentities?'no_model':null;
+    }
     const started=needsIdentity?Date.now():undefined;
     // Preserve copied provenance even when today's global translation is unique;
     // the same visible row can survive a language-model reload.
@@ -1412,14 +1537,24 @@ function identifyInput(row,input,caller) {
         row.logKind=origin?.kind||null;
     }
     if(needsIdentity&&!row.scriptIdentity&&tableIdentities) {
-        const entry=tableIdentities.select(input,row.original);
+        const trace=diagnostic?event=>collectInputIdentityTrace(diagnostic,'table',event):null;
+        const entry=tableIdentities.select(input,row.original,trace);
         if(entry){row.tableIdentity=entry.key;tableIdentityHits++;}
     }
     if(needsIdentity&&!row.scriptIdentity&&!row.scriptPointer&&!row.tableIdentity&&scriptIdentities) {
-        const entry=scriptIdentities.pointerSelect(input,row.original);
+        const trace=diagnostic?event=>collectInputIdentityTrace(diagnostic,'script',event):null;
+        const entry=scriptIdentities.pointerSelect(input,row.original,trace);
         if(entry){row.scriptPointer=entry.key;identityHits++;}
+    } else if(diagnostic) {
+        diagnostic.script_skip=!needsIdentity?'global_pair':row.scriptIdentity?'captured_identity':
+            row.scriptPointer?'owned_pointer_identity':row.tableIdentity?'table_identity':'no_model';
     }
     recordTiming('pointerIdentity',started);
+    if(diagnostic)Object.assign(diagnostic,{dialogue_frame:!!frame,output_origin:!!origin,
+        book_reader_context:!!row.book,paragraph_context:!!row.paragraph,log_kind:identityDiagnosticText(row.logKind,32),
+        script_record:identityDiagnosticText(row.scriptIdentity?.recordKey,512),
+        script_rejection:identityDiagnosticText(row.scriptIdentity?.rejection,128),source_locale:identityDiagnosticText(row.scriptIdentity?.sourceLocale,32),
+        script_pointer:identityDiagnosticText(row.scriptPointer,512)});
 }
 // Only the MessageLog's hidden measuring template uses this cache. The game
 // clones all visible rows before entering this loop. Its final row setters,
@@ -1614,13 +1749,28 @@ labelHooks.attach(base.add(REPORT.native.set_text.rva), {onEnter(args) {
             if(incoming.length>16384 && (!row || incoming!==row.displayed))throw Error('Source label text exceeds limit');
             // Some widgets re-submit their existing owned text while changing
             // layout. Do not turn our own rendered string into the raw source.
-            if (row && row.displayed!==row.original && incoming===row.displayed) row.epoch=-1;
-            else {
-                row=remember(args[0],incoming);
-                identifyInput(row,args[1],this.returnAddress);
+            const shopCopy=['shop_yes_copy_return','shop_no_copy_return'].some(name=>
+                REPORT.native[name]&&this.returnAddress?.equals(base.add(REPORT.native[name].rva)));
+            if (!shopCopy && row && row.displayed!==row.original && incoming===row.displayed) {
+                row.nativeTextKey=null;row.nativeKeySource=null;row.epoch=-1;
+                const diagnostic=inputIdentityDiagnostics.get(String(row.pointer));
+                if(diagnostic)Object.assign(diagnostic,{resource_key:null,resource_hash:null,copy_boundary:null});
             }
+              else {
+                  row=remember(args[0],incoming);
+                  identifyInput(row,args[1],this.returnAddress);
+              }
+              if(shopCopy)row.nativeKeyDomain=true;
             this.renderEpoch=epoch;
-            const wanted=wantedText(row);
+            // At these two proven callers, leave the native copied bytes raw.
+            // The post-copy callback binds their real key before next Update.
+            const wanted=wantedText(row,true,shopCopy);
+            if(REPORT.diagnostics){
+                const diagnostic=inputIdentityDiagnostics.get(String(row.pointer));
+                if(diagnostic)Object.assign(diagnostic,{scope:row.scope,
+                    global_pair:!!resolver&&Object.hasOwn(resolver.model.pairs,row.original),
+                    table_key:identityDiagnosticText(row.tableIdentity,512),presentation:row.plan?.kind});
+            }
             this.row=row;this.wanted=wanted;
             if(wanted!==incoming) {
                 // The verified setter copies its input before returning.
@@ -1637,6 +1787,37 @@ labelHooks.attach(base.add(REPORT.native.set_text.rva), {onEnter(args) {
         this.row.displayed=this.wanted;this.row.epoch=this.renderEpoch;captureMetadata(this.row);
     }catch(e){fail(e);}finally{recordTiming('setter',this.started);leaveLabel(this.lease);}
 }});
+// The complete reviewed shop function selects the resource hash, formats it
+// into a temporary stack buffer, then calls the existing verified setter.
+// These two fall-through points run AFTER that copy, with RDI=actual label
+// and RSI/R15D=selected YES/NO resource hash. Retain strings only; no stack,
+// controller or text-table pointers survive this synchronous observation.
+for(const [name,register] of [['shop_yes_copy_return','rsi'],['shop_no_copy_return','r15']]) {
+    if(!REPORT.native[name])continue;
+    Interceptor.attach(base.add(REPORT.native[name].rva),{onEnter(){
+        const p=this.context.rdi;
+        try {
+            if(activeRewrite(p)||!isLabel(p))return;
+            const owned=readText(p),previous=labels.get(String(p));
+            if(previous){previous.nativeKeyDomain=true;previous.nativeTextKey=null;previous.nativeKeySource=null;previous.epoch=-1;}
+            const entry=textKeys.get(this.context[register].toInt32()>>>0);
+            // This native call has no dynamic printf arguments and a 256-byte
+            // destination. A '%' conversion or truncated value is not evidence.
+            if(!entry||entry.source.replace(/%%/g,'').includes('%'))return;
+            const expected=entry.source.replace(/%%/g,'%');
+            if(RuntimeText.byteLength(expected)>255)return;
+            if(owned!==expected)return;
+            const row=remember(p,owned);
+            row.nativeKeyDomain=true;row.nativeTextKey=entry.key;row.nativeKeySource=owned;row.epoch=-1;
+            if(REPORT.diagnostics){
+                const token=String(p),d=inputIdentityDiagnostics.get(token);
+                if(d&&d.source===owned.slice(0,2048))Object.assign(d,{phase:'resource_copy_commit',
+                    resource_key:identityDiagnosticText(entry.key,512),resource_hash:this.context[register].toInt32()>>>0,
+                    copy_boundary:name});
+            }
+        }catch(e){fail(e);}
+    }});
+}
 labelHooks.attach(base.add(REPORT.native.update.rva), {onEnter(args) {
     this.lease=null;
     this.pausedReveal=null;
@@ -1657,10 +1838,33 @@ labelHooks.attach(base.add(REPORT.native.update.rva), {onEnter(args) {
         // Those flags change the parser and its Y origin, even at equal text
         // and font size. Reconcile once at Update, as on a hot mode switch.
         // Exclude pause (0x10): pausing must never restart the reveal lifecycle.
-        if (row.epoch === epoch&&(!runtimeFonts||row.fontGeneration===fontGeneration)&&!textLayoutChanged(row,p)) return;
+        let current;
+        if (row.epoch === epoch&&(!runtimeFonts||row.fontGeneration===fontGeneration)&&
+                !textLayoutChanged(row,p)&&!titleOwnershipChanged(row)) {
+            // An inline/otherwise unobserved owned write can set +0x688.
+            // An equal epoch cannot authorize a stale source/identity.
+            // Keep clean-frame reads scalar; decode owned UTF-8 only if dirty.
+            if(!p.add(0x688).readU8())return;
+            current=readText(p);if(current===row.displayed)return;
+        }
         // A text write bypassing SetText invalidates our remembered source.
-        const current=readText(p);
-        if (current !== row.displayed) {row.original=current;row.displayed=current;row.scriptIdentity=null;row.scriptPointer=null;row.tableIdentity=null;row.paragraph=null;row.logSpeaker=null;row.logKind=null;row.book=null;}
+        current=current??readText(p);
+        if (current !== row.displayed) {row.original=current;row.displayed=current;row.scriptIdentity=null;row.scriptPointer=null;row.tableIdentity=null;row.paragraph=null;row.logSpeaker=null;row.logKind=null;row.book=null;row.nativeTextKey=null;row.nativeKeySource=null;}
+        if(REPORT.diagnostics){
+            const previous=inputIdentityDiagnostics.get(String(p));
+            if(!previous||previous.source!==row.original.slice(0,2048)) {
+                // This is an owned-buffer observation, never recovered setter
+                // provenance or permission to select an ambiguous table record.
+                inputIdentityDiagnostics.delete(String(p));inputIdentityDiagnostics.set(String(p),{
+                    phase:'owned_update',input:String(p.add(0x318).readPointer()),caller:null,
+                    source:row.original.slice(0,2048),source_code_units:row.original.length,truncated:row.original.length>2048,
+                    table:[],table_event_limit:12,table_events_total:0,table_events_dropped:0,
+                    table_trace_truncated:false,table_final_stage:'owned_copy_without_input_identity',
+                    script:[],script_event_limit:12,script_events_total:0,script_events_dropped:0,
+                    script_trace_truncated:false,script_final_stage:'owned_copy_without_input_identity',caller_rva:null});
+                if(inputIdentityDiagnostics.size>64)inputIdentityDiagnostics.delete(inputIdentityDiagnostics.keys().next().value);
+            }
+        }
         const renderEpoch=epoch,wanted=wantedText(row);
         const replay = epoch === replayEpoch && Object.hasOwn(dictionary,row.original);
         const changed=wanted!==row.displayed||replay;
@@ -1714,20 +1918,36 @@ rpc.exports = {
         if(!runtimeFonts)throw Error('This resident does not support runtime fonts');
         runtimeFonts.select(enabled);return runtimeFonts.configure(manifest);
     },
-    load(model, mode, active, scale=0.9, layout={}) {
+    load(model, mode, active, scale=0.9, layout={}, provenance=null) {
         if(!['annotation','primary','secondary','bilingual'].includes(mode))throw Error('Unknown render mode');
         if(!Number.isFinite(scale)||scale<.7||scale>1)throw Error('Annotation scale must be 0.7..1');
         const next=new TextFactory(model);
         const nextScripts=ScriptFactory?new ScriptFactory(model.script_identities,resourceHash):null;
-        const nextTables=TableFactory?new TableFactory(model.table_identities,resourceHash):null;
-        const nextParagraphs=ParagraphFactory?new ParagraphFactory(model,TextFactory):null;
+        const nextTables=TableFactory?new TableFactory(model.table_identities,resourceHash,
+            REPORT.native.tips_table_load?['tips_u16_flag_add7400_cap7799_v1']:[]):null;
+        // Only the verified quest builder/line-return path calls this resolver.
+        // Its native manager+0xd8 is the second-chapter QuestText resource;
+        // FC's same-English/different-target records remain globally ambiguous.
+        const questModel=model.scoped?.quest_notes;
+        const nextParagraphs=ParagraphFactory?new ParagraphFactory(questModel||model,TextFactory,
+            {preserveQuestLines:!!questModel}):null;
+        const fcModel=model.scoped?.fc_quest_notes;
+        const nextFcParagraphs=ParagraphFactory&&fcModel?new ParagraphFactory(fcModel,TextFactory,
+            {preserveQuestLines:true}):null;
         rpc.exports.configure({},active,scale);
         resolver=next;renderMode=mode;
         scriptIdentities=nextScripts;tableIdentities=nextTables;
         paragraphs=nextParagraphs;
+        fcParagraphs=nextFcParagraphs;
         books=BooksFactory?new BooksFactory(model.books,TextFactory):null;
         activeModel=model;
         rpc.exports.style(scale,layout);
+        modelProvenance=null;
+        if(provenance)try{modelProvenance={format:identityDiagnosticText(provenance.format,32),
+            path:identityDiagnosticText(provenance.path,1024),
+            path_truncated:typeof provenance.path==='string'&&provenance.path.length>1024,
+            bytes:identityDiagnosticInteger(provenance.bytes),code_units:identityDiagnosticInteger(provenance.code_units),
+            content_hash_verified:false};}catch(_){/* Successful business load must survive unusable diagnostic metadata. */}
         return true;
     },
     reloadlogic(source) {
@@ -1740,11 +1960,14 @@ rpc.exports = {
         if(!activeModel)throw Error('No active model for logic update');
         const next=new factories.RuntimeText(activeModel);
         const scripts=new factories.ScriptIdentities(activeModel.script_identities,resourceHash);
-        const tables=new factories.TableIdentities(activeModel.table_identities,resourceHash);
+        const tables=new factories.TableIdentities(activeModel.table_identities,resourceHash,
+            REPORT.native.tips_table_load?['tips_u16_flag_add7400_cap7799_v1']:[]);
         const nextParagraphs=factories.RuntimeParagraphs?new factories.RuntimeParagraphs(activeModel,factories.RuntimeText):null;
         TextFactory=factories.RuntimeText;ScriptFactory=factories.ScriptIdentities;TableFactory=factories.TableIdentities;
         resolver=next;scriptIdentities=scripts;tableIdentities=tables;epoch++;
         ParagraphFactory=factories.RuntimeParagraphs;paragraphs=nextParagraphs;
+        fcParagraphs=ParagraphFactory&&activeModel.scoped?.fc_quest_notes?new ParagraphFactory(
+            activeModel.scoped.fc_quest_notes,TextFactory,{preserveQuestLines:true}):null;
         BooksFactory=factories.RuntimeBooks;books=BooksFactory?new BooksFactory(activeModel.books,TextFactory):null;
         return true;
     },
@@ -1772,16 +1995,31 @@ rpc.exports = {
     configure(values, active, scale=1) {
         if (scale == null) scale=1; // Frida pads omitted RPC arguments with null.
         if (!Number.isFinite(scale) || scale<0.7 || scale>1) throw Error('Annotation scale must be 0.7..1');
-        resolver=null;activeModel=null;scriptIdentities=null;tableIdentities=null;paragraphs=null;books=null;dictionary=Object.assign(Object.create(null),values);enabled=!!active;runtimeFonts?.select(enabled);annotationScale=scale;epoch++;return true;
+        resolver=null;activeModel=null;modelProvenance=null;scriptIdentities=null;tableIdentities=null;paragraphs=null;fcParagraphs=null;books=null;dictionary=Object.assign(Object.create(null),values);enabled=!!active;runtimeFonts?.select(enabled);annotationScale=scale;epoch++;return true;
     },
     disable() {if(enabled){enabled=false;epoch++;}runtimeFonts?.select(false);return true;},
     replay() {enabled=false;replayEpoch=++epoch;return true;},
-    snapshot() {return [...labels.values()].map(r=>({original:r.original,displayed:r.displayed,text_key:r.textKey,scope:r.scope,
+    snapshot(identityOnly=false) {
+        if(identityOnly===true){
+            const rows=[];
+            // Iterate the bounded captured-input map, not all native labels.
+            if(REPORT.diagnostics)for(const [pointer,diagnostic] of inputIdentityDiagnostics){
+                const r=labels.get(pointer);if(!r)continue;
+                rows.push({pointer,original:r.original.slice(0,2048),original_truncated:r.original.length>2048,
+                    displayed:r.displayed.slice(0,2048),displayed_truncated:r.displayed.length>2048,
+                    text_key:identityDiagnosticText(r.textKey,512),text_key_reason:identityDiagnosticText(r.textKeyReason,128),scope:identityDiagnosticText(r.scope,64),
+                    input_identity_diagnostic:diagnostic,presentation:r.plan?.kind,
+                    render_epoch:r.epoch,source_matches_diagnostic:diagnostic.truncated?null:diagnostic.source===r.original});
+            }
+            return {schema:2,label_limit:64,text_limit:2048,diagnostics:inputDiagnosticStatus(),rows};
+        }
+        return [...labels.values()].map(r=>({original:r.original,displayed:r.displayed,text_key:r.textKey,text_key_reason:r.textKeyReason,scope:r.scope,
+          input_identity_diagnostic:REPORT.diagnostics?inputIdentityDiagnostics.get(String(r.pointer)):undefined,
         script_identity:r.scriptIdentity,log_identity:r.logIdentity,log_kind:r.logKind,script_pointer_key:r.scriptPointer,table_identity:r.tableIdentity,presentation:r.plan?.kind,surface:r.surface,layers:r.layerBuffers?.map(v=>v.layer),...r.metadata}));},
     status() {
         const parser=nativeParser?.status();
         const measured=parser?{...timings,parse:{count:parser.count,totalMs:parser.totalMs,maxMs:parser.maxMs,over8Ms:parser.over8Ms}}:timings;
-        return {enabled,failed,failureReason,runtimeFonts:runtimeFonts?.status(),timings:measured,nativeLabelTiming:nativeLabelTiming?.status(),nativeParser:parser,nativeMeasure:nativeMeasure?.status(),logMeasureStats,logOriginStats,logOriginSlots:logOrigins?.entries.size||0,logHeightCacheSize:logHeightCache.size,nativeSizeFallbacks:[...nativeSizeFallbacks.keys()],epoch,labels:labels.size,updates,writes,destroyed,threads:[...threads],
+        return {enabled,failed,failureReason,inputIdentityDiagnostics:inputDiagnosticStatus(),runtimeFonts:runtimeFonts?.status(),timings:measured,nativeLabelTiming:nativeLabelTiming?.status(),nativeParser:parser,nativeMeasure:nativeMeasure?.status(),logMeasureStats,logOriginStats,logOriginSlots:logOrigins?.entries.size||0,logHeightCacheSize:logHeightCache.size,nativeSizeFallbacks:[...nativeSizeFallbacks.keys()],epoch,labels:labels.size,updates,writes,destroyed,threads:[...threads],
         immediateWrites,identityHits,identityMisses,tableIdentityHits,renderMode,matched:[...labels.values()].filter(r=>r.matched).length,
         modified:[...labels.values()].filter(r=>r.displayed!==r.original).length};}
 };

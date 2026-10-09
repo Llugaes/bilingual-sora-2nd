@@ -9,6 +9,158 @@ from pathlib import Path
 from sora_bilingual.localization import resources
 
 
+class MenuRecordAlignmentTests(unittest.TestCase):
+    @staticmethod
+    def isolated_menu(texts, prefix="dynamic_en", option_delta=0, duplicate=False, branch=False):
+        calls = [resources.Called(prefix, 0, (("var", 1),))]
+        menu = [resources.Called("menu_create", 0, tuple(("int", x) for x in (0, 2, 0, 28)))]
+        menu.extend(
+            resources.Called(
+                "menu_additem", 0, (("int", 0), ("string", text), ("int", index + option_delta))
+            )
+            for index, text in enumerate(texts)
+        )
+        menu.extend(
+            resources.Called(target, 0, tuple(("int", x) for x in args))
+            for target, args in (
+                ("menu_open", (0, 800, -1, 0)),
+                ("menu_wait", (0,)),
+                ("menu_close", (0,)),
+            )
+        )
+        calls.extend(menu * (2 if duplicate else 1))
+        code = [("local-call", prefix)]
+        strings = []
+        for call in calls[1:]:
+            code.append(("prepare-local", len(code) + len(call.args) + 2))
+            code.extend(
+                ("push", "string") if kind == "string" else ("push", kind, value)
+                for kind, value in reversed(call.args)
+            )
+            strings.extend(value for kind, value in reversed(call.args) if kind == "string")
+            code.append(("local-call", call.target))
+        if branch:
+            code[0] = ("branch", 12, 3)
+        return resources.Function("Terminal", 0, (), tuple(calls), tuple(code), tuple(strings))
+
+    def test_complete_static_menu_has_independent_bytecode_identity(self):
+        en = self.isolated_menu(("Earth", "Water"))
+        ja = self.isolated_menu(("地", "水"), "dynamic_ja")
+        rows = resources.align_functions(
+            "script/a.dat", "Terminal", {"en": en, "ja": ja}, {"counters": Counter()}
+        )
+        menu = [r for r in rows if r.get("display_role") == "script_menu"]
+        self.assertEqual(
+            [r["texts"] for r in menu], [{"en": "Earth", "ja": "地"}, {"en": "Water", "ja": "水"}]
+        )
+        self.assertEqual([r["called_ids"] for r in menu], [{"en": 2, "ja": 2}, {"en": 3, "ja": 3}])
+        self.assertFalse([r for r in rows if r.get("display_role") == "dialogue"])
+
+    def test_static_menu_region_refuses_unknown_or_nonunique_contract(self):
+        en = self.isolated_menu(("Earth", "Water"))
+        variants = [
+            self.isolated_menu(("地", "水"), "dynamic_ja", option_delta=1),
+            self.isolated_menu(("地", "水"), "dynamic_ja", duplicate=True),
+            self.isolated_menu(("地", "水"), "dynamic_ja", branch=True),
+        ]
+        ja = self.isolated_menu(("地", "水"), "dynamic_ja")
+        dynamic = list(ja.called)
+        dynamic[2] = resources.Called("menu_additem", 0, (("int", 0), ("var", 3), ("int", 0)))
+        variants.append(resources.replace(ja, called=tuple(dynamic)))
+        code = list(ja.code_shape)
+        code[3] = ("push", "int", 29)
+        variants.append(resources.replace(ja, code_shape=tuple(code)))
+        variants.append(resources.replace(ja, code_shape=()))
+        variants.append(resources.replace(ja, code_strings=("異なる", "水")))
+        for candidate in variants:
+            with self.subTest(candidate=candidate):
+                rows = resources.align_functions(
+                    "script/a.dat", "Terminal", {"en": en, "ja": candidate}, {"counters": Counter()}
+                )
+                self.assertFalse([r for r in rows if r.get("display_role") == "script_menu"])
+
+    def test_bytecode_alias_of_same_menu_slot_does_not_erase_complete_pair(self):
+        from sora_bilingual.localization.menu_text import MenuTranslator
+
+        rows = resources.align_functions(
+            "script/a.dat",
+            "Terminal",
+            {
+                "en": self.isolated_menu(("Earth", "Water")),
+                "fr": self.isolated_menu(("Terre", "Eau")),
+                "ja": self.isolated_menu(("地", "水"), "dynamic_ja"),
+            },
+            {"counters": Counter()},
+        )
+        tr = MenuTranslator(rows, "ja", "fr", "en", True)
+        self.assertEqual(tr.translate("Earth", "primary"), "地")
+        self.assertEqual(tr.translate("Earth", "secondary"), "Terre")
+        # The same spelling at a different unknown code origin cannot be
+        # erased using the menu's completed resource record.
+        unrelated = {"key": "script/b.dat/Unknown/code/0", "texts": {"en": "Earth", "fr": "Autre"}}
+        self.assertNotIn("Earth", MenuTranslator([*rows, unrelated], "ja", "fr", "en", True).pairs)
+
+    def test_exact_menu_payload_survives_later_localized_item_helper(self):
+        def function(text, helper):
+            return resources.Function(
+                "Terminal",
+                0,
+                (),
+                (
+                    resources.Called("menu_additem", 0, (("int", 0), ("string", text), ("int", 2))),
+                    helper,
+                ),
+                (),
+                (),
+            )
+
+        en = function(
+            "[Quit]",
+            resources.Called(
+                "ITEM_ADD_MESSAGE2_TK", 0, (("int", 82), ("string", "Obtained "), ("string", "."))
+            ),
+        )
+        ja = function(
+            "【終了】",
+            resources.Called("ITEM_ADD_MESSAGE_TK", 0, (("int", 82), ("string", "を手に入れた。"))),
+        )
+        rows = resources.align_functions(
+            "script/a.dat", "Terminal", {"en": en, "ja": ja}, {"counters": Counter()}
+        )
+        menu = [r for r in rows if r.get("display_role") == "script_menu"]
+        self.assertEqual(len(menu), 1)
+        self.assertEqual(menu[0]["texts"], {"en": "[Quit]", "ja": "【終了】"})
+        self.assertEqual(menu[0]["called_ids"], {"en": 0, "ja": 0})
+
+    def test_menu_does_not_cross_changed_option_or_prior_call_identity(self):
+        def fn(text, option, first):
+            return resources.Function(
+                "Terminal",
+                0,
+                (),
+                (
+                    first,
+                    resources.Called(
+                        "menu_additem", 0, (("int", 0), ("string", text), ("int", option))
+                    ),
+                ),
+                (),
+                (),
+            )
+
+        for option, ident in ((3, 1), (2, 9)):
+            rows = resources.align_functions(
+                "script/a.dat",
+                "Terminal",
+                {
+                    "en": fn("Quit", 2, resources.Called("check", 0, (("int", 1),))),
+                    "ja": fn("終了", option, resources.Called("check", 0, (("int", ident),))),
+                },
+                {"counters": Counter()},
+            )
+            self.assertFalse([r for r in rows if r.get("display_role") == "script_menu"])
+
+
 class SpeakerRecordAlignmentTests(unittest.TestCase):
     def test_speaker_keeps_each_locales_physical_called_id_across_proven_gap(self):
         def function(text, extra=False):

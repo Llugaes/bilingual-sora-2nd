@@ -97,6 +97,38 @@ POINTS = {
 
 def native_report(exe):
     with verified_target_image(Path(exe)) as (_pe, report):
+        # CAB62's FC notebook owns a different complete QuestText builder.
+        # Keep the r25 contracts intact; admit this optional path only when
+        # its entire function and the actual resolved SetText call match.
+        fc_start, fc_end = 0x3F7BD0, 0x3F8217
+        try:
+            fc_bytes = _pe.get_data(fc_start, fc_end - fc_start)
+            call = _pe.get_data(0x3F803F, 5)
+            ready = _pe.get_data(0x3F7E26, 7)
+            fc_points = {
+                name: {
+                    "rva": rva,
+                    "bytes": _pe.get_data(rva, 16).hex(),
+                    "proof": "complete_function_sha256_and_resolved_set_text",
+                }
+                for name, rva in [
+                    ("fc_quest_builder", fc_start),
+                    ("fc_quest_paragraph_ready", 0x3F7E26),
+                    ("fc_quest_line_return", 0x3F8044),
+                ]
+            }
+        except pefile.PEFormatError:
+            return report
+        if (
+            hashlib.sha256(fc_bytes).hexdigest()
+            == "09cee620b2ebc7615b9fb56a34585a7c0f76e1e6e70fc8a996973d728e117c14"
+            and len(call) == 5
+            and call[0] == 0xE8
+            and 0x3F8044 + int.from_bytes(call[1:], "little", signed=True)
+            == report["native"]["set_text"]["rva"]
+            and ready == bytes.fromhex("488d151b626f00")
+        ):
+            report["native"] = dict(report["native"], **fc_points)
         return report
 
 
@@ -421,8 +453,27 @@ class NativeLabels:
     def status(self):
         return self.script.exports_sync.status()
 
-    def snapshot(self):
-        return self.script.exports_sync.snapshot()
+    def snapshot(self, *, identity_only=False, state=None):
+        if not identity_only:
+            return self.script.exports_sync.snapshot()
+        # Never ask an old resident for the new bounded form: it would ignore
+        # the argument and return its entire label collection. Use the status
+        # already read by the probe, without another native read or connection.
+        diagnostic = (state or {}).get("inputIdentityDiagnostics", {})
+        if diagnostic.get("schema") != 2 or not diagnostic.get("enabled"):
+            return {
+                "schema": 2,
+                "supported": diagnostic.get("schema") == 2,
+                "reason": "diagnostics_disabled"
+                if diagnostic.get("schema") == 2
+                else "resident_unsupported",
+                "diagnostics": diagnostic,
+                "resident_revision": getattr(self.control, "revision", None),
+                "rows": [],
+            }
+        result = self.script.exports_sync.snapshot(True)
+        result["resident_revision"] = getattr(self.control, "revision", None)
+        return result
 
     def disable(self):
         return self.script.exports_sync.disable()

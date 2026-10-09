@@ -56,7 +56,10 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
         }
         readPointer() {
             if(this.offset===0x680)return this.label.glyphManager;
-            if(this.offset===0x88)return this.label.name ? allocate(this.label.name) : nullPointer;
+            if(this.offset===0x88){
+                if(this.label.name!==this.label.cachedName){this.label.cachedName=this.label.name;this.label.namePointer=this.label.name?allocate(this.label.name):nullPointer;}
+                return this.label.namePointer||nullPointer;
+            }
             if(this.offset===0x80)return this.label.parent || nullPointer;
             if (this.offset !== 0x318) throw Error(`unexpected pointer field ${this.offset}`);
             return this.label.owned ? new TextPointer(this.label) : nullPointer;
@@ -80,6 +83,10 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
         writeU8(value) {
             if (![0x688,0x689].includes(this.offset)) throw Error('unexpected dirty flag');
             this.label.dirty[this.offset]=value;
+        }
+        readU8() {
+            if (![0x688,0x689].includes(this.offset)) throw Error('unexpected dirty flag read');
+            return this.label.dirty[this.offset]||0;
         }
     }
 
@@ -200,6 +207,8 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
             log_measure_row_end:{rva:0x1700,bytes:'00000000000000000000000000000000'},
             font_reset:{rva:0x1800,bytes:'00000000000000000000000000000000'},
             font_load:{rva:0x1900,bytes:'00000000000000000000000000000000'},
+            shop_yes_copy_return:{rva:0x1950,bytes:'00000000000000000000000000000000'},
+            shop_no_copy_return:{rva:0x1960,bytes:'00000000000000000000000000000000'},
         },
     };
 
@@ -273,7 +282,7 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
             arch:'x64',pageSize:4096,
             getModuleByName(name) {
                 assert.equal(name, 'sora_2nd.exe');
-                return {base};
+                return {base,size:0x2000000};
             },
             getCurrentThreadId() { return threadId; },
         },
@@ -338,6 +347,9 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
         scriptReads,
         memoryCost,
         measureScopes,
+        diagnosticStorage(){return vm.runInContext('({bounded:inputIdentityDiagnostics.size,rowHeld:[...labels.values()].filter(r=>r.inputIdentityDiagnostic||r.identityNodePath).length})',context);},
+        diagnosticTrace(events,kind='table'){context.testTraceEvents=events;vm.runInContext((kind==='table'?'tableIdentities.select':'scriptIdentities.pointerSelect')+'=(_p,_s,trace)=>{for(const e of testTraceEvents)trace?.(e);return null;}',context);},
+        identityBusinessFailure(){vm.runInContext('tableIdentities.select=()=>{throw Error("business identity failure");}',context);},
         fontReload(load=false){invoke(base.add(load?0x1900:0x1800),[])();},
         logMeasure(records,{mode=0,fontSize=29,flags=1,metric=72,textKeyHash=0,mismatch=false,planMismatch=false,width=900,descriptorHeight}={}) {
             const owner=new ScratchPointer(0x410000),stack=new ScratchPointer(0x420000);
@@ -658,6 +670,15 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
         keyTable(hash,key,source) {
             vm.runInContext('textKeys.set('+JSON.stringify(hash)+','+JSON.stringify({key,source})+');',context);
         },
+        shopSet(label,text,hash,yes=true,otherHash=0) {
+            const boundary=base.add(yes?0x1950:0x1960),buffer=allocate(text);
+            const args=[label,buffer],leave=invoke(base.add(0x100),args,boundary);
+            copyIntoLabel(label,args[1]);leave();
+            hooks.get(String(boundary)).onEnter.call({context:{rdi:label,
+                rsi:new Pointer(yes?hash:otherHash),r15:new Pointer(yes?otherHash:hash)}});
+            // The native stack/temporary lifetime ends before Update.
+            buffer.text='reused temporary';
+        },
         glyphLayout(label) {
             const lease=this.beginUpdate(label);
             hooks.get(String(base.add(0x380))).onEnter.call({context:{rsi:label}});
@@ -758,10 +779,10 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
                 array.values.set(i*8,q);
             });
         },
-        externalSet(label, text, currentThread=1) {
+        externalSet(label, text, currentThread=1,callerRva) {
             threadId=currentThread;
             const buffer = allocate(text);
-            const args=[label,buffer],leave=invoke(base.add(REPORT.native.set_text.rva),args);
+            const args=[label,buffer],leave=invoke(base.add(REPORT.native.set_text.rva),args,callerRva===undefined?undefined:base.add(callerRva));
             copyIntoLabel(label, args[1]);
             leave();
             return buffer;
@@ -833,6 +854,101 @@ test('game source language reload refreshes surviving labels and leaves disabled
     }
     assert.equal(r.api.status().failed,false);
 });
+
+test('shop copied resource keys survive temporary reuse and distinguish equal choice text',()=>{
+    const r=makeRuntime(null,true),label=r.label(0x3950,'Synthesize');
+    const data=(source,pair)=>({source,model:{pairs:{[source]:pair},plain_pairs:{},same_language:false}});
+    const model={pairs:{},plain_pairs:{},keyed:{
+        TXT_SHOP_CUSTOMIZE_YES:data('Enhance',['强化','強化する']),
+        TXT_SHOP_CREATE_YES:data('Synthesize',['制作','作成する']),
+        TXT_SHOP_GENERATE_YES:data('Synthesize',['合成','合成する']),
+        TXT_SHOP_SELECT_NO:data('Cancel',['取消','やめる']),
+        TXT_STALE_LAYOUT:data('Synthesize',['错误布局','誤ったレイアウト'])}};
+    for(const [hash,key,source] of [[1,'TXT_SHOP_CUSTOMIZE_YES','Enhance'],[2,'TXT_SHOP_CREATE_YES','Synthesize'],
+            [3,'TXT_SHOP_GENERATE_YES','Synthesize'],[4,'TXT_SHOP_SELECT_NO','Cancel'],[5,'TXT_STALE_LAYOUT','Synthesize']])r.keyTable(hash,key,source);
+    r.api.load(model,'annotation',true);label.textKeyHash=5;
+    for(const [source,hash,yes,key] of [['Enhance',1,true,'TXT_SHOP_CUSTOMIZE_YES'],
+            ['Synthesize',2,true,'TXT_SHOP_CREATE_YES'],['Synthesize',3,true,'TXT_SHOP_GENERATE_YES'],
+            ['Cancel',4,false,'TXT_SHOP_SELECT_NO']]) {
+        r.shopSet(label,source,hash,yes,1);assert.equal(label.text(),source);r.update(label);
+        const row=r.api.snapshot().find(v=>v.original===source);
+        assert.equal(row.text_key,key);assert.equal(row.text_key_reason,'native_resource_copy');
+        assert.equal(row.input_identity_diagnostic.phase,'resource_copy_commit');
+        const [primary,secondary]=model.keyed[key].model.pairs[source];
+        assert.ok(label.text().includes(primary));
+        assert.ok((row.layers.map(v=>v.text).join('')+label.text()).includes(secondary));
+        const reads=r.memoryCost.textReads;r.update(label);assert.equal(r.memoryCost.textReads,reads);
+    }
+    r.api.disable();r.update(label);assert.equal(label.text(),'Cancel');
+    r.api.load(model,'secondary',true);r.update(label);assert.equal(label.text(),'やめる');
+    r.destroy(label);const reused=r.label(0x3950,'Synthesize');reused.textKeyHash=0;r.update(reused);
+    assert.equal(reused.text(),'Synthesize');assert.equal(r.api.snapshot().at(-1).text_key,null);
+    assert.equal(r.api.status().failed,false);
+});
+
+test('only verified shop callers defer immediate translation and external resubmission revokes the key',()=>{
+    const r=makeRuntime(null,true),label=r.label(0x3953,'Buy');r.keyTable(1,'TXT_BUY','Buy');
+    const model={pairs:{Buy:['购买','買う']},plain_pairs:{},keyed:{TXT_BUY:{source:'Buy',model:{pairs:{Buy:['购入','購入']},plain_pairs:{}}}}};
+    r.api.load(model,'primary',true);r.shopSet(label,'Buy',1);assert.equal(label.text(),'Buy');
+    r.update(label);assert.equal(label.text(),'购入');
+    r.externalSet(label,label.text());assert.equal(label.text(),'购买');
+    let row=r.api.snapshot().find(v=>v.original==='Buy');assert.equal(row.text_key,null);
+    assert.equal(row.input_identity_diagnostic.resource_key,null);
+    r.api.disable();r.update(label);assert.equal(label.text(),'Buy');
+    r.api.load(model,'primary',true);r.externalSet(label,'Buy');assert.equal(label.text(),'购买');
+    assert.equal(r.api.status().failed,false);
+});
+
+test('shop copy owner is captured before a resolver and invalidated by unknown or changed input',()=>{
+    const r=makeRuntime(),label=r.label(0x3951,'Choice');r.keyTable(0xffffffff,'TXT_CHOICE','Choice');
+    r.shopSet(label,'Choice',0xffffffff);r.update(label);assert.equal(label.text(),'Choice');
+    const model={pairs:{},plain_pairs:{},keyed:{TXT_CHOICE:{source:'Choice',model:{pairs:{Choice:['选择','選択']},plain_pairs:{}}}}};
+    r.api.load(model,'primary',true);r.update(label);assert.equal(label.text(),'选择');
+    // A native raw input equal to the previous translated output is a new
+    // source at this proven caller, not a re-submission of our owned display.
+    r.keyTable(2,'TXT_OTHER','选择');
+    const next={...model,keyed:{...model.keyed,TXT_OTHER:{source:'选择',model:{pairs:{'选择':['另一项','別の項目']},plain_pairs:{}}}}};
+    r.api.load(next,'primary',true);r.shopSet(label,'选择',2);r.update(label);assert.equal(label.text(),'另一项');
+    r.shopSet(label,'Choice',99);r.update(label);assert.equal(label.text(),'Choice');
+    assert.equal(r.api.snapshot().at(-1).text_key,null);
+    for(const [hash,key,source,actual] of [[3,'TXT_FORMAT','%s','Choice'],[4,'TXT_TRUNCATED','x'.repeat(256),'x'.repeat(255)],
+            [5,'TXT_MISMATCH','different','Choice']]) {
+        r.keyTable(hash,key,source);r.shopSet(label,actual,hash);r.update(label);
+        assert.equal(r.api.snapshot().at(-1).text_key,null);
+    }
+    r.shopSet(label,'Choice',0xffffffff);r.update(label);assert.equal(label.text(),'选择');
+    label.owned.text='Changed';label.dirty[0x688]=1;r.update(label);
+    assert.equal(label.text(),'Changed');assert.equal(r.api.snapshot().at(-1).text_key,null);
+    const altered={...model,keyed:{TXT_CHOICE:{source:'Different base',model:{pairs:{'Different base':['错误','誤り']},plain_pairs:{}}}}};
+    r.shopSet(label,'Choice',0xffffffff);r.api.load(altered,'primary',true);r.update(label);
+    assert.equal(label.text(),'Choice');assert.equal(r.api.snapshot().at(-1).text_key,null);
+    assert.equal(r.api.status().failed,false);
+});
+
+for(const invalid of ['unknown_hash','unsupported_format','source_mismatch','external_rendered_resubmission']) {
+    test('dynamic shop identity rejects stale layout fallback: '+invalid,()=>{
+        const r=makeRuntime(null,true),label=r.label(0x3958,'Synthesize');
+        const data=(source,primary)=>({source,model:{pairs:{[source]:[primary,primary]},plain_pairs:{}}});
+        const model={pairs:{},plain_pairs:{},keyed:{
+            TXT_STALE_LAYOUT:data('Synthesize','WRONG'),TXT_SHOP_CREATE_YES:data('Synthesize','RIGHT')}};
+        r.keyTable(5,'TXT_STALE_LAYOUT','Synthesize');r.keyTable(2,'TXT_SHOP_CREATE_YES','Synthesize');
+        r.keyTable(7,'TXT_FORMAT','%s');r.keyTable(8,'TXT_MISMATCH','Other');
+        label.textKeyHash=5;r.api.load(model,'primary',true);
+        if(invalid==='external_rendered_resubmission') {
+            r.shopSet(label,'Synthesize',2);r.update(label);assert.equal(label.text(),'RIGHT');
+            r.externalSet(label,'RIGHT');
+        } else {
+            const hash={unknown_hash:99,unsupported_format:7,source_mismatch:8}[invalid];
+            r.shopSet(label,'Synthesize',hash);r.update(label);
+        }
+        assert.equal(label.text(),'Synthesize');
+        const row=r.api.snapshot().find(v=>v.original==='Synthesize');
+        assert.equal(row.text_key,null);
+        // Fresh valid native evidence can restore its own identity, without
+        // restoring the layout authority on rejected or revoked observations.
+        r.shopSet(label,'Synthesize',2);r.update(label);assert.equal(label.text(),'RIGHT');
+    });
+}
 
 test('cloned annotated templates inherit the raw source before their first measurement',()=>{
     const r=makeRuntime();
@@ -1000,6 +1116,22 @@ test('the actual text key disambiguates a label but a stale key never overrides 
     assert.equal(label.text(),'生命露水');
 });
 
+test('native layout keys retain proven integer format instances and reject reused widgets',()=>{
+    const r=makeRuntime(),key='TXT_INTEGER',source='Grow %d!',hash=777;
+    r.keyTable(hash,key,source);
+    const label=r.label(0x4390,'Grow 15!');label.textKeyHash=hash;
+    const model={pairs:{},plain_pairs:{},keyed:{[key]:{source,model:{pairs:{[source]:['増加%d！','提升%d！']},
+        plain_pairs:{[source]:['増加%d！','提升%d！']},numeric:[['Grow ([+-]?\\d+)!',['増加%d！','提升%d！']]]}}}};
+    r.api.load(model,'primary',true,1);
+    r.externalSet(label,'Grow 15!');assert.equal(label.text(),'増加15！');
+    let row=r.api.snapshot().find(v=>v.original==='Grow 15!');
+    assert.equal(row.text_key,key);assert.equal(row.text_key_reason,'canonical_integer_key_instance');
+    r.externalSet(label,'Other 15!');assert.equal(label.text(),'Other 15!');
+    row=r.api.snapshot().find(v=>v.original==='Other 15!');assert.equal(row.text_key,null);
+    assert.equal(row.text_key_reason,'key_formatter_shape_mismatch');
+    assert.equal(r.api.status().failed,false);
+});
+
 test('localized text keys follow the active source model after an in-game language change',()=>{
     const r=makeRuntime(),key='TXT_KEY_HELP_HIDE_UI',hash=536578224;
     r.keyTable(hash,key,'隐藏界面');
@@ -1053,6 +1185,47 @@ test('saved summary aliases are limited to native save controls and the continue
     }
 });
 
+test('script diagnostic retains late ambiguity and never claims a truncated source is exact',()=>{
+    const r=makeRuntime(null,true);r.api.load({pairs:{},plain_pairs:{}},'annotation',true,1,{},
+        {format:'indexed-v2',path:'actual.wire.bin',bytes:1234});
+    assert.equal(r.api.status().inputIdentityDiagnostics.model_provenance.path,'actual.wire.bin');
+    const events=Array.from({length:14},(_,i)=>({key:'script '+i,stage:'candidate_verified'}));
+    events.push({key:'last',stage:'ambiguous_translation'});r.diagnosticTrace(events,'script');
+    r.externalSet(r.label(0xbb0000,''),'x'.repeat(3000));
+    const row=r.api.snapshot(true).rows[0],d=row.input_identity_diagnostic;
+    assert.equal(d.script.length,12);assert.equal(d.script_events_dropped,3);
+    assert.equal(d.script_final_stage,'ambiguous_translation');assert.equal(row.source_matches_diagnostic,null);
+    r.api.configure({},true);assert.equal(r.api.status().inputIdentityDiagnostics.model_provenance,null);
+});
+
+test('malformed diagnostic model provenance cannot fail an otherwise successful business load',()=>{
+    for(const diagnostics of [false,true]){
+        const r=makeRuntime(null,diagnostics),model={pairs:{Source:['Source','Translated']},plain_pairs:{}};
+        const provenance={format:{toString(){throw Error('must not coerce');}},path:'p'.repeat(150000),
+            bytes:-1,code_units:Infinity};
+        assert.equal(r.api.load(model,'secondary',true,1,{},provenance),true);
+        const status=r.api.status();assert.equal(status.failed,false);
+        assert.equal(status.inputIdentityDiagnostics.model_provenance.format,null);
+        assert.equal(status.inputIdentityDiagnostics.model_provenance.path.length,1024);
+        assert.equal(status.inputIdentityDiagnostics.model_provenance.path_truncated,true);
+        assert.equal(status.inputIdentityDiagnostics.model_provenance.bytes,null);
+        assert.equal(status.inputIdentityDiagnostics.model_provenance.code_units,null);
+        const bad={get format(){throw Error('diagnostic getter');}};
+        assert.equal(r.api.load(model,'secondary',true,1,{},bad),true);
+        assert.equal(r.api.status().inputIdentityDiagnostics.model_provenance,null);
+        const label=r.label(0xbc0000,'');r.externalSet(label,'Source');assert.equal(label.text(),'Translated');
+        assert.equal(r.api.status().failed,false);
+    }
+});
+
+test('input diagnostic caller RVA stays inside the actual executable module',()=>{
+    const r=makeRuntime(null,true);r.api.load({pairs:{},plain_pairs:{}},'annotation',true,1);
+    for(const [caller,expected] of [[0x5892c5,0x5892c5],[-1,null],[0x2000000,null],[0x100000000,null]]){
+        r.externalSet(r.label(0xaa0000+caller,''),'unknown',1,caller);
+        assert.equal(r.api.snapshot(true).rows.at(-1).input_identity_diagnostic.caller_rva,expected);
+    }
+});
+
 test('support list ancestry selects its own translation of a repeated name', () => {
     const runtime=makeRuntime();
     const label=runtime.label(0x4310,'反击');label.name='name';
@@ -1083,6 +1256,206 @@ test('copied map spot labels resolve across modes without changing unrelated nam
     r.api.select('secondary',true);r.update(label);assert.equal(label.text(),'ミストヴァルト');
     r.api.disable();r.update(label);assert.equal(label.text(),'神秘森林');
     assert.equal(r.api.status().failed,false);
+});
+
+test('identity diagnostics include untranslated setters and remain opt-in and bounded',()=>{
+    for(const diagnostics of [false,true]){
+        const r=makeRuntime(null,diagnostics);
+        r.api.load({pairs:{},plain_pairs:{},table_identities:{sources:{},models:{},files:{}}},'annotation',true,1);
+        for(let i=0;i<80;i++){
+            const label=r.label(0x600000+i*0x10000,'');label.name='spot_name';
+            r.externalSet(label,'untranslated '+i);
+        }
+        const rows=r.api.snapshot(),captured=rows.filter(v=>v.input_identity_diagnostic);
+        assert.equal(captured.length,diagnostics?64:0);
+        assert.equal(r.diagnosticStorage().rowHeld,0,'labels must not retain diagnostics outside the bounded map');
+        if(diagnostics){
+            const row=captured.at(-1),d=row.input_identity_diagnostic;
+            assert.equal(d.source,'untranslated 79');assert.equal(d.node_path[0],'spot_name');
+            assert.equal(d.scope,'map_spot');assert.equal(d.global_pair,false);
+            assert.equal(d.table[0].stage,'no_source_candidates');
+            assert.equal(d.presentation,'plain');assert.equal(d.table_key,null);
+        }
+        assert.equal(r.api.status().failed,false);
+    }
+});
+
+test('Tips titles use verified layout ancestry including cold copied labels and reuse',()=>{
+    for(const [id,path,scope] of [
+        [59,['root','list_root','items','item_template','text'],'note_help_title'],
+        [89,['root','tips_contents','title'],'tips_title'],
+    ]) {
+        const r=makeRuntime(null,true),nodes=path.map((name,i)=>{
+            const p=r.label(0x760000+i*0x1000,i===path.length-1?'Shared':'');p.name=name;return p;
+        });
+        nodes.forEach((p,i)=>{if(i)p.parent=nodes[i-1];});r.registerLayout(nodes[0],id);
+        const scoped={pairs:{Shared:['Tips owner','Other locale'],Next:['Next owner','Next locale']},
+            plain_pairs:{Shared:['Tips owner','Other locale'],Next:['Next owner','Next locale']}};
+        r.api.load({pairs:{},plain_pairs:{},scoped:{[scope]:scoped}},'annotation',true,1);
+        const label=nodes.at(-1);
+        // No hooked SetText input: the direct setter has already made the copy.
+        r.update(label);assert.equal(label.text(),'<R>Tips owner</ROther locale>');
+        // Parent/ancestor/root changes invalidate ownership without a text write,
+        // epoch bump, new hook, or dirty flag.
+        label.dirty[0x688]=0;
+        const parent=label.parent,other=r.label(0x779000,'');other.name='unregistered';
+        label.parent=other;r.update(label);assert.equal(label.text(),'Shared');
+        label.parent=parent;label.dirty[0x688]=1;r.api.select('annotation',true);r.update(label);
+        assert.equal(label.text(),'<R>Tips owner</ROther locale>');
+        const ancestor=nodes[1].parent;nodes[1].parent=other;label.dirty[0x688]=0;
+        r.update(label);assert.equal(label.text(),'Shared');nodes[1].parent=ancestor;
+        r.api.select('annotation',true);r.update(label);assert.equal(label.text(),'<R>Tips owner</ROther locale>');
+        r.registerLayout(nodes[0],id===59?58:88);label.dirty[0x688]=0;
+        r.update(label);assert.equal(label.text(),'Shared');r.registerLayout(nodes[0],id);
+        r.api.select('annotation',true);r.update(label);
+        assert.equal(label.text(),'<R>Tips owner</ROther locale>');
+        label.owned.text='Next';label.dirty[0x688]=1;r.update(label);
+        assert.equal(label.text(),'<R>Next owner</RNext locale>','same-epoch direct copy is not a stale source');
+        const d=r.api.snapshot().find(row=>row.original==='Next').input_identity_diagnostic;
+        assert.equal(d.phase,'owned_update');assert.equal(d.table_final_stage,'owned_copy_without_input_identity');
+        assert.equal(d.layout_id,id);assert.equal(d.scope,scope);assert.equal(d.table_key,null);
+        assert.equal(d.presentation,'ruby');assert.deepEqual([...d.node_path],path.toReversed());
+        r.api.select('secondary',true);r.update(label);assert.equal(label.text(),'Next locale');
+        r.api.disable();r.update(label);assert.equal(label.text(),'Next');
+        r.api.select('annotation',true);
+        for(const source of ['Unknown','prefix Shared','Shar']){
+            label.owned.text=source;label.dirty[0x688]=1;r.update(label);assert.equal(label.text(),source);
+        }
+        // Root reuse changes the scope grant; the same bytes cannot carry it.
+        r.registerLayout(nodes[0],id===59?58:88);
+        label.owned.text='Shared';label.dirty[0x688]=1;r.update(label);assert.equal(label.text(),'Shared');
+        assert.equal(r.api.status().failed,false);
+    }
+});
+
+test('Tips title ownership rejects wrong layouts, tabs, bodies and partial titles',()=>{
+    const paths=[
+        [58,['root','list_root','items','item_template','text']],
+        [59,['root','list_root','tab_root','items','item_template','text']],
+        [59,['root','list_root','items','separate_template','text']],
+        [89,['root','help_contents','title']],
+        [89,['root','tips_contents','text']],
+        [88,['root','tips_contents','title']],
+    ];
+    for(const [id,path] of paths){
+        const r=makeRuntime(),nodes=path.map((name,i)=>{const p=r.label(0x780000+i*0x1000,'');p.name=name;return p;});
+        nodes.forEach((p,i)=>{if(i)p.parent=nodes[i-1];});r.registerLayout(nodes[0],id);
+        const local={pairs:{Shared:['Tips owner','Other locale']},plain_pairs:{Shared:['Tips owner','Other locale']}};
+        r.api.load({pairs:{},plain_pairs:{},scoped:{tips_title:local,note_help_title:local}},'annotation',true,1);
+        for(const input of ['Shared','prefix Shared','Shar']){
+            const label=nodes.at(-1);label.owned.text=input;label.dirty[0x688]=1;r.update(label);assert.equal(label.text(),input);
+        }
+        assert.equal(r.api.status().failed,false);
+    }
+});
+
+test('same-epoch unhooked copy checks only dirty owned text and keeps diagnostics bounded',()=>{
+    for(const diagnostics of [false,true]){
+        const r=makeRuntime(null,diagnostics);
+        r.api.load({pairs:{Before:['Before','Avant'],After:['After','Apres']},plain_pairs:{}},'secondary',true,1);
+        const label=r.label(0x7b0000,'Before');r.update(label);assert.equal(label.text(),'Avant');
+        label.dirty[0x688]=0;const before=r.memoryCost.textReads;r.update(label);
+        assert.equal(r.memoryCost.textReads,before,'clean frames do not decode text');
+        label.owned.text='After';label.dirty[0x688]=1;r.update(label);assert.equal(label.text(),'Apres');
+        for(let i=0;i<80;i++)r.update(r.label(0x800000+i*0x10000,'Unowned '+i));
+        assert.equal(r.diagnosticStorage().bounded,diagnostics?64:0);
+        assert.equal(r.diagnosticStorage().rowHeld,0);
+        assert.equal(r.api.status().failed,false);
+    }
+});
+
+test('identity diagnostic event truncation retains the final ambiguity reason',()=>{
+    const r=makeRuntime(null,true);
+    r.api.load({pairs:{},plain_pairs:{},table_identities:{sources:{},models:{},files:{}}},'annotation',true,1);
+    const events=Array.from({length:14},(_,i)=>({key:'owner '+i,stage:'candidate_verified'}));
+    events.push({key:'ambiguous owner',stage:'ambiguous_translation'});
+    r.diagnosticTrace(events);
+    const label=r.label(0x750000,'');r.externalSet(label,'ambiguous copied description');
+    const d=r.api.snapshot().at(-1).input_identity_diagnostic;
+    assert.equal(d.table.length,12);assert.equal(d.table_event_limit,12);
+    assert.equal(d.table_events_total,15);assert.equal(d.table_events_dropped,3);
+    assert.equal(d.table_trace_truncated,true);assert.equal(d.table_final_stage,'ambiguous_translation');
+    assert.equal(d.table_key,null);assert.equal(d.presentation,'plain');
+});
+
+test('rejected malformed identity metadata has identical business behavior with diagnostics off or on',()=>{
+    for(const key of [42,{},['wrong'],null])for(const family of ['table','script'])for(const diagnostics of [false,true]){
+        const r=makeRuntime(null,diagnostics),candidate={key,file:'bad',offset:0,size:40*1024*1024,sha256:'bad'};
+        const identities=family==='table'?{table_identities:{sources:{unknown:[candidate]},models:{},files:{bad:{size:40*1024*1024}}}}:
+            {script_identities:{pointers:{unknown:[candidate]},pointer_models:{}}};
+        r.api.load({pairs:{},plain_pairs:{},...identities},'annotation',true,1);
+        const label=r.label(0x760000,'');r.externalSet(label,'unknown');r.update(label);
+        assert.equal(label.text(),'unknown');assert.equal(r.api.status().failed,false,`${family}/${typeof key}/${diagnostics}`);
+        if(diagnostics){const event=r.api.snapshot(true).rows[0].input_identity_diagnostic[family][0];assert.equal(event.key,null);}
+    }
+});
+
+test('all diagnostic event fields are typed and independently bounded; unknown fields never escape',()=>{
+    for(const family of ['table','script']){
+        const r=makeRuntime(null,true);r.api.load({pairs:{},plain_pairs:{}},'annotation',true,1);
+        const event={stage:'x'.repeat(150000),key:'k'.repeat(150000),file:'f'.repeat(150000),sha256:'s'.repeat(150000),
+            offset:{secret:'never'},record_at:[1],field_at:Infinity,size:-1,extra:'secret'.repeat(25000)};
+        r.diagnosticTrace([event],family);r.externalSet(r.label(0x760000,''),'unknown');
+        const snapshot=r.api.snapshot(true),captured=snapshot.rows[0].input_identity_diagnostic[family][0];
+        assert.equal(captured.key.length,512);assert.equal(captured.file.length,256);
+        assert.equal(captured.sha256.length,64);assert.equal(captured.stage.length,64);
+        for(const field of ['offset','record_at','field_at','size'])assert.equal(captured[field],null);
+        assert.equal(captured.key_truncated,true);assert.equal(captured.file_truncated,true);assert.equal(captured.sha256_truncated,true);
+        assert.equal(Object.hasOwn(captured,'extra'),false);assert.equal(JSON.stringify(snapshot).includes('secret'),false);
+        assert.equal(JSON.stringify(snapshot).length<6000,true);assert.equal(r.api.status().failed,false);
+    }
+});
+
+test('production rejected table file and script hash metadata retain field budgets after both trace boundaries',()=>{
+    for(const family of ['table','script']){
+        const r=makeRuntime(null,true),file='f'.repeat(150000),sha256='s'.repeat(150000);
+        const candidate={key:'owner',file,sha256,size:40*1024*1024,offset:0};
+        const identities=family==='table'?{table_identities:{sources:{unknown:[candidate]},models:{},files:{[file]:{size:candidate.size}}}}:
+            {script_identities:{pointers:{unknown:[candidate]},pointer_models:{}}};
+        r.api.load({pairs:{},plain_pairs:{},...identities},'annotation',true,1);
+        r.externalSet(r.label(0x760000,''),'unknown');
+        const snapshot=r.api.snapshot(true),event=snapshot.rows[0].input_identity_diagnostic[family][0];
+        assert.equal(event.file.length,256);assert.equal(event.sha256.length,64);
+        assert.equal(event.file_truncated,true);assert.equal(event.sha256_truncated,true);
+        assert.equal(event.stage,'invalid_candidate');assert.equal(JSON.stringify(snapshot).length<6000,true);
+        assert.equal(r.api.status().failed,false);
+    }
+});
+
+test('diagnostic event getters are isolated but actual identity implementation errors still fail',()=>{
+    const r=makeRuntime(null,true);r.api.load({pairs:{},plain_pairs:{}},'annotation',true,1);
+    r.diagnosticTrace([{get key(){throw Error('diagnostic getter');},stage:'invalid_candidate'}]);
+    r.externalSet(r.label(0x760000,''),'unknown');assert.equal(r.api.status().failed,false);
+    assert.equal(r.api.snapshot(true).rows[0].input_identity_diagnostic.table_trace_error,true);
+    // The native identity call is a business boundary, not part of trace handling.
+    for(const diagnostics of [false,true]){
+        const business=makeRuntime(null,diagnostics);business.api.load({pairs:{},plain_pairs:{}},'annotation',true,1);
+        business.identityBusinessFailure();business.externalSet(business.label(0x761000,''),'unknown');
+        assert.equal(business.api.status().failed,true);
+        assert.equal(business.api.status().failureReason,'Error: business identity failure');
+    }
+});
+
+test('bounded diagnostic snapshot reports actual resident state without reading native pointers',()=>{
+    for(const active of [false,true]){
+        const r=makeRuntime(null,active);
+        r.api.load({pairs:{},plain_pairs:{},script_identities:{source_language:'en'}},'annotation',true,1);
+        for(let i=0;i<80;i++)r.externalSet(r.label(0x900000+i*0x10000,''),'unpaired '+i+' '+('x'.repeat(3000)));
+        const before={...r.memoryCost},snapshot=r.api.snapshot(true);
+        assert.equal(snapshot.schema,2);assert.equal(snapshot.diagnostics.enabled,active);
+        assert.equal(snapshot.diagnostics.source_language,'en');assert.equal(snapshot.diagnostics.model_loaded,true);
+        assert.equal(snapshot.rows.length,active?64:0);assert.equal(snapshot.label_limit,64);
+        assert.deepEqual(r.memoryCost,before,'snapshot uses captured JS values only');
+        assert.equal(r.api.snapshot().length,80,'explicit full read-only snapshot remains compatible');
+        if(active){
+            const row=snapshot.rows.at(-1),d=row.input_identity_diagnostic;
+            assert.equal(row.original.length,2048);assert.equal(row.original_truncated,true);
+            assert.equal(d.script_final_stage,'no_source_candidates');assert.equal(d.table_final_stage,'no_source_candidates');
+            assert.equal(snapshot.rows[0].original.startsWith('unpaired 16 '),true);
+            assert.equal(JSON.stringify(snapshot).length<600000,true);
+        }
+        assert.equal(r.api.status().failed,false);
+    }
 });
 
 test('ruby measurement and drawing share scale without a second parser gap adjustment', () => {
@@ -1472,9 +1845,10 @@ test('ordinary, colour-layer, S3 and S5 secondary text share the native ruby rat
 
 test('equipment replacement keeps every real C/icon reflow layer at the native ruby size',()=>{
     // table/t_text.tbl/TXT_CAMP_EQUIP_CHANGE_CHOICES after its two native
-    // string arguments have been expanded.  The target has a different line
-    // split, so RuntimeText creates three synthetic layers: C-only, C+icon,
-    // then C-only.  C does not make a ruby child; every layer must instead
+    // string arguments have been expanded. Both resources have three hard
+    // rows, so each retains its original text instead of redistributing it
+    // merely because colour/icon controls are present. C does not make a
+    // ruby child; every layer must instead
     // begin from the engine's ruby baseline before ruby_scale is applied.
     const source='<C2>克萝赛</C><C1>装备中的</C>\n<I123> <C2>猫咪靴</C>\n <C1>将会被卸下，确定要继续吗？</C>';
     const primary='<C2>クローゼ</C><C1>が装備中の</C>\n<I123> <C2>にゃんこブーツ</C> <C1>が\n外されますがよろしいですか？</C>';
@@ -1484,11 +1858,7 @@ test('equipment replacement keeps every real C/icon reflow layer at the native r
     runtime.externalSet(label,source);
     const row=runtime.api.snapshot().find(v=>v.original===source);
     assert.equal(row.presentation,'layered');
-    assert.deepEqual(Array.from(row.layers,layer=>layer.text),[
-        '<C2>克萝赛</C><C1>装备中的</C>',
-        '<I123> <C2>猫咪靴</C> <C1>将会被</C>',
-        '<C1>卸下，确定要继续吗？</C>',
-    ]);
+    assert.deepEqual(Array.from(row.layers,layer=>layer.text),source.split('\n'));
     const nativePrimary=27/32, expected=.375*.9;
     for(const index of [0,1,2]) {
         const result=runtime.auxiliary(label,index,{primaryScale:nativePrimary,iconCallback:index===1});
@@ -1974,6 +2344,53 @@ test('ordinary auxiliary text retains original native advances and first-line po
     }
 });
 
+test('native-R detail preserves its original reading and shares external effect/body newline ownership',()=>{
+    const fixture=JSON.parse(fs.readFileSync(path.join(__dirname,'fixtures/r22-native-ruby-detail.json'),'utf8'));
+    for(const source of [fixture.source,fixture.native_ruby+'\n<C0><C9>Skill description'])
+    for(const measuring of [false,true])for(const nativeGap of [-1,0,15]) {
+        const r=makeRuntime(),p=r.label(0x99f8,source,0,32);p.nativeLineGap=nativeGap;
+        r.api.load(fixture.model,'annotation',true,.85,{ruby_scale:1,ruby_gap:0,line_gap:6});r.update(p);
+        const row=r.api.snapshot().find(v=>v.original===source);
+        assert.ok(p.text().startsWith(fixture.native_ruby),'native R bytes and native size are untouched');
+        assert.equal(row.layers.length,source===fixture.source?2:1);
+        assert.ok(row.layers.every(l=>!l.text.includes('<R>')),'existing reading is not annotated again');
+        for(let pass=0;pass<3;pass++)for(let lane=0;lane<row.layers.length;lane++){
+            const origin=lane*40,out=r.auxiliary(p,lane,{origin,measuring,measuredSecondaryBounds:[0,32]});
+            assert.equal(out.primaryY,origin,'same native baseline on repeat measure/draw');
+        }
+        assert.equal(r.newline(p,100),106,'configured gap is added to actual native bottom');
+        for(const mode of ['primary','secondary']){
+            r.api.select(mode,true);r.update(p);assert.equal(r.newline(p,100),100);
+            assert.ok(p.text().startsWith(fixture.native_ruby));
+        }
+        r.api.disable();r.update(p);assert.equal(p.text(),source);assert.equal(r.newline(p,100),100);
+        assert.equal(r.api.status().failed,false,r.api.status().failureReason);
+    }
+});
+
+test('effect header and appended body use owned lanes with the native origin and configured newline gap',()=>{
+    const body='<C9>Official body',source='<c698>HP Regen</C>\n'+body,
+        pair=['<C9>説明本文','<C9>说明正文'],model={pairs:{},plain_pairs:{},detail_sources:[body],
+            details:{pairs:{[body]:pair},plain_pairs:{[body]:pair},detail_join:[', ','／','／'],
+                detail_effect_units:[{source:'HP Regen',pattern:'HP Regen',pair:['HP徐々回復','逐渐回复HP'],ids:['resource/effect/HP']}]}};
+    for(const measuring of [false,true])for(const nativeGap of [-1,0,15,24]){
+        const r=makeRuntime(),p=r.label(0x99f0,source,0,32);p.nativeLineGap=nativeGap;
+        r.api.load(model,'annotation',true,.85,{ruby_scale:1,ruby_gap:0,line_gap:6});r.update(p);
+        const row=r.api.snapshot().find(v=>v.original===source);
+        assert.equal(row.presentation,'layered');assert.equal(row.layers.length,2);
+        assert.ok(row.layers[1].text.includes('说明正文'));
+        for(let pass=0;pass<3;pass++)for(let lane=0;lane<2;lane++){
+            const origin=lane*40,result=r.auxiliary(p,lane,{origin,measuring,measuredSecondaryBounds:[0,32]});
+            assert.equal(result.primaryY,origin,'owned body must retain the same native baseline contract as header');
+        }
+        assert.equal(r.newline(p,100),106,'the user line gap is consumed by the native newline hook');
+        for(const mode of ['primary','secondary']){
+            r.api.select(mode,true);r.update(p);assert.equal(r.newline(p,100),100);
+        }
+        r.api.disable();r.update(p);assert.equal(p.text(),source);assert.equal(r.api.status().failed,false);
+    }
+});
+
 test('compact tutorial finalizes its actual rich text before measurement without adding a second reserve',()=>{
     // EV_08_01_07_END/called/7: use the actual source, not placeholder lines.
     // Historical 0.3.33 glyph coordinates are documented separately. Adding
@@ -2129,6 +2546,30 @@ test('quest paragraphs reflow non-primary language slots before per-line renderi
     assert.deepEqual(labels.map(label=>label.text()),expectedSecondary);
     r.api.select('annotation',true);for(const label of labels)r.update(label);
     assert.ok(labels.every(label=>label.text()!==label.owned.text||label.text().includes('<R>')));
+    assert.equal(r.api.status().failed,false);
+});
+
+test('physical quest scope keeps complete member lines and resolves the FC text conflict only in the quest builder',()=>{
+    const rows=JSON.parse(fs.readFileSync(path.join(__dirname,'fixtures/r32-quest-physical-paragraphs.json'),'utf8')).entries;
+    const row=rows.find(row=>row.texts.en.startsWith('・ The social studies classroom'));
+    const engine=rows.find(row=>row.texts.en.startsWith('★ Received the internal combustion')&&row.key.startsWith('table/t_quest.tbl/'));
+    assert(row&&engine);
+    const pairs=Object.fromEntries([row,engine].map(entry=>[entry.texts.en,[entry.texts.en,entry.texts['zh-Hans']]]));
+    const r=makeRuntime(null,true);
+    r.api.load({pairs:{},plain_pairs:{},scoped:{quest_notes:{pairs,plain_pairs:pairs}}},'secondary',true,1);
+    const lines=row.texts.en.split('\n'),frame=r.questBegin(31);r.questParagraph(row.texts.en,31);
+    const labels=lines.map((line,index)=>{const p=r.label(0xed000+index*0x100,'');r.questLine(p,line,31);return p;});
+    r.questEnd(frame,31);
+    assert.deepEqual(labels.map(p=>p.text()),['·解放了社会科教室！','','　●罗基克','　●亚吉鲁','　●莫妮卡','　●莎玛…etc']);
+    r.api.select('primary',true);labels.forEach(p=>r.update(p));
+    assert.deepEqual(labels.map(p=>p.text()),lines,'source primary remains byte-exact after a mode switch');
+    const outside=r.label(0xee000,'');r.externalSet(outside,engine.texts.en);
+    assert.equal(outside.text(),engine.texts.en,'unowned full English conflict does not gain a quest identity');
+    r.api.select('secondary',true);
+    const engineFrame=r.questBegin(32);r.questParagraph(engine.texts.en,32);
+    const engineLabels=engine.texts.en.split('\n').map((line,index)=>{const p=r.label(0xef000+index*0x100,'');r.questLine(p,line,32);return p;});
+    r.questEnd(engineFrame,32);
+    assert.deepEqual(engineLabels.map(p=>p.text()),[engine.texts['zh-Hans'],'']);
     assert.equal(r.api.status().failed,false);
 });
 
@@ -2425,6 +2866,34 @@ test('restored multi-part history requires one marker and intact bytes for every
     assert.equal(row.text(),source,'different physical markers cannot be concatenated into one call');
     r.logRestore('第二行',8,'动态角色',700);r.logShow(row,7,source+'changed',[7,8]);
     assert.equal(row.text(),source+'changed','full source must match the persisted parts');
+    assert.equal(r.api.status().failed,false);
+});
+
+test('rejected dynamic controls cannot fall back to a global translation in labels or history',()=>{
+    const {scriptSha256}=require('../sora_bilingual/game/scripts/runtime_identity.js');
+    const r=makeRuntime(),data=Buffer.alloc(128),source='<#E_9><K3>Literal body';
+    data.write('#scp');data.writeUInt32LE(24,4);data.writeUInt32LE(1,8);
+    const signature=Buffer.concat([data.subarray(0,24),data.subarray(24,56),data.subarray(24,56)]).toString('hex');
+    const key='script/scene.dat/Talk/called/501/control_variant:finite/assembled_dialogue';
+    const site={record:501,group:5,command:0,token:'1,?,36',controlSlot:1,
+        controlVariants:[{token:3221225500,source}]};
+    const manifest={[signature]:[{size:128,sha256:scriptSha256(data),functions:['Talk'],
+        callRecords:{Talk:{'5:0:1,?,36':[501]}},callSites:{Talk:{100:site}},
+        recordVariants:{Talk:{501:{'<K3>Literal body':key}}}}]};
+    const unexpected=source+' runtime actor';
+    const pairs={[source]:[source,'WRONG global'],[unexpected]:[unexpected,'WRONG dynamic fallback']};
+    r.api.load({pairs,plain_pairs:pairs,script_identities:{manifest,source_language:'en',
+        record_pairs:{[key]:0},record_pair_values:[[source,'<#E_9><K3>Official translation']]}},'secondary',true,1);
+    const live=r.label(0xab00,''),log=r.label(0xac00,'');
+    r.dialogueSet(live,source,data,'Talk',[1,3221225500,36],7,{pc:100,group:5,command:0});
+    assert.equal(live.text(),'<#E_9><K3>Official translation');
+    for(const [text,token,pc] of [[source,17,100],[source,3221225500,101],[unexpected,3221225500,100]]) {
+        r.dialogueSet(live,text,data,'Talk',[1,token,36],8,{pc,group:5,command:0});
+        assert.equal(live.text(),text,'strict rejected invocation remains source text');
+        r.logShow(log,8,text);assert.equal(log.text(),text,'history cannot resurrect generic fallback');
+        r.fontReload(); // Measure fresh labels instead of a cached height.
+        assert.equal(r.logMeasure([['',text,8]],{width:8}).bodies[0],text,'narrow hidden measurement agrees');
+    }
     assert.equal(r.api.status().failed,false);
 });
 
@@ -2793,6 +3262,69 @@ test('animated layered rebuilds keep scale stable while reveal progress changes'
     assert.equal(expected.get(1).colors[1][3],0);
     assert.ok(expected.get(3).colors[1][3]>.89);
     assert.equal(r.api.status().failed,false,r.api.status().failureReason);
+});
+
+test('admitted detail first header rises by measured glyph gap and preserves body baseline',()=>{
+    const fixture=JSON.parse(fs.readFileSync(path.join(__dirname,'fixtures/r22-native-ruby-detail.json'),'utf8'));
+    const source='<c698>HP Regen</C>\nSkill description';
+    for(const size of [14,32,72])for(const scale of [.7,.85,1])for(const gap of [0,6,13])for(const ruby of [.7,.95,1.4]) {
+        const r=makeRuntime(),p=r.label(0xcff0,source,0,size);
+        r.api.load(fixture.model,'annotation',true,scale,{line_gap:gap,ruby_scale:ruby,ruby_gap:0});r.update(p);
+        const h=size*scale,s=size*.4*ruby,bodyY=h*2,headerY=h;
+        // Baseline input deliberately reproduces the reported contact:
+        // header bottom == body annotation top before correction.
+        const quads=[[20,0,s,s],[30,headerY,h,h],[40,headerY,h*.5,h*.5,1],
+                     [20,0,s,s],[30,bodyY,h,h]];
+        let expected;
+        for(let pass=0;pass<3;pass++) {
+            p.glyphs=0;r.auxiliary(p,0,{glyphQuads:quads,secondaryCount:1});
+            p.glyphs=3;r.newline(p,100);
+            r.auxiliary(p,1,{glyphQuads:quads,secondaryCount:4});r.newline(p,140);r.finishLayout(p);
+            const g=r.glyphGeometry(p),headerBottom=Math.max(g[1][1]+g[1][3]/2,g[2][1]+g[2][3]/2),bodyTop=g[3][1]-g[3][3]/2;
+            const headerTop=Math.min(...g.slice(0,3).map(q=>q[1]-q[3]/2));
+            const detailGap=gap*g[3][3]/(headerBottom-headerTop+g[3][3]);
+            assert.ok(headerBottom<=bodyTop-detailGap+.0001,'compact header clearance must follow measured glyph heights: '+JSON.stringify({size,scale,gap,ruby,detailGap,g,status:r.api.status()}));
+            assert.equal(g[4][1],bodyY,'body primary baseline remains native');
+            assert.ok(g[1][1]<=headerY+.0001,'the header moves upward, never the body downward');
+            if(gap>0||s>h)assert.ok(g[1][1]<headerY,'reported collision causes real header lift');
+            expected??=g;assert.deepEqual(g,expected,'fresh parser passes must not accumulate the lift');
+            r.finishLayout(p);assert.deepEqual(r.glyphGeometry(p),g,'layout revisit is idempotent');
+        }
+        for(const mode of ['primary','secondary']){r.api.select(mode,true);r.update(p);assert.equal(r.newline(p,100),100);}
+        r.api.disable();r.update(p);assert.equal(p.text(),source);assert.equal(r.newline(p,100),100);
+        assert.equal(r.api.status().failed,false,r.api.status().failureReason);
+    }
+});
+
+test('independent effect annotations share one native line without sharing anchors',()=>{
+    const rows=[['HP Regen',['HP徐々回復','逐渐回复HP']],['CP Regen',['CP徐々上昇','CP逐渐上升']],
+        ['Remove Debuff',['デバフ解除','解除减益']]];
+    const source=rows.map(([s])=>s).join(', ')+'\nDescription';
+    const details={pairs:{Description:['Description','Description']},plain_pairs:{Description:['Description','Description']},
+        detail_join:[', ','／','／'],detail_effect_units:rows.map(([s,pair],i)=>({source:s,pair,
+            ids:['table/t_itemhelp.tbl/SkillEffectHelpData/'+i+'/name'],pattern:s}))};
+    const model={pairs:{},plain_pairs:{},details,detail_sources:['Description']};
+    for(const flags of [65,4])for(const spacing of [80,160]) {
+        const r=makeRuntime();r.api.load(model,'annotation',true,.85,{secondary_opacity:.9});
+        const label=r.label(0xce00,'');label.flags=flags;label.revealUnits=100;r.externalSet(label,source);
+        assert.equal(r.api.snapshot().at(-1).layers.length,3);
+        const quads=rows.flatMap((_,i)=>[[20+i*spacing,10,14,14],[20+i*spacing,30,20,20]]);
+        let expected;
+        for(let frame=0;frame<50;frame++) {
+            for(let i=0;i<3;i++) {
+                label.glyphs=i*2;
+                r.auxiliary(label,i,{lineIndex:0,glyphQuads:quads,secondaryCount:i*2+1,
+                    unitStart:i*10,primaryUnits:10});
+            }
+            label.glyphs=6;r.newline(label,100);r.finishLayout(label);
+            const actual=r.glyphGeometry(label);expected??=actual;
+            assert.deepEqual(actual,expected,'same-line lanes must not accumulate scaling');
+            assert.equal(r.laneCount(label),3);
+            for(let i=0;i<3;i++)assert.ok(Math.abs((actual[i*2][0]-actual[i*2][2]/2)-
+                (actual[i*2+1][0]-actual[i*2+1][2]/2))<.001,'each secondary aligns with its own primary');
+        }
+        assert.equal(r.api.status().failed,false,r.api.status().failureReason);
+    }
 });
 
 test('log descriptor cache has bounded size and keeps native fallback for invalid metrics',()=>{

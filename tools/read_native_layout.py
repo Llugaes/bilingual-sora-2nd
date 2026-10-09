@@ -46,6 +46,9 @@ NODE_CHILDREN_COUNT = 0x230
 NODE_MATRIX = 0x08
 
 LABEL_FLAGS = 0x2E8
+# Native translationKey reads this field, even when a dynamic widget retains
+# a stale layout key. Emit the raw hash; it is not proof of a text identity.
+LABEL_TEXT_KEY_HASH = 0x2EC
 LABEL_SIZE = 0x304
 LABEL_TEXT = 0x318
 LABEL_GLYPH_COUNT = 0x330
@@ -248,6 +251,35 @@ class Collector:
         self.args = args
         self.errors: list[dict[str, str]] = []
         self.source_re = re.compile(args.source_regex) if args.source_regex else None
+        self.node_types: dict[int, dict[str, Any]] = {}
+        self.node_inventory_omitted_visits = 0
+
+    def record_node_type(self, node: int, vtable: int, path: str) -> None:
+        """Inventory traversed base nodes without reading unknown label fields."""
+        if not self.args.include_node_inventory:
+            return
+        if vtable not in self.node_types:
+            if len(self.node_types) >= self.args.max_node_types:
+                if self.node_inventory_omitted_visits == 0:
+                    self.note_error(
+                        "node_type_inventory", ReadError("type cap reached; inventory truncated")
+                    )
+                self.node_inventory_omitted_visits += 1
+                return
+            self.node_types[vtable] = {
+                "vtable": hx(vtable),
+                "vtable_delta_from_module_base": vtable - self.base,
+                "text_label_fields_proven": vtable == self.base + LABEL_VTABLE_RVA,
+                "status": "verified_text_label"
+                if vtable == self.base + LABEL_VTABLE_RVA
+                else "unclassified_base_node",
+                "occurrences": 0,
+                "examples": [],
+            }
+        row = self.node_types[vtable]
+        row["occurrences"] += 1
+        if len(row["examples"]) < self.args.max_node_examples:
+            row["examples"].append({"ptr": hx(node), "path": path})
 
     def note_error(self, where: str, error: Exception) -> None:
         self.errors.append({"where": where, "error": str(error)})
@@ -434,6 +466,9 @@ class Collector:
                     node + 0x2D8, raw_scalars(self.remote, node + 0x2D8, 0x40)
                 ),
                 "flags": field(node + LABEL_FLAGS, self.remote.u32(node + LABEL_FLAGS)),
+                "text_key_hash_raw_0x2ec": field(
+                    node + LABEL_TEXT_KEY_HASH, self.remote.u32(node + LABEL_TEXT_KEY_HASH)
+                ),
                 "size": field(node + LABEL_SIZE, self.remote.u32(node + LABEL_SIZE)),
                 "text_ptr": field(node + LABEL_TEXT, hx(text_ptr)),
                 "text": text,
@@ -488,6 +523,7 @@ class Collector:
                 component = name.replace("/", "\\/") if name else f"@{node:016X}"
                 path = f"{parent_path}/{component}" if parent_path else component
                 vtable = self.remote.u64(node)
+                self.record_node_type(node, vtable, path)
                 if vtable == self.base + LABEL_VTABLE_RVA:
                     label = self.snapshot_label(node, path, parent, name_ptr, name)
                     if label is not None:
@@ -627,9 +663,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-lines-per-label", type=int, default=2048)
     parser.add_argument("--max-line-breaks", type=int, default=8)
     parser.add_argument("--max-parent-depth", type=int, default=32)
+    parser.add_argument(
+        "--include-node-inventory",
+        action="store_true",
+        help="inventory traversed node types; never treat unclassified types as labels",
+    )
+    parser.add_argument("--max-node-types", type=int, default=512)
+    parser.add_argument("--max-node-examples", type=int, default=8)
     parser.add_argument("--max-string-bytes", type=int, default=32768)
     parser.add_argument("--out", type=Path, help="JSON output path; defaults under generated/")
     args = parser.parse_args()
+    if args.max_node_types <= 0 or args.max_node_examples <= 0:
+        parser.error("node inventory budgets must be positive")
     if args.exe is None:
         parser.error("--exe is required unless SORA_GAME_EXE is set")
     return args
@@ -642,7 +687,16 @@ def main() -> int:
     started = time.perf_counter()
     with RemoteProcess(args.pid) as remote:
         base, image_size, module_path = remote.module(args.exe)
-        result = Collector(remote, base, args).collect()
+        collector = Collector(remote, base, args)
+        result = collector.collect()
+        if args.include_node_inventory:
+            result["node_type_inventory"] = {
+                "types": list(collector.node_types.values()),
+                "omitted_visits_after_type_budget": collector.node_inventory_omitted_visits,
+                "occurrence_unit": "node visits across layouts; shared nodes may recur",
+                "unknown_types_are_not_known_text_or_untranslated_text": True,
+                "actual_hook_coverage": "pending; type inventory does not prove a setter or formatter route",
+            }
     result["pid"] = args.pid
     result["module"] = {"path": module_path, "image_size": image_size}
     result["captured_at_utc"] = dt.datetime.now(dt.timezone.utc).isoformat()

@@ -172,7 +172,10 @@ class LoadingTests(unittest.TestCase):
             root = Path(tmp)
             (root / "generated").mkdir()
             control = root / "control.json"
-            write_config({}, control)
+            write_config(
+                {"primary": "zh-Hans", "secondary": "ja", "experimental_primary": True},
+                control,
+            )
             native = FakeNative()
             written = []
 
@@ -283,7 +286,8 @@ class LoadingTests(unittest.TestCase):
             root = Path(tmp)
             (root / "generated").mkdir()
             control = root / "control.json"
-            write_config({}, control)
+            # Manual target-language edits are permitted only in Experimental.
+            write_config({"experimental_primary": True}, control)
             native = FakeNative()
 
             ready_configs = []
@@ -328,7 +332,8 @@ class LoadingTests(unittest.TestCase):
                 probe.run(root)
             self.assertEqual(native.loads, [(None, "prepared-model.json")])
             self.assertEqual(ready_configs[0]["game_language"], "en")
-            self.assertEqual(read_config(control)["game_language"], "zh-Hans")
+            self.assertEqual(read_config(control)["game_language"], "en")
+            self.assertEqual(read_config(control)["primary"], "fr")
 
     def test_source_detection_rereads_explicit_pair_before_consuming_new_user_defaults(self):
         from sora_bilingual.game import native_probe as probe
@@ -367,15 +372,15 @@ class LoadingTests(unittest.TestCase):
             control = root / "control.json"
             write_config(normalize_config({LANGUAGE_DEFAULTS_PENDING: True}), control)
             native = FakeNative()
-            reads = [0]
 
-            def fresh_read():
-                reads[0] += 1
-                if reads[0] == 2:
-                    # This represents a display-language selection made while
-                    # the source table probe was waiting.
-                    write_config(normalize_config({"primary": "fr", "secondary": "de"}), control)
-                return read_config(control)
+            def detected(*_args, **_kwargs):
+                from sora_bilingual.app.native_settings import update_control
+
+                # Selection during the source probe precedes its transaction.
+                update_control(
+                    {"primary": "fr", "secondary": "de", "experimental_primary": True}, control
+                )
+                return SimpleNamespace(language="en", reason="matched")
 
             with (
                 patch.multiple(
@@ -387,10 +392,8 @@ class LoadingTests(unittest.TestCase):
                     InputManager=FakeInput,
                     prepare_fresh=lambda *_, **kw: {"path": "prepared-model.json", "coverage": {}},
                     native_report=lambda _: {"text_table_global": 0x100},
-                    detect_current_language=lambda *_args, **_kwargs: SimpleNamespace(
-                        language="en", reason="matched"
-                    ),
-                    read_config=fresh_read,
+                    detect_current_language=detected,
+                    read_config=lambda: read_config(control),
                     write_config=lambda value, _path=None: write_config(value, control),
                     write_telemetry=lambda *_: True,
                     foreground_rect=lambda _: None,
@@ -408,7 +411,6 @@ class LoadingTests(unittest.TestCase):
                 patch("sora_bilingual.game.install.remember_game"),
             ):
                 probe.run(root)
-            self.assertGreaterEqual(reads[0], 2)
             self.assertEqual((native.config["primary"], native.config["secondary"]), ("fr", "de"))
             self.assertNotIn(LANGUAGE_DEFAULTS_PENDING, read_config(control))
 

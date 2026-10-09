@@ -6,6 +6,32 @@ const {scriptSha256,ScriptIdentities,TableIdentities,LogIdentities}=require('../
 const {RuntimeText}=require('../sora_bilingual/game/scripts/runtime_text.js');
 const model=(a,b)=>({pairs:{[a]:[a,b]},plain_pairs:{[a]:[a,b]},numeric:[]});
 
+test('finite control dialogue requires its actual PC, control token and complete source',()=>{
+    const bytes=Buffer.alloc(64,19),hash=scriptSha256(bytes),key='script/a.dat/Talk/called/501/control_variant:k3/assembled_dialogue';
+    const source='<#E_9><K3>Body',token='1,3221225500,3221225510,3221225520';
+    const record={record:501,group:5,command:0,token:'1,3221225500,?,3221225520',
+        controlSlot:2,controlVariants:[{token:3221225510,source}]};
+    const candidate={size:64,sha256:hash,functions:['Talk'],callSites:{Talk:{36:record}},
+        callRecords:{Talk:{['5:0:'+record.token]:[501]}},recordVariants:{Talk:{501:{'<K3>Body':key}}}};
+    const ids=new ScriptIdentities({source_language:'en',manifest:{h:[candidate]},
+        record_pairs:{[key]:0},record_pair_values:[[source,'<#E_9><K3>本文']]});
+    const site={pc:36,group:5,command:0};
+    const identity=ids.capture('h',()=>bytes,'Talk',token,site,source);
+    assert.equal(identity.recordKey,key);assert.equal(identity.controlDialogue,true);
+    assert.equal(new RuntimeText(ids.lookup(identity).model).translate(source,'secondary'),'<#E_9><K3>本文');
+    for(const [args,location,text] of [
+        [token,{...site,pc:40},source],
+        [token.replace('3221225510','1073741841'),site,source],
+        [token,site,'<#E_9><K5>Body'],
+        [token,site,'<#E_9><K3>Runtime actor Body'],
+    ]) {
+        const rejected=ids.capture('h',()=>bytes,'Talk',args,location,text);
+        assert.equal(rejected.rejection,'unproven_control_dialogue_output');
+        assert.equal(rejected.callId,501,'retain proved record identity to block generic fallback');
+        assert.equal(ids.lookup(rejected),null);
+    }
+});
+
 test('dynamic item identity preserves distinct outer calls through history and locale reload',()=>{
     const bytes=Buffer.alloc(64,17),hash=scriptSha256(bytes),helper='ITEM_ADD_MESSAGE2_EV';
     const tokens=['1073807359,1073741840,3222711866,1073741841,1073742044,3222711862',
@@ -294,6 +320,37 @@ function tableFixture() {
     return {data,tables,pointer:new P(base+offset)};
 }
 
+test('script pointer trace preserves exact blob validation and ambiguity',()=>{
+    const data=Buffer.alloc(96,7),offset=48,sha256=scriptSha256(data);
+    class P {
+        constructor(at=offset){this.at=at;}
+        add(n){return new P(this.at+n);}
+        toString(){return String(this.at);}
+        readByteArray(n){if(this.at<0||this.at+n>data.length)throw Error('unmapped');return data.subarray(this.at,this.at+n);}
+    }
+    const candidate={size:data.length,offset,sha256,header:data.subarray(0,24).toString('hex'),key:'menu/1'};
+    const input={pointers:{text:[candidate]},pointer_models:{'menu/1':{source:'text',model:model('text','first')}}};
+    const ids=new ScriptIdentities(input),trace=[];
+    assert.equal(ids.pointerSelect(new P(),'text',e=>trace.push(e)).key,'menu/1');
+    assert.equal(trace.at(-1).stage,'selected');assert.equal(trace[0].offset,offset);
+    const badTrace=()=>{throw Error('diagnostic failure');};
+    assert.equal(ids.pointerSelect(new P(),'text',badTrace).key,'menu/1');
+    data[60]++;trace.length=0;
+    assert.equal(ids.pointerSelect(new P(),'text',e=>trace.push(e)),null);
+    assert.equal(trace[0].stage,'script_hash_mismatch');data[60]--;
+    data[0]++;trace.length=0;ids.pointerSelect(new P(),'text',e=>trace.push(e));
+    assert.equal(trace[0].stage,'header_mismatch');data[0]--;
+    input.pointers.text.push({...candidate,key:'menu/2'});
+    input.pointer_models['menu/2']={source:'text',model:model('text','second')};trace.length=0;
+    assert.equal(ids.pointerSelect(new P(),'text',e=>trace.push(e)),null);
+    assert.equal(trace.at(-1).stage,'ambiguous_translation');
+    assert.equal(ids.pointerSelect(new P(),'text',badTrace),null);
+    assert.equal(ids.pointerSelect(new P(),'text'),null);
+    trace.length=0;ids.pointerSelect(new P(),'missing',e=>trace.push(e));
+    assert.equal(trace[0].stage,'no_source_candidates');
+    assert.equal(ids.pointerSelect(new P(),'missing',badTrace),null);
+});
+
 test('table identity validates header, pool, scalar record and live string pointer',()=>{
     const f=tableFixture(),ids=new TableIdentities(f.tables);
     assert.equal(ids.select(f.pointer,'text').key,'item/42');
@@ -306,4 +363,36 @@ test('shared table string pointers with different localisations remain ambiguous
     const f=tableFixture();f.tables.sources.text.push({...f.tables.sources.text[0],key:'item/43'});
     f.tables.models['item/43']={source:'text',model:model('text','別訳')};
     assert.equal(new TableIdentities(f.tables).select(f.pointer,'text'),null);
+});
+
+test('optional identity trace reports first failed validation without changing selection',()=>{
+    for(const [stage,change] of [
+        ['header_mismatch',f=>{f.data[0]=0;}],
+        ['pool_hash_mismatch',f=>{f.data[110]=1;}],
+        ['field_pointer_mismatch',f=>{f.data.writeBigUInt64LE(1n,24);} ],
+        ['record_mismatch',f=>{f.data.writeUInt32LE(99,16);} ],
+        ['unreadable_pointer',f=>{f.pointer=f.pointer.add(512);} ],
+    ]){
+        const f=tableFixture();change(f);const ids=new TableIdentities(f.tables),trace=[];
+        assert.equal(ids.select(f.pointer,'text',event=>trace.push(event)),null);
+        assert.equal(trace[0].stage,stage);assert.equal(trace[0].key,'item/42');
+        assert.equal(ids.select(f.pointer,'text'),null);
+    }
+    const f=tableFixture(),trace=[];const ids=new TableIdentities(f.tables);
+    assert.equal(ids.select(f.pointer,'text',event=>trace.push(event)).key,'item/42');
+    assert.equal(trace.at(-1).stage,'selected');
+    f.tables.sources.text.push({...f.tables.sources.text[0],key:'item/43'});
+    f.tables.models['item/43']={source:'text',model:model('text','別訳')};trace.length=0;
+    assert.equal(ids.select(f.pointer,'text',event=>trace.push(event)),null);
+    assert.equal(trace.at(-1).stage,'ambiguous_translation');
+});
+
+test('throwing table trace cannot change selected, rejected or ambiguous business outcomes',()=>{
+    const f=tableFixture(),ids=new TableIdentities(f.tables),badTrace=()=>{throw Error('diagnostic failure');};
+    assert.equal(ids.select(f.pointer,'text',badTrace).key,'item/42');
+    f.data[0]=0;assert.equal(ids.select(f.pointer,'text',badTrace),null);f.data[0]='#'.charCodeAt(0);
+    f.tables.sources.text.push({...f.tables.sources.text[0],key:'item/43'});
+    f.tables.models['item/43']={source:'text',model:model('text','別訳')};
+    assert.equal(ids.select(f.pointer,'text',badTrace),null);
+    assert.equal(ids.select(f.pointer,'missing',badTrace),null);
 });

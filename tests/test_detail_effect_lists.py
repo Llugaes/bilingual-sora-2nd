@@ -84,6 +84,123 @@ def phrase(language, members, *, trailing=False):
 
 
 class DetailEffectListTests(unittest.TestCase):
+    def test_description_reflow_cannot_borrow_text_from_the_effect_header(self):
+        entries = fixture() + [
+            {
+                "key": "table/t_skill.tbl/multiline/description",
+                "texts": {
+                    "en": "<C9>A very long official description line about an effect\nAnother long description line that keeps the effect explanation intact.",
+                    "ja": "<C9>効果の説明。",
+                },
+            },
+            {
+                "key": "table/t_itemhelp.tbl/generated/typed/turn_stat_inline_icon/test",
+                "texts": {
+                    "en": "<c698>STR<I270> (%d turns)</C>",
+                    "ja": "<c698>%dターンSTR<I270></C>",
+                },
+                "item_help_contract": {
+                    "family": "turn_stat_inline_icon",
+                    "inline_icons": ["<I270>"],
+                },
+                "detail_inline_icon": True,
+                "detail_authority": True,
+                "detail_only": True,
+            },
+        ]
+        translator = MenuTranslator(entries, "en", "ja", "en")
+        header = "<c698>STR<I270> (4 turns)</C><c698>, Side Attack Bonus</C>"
+        body = entries[-2]["texts"]["en"]
+        source = header + "\n<C0>" + body
+        expected_header = "<c698>4ターンSTR<I270></C><c698>／側面特効</C>"
+        self.assertEqual(
+            translator.translate(source, "secondary"), expected_header + "\n<C0><C9>効果の説明。"
+        )
+        plan = translator.render(source)
+        effects = [layer for layer in plan["layers"] if layer.get("semantic_ids")]
+        self.assertEqual(len(effects), 2)
+        self.assertEqual(effects[0]["primary"], "<c698>STR<I270> (4 turns)</C>")
+        self.assertEqual(effects[0]["text"], "<c698>4ターンSTR<I270></C>")
+        self.assertEqual(effects[1]["text"], "<c698>側面特効</C>")
+        self.assertEqual(plan["text"].replace("<R></R_>", ""), source)
+        body_layers = [layer for layer in plan["layers"] if not layer.get("semantic_ids")]
+        self.assertNotIn("側面特効", "".join(l["text"] for l in body_layers))
+        self.assertTrue(all("効果の説明" not in l["text"] for l in effects))
+        runner = r"""
+const {RuntimeText}=require('./sora_bilingual/game/scripts/runtime_text.js'),assert=require('node:assert/strict');
+const d=JSON.parse(require('fs').readFileSync(0,'utf8'));
+assert.deepEqual(new RuntimeText(d.model).render(d.source),d.plan);
+"""
+        subprocess.run(
+            ["node", "-e", runner],
+            cwd=ROOT,
+            check=True,
+            input=json.dumps(
+                {"model": translator.runtime_model(), "source": source, "plan": plan}
+            ).encode(),
+        )
+
+    def test_list_labels_are_independent_of_constructor_parameter_roles(self):
+        # Actual field collision: effect name/stat versus another row's
+        # turn-description parameter. Neither is global text authority.
+        entries = fixture() + [
+            {
+                "key": "table/t_itemhelp.tbl/SkillEffectHelpData/hp/name",
+                "texts": {"en": "HP Regen", "ja": "HP徐々回復"},
+            },
+            {
+                "key": "table/t_itemhelp.tbl/SkillEffectHelpData/hp/stat",
+                "texts": {"en": "HP Regen", "ja": "HP徐々回復"},
+            },
+            {
+                "key": "table/t_itemhelp.tbl/SkillEffectHelpData/action/turns",
+                "texts": {"en": "HP Regen", "ja": "行動後HP回復"},
+            },
+        ]
+        translator = MenuTranslator(entries, "en", "ja", "en")
+        self.assertNotIn("HP Regen", translator.pairs)
+        self.assertEqual(
+            translator.details._detail_join_pair(", HP Regen, Side Attack Bonus"),
+            (", HP Regen, Side Attack Bonus", "／HP徐々回復／側面特効"),
+        )
+        source = "<c698>, HP Regen, Side Attack Bonus</C>\n<C0>Description en"
+        expected = "<c698>／HP徐々回復／側面特効</C>\n<C0>Description ja"
+        self.assertEqual(translator.translate(source, "secondary"), expected)
+        self.assertEqual(translator.translate("HP Regen", "secondary"), "HP Regen")
+        for extra in (
+            {
+                "key": "table/t_itemhelp.tbl/SkillEffectHelpData/other/name",
+                "texts": {"en": "HP Regen", "ja": "Other effect"},
+            },
+            {
+                "key": "table/t_itemhelp.tbl/SkillEffectHelpData/missing/name",
+                "texts": {"en": "HP Regen"},
+            },
+        ):
+            rejected = MenuTranslator(entries + [extra], "en", "ja", "en")
+            self.assertIsNone(rejected.details._detail_join_pair(", HP Regen, Side Attack Bonus"))
+        runner = r"""
+const {RuntimeText}=require('./sora_bilingual/game/scripts/runtime_text.js');
+const assert=require('node:assert/strict'),x=JSON.parse(require('fs').readFileSync(0,'utf8'));
+const rt=new RuntimeText(x.model);
+assert.equal(rt.translate(x.source,'secondary'),x.expected);
+assert.equal(rt.translate('HP Regen','secondary'),'HP Regen');
+assert.deepEqual(rt.render(x.source),x.render);
+"""
+        subprocess.run(
+            ["node", "-e", runner],
+            cwd=ROOT,
+            check=True,
+            input=json.dumps(
+                dict(
+                    model=translator.runtime_model(),
+                    source=source,
+                    expected=expected,
+                    render=translator.render(source),
+                )
+            ).encode(),
+        )
+
     def test_rejected_format_shapes_remain_closed_in_complete_headers(self):
         probes = (
             ("90%% chance", "90%の確率", "%d%% chance", "%d%の確率", "90% chance"),
@@ -396,6 +513,24 @@ assert.equal(new RuntimeText(data.model).translate(data.source,'secondary'),data
         ]
         translator = MenuTranslator(entries, "en", "ja", "en")
         source = "<c698>[CP+30, Side Attack Bonus, Back Attack Bonus]</C>\n<C0>Description en"
+        # A raw printf label alone cannot prove its native parameter type.
+        # Keep that original fixture as a refusal regression; the positive
+        # uses actual record126/type1 compiled from the raw resource fixture.
+        self.assertEqual(
+            translator.translate(source, "secondary"),
+            source.split("\n")[0] + "\n<C0>Description ja",
+        )
+        from test_r25_producer_contracts import build
+
+        _raw, grammar, _entries, _fields, _metadata = build()
+        typed = next(
+            e
+            for e in grammar["detail_entries"]
+            if e.get("item_help_contract", {}).get("family") == "numeric_single"
+            and e["item_help_contract"]["record_ids"] == [126]
+        )
+        entries.append(typed)
+        translator = MenuTranslator(entries, "en", "ja", "en")
         expected = "<c698>[CP+30／側面特効／背面特効]</C>\n<C0>Description ja"
         self.assertEqual(translator.translate(source, "secondary"), expected)
         reverse = MenuTranslator(entries, "ja", "en", "ja")
@@ -403,8 +538,12 @@ assert.equal(new RuntimeText(data.model).translate(data.source,'secondary'),data
         header = "<c698>Range ja／側面特効</C>\n<C0>Description ja"
         self.assertEqual(
             reverse.translate(header, "secondary"),
-            "<c698>Range en／Side Attack Bonus</C>\n<C0>Description en",
+            # A range label beside an effect does not prove a range-header
+            # constructor. Each standalone complete range label still works.
+            "<c698>Range ja／側面特効</C>\n<C0>Description en",
         )
+
+        self.assertEqual(reverse.details.translate("Range ja", "secondary"), "Range en")
 
     def test_all_language_pairs_lists_and_final_annotation(self):
         batches = []

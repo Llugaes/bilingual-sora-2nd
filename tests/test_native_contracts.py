@@ -6,11 +6,143 @@ import hashlib
 import copy
 import struct
 import unittest
+from unittest import mock
 
 import pefile
 
 from sora_bilingual.game.exe_compatibility import ExecutableCompatibilityError
 from sora_bilingual.game.native_contracts import resolve_native_contracts
+
+
+class TemplateIndirectDependencyTests(unittest.TestCase):
+    def resolve(self, raw, contract):
+        with pefile.PE(data=bytes(raw), fast_load=True) as pe:
+            return resolve_native_contracts(pe, contract)
+
+    def test_invalid_leaf_data_dependency_terminates_with_its_root_failure(self):
+        from sora_bilingual.game import native_contracts
+
+        raw = _pe_raw()
+        raw[_offset(0x1050) : _offset(0x1050) + 8] = b"\x48\x8d\x05\0\0\0\0\xc3"
+        _write_rel32(raw, 0x1053, 0x1057, 0x2200)
+        payload = bytes(range(16))
+        raw[_offset(0x2200) : _offset(0x2200) + 16] = payload
+        contract = fixture_contract(raw)
+        leaf = contract["functions"]["leaf"]["variants"][0]
+        leaf.update(
+            masks=[[3, 4]],
+            sha256=_masked_hash(raw, 0x1050, 8, [[3, 4]]),
+            data_refs=[
+                {
+                    "displacement": [3, 4],
+                    "next": 7,
+                    "size": 16,
+                    "sha256": hashlib.sha256(payload).hexdigest(),
+                }
+            ],
+        )
+        self.resolve(raw, contract)
+        raw[_offset(0x2200) + 7] ^= 1
+        derive = native_contracts._derive_leaf_candidates
+        rounds = 0
+
+        def bounded_derive(*args, **kwargs):
+            nonlocal rounds
+            rounds += 1
+            if rounds > 4:
+                self.fail("Rejected leaf dependency was repeatedly reintroduced")
+            return derive(*args, **kwargs)
+
+        with mock.patch.object(native_contracts, "_derive_leaf_candidates", bounded_derive):
+            with self.assertRaisesRegex(ExecutableCompatibilityError, r"leaf.*data_refs"):
+                self.resolve(raw, contract)
+
+    def test_readonly_data_operand_checks_content_bounds_and_permissions(self):
+        raw = _pe_raw(state_rva=0x2200)
+        raw[_offset(0x2200) : _offset(0x2200) + 16] = bytes(range(16))
+        contract = fixture_contract(raw)
+        contract["global_specs"]["state"]["writable"] = False
+        ref = {
+            "displacement": [8, 4],
+            "next": 12,
+            "size": 16,
+            "sha256": hashlib.sha256(bytes(range(16))).hexdigest(),
+        }
+        contract["functions"]["main"]["variants"][0]["data_refs"] = [ref]
+        self.resolve(raw, contract)
+        changed = raw.copy()
+        changed[_offset(0x2200) + 7] ^= 1
+        with self.assertRaisesRegex(ExecutableCompatibilityError, "data"):
+            self.resolve(changed, contract)
+        for value in (0, -1, 65537, True):
+            bad = copy.deepcopy(contract)
+            bad["functions"]["main"]["variants"][0]["data_refs"][0]["size"] = value
+            with self.assertRaises(ExecutableCompatibilityError):
+                self.resolve(raw, bad)
+        writable = raw.copy()
+        struct.pack_into("<I", writable, 0x188 + 40 + 36, 0xC0000040)
+        with self.assertRaisesRegex(ExecutableCompatibilityError, "data"):
+            self.resolve(writable, contract)
+        outside = raw.copy()
+        _write_rel32(outside, 0x1008, 0x100C, 0x23F8)
+        with self.assertRaisesRegex(ExecutableCompatibilityError, "data"):
+            self.resolve(outside, contract)
+
+    def test_iat_operand_is_bound_to_its_named_import(self):
+        raw = _pe_raw(state_rva=0x22A0)
+        struct.pack_into("<II", raw, 0x98 + 112 + 8, 0x2200, 40)
+        struct.pack_into("<IIIII", raw, _offset(0x2200), 0x2280, 0, 0, 0x2240, 0x22A0)
+        raw[_offset(0x2240) : _offset(0x2240) + 13] = b"KERNEL32.dll\0"
+        for rva in (0x2280, 0x22A0):
+            struct.pack_into("<Q", raw, _offset(rva), 0x22C0)
+        name = b"\0\0GetCurrentThreadId\0"
+        raw[_offset(0x22C0) : _offset(0x22C0) + len(name)] = name
+        contract = fixture_contract(raw)
+        contract["global_specs"]["state"]["writable"] = False
+        contract["functions"]["main"]["variants"][0]["imports"] = [
+            {
+                "displacement": [8, 4],
+                "next": 12,
+                "dll": "kernel32.dll",
+                "symbol": "GetCurrentThreadId",
+            }
+        ]
+        self.resolve(raw, contract)
+        changed = raw.copy()
+        changed[_offset(0x22C0) + 2] = ord("X")
+        with self.assertRaisesRegex(ExecutableCompatibilityError, "import"):
+            self.resolve(changed, contract)
+        ordinal = raw.copy()
+        struct.pack_into("<Q", ordinal, _offset(0x2280), 0x8000000000000001)
+        with self.assertRaisesRegex(ExecutableCompatibilityError, "import"):
+            self.resolve(ordinal, contract)
+        with pefile.PE(data=bytes(raw), fast_load=True) as pe:
+            pe.parse_data_directories(directories=[1])
+            pe.DIRECTORY_ENTRY_IMPORT[0].imports.append(
+                copy.copy(pe.DIRECTORY_ENTRY_IMPORT[0].imports[0])
+            )
+            with self.assertRaisesRegex(ExecutableCompatibilityError, "import"):
+                resolve_native_contracts(pe, contract)
+
+    def test_same_address_dependency_meaning_must_not_be_chosen_arbitrarily(self):
+        raw = _pe_raw(state_rva=0x2200)
+        raw[_offset(0x2200) : _offset(0x2200) + 16] = bytes(range(16))
+        contract = fixture_contract(raw)
+        contract["global_specs"]["state"]["writable"] = False
+        variant = contract["functions"]["main"]["variants"][0]
+        variant["data_refs"] = [
+            {
+                "displacement": [8, 4],
+                "next": 12,
+                "size": 16,
+                "sha256": hashlib.sha256(bytes(range(16))).hexdigest(),
+            }
+        ]
+        other = copy.deepcopy(variant)
+        other["data_refs"][0].update(size=8, sha256=hashlib.sha256(bytes(range(8))).hexdigest())
+        contract["functions"]["main"]["variants"].append(other)
+        with self.assertRaisesRegex(ExecutableCompatibilityError, "同址变体语义不一致"):
+            self.resolve(raw, contract)
 
 
 IMAGE_BASE = 0x140000000

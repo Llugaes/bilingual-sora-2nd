@@ -23,7 +23,9 @@ from sora_bilingual.localization.resources import (
     FormatError,
     Script,
     PANEL_FLAGS,
+    _aligned_call_map,
     _logical_script_entries,
+    literal_item_panel_parts,
     parse_scp,
 )
 from sora_bilingual.localization.tables import _logical_tables
@@ -41,8 +43,12 @@ _RECIPE_ITEM_CLASSES = frozenset((656129, 721665, 787457, 852993, 1253377))
 # resource constant (for example, food and fishing-rod notifications use
 # different icon IDs).
 _ITEM_RENDER = "<C0><I%d></C><C5>{name}</C>"
-_ITEM_SINGLE_CALLEES = frozenset(("ITEM_ADD_MESSAGE_EV", "ITEM_ADD_MESSAGE_TK"))
-_ITEM_SPLIT_CALLEES = frozenset(("ITEM_ADD_MESSAGE2_EV", "ITEM_ADD_MESSAGE2_TK"))
+_ITEM_SINGLE_CALLEES = frozenset(
+    ("ITEM_ADD_MESSAGE_EV", "ITEM_ADD_MESSAGE_TK", "ITEM_SUB_MESSAGE_EV", "ITEM_SUB_MESSAGE_TK")
+)
+_ITEM_SPLIT_CALLEES = frozenset(
+    ("ITEM_ADD_MESSAGE2_EV", "ITEM_ADD_MESSAGE2_TK", "ITEM_SUB_MESSAGE2_EV", "ITEM_SUB_MESSAGE2_TK")
+)
 _ITEM_CALLEES = _ITEM_SINGLE_CALLEES | _ITEM_SPLIT_CALLEES
 
 
@@ -365,6 +371,10 @@ def _read_book_ids(game: Path, audit: dict[str, object]) -> dict[str, set[int]]:
                 for i in range(count)
                 if (item_id := struct.unpack_from("<H", data, start + size * i + 16)[0])
             }
+        except PermissionError:
+            # Access denial is not evidence that a language lacks book items.
+            # Preserve the failure rather than publish a partial resource domain.
+            raise
         except (OSError, KeyError, FormatError) as exc:
             audit["diagnostics"].append(
                 _audit("book_domain_unavailable", language=language, detail=str(exc))
@@ -617,6 +627,98 @@ def _item_entries(
     return emitted
 
 
+def _literal_item_panel_entries(scripts, item_rows, audit):
+    """Complete notifications with literal item IDs and opaque runtime icons.
+
+    The raw ordered call map proves the event. Item names come from that
+    locale's physical item row. No translation fragment or captured word is
+    used to infer a producer; unknown interpolation invalidates the locale.
+    """
+    result = []
+    for path in sorted({p for paths in scripts.values() for p in paths}):
+        for name in sorted(
+            {n for paths in scripts.values() for n in paths.get(path, Script({})).functions}
+        ):
+            functions = {
+                language: paths[path].functions[name]
+                for language, paths in scripts.items()
+                if path in paths and name in paths[path].functions
+            }
+            reference_language = min(functions)
+            reference = functions[reference_language]
+            candidates = [
+                (i, literal_item_panel_parts(call)) for i, call in enumerate(reference.called)
+            ]
+            candidates = [(i, d) for i, d in candidates if d and d[1]]
+            if not candidates:
+                continue
+            mappings = {
+                language: _aligned_call_map(reference, function)
+                for language, function in functions.items()
+            }
+            for called, decoded in candidates:
+                texts, called_ids, numbers, missing = {}, {}, {}, {}
+                for language, function in functions.items():
+                    physical = mappings[language].get(called)
+                    other = (
+                        literal_item_panel_parts(function.called[physical])
+                        if physical is not None
+                        else None
+                    )
+                    if not other or other[0] != decoded[0] or not other[1]:
+                        missing[language] = "unproved_call_or_item_stream"
+                        continue
+                    item_ids = [p[1] for p in other[1] if isinstance(p, tuple)]
+                    if any(ident not in item_rows.get(language, {}) for ident in item_ids):
+                        missing[language] = "missing_item_record"
+                        continue
+                    texts[language] = "".join(
+                        _ITEM_RENDER.format(name=item_rows[language][part[1]][0].replace("%", "%%"))
+                        if isinstance(part, tuple)
+                        else part.replace("%", "%%")
+                        for part in other[1]
+                    )
+                    called_ids[language] = physical
+                    numbers[language] = ["ascii"] * len(item_ids)
+                origin = {
+                    "path": path,
+                    "function": name,
+                    "called": called,
+                    "reference_language": reference_language,
+                    "kind": 3,
+                    "command": 8,
+                }
+                if missing:
+                    audit["diagnostics"].append(
+                        _audit("static_item_panel_missing_locales", **origin, languages=missing)
+                    )
+                if len(texts) < 2:
+                    audit["counters"]["static_item_panel_without_pair"] += 1
+                    continue
+                result.append(
+                    {
+                        "key": f"dynamic/{path}/{name}/called/{called}/static_item_panel",
+                        "texts": texts,
+                        "called_ids": called_ids,
+                        "producer_origin": {
+                            "family": "static_item_panel",
+                            "signature": origin,
+                            "item_ids": [p[1] for p in decoded[1] if isinstance(p, tuple)],
+                        },
+                        "dynamic_producer": {
+                            "family": "static_item_panel",
+                            "dynamic_icon": True,
+                            "numbers": numbers,
+                            "slots": [
+                                {"kind": "icon", "opcode": 17} for _ in numbers[reference_language]
+                            ],
+                        },
+                    }
+                )
+    audit["counters"]["static_item_panel_emitted"] += len(result)
+    return result
+
+
 def _audit_source_conflicts(
     entries: Iterable[dict[str, object]], audit: dict[str, object]
 ) -> list[dict[str, object]]:
@@ -706,6 +808,7 @@ def build_dynamic_entries(
         item_ids_by_locale=_read_book_ids(Path(game), audit),
     )
     result += _item_entries(scripts, items, audit)
+    result += _literal_item_panel_entries(scripts, items, audit)
     result += _popup_line_entries(scripts, audit)
     result = _audit_source_conflicts(result, audit)
     audit["counters"] = dict(sorted(audit["counters"].items()))

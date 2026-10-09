@@ -19,12 +19,18 @@ from sora_bilingual.localization.resources import (
     _parse_code,
     _value,
     Called,
+    Function,
     _speaker_payload_shape,
     assembled_dialogue,
     parse_scp,
 )
 from sora_bilingual.config.locales import LANGUAGES
-from sora_bilingual.localization.menu_text import MenuTranslator, complete_pair, needs_annotation
+from sora_bilingual.localization.menu_text import (
+    MenuTranslator,
+    complete_pair,
+    needs_annotation,
+    display_text,
+)
 
 
 _DIALOGUE_COMMANDS = (0, 6, 7, 8, 19)
@@ -50,11 +56,10 @@ def _call_entry_family(entry):
 def _dedupe_call_entries(entries, primary, secondary, language):
     """Drop only same-record rows dominated by an exact complete row."""
     entries = list(entries)
-    complete = [
-        entry
-        for entry in entries
-        if language in entry["texts"] and complete_pair(entry["texts"], primary, secondary)
-    ]
+    complete = defaultdict(list)
+    for entry in entries:
+        if language in entry["texts"] and complete_pair(entry["texts"], primary, secondary):
+            complete[_call_entry_family(entry)].append(entry)
     result = []
     seen_complete = set()
     for entry in entries:
@@ -62,9 +67,8 @@ def _dedupe_call_entries(entries, primary, secondary, language):
         family = _call_entry_family(entry)
         dominators = [
             candidate
-            for candidate in complete
-            if _call_entry_family(candidate) == family
-            and all(candidate["texts"].get(locale) == text for locale, text in texts.items())
+            for candidate in complete[family]
+            if all(candidate["texts"].get(locale) == text for locale, text in texts.items())
         ]
         if dominators:
             best = max(
@@ -251,6 +255,37 @@ def _compile_history_speaker_setters(game, entries, primary, secondary):
     return _compile_history_provenance(game, entries, primary, secondary)[1]
 
 
+def _history_function_facts(function):
+    """Locale-only native marker and static setter origins, never target pairs.
+
+    Preserve physical ordinals and exact assembled input. Unknown/dynamic
+    operations clear active labels; branches cannot establish setter lifetime.
+    Warm reads need neither reconstruct all Called objects nor rescan their
+    arguments. Catalog conflict/source/pair checks still happen after this fact.
+    """
+    markers, links, active = {}, {}, {}
+    branched = any(i[0] == "branch" for i in function.code_shape)
+    for called, call in enumerate(function.called):
+        if call.target == "chr_set_display_name":
+            if _speaker_payload_shape(call) is not None:
+                active[int(call.args[0][1])] = [called, call.args[1][1]]
+            else:
+                active.clear()
+            continue
+        source = assembled_dialogue(call)
+        if source is not None:
+            actor = call.args[2][1] if len(call.args) >= 3 and call.args[2][0] == "int" else None
+            marker = _history_marker(call)
+            if marker is not None:
+                markers[str(called)] = [source, marker, actor]
+                if not branched and actor in active:
+                    links[str(called)] = active[actor]
+            continue
+        if active and not (call.target == "wait_prompt" and not call.args):
+            active.clear()
+    return {"markers": markers, "speaker_links": links}
+
+
 def _compile_history_provenance(game, entries, primary=None, secondary=None):
     """Read each source script once for marker and optional name provenance."""
     from sora_bilingual.localization.speaker_context import read_speaker_names
@@ -281,45 +316,31 @@ def _compile_history_provenance(game, entries, primary=None, secondary=None):
                 archive_path = logical.get(path)
                 if archive_path is None:
                     continue
-                script = parse_scp(archive.read(archive_path))
-                for function_name, function in script.functions.items():
+                from sora_bilingual.localization.language_cache import history_provenance
+
+                script = history_provenance(archive.read(archive_path), locale)
+                for function_name, facts in script.items():
                     calls = wanted[locale][path].get(function_name)
                     if not calls:
                         continue
-                    dialogues = {}
-                    for called, call in enumerate(function.called):
+                    local_setters = setters_by_function[locale, path, function_name]
+                    for ordinal, (source, marker, speaker_id) in facts["markers"].items():
+                        called = int(ordinal)
                         if called not in calls:
-                            continue
-                        source = assembled_dialogue(call)
-                        if source is None:
-                            continue
-                        marker = _history_marker(call)
-                        if marker is None:
                             continue
                         candidate = catalog.get((locale, path, function_name, called))
                         if candidate is None or candidate[1] != source:
                             continue
-                        speaker_id = None
-                        if (
-                            len(call.args) >= 3
-                            and call.args[0] == ("int", 5)
-                            and call.args[1] in (("int", 0), ("int", 6), ("int", 19))
-                            and call.args[2][0] == "int"
-                        ):
-                            speaker_id = int(call.args[2][1])
                         if speaker_id is not None and locale not in names:
                             names[locale] = read_speaker_names(game, locale)
                         speaker = names.get(locale, {}).get(speaker_id)
                         record_key = candidate[0]
                         buckets[str(marker)].add((locale, source, speaker, record_key, called))
-                        dialogues[called] = record_key
-                    if primary is not None and secondary is not None:
-                        local_setters = setters_by_function[locale, path, function_name]
-                        for record_key, candidates in _active_speaker_setter_records(
-                            function, local_setters, dialogues
-                        ).items():
-                            for source, pair in candidates:
-                                speaker_rows[record_key].add((locale, source, *pair))
+                        link = facts["speaker_links"].get(ordinal)
+                        if primary is not None and secondary is not None and link:
+                            setter = local_setters.get(link[0])
+                            if setter is not None and setter[0] == link[1]:
+                                speaker_rows[record_key].add((locale, setter[0], *setter[1]))
         finally:
             archive.close()
     markers = {
@@ -352,38 +373,93 @@ def _script_call_sites(data, start, names):
         for i in range(global_count)
     )
     result, records = {}, {}
+    helper_types = []
+    for number, name in enumerate(names):
+        at = start + number * 32
+        # #scp: argument count is byte +4; flags occupy uint16 +5.
+        argc = data[at + 4]
+        args_at = struct.unpack_from("<I", data, at + 12)[0]
+        if args_at > len(data) or argc > (len(data) - args_at) // 4:
+            raise ValueError("invalid SCP helper argument declaration")
+        kinds = tuple(struct.unpack_from("<I", data, args_at + i * 4)[0] for i in range(argc))
+        if any((kind & ~8) not in (1, 2, 5) for kind in kinds):
+            raise ValueError("invalid SCP helper argument type")
+        helper_types.append((name, kinds))
     for number, name in enumerate(names):
         at = start + number * 32
         count, called_at = struct.unpack_from("<II", data, at + 16)
-        calls, wanted = [], set()
+        calls, wanted, decoded_calls = [], set(), []
         for call in range(count):
             target, kind, argc, args_at = struct.unpack_from("<IHHI", data, called_at + call * 12)
             args = [struct.unpack_from("<II", data, args_at + i * 8) for i in range(argc)]
             calls.append((target, kind, args))
+            if any(tag not in (0, 1, 2, 3) for _, tag in args):
+                raise ValueError("invalid SCP called argument kind")
+            decoded = tuple(
+                _value(data, args_at + i * 8)
+                if tag == 0
+                else (("call", "var", "expr")[tag - 1], None)
+                for i, (_, tag) in enumerate(args)
+            )
+            decoded_calls.append(
+                Called(names[target] if target < len(names) else None, kind, decoded)
+            )
             if (
                 kind == 3
                 and argc >= 3
                 and args[0] == (0x40000005, 0)
                 and args[1] in ((0x40000000 + command, 0) for command in _DIALOGUE_COMMANDS)
             ):
-                decoded = tuple(
-                    _value(data, args_at + i * 8) if tag == 0 else ("dynamic", None)
-                    for i, (_, tag) in enumerate(args)
-                )
                 if assembled_dialogue(Called(None, kind, decoded)) is not None:
                     wanted.add(call)
-        if not wanted:
+        possible_controls = any(
+            call.kind == 3
+            and call.args[:1] == (("int", 5),)
+            and any(kind == "var" for kind, _ in call.args[3:])
+            for call in decoded_calls
+        )
+        if not wanted and not possible_controls:
             continue
+        code_at = struct.unpack_from("<I", data, at)[0]
+        end = next((v for v in starts if v > code_at), None)
+        positions = []
+        code, strings = _parse_code(
+            data, code_at, end, number, tuple(names), globals_, None, positions
+        )
+        control_sites = {}
+        if possible_controls:
+            from sora_bilingual.localization.control_dialogue import control_dialogue_calls
+
+            function = Function(
+                name, 0, (), tuple(decoded_calls), code, strings, tuple(helper_types)
+            )
+            proofs = control_dialogue_calls(function)
+            for call, proof in proofs.items():
+                if proof is None:
+                    continue
+                wanted.add(call)
+                args = calls[call][2]
+                control_sites[str(positions[proof["code_index"]] + 4)] = {
+                    "record": call,
+                    "group": 5,
+                    "command": decoded_calls[call].args[1][1],
+                    "token": ",".join(str(value) if tag == 0 else "?" for value, tag in args[2:]),
+                    "controlSlot": proof["control_slot"] - 2,
+                    "controlVariants": [
+                        {
+                            "token": struct.unpack_from("<I", data, positions[index] + 2)[0],
+                            "source": source,
+                        }
+                        for value, source in proof["variants"].items()
+                        for index in proof["definitions"][value]
+                    ],
+                }
         index = defaultdict(list)
         for call in sorted(wanted):
             args = calls[call][2]
             token = ",".join(str(value) if tag == 0 else "?" for value, tag in args[2:])
             index[f"5:{args[1][0] - 0x40000000}:{token}"].append(call)
         records[name] = dict(index)
-        code_at = struct.unpack_from("<I", data, at)[0]
-        end = next((v for v in starts if v > code_at), None)
-        positions = []
-        code, _ = _parse_code(data, code_at, end, number, tuple(names), globals_, None, positions)
         sequence = [
             (pos, op)
             for pos, op in zip(positions, code, strict=True)
@@ -421,6 +497,10 @@ def _script_call_sites(data, start, names):
                     "command": op[2],
                     "token": ",".join(str(value) if tag == 0 else "?" for value, tag in args[2:]),
                 }
+        # These local producer sites were independently proved by literal
+        # arguments and reaching definitions, even when nested calls deny the
+        # broader complete-sequence PC alignment above.
+        sites.update(control_sites)
         result[name] = sites
     return result, records
 
@@ -495,6 +575,7 @@ def compile_script_identities(game, entries, primary, secondary, language, *, re
     stats = defaultdict(int)
     pointers = defaultdict(list)
     pointer_models = {}
+    manifest_rejections = []
     blocked_functions = set()
     record_pair_candidates = defaultdict(set)
     for entry in entries:
@@ -511,9 +592,23 @@ def compile_script_identities(game, entries, primary, secondary, language, *, re
             if not path.endswith(".dat"):
                 continue
             try:
-                signature, item = _script_manifest_entry(archive.read(logical[path]))
-            except ValueError, struct.error:
+                from sora_bilingual.localization.language_cache import manifest_fact
+
+                data = archive.read(logical[path])
+                signature, item = manifest_fact(
+                    data, language, lambda: _script_manifest_entry(data)
+                )
+            except (ValueError, struct.error) as error:
                 stats["manifest_invalid_scripts"] += 1
+                manifest_rejections.append(
+                    {
+                        "path": path,
+                        "language": language,
+                        "sha256": hashlib.sha256(data).hexdigest(),
+                        "reason": "invalid_script_manifest",
+                        "detail": str(error),
+                    }
+                )
                 continue
             bucket = manifest[signature]
             if not any(candidate["sha256"] == item["sha256"] for candidate in bucket):
@@ -524,6 +619,12 @@ def compile_script_identities(game, entries, primary, secondary, language, *, re
             data = archive.read(logical[path])
             signature = script_signature(data)
             digest = hashlib.sha256(data).hexdigest()
+            source_identity = next((v for v in manifest[signature] if v["sha256"] == digest), None)
+            if source_identity is None:
+                # A refused source cannot be used for PC/key matching. Retain
+                # its diagnostic instead of aborting every other valid file.
+                stats["rejected_source_identity_builds"] += 1
+                continue
             start, count = struct.unpack_from("<II", data, 4)
             names = tuple(
                 _utf8z(data, struct.unpack_from("<I", data, start + n * 32 + 28)[0] & 0x3FFFFFFF)
@@ -546,7 +647,6 @@ def compile_script_identities(game, entries, primary, secondary, language, *, re
             for number in range(count):
                 at = start + number * 32
                 name = _utf8z(data, struct.unpack_from("<I", data, at + 28)[0] & 0x3FFFFFFF)
-                source_identity = next(v for v in manifest[signature] if v["sha256"] == digest)
                 record_index = source_identity["callRecords"].get(name, {})
                 if (path, name) not in needed and not record_index:
                     continue
@@ -648,6 +748,25 @@ def compile_script_identities(game, entries, primary, secondary, language, *, re
                     else:
                         records_by_function[slot] = value
                 for call, values in tuple(by_call.items()):
+                    controls = [entry for entry in values if entry.get("control_dialogue")]
+                    if controls:
+                        variants = (
+                            source_identity.setdefault("recordVariants", {})
+                            .setdefault(name, {})
+                            .setdefault(str(call), {})
+                        )
+                        for entry in controls:
+                            source = entry["texts"][language]
+                            body = display_text(source)
+                            key = _stable_dialogue_record(entry)
+                            if body in variants and variants[body] != key:
+                                variants[body] = None
+                            else:
+                                variants[body] = key
+                        # Literal argument fragments are not whole outputs of
+                        # a dynamic builder. Keep only its proved variants in
+                        # the strict per-call resolver.
+                        values = controls
                     by_call[call] = _dedupe_call_entries(values, primary, secondary, language)
                 local_entries = non_call_entries + [
                     entry for values in by_call.values() for entry in values
@@ -762,6 +881,7 @@ def compile_script_identities(game, entries, primary, secondary, language, *, re
         return {
             "scripts": result,
             "manifest": dict(manifest),
+            "manifest_rejections": manifest_rejections,
             "source_language": language,
             "history_markers": history_markers,
             "history_speaker_setters": history_speaker_setters,
@@ -888,6 +1008,17 @@ def compile_table_identities(game, entries, primary, secondary, language, *, res
                                     "field_at": offset,
                                     "record": record.hex(),
                                     "pointers": schema.pointers,
+                                    **(
+                                        {
+                                            "record_kind": kind,
+                                            "record_transform": "tips_u16_flag_add7400_cap7799_v1",
+                                        }
+                                        if kind == "TipsTableData"
+                                        and stride == 56
+                                        and offset in (40, 48)
+                                        and tuple(schema.pointers) == (8, 24, 40, 48)
+                                        else {}
+                                    ),
                                 }
                             )
         return {"sources": dict(sources), "models": models, "files": files}

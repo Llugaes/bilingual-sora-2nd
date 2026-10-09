@@ -1,0 +1,4241 @@
+{
+  "source": "independent physical raw PAC fields; no compiled translator outputs",
+  "resources": [
+    {
+      "locale": "ja",
+      "file": "D:\\Steam\\steamapps\\common\\Trails in the Sky 2nd Chapter\\pac\\steam\\table.pac",
+      "sha256": "9459f51285987334d47e121b3c8e9404d89ea50849707bb0bddcc6ba7650f7c2"
+    },
+    {
+      "locale": "en",
+      "file": "D:\\Steam\\steamapps\\common\\Trails in the Sky 2nd Chapter\\pac\\steam\\table_en.pac",
+      "sha256": "acf899c2591415dc22ba8f00efcb8e2b19f194b53879070853ee4f32d122b36d"
+    },
+    {
+      "locale": "zh-Hans",
+      "file": "D:\\Steam\\steamapps\\common\\Trails in the Sky 2nd Chapter\\pac\\steam\\table_sc.pac",
+      "sha256": "96fc915b45af848d68979318f7956750d37ff4f04fb0cf02c6150311ce0fc626"
+    },
+    {
+      "locale": "zh-Hant",
+      "file": "D:\\Steam\\steamapps\\common\\Trails in the Sky 2nd Chapter\\pac\\steam\\table_tc.pac",
+      "sha256": "e05277870bd7e909fe1840a6453f1a5bebca27236f7f60231f49243fa81bf37d"
+    },
+    {
+      "locale": "ko",
+      "file": "D:\\Steam\\steamapps\\common\\Trails in the Sky 2nd Chapter\\pac\\steam\\table_ko.pac",
+      "sha256": "88f6108e5908c9fde803816f38566054ecd8d8ea5325069075bcb5838f70f35e"
+    },
+    {
+      "locale": "fr",
+      "file": "D:\\Steam\\steamapps\\common\\Trails in the Sky 2nd Chapter\\pac\\steam\\table_fr.pac",
+      "sha256": "9ec67ee90de3fa01b3fe8b53317516229e5a7a1fed127cf18e16431fe120ee47"
+    },
+    {
+      "locale": "de",
+      "file": "D:\\Steam\\steamapps\\common\\Trails in the Sky 2nd Chapter\\pac\\steam\\table_de.pac",
+      "sha256": "9a56be83879e6e8dcffcbfb54c4e1c77dcfd8b0d2d77185fec3890d2b3df195d"
+    },
+    {
+      "locale": "es",
+      "file": "D:\\Steam\\steamapps\\common\\Trails in the Sky 2nd Chapter\\pac\\steam\\table_es.pac",
+      "sha256": "0c27ad9538521ccaf886d64fa4a38dd7b421d2f6f704d4c26e284411a61bab61"
+    }
+  ],
+  "entries": [
+    {
+      "key": "table/t_skill.tbl/sha256:07d3542054a3956227e6c6a64cbaa7f317914bdedb5b0ba20a7c9912e2cb7ca1/description",
+      "texts": {
+        "ja": "<C9>命を癒す水の力で味方１人のＨＰを小回復する。",
+        "en": "<C9>Slightly heal one ally's HP with restorative water.",
+        "zh-Hans": "<C9>以治愈生命的水之力小幅回复一名伙伴的HP。",
+        "zh-Hant": "<C9>以治癒生命的水之力小幅回復一名夥伴的HP。",
+        "ko": "<C9>생명을 치유하는 물의 힘으로 아군 한 명의 HP를 소 회복.",
+        "fr": "<C9>Restaure légèrement les PV d'un allié à l'aide d'une eau curative.",
+        "de": "<C9>Heile LP eines Verbündeten geringfügig mit Heilwasser.",
+        "es": "<C9>Cura ligeramente PV de un aliado con agua restauradora."
+      }
+    },
+    {
+      "key": "table/t_skill.tbl/sha256:139a56fe653e61a1c69623e46e9cfbf650b3f7318a0a066168aa889ed42ffab9/description",
+      "texts": {
+        "ja": "<C9>命を癒す水の力で範囲内の味方のＨＰを小回復する。",
+        "en": "<C9>Slightly heal HP of allies in range with restorative water.",
+        "zh-Hans": "<C9>以治愈生命的水之力小幅回复范围内伙伴的HP。",
+        "zh-Hant": "<C9>以治癒生命的水之力小幅回復範圍內夥伴的HP。",
+        "ko": "<C9>생명을 치유하는 물의 힘으로 범위 내 아군의 HP를 소 회복.",
+        "fr": "<C9>Restaure légèrement les PV des alliés à portée à l'aide d'une eau curative.",
+        "de": "<C9>Heile LP von nahen Verbündeten geringfügig mit Heilwasser.",
+        "es": "<C9>Cura ligeramente PV de los aliados al alcance con agua restauradora."
+      }
+    },
+    {
+      "key": "table/t_skill.tbl/sha256:577651642cc07ca4b65687026586ab84eaf27fe820542fcede61189a1d01413c/description",
+      "texts": {
+        "ja": "<C9>慈愛溢れる祈りを捧げ、仲間に息吹をもたらす。",
+        "en": "<C9>Revive allies by offering a prayer filled with love and mercy.",
+        "zh-Hans": "<C9>献上慈爱满盈的祈祷，为伙伴带来生命气息。",
+        "zh-Hant": "<C9>獻上慈愛滿盈的祈禱，為夥伴帶來生命氣息。",
+        "ko": "<C9>자애 넘치는 기도를 올려 아군에게 숨결을 불어넣는다.",
+        "fr": "<C9>Ranime les alliés grâce à une bénédiction empreinte d'amour et de grâce.",
+        "de": "<C9>Belebe Verbündete mit einem Gebet voller Liebe und Gnade wieder.",
+        "es": "<C9>Resucita a los aliados con una oración repleta de amor y piedad."
+      }
+    },
+    {
+      "key": "table/t_skill.tbl/sha256:6879f39a9547df9af63fafe23d411f93f0718e6843b10bf7d5eaa9fc0c7c90b3/description",
+      "texts": {
+        "ja": "<C9>生命力を高める秘孔を突き、更なる息吹を与える。",
+        "en": "<C9>Restore even more life by striking a certain pressure point.",
+        "zh-Hans": "<C9>按压能提升生命力的神秘穴道，赋予更强的生命气息。",
+        "zh-Hant": "<C9>按壓能提升生命力的神祕穴道，賦予更強的生命氣息。",
+        "ko": "<C9>생명력을 높이는 비공을 찔러 다시 숨결을 불어넣는다.",
+        "fr": "<C9>Réinsuffle encore plus la vie en frappant un certain point vital.",
+        "de": "<C9>Stelle über einen Druckpunkt-Treffer noch mehr Lebenskraft wieder her.",
+        "es": "<C9>Devuelve todavía más vida al presionar cierto punto gatillo."
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:c7647ebab85291ee4b9d0ce443c043cb89c22397cfad696daec27e7ee1191211/name",
+      "texts": {
+        "ja": "%dターンSTR%s",
+        "en": "STR%s (%d turns)",
+        "zh-Hans": "%d回合STR%s",
+        "zh-Hant": "%d回合STR%s",
+        "ko": "%d턴 STR %s",
+        "fr": "FOR %s (%d tours)",
+        "de": "STÄ %s (%d Züge)",
+        "es": "FUE %s (%d turnos)"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:c7647ebab85291ee4b9d0ce443c043cb89c22397cfad696daec27e7ee1191211/stat",
+      "texts": {
+        "ja": "STR",
+        "en": "STR",
+        "zh-Hans": "STR",
+        "zh-Hant": "STR",
+        "ko": "STR",
+        "fr": "FOR",
+        "de": "STÄ",
+        "es": "FUE"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:c7647ebab85291ee4b9d0ce443c043cb89c22397cfad696daec27e7ee1191211/format",
+      "texts": {
+        "ja": "%s",
+        "en": "%s",
+        "zh-Hans": "%s",
+        "zh-Hant": "%s",
+        "ko": "%s",
+        "fr": "%s",
+        "de": "%s",
+        "es": "%s"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:c7647ebab85291ee4b9d0ce443c043cb89c22397cfad696daec27e7ee1191211/turns",
+      "texts": {
+        "ja": "%dターン",
+        "en": "(%d turns)",
+        "zh-Hans": "%d回合",
+        "zh-Hant": "%d回合",
+        "ko": "%d턴",
+        "fr": "(%d tours)",
+        "de": "(%d Züge)",
+        "es": "(%d turnos)"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:c7647ebab85291ee4b9d0ce443c043cb89c22397cfad696daec27e7ee1191211/value",
+      "texts": {
+        "ja": "",
+        "en": "",
+        "zh-Hans": "",
+        "zh-Hant": "",
+        "ko": "",
+        "fr": "",
+        "de": "",
+        "es": ""
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:d833076b3ae7e9525c6af28af320c28c2bd2d4afce293b8c715cd8324008b959/name",
+      "texts": {
+        "ja": "%dターンDEF%s",
+        "en": "DEF%s (%d turns)",
+        "zh-Hans": "%d回合DEF%s",
+        "zh-Hant": "%d回合DEF%s",
+        "ko": "%d턴 DEF %s",
+        "fr": "DÉF %s (%d tours)",
+        "de": "VERT %s (%d Züge)",
+        "es": "DEF %s (%d turnos)"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:d833076b3ae7e9525c6af28af320c28c2bd2d4afce293b8c715cd8324008b959/stat",
+      "texts": {
+        "ja": "DEF",
+        "en": "DEF",
+        "zh-Hans": "DEF",
+        "zh-Hant": "DEF",
+        "ko": "DEF",
+        "fr": "DÉF",
+        "de": "VERT",
+        "es": "DEF"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:d833076b3ae7e9525c6af28af320c28c2bd2d4afce293b8c715cd8324008b959/format",
+      "texts": {
+        "ja": "%s",
+        "en": "%s",
+        "zh-Hans": "%s",
+        "zh-Hant": "%s",
+        "ko": "%s",
+        "fr": "%s",
+        "de": "%s",
+        "es": "%s"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:d833076b3ae7e9525c6af28af320c28c2bd2d4afce293b8c715cd8324008b959/turns",
+      "texts": {
+        "ja": "%dターン",
+        "en": "(%d turns)",
+        "zh-Hans": "%d回合",
+        "zh-Hant": "%d回合",
+        "ko": "%d턴",
+        "fr": "(%d tours)",
+        "de": "(%d Züge)",
+        "es": "(%d turnos)"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:d833076b3ae7e9525c6af28af320c28c2bd2d4afce293b8c715cd8324008b959/value",
+      "texts": {
+        "ja": "",
+        "en": "",
+        "zh-Hans": "",
+        "zh-Hant": "",
+        "ko": "",
+        "fr": "",
+        "de": "",
+        "es": ""
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:fb8dd4ee62074c4047603ed845c48f723a2c6cbbf3320c6e28bbf776bbbc9144/name",
+      "texts": {
+        "ja": "状態異常解除",
+        "en": "Cure Status Ailments",
+        "zh-Hans": "解除异常状态",
+        "zh-Hant": "解除異常狀態",
+        "ko": "상태 이상 해제",
+        "fr": "Soin altérations",
+        "de": "Statusveränderungen heilen",
+        "es": "Curación de estados alterados"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:fb8dd4ee62074c4047603ed845c48f723a2c6cbbf3320c6e28bbf776bbbc9144/stat",
+      "texts": {
+        "ja": "状態異常",
+        "en": "Status Ailments",
+        "zh-Hans": "异常状态",
+        "zh-Hant": "異常狀態",
+        "ko": "상태 이상",
+        "fr": "Altérations",
+        "de": "Statusveränderungen",
+        "es": "Estados alterados"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:fb8dd4ee62074c4047603ed845c48f723a2c6cbbf3320c6e28bbf776bbbc9144/format",
+      "texts": {
+        "ja": "解除",
+        "en": "Cure",
+        "zh-Hans": "解除",
+        "zh-Hant": "解除",
+        "ko": "해제",
+        "fr": "Soin",
+        "de": "Heilen",
+        "es": "Curación"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:fb8dd4ee62074c4047603ed845c48f723a2c6cbbf3320c6e28bbf776bbbc9144/turns",
+      "texts": {
+        "ja": "",
+        "en": "",
+        "zh-Hans": "",
+        "zh-Hant": "",
+        "ko": "",
+        "fr": "",
+        "de": "",
+        "es": ""
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:fb8dd4ee62074c4047603ed845c48f723a2c6cbbf3320c6e28bbf776bbbc9144/value",
+      "texts": {
+        "ja": "",
+        "en": "",
+        "zh-Hans": "",
+        "zh-Hant": "",
+        "ko": "",
+        "fr": "",
+        "de": "",
+        "es": ""
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:b244e9f5b576cf8c158de2942fd54c881bb097d07f46c5e8a3d362dd03655a6e/name",
+      "texts": {
+        "ja": "能力低下解除",
+        "en": "Cure Stat Debuff",
+        "zh-Hans": "解除能力降低",
+        "zh-Hant": "解除能力降低",
+        "ko": "능력 저하 해제",
+        "fr": "Soin malus",
+        "de": "Wertschwächung heilen",
+        "es": "Curación de debilitamiento"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:b244e9f5b576cf8c158de2942fd54c881bb097d07f46c5e8a3d362dd03655a6e/stat",
+      "texts": {
+        "ja": "能力低下",
+        "en": "Stat Debuff",
+        "zh-Hans": "能力降低",
+        "zh-Hant": "能力降低",
+        "ko": "능력 저하",
+        "fr": "Malus",
+        "de": "Wertschwächung",
+        "es": "Debilitamiento"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:b244e9f5b576cf8c158de2942fd54c881bb097d07f46c5e8a3d362dd03655a6e/format",
+      "texts": {
+        "ja": "解除",
+        "en": "Cure",
+        "zh-Hans": "解除",
+        "zh-Hant": "解除",
+        "ko": "해제",
+        "fr": "Soin",
+        "de": "Heilen",
+        "es": "Curación"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:b244e9f5b576cf8c158de2942fd54c881bb097d07f46c5e8a3d362dd03655a6e/turns",
+      "texts": {
+        "ja": "",
+        "en": "",
+        "zh-Hans": "",
+        "zh-Hant": "",
+        "ko": "",
+        "fr": "",
+        "de": "",
+        "es": ""
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:b244e9f5b576cf8c158de2942fd54c881bb097d07f46c5e8a3d362dd03655a6e/value",
+      "texts": {
+        "ja": "",
+        "en": "",
+        "zh-Hans": "",
+        "zh-Hant": "",
+        "ko": "",
+        "fr": "",
+        "de": "",
+        "es": ""
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:40e8036299b664fb977c41ecc4d4bf3e861952f2f4fc8654ba6ed9da17d9f12f/name",
+      "texts": {
+        "ja": "復活",
+        "en": "Revive",
+        "zh-Hans": "复活",
+        "zh-Hant": "復活",
+        "ko": "부활",
+        "fr": "Réanimation",
+        "de": "Wiederbeleben",
+        "es": "Resurrección"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:40e8036299b664fb977c41ecc4d4bf3e861952f2f4fc8654ba6ed9da17d9f12f/stat",
+      "texts": {
+        "ja": "復活",
+        "en": "Revive",
+        "zh-Hans": "复活",
+        "zh-Hant": "復活",
+        "ko": "부활",
+        "fr": "Réanimation",
+        "de": "Wiederbeleben",
+        "es": "Resurrección"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:40e8036299b664fb977c41ecc4d4bf3e861952f2f4fc8654ba6ed9da17d9f12f/format",
+      "texts": {
+        "ja": "HP%s回復",
+        "en": "Heal %s HP",
+        "zh-Hans": "回复HP%s",
+        "zh-Hant": "回復HP%s",
+        "ko": "HP %s 회복",
+        "fr": "Restaure %s PV",
+        "de": "Heilt %s LP",
+        "es": "Curación de %s PV"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:40e8036299b664fb977c41ecc4d4bf3e861952f2f4fc8654ba6ed9da17d9f12f/turns",
+      "texts": {
+        "ja": "",
+        "en": "",
+        "zh-Hans": "",
+        "zh-Hant": "",
+        "ko": "",
+        "fr": "",
+        "de": "",
+        "es": ""
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:40e8036299b664fb977c41ecc4d4bf3e861952f2f4fc8654ba6ed9da17d9f12f/value",
+      "texts": {
+        "ja": "",
+        "en": "",
+        "zh-Hans": "",
+        "zh-Hant": "",
+        "ko": "",
+        "fr": "",
+        "de": "",
+        "es": ""
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:c4f61ce51dfb9da17a35c38f34cf31196a587073983c520726e99d1029c3a9f7/name",
+      "texts": {
+        "ja": "復活",
+        "en": "Revive",
+        "zh-Hans": "复活",
+        "zh-Hant": "復活",
+        "ko": "부활",
+        "fr": "Réanimation",
+        "de": "Wiederbeleben",
+        "es": "Resurrección"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:c4f61ce51dfb9da17a35c38f34cf31196a587073983c520726e99d1029c3a9f7/stat",
+      "texts": {
+        "ja": "復活",
+        "en": "Revive",
+        "zh-Hans": "复活",
+        "zh-Hant": "復活",
+        "ko": "부활",
+        "fr": "Réanimation",
+        "de": "Wiederbeleben",
+        "es": "Resurrección"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:c4f61ce51dfb9da17a35c38f34cf31196a587073983c520726e99d1029c3a9f7/format",
+      "texts": {
+        "ja": "HP%s回復",
+        "en": "Heal %s HP",
+        "zh-Hans": "回复HP%s",
+        "zh-Hant": "回復HP%s",
+        "ko": "HP %s 회복",
+        "fr": "Restaure %s PV",
+        "de": "Heilt %s LP",
+        "es": "Curación de %s PV"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:c4f61ce51dfb9da17a35c38f34cf31196a587073983c520726e99d1029c3a9f7/turns",
+      "texts": {
+        "ja": "",
+        "en": "",
+        "zh-Hans": "",
+        "zh-Hant": "",
+        "ko": "",
+        "fr": "",
+        "de": "",
+        "es": ""
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:c4f61ce51dfb9da17a35c38f34cf31196a587073983c520726e99d1029c3a9f7/value",
+      "texts": {
+        "ja": "",
+        "en": "",
+        "zh-Hans": "",
+        "zh-Hant": "",
+        "ko": "",
+        "fr": "",
+        "de": "",
+        "es": ""
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:df1cd77615efffbef0c60ea7948cf4aebb17da0a9efa21aea8d9794c8796d00c/name",
+      "texts": {
+        "ja": "HP%s回復",
+        "en": "Heal %s HP",
+        "zh-Hans": "回复HP%s",
+        "zh-Hant": "回復HP%s",
+        "ko": "HP %s 회복",
+        "fr": "Restaure %s PV",
+        "de": "Heilt %s LP",
+        "es": "Curación de %s PV"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:df1cd77615efffbef0c60ea7948cf4aebb17da0a9efa21aea8d9794c8796d00c/stat",
+      "texts": {
+        "ja": "",
+        "en": "",
+        "zh-Hans": "",
+        "zh-Hant": "",
+        "ko": "",
+        "fr": "",
+        "de": "",
+        "es": ""
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:df1cd77615efffbef0c60ea7948cf4aebb17da0a9efa21aea8d9794c8796d00c/format",
+      "texts": {
+        "ja": "",
+        "en": "",
+        "zh-Hans": "",
+        "zh-Hant": "",
+        "ko": "",
+        "fr": "",
+        "de": "",
+        "es": ""
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:df1cd77615efffbef0c60ea7948cf4aebb17da0a9efa21aea8d9794c8796d00c/turns",
+      "texts": {
+        "ja": "",
+        "en": "",
+        "zh-Hans": "",
+        "zh-Hant": "",
+        "ko": "",
+        "fr": "",
+        "de": "",
+        "es": ""
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:df1cd77615efffbef0c60ea7948cf4aebb17da0a9efa21aea8d9794c8796d00c/value",
+      "texts": {
+        "ja": "",
+        "en": "",
+        "zh-Hans": "",
+        "zh-Hant": "",
+        "ko": "",
+        "fr": "",
+        "de": "",
+        "es": ""
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:53792fa0b13f97099c10fa72f9124c5be4f745cc94a1f7c8c783ac367ac4216c/name",
+      "texts": {
+        "ja": "シールド%s",
+        "en": "Shield %s",
+        "zh-Hans": "护盾%s",
+        "zh-Hant": "護盾%s",
+        "ko": "실드 %s",
+        "fr": "Bouclier %s",
+        "de": "Schild %s",
+        "es": "Escudo %s"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:53792fa0b13f97099c10fa72f9124c5be4f745cc94a1f7c8c783ac367ac4216c/stat",
+      "texts": {
+        "ja": "シールド",
+        "en": "Shield ",
+        "zh-Hans": "护盾",
+        "zh-Hant": "護盾",
+        "ko": "실드",
+        "fr": "Bouclier ",
+        "de": "Schild ",
+        "es": "Escudo "
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:53792fa0b13f97099c10fa72f9124c5be4f745cc94a1f7c8c783ac367ac4216c/format",
+      "texts": {
+        "ja": "%s",
+        "en": "%s",
+        "zh-Hans": "%s",
+        "zh-Hant": "%s",
+        "ko": "%s",
+        "fr": "%s",
+        "de": "%s",
+        "es": "%s"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:53792fa0b13f97099c10fa72f9124c5be4f745cc94a1f7c8c783ac367ac4216c/turns",
+      "texts": {
+        "ja": "",
+        "en": "",
+        "zh-Hans": "",
+        "zh-Hant": "",
+        "ko": "",
+        "fr": "",
+        "de": "",
+        "es": ""
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:53792fa0b13f97099c10fa72f9124c5be4f745cc94a1f7c8c783ac367ac4216c/value",
+      "texts": {
+        "ja": "",
+        "en": "",
+        "zh-Hans": "",
+        "zh-Hant": "",
+        "ko": "",
+        "fr": "",
+        "de": "",
+        "es": ""
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillRangeHelpData/sha256:ac391eff3cdcd7e12d6082a9b9334338220af0a42a67598bc877901ebc362a29/label",
+      "texts": {
+        "ja": "味方･単体",
+        "en": "Ally - Single",
+        "zh-Hans": "我方·单体",
+        "zh-Hant": "我方・單體",
+        "ko": "아군・개별",
+        "fr": "Allié - Simple",
+        "de": "Verbündeter – Einzel",
+        "es": "Aliado, obj. único"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillRangeHelpData/sha256:ac391eff3cdcd7e12d6082a9b9334338220af0a42a67598bc877901ebc362a29/short_label",
+      "texts": {
+        "ja": "単体",
+        "en": "Single",
+        "zh-Hans": "单体",
+        "zh-Hant": "單體",
+        "ko": "개별",
+        "fr": "Simple",
+        "de": "Einzel",
+        "es": "Objetivo único"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillRangeHelpData/sha256:1c20b6fbc3d33fc150cbddc959a367a5f91e7abc0e2f8c90bdf4ffd82c692ee8/label",
+      "texts": {
+        "ja": "味方全体",
+        "en": "All Allies",
+        "zh-Hans": "我方全体",
+        "zh-Hant": "我方全體",
+        "ko": "아군 전체",
+        "fr": "Tous les alliés",
+        "de": "Alle Verbündeten",
+        "es": "Todos los aliados"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillRangeHelpData/sha256:1c20b6fbc3d33fc150cbddc959a367a5f91e7abc0e2f8c90bdf4ffd82c692ee8/short_label",
+      "texts": {
+        "ja": "全体(非戦闘時)",
+        "en": "All (Non-Combat)",
+        "zh-Hans": "全体（非战斗时）",
+        "zh-Hant": "全體（非戰鬥時）",
+        "ko": "전체 (비전투 시)",
+        "fr": "Tous (hors combat)",
+        "de": "Alle (Nicht im Kampf)",
+        "es": "Todos (fuera del combate)"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/ItemKindHelpData/sha256:79480d5e2074fd2470f50c23e48076f001310eeabaa8dfe0f6104abb25a881e4/description",
+      "texts": {
+        "ja": "書籍【<c698>書物ページで閲覧可能</C>】",
+        "en": "Books [<c698>Can be accessed from the 'Book List' tab</C>]  ",
+        "zh-Hans": "书籍【<c698>可在书籍页面阅览</c>】",
+        "zh-Hant": "書籍【<c698>可在書籍頁面閱覽</c>】",
+        "ko": "서적 【<c698>서적 메뉴에서 열람 가능</c>】",
+        "fr": "Livres [<c698>À consulter depuis l'onglet Liste des livres</C>]  ",
+        "de": "Bücher [<c698>Kann über den Reiter „Liste der Bücher“ aufgerufen werden</C>]  ",
+        "es": "Libros (<c698>se accede desde la pestaña «Lista de libros»</C>)  "
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/ItemKindHelpData/sha256:79480d5e2074fd2470f50c23e48076f001310eeabaa8dfe0f6104abb25a881e4/label",
+      "texts": {
+        "ja": "書籍",
+        "en": "Books",
+        "zh-Hans": "书籍",
+        "zh-Hant": "書籍",
+        "ko": "서적",
+        "fr": "Livres",
+        "de": "Bücher",
+        "es": "Libros"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/ItemKindHelpData/sha256:3af3599d84cede5e4fb387ea21a4a35a9af59013bc8d2fa796386a86906feeda/description",
+      "texts": {
+        "ja": "素材【<c698>工房での武具やクオーツの強化に使用</C>】",
+        "en": "Material [<c698>Used in shops for quartz & item enhancements</C>]  ",
+        "zh-Hans": "材料【<c698>在工房强化武具和结晶回路时使用</c>】",
+        "zh-Hant": "材料【<c698>在工房強化武具和結晶迴路時使用</c>】",
+        "ko": "소재 【<c698>공방에서 장비품 및 쿼츠 강화에 사용</c>】",
+        "fr": "Matériaux [<c698>Pour améliorer objets et quartz en boutique</C>]  ",
+        "de": "Material [<c698>Wird in Läden für Quarz- und Gegenstandsverbesserungen verwendet</C>]  ",
+        "es": "Materiales (<c698>se usan en tiendas para mejorar cuarzos y objetos</C>)  "
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/ItemKindHelpData/sha256:3af3599d84cede5e4fb387ea21a4a35a9af59013bc8d2fa796386a86906feeda/label",
+      "texts": {
+        "ja": "素材",
+        "en": "Material",
+        "zh-Hans": "材料",
+        "zh-Hant": "材料",
+        "ko": "소재",
+        "fr": "Matériaux",
+        "de": "Material",
+        "es": "Materiales"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillItemStatusData/sha256:17b0761f87b081d5cf10757ccc89f12be355c70e2e29df288b65b30710dcbcd1/format",
+      "texts": {
+        "ja": "最大HP+%d",
+        "en": "MAX HP+%d",
+        "zh-Hans": "HP上限+%d",
+        "zh-Hant": "HP上限+%d",
+        "ko": "최대 HP +%d",
+        "fr": "PV MAX +%d",
+        "de": "MAX LP +%d",
+        "es": "PV MÁX +%d"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillItemStatusData/sha256:17b0761f87b081d5cf10757ccc89f12be355c70e2e29df288b65b30710dcbcd1/name",
+      "texts": {
+        "ja": "最大HP",
+        "en": "MAX HP",
+        "zh-Hans": "HP上限",
+        "zh-Hant": "HP上限",
+        "ko": "최대 HP",
+        "fr": "PV MAX",
+        "de": "MAX LP",
+        "es": "PV MÁX"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillItemStatusData/sha256:17b0761f87b081d5cf10757ccc89f12be355c70e2e29df288b65b30710dcbcd1/value",
+      "texts": {
+        "ja": "+%d",
+        "en": "+%d",
+        "zh-Hans": "+%d",
+        "zh-Hant": "+%d",
+        "ko": "+%d",
+        "fr": "+%d",
+        "de": "+%d",
+        "es": "+%d"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillTextArrayData/sha256:ae78424cab43b888451d46042e212d32a4b5a734df3f76ada9a38f673425c883/format",
+      "texts": {
+        "ja": "【回復／",
+        "en": "[Recovery - ",
+        "zh-Hans": "【回复／",
+        "zh-Hant": "【回復／",
+        "ko": "【회복/",
+        "fr": "[Soin - ",
+        "de": "[Wiederherstellung – ",
+        "es": "(Recuperación - "
+      }
+    },
+    {
+      "key": "table/t_text.tbl/TXT_ITEM_HELP_MAIL_ONLY",
+      "texts": {
+        "ja": "男性専用",
+        "en": "Male Only ",
+        "zh-Hans": "男性专用",
+        "zh-Hant": "男性專用",
+        "ko": "남성 전용",
+        "fr": "Homme uniquement  ",
+        "de": "Nur männlich  ",
+        "es": "Solo chicos  "
+      }
+    },
+    {
+      "key": "table/t_text.tbl/TXT_ITEM_HELP_FEMAIL_ONLY",
+      "texts": {
+        "ja": "女性専用",
+        "en": "Female Only ",
+        "zh-Hans": "女性专用",
+        "zh-Hant": "女性專用",
+        "ko": "여성 전용",
+        "fr": "Femme uniquement  ",
+        "de": "Nur weiblich ",
+        "es": "Solo chicas  "
+      }
+    },
+    {
+      "key": "table/t_text.tbl/TXT_ITEM_HELP_ONLY",
+      "texts": {
+        "ja": "%s専用",
+        "en": "%s Exclusive",
+        "zh-Hans": "%s专用",
+        "zh-Hant": "%s專用",
+        "ko": "%s 전용",
+        "fr": "Pour %s",
+        "de": "Ausschließlich %s",
+        "es": "Exclusivo de %s"
+      }
+    },
+    {
+      "key": "table/t_text.tbl/TXT_ITEM_HELP_MOSTSMALL",
+      "texts": {
+        "ja": "極小",
+        "en": "(XS)",
+        "zh-Hans": "极小",
+        "zh-Hant": "極小",
+        "ko": "극소",
+        "fr": "(XS)",
+        "de": "(XS)",
+        "es": "(XS)"
+      }
+    },
+    {
+      "key": "table/t_text.tbl/TXT_ITEM_HELP_SMALL",
+      "texts": {
+        "ja": "小",
+        "en": "(S)",
+        "zh-Hans": "小",
+        "zh-Hant": "小",
+        "ko": "소",
+        "fr": "(S)",
+        "de": "(K)",
+        "es": "(S)"
+      }
+    },
+    {
+      "key": "table/t_text.tbl/TXT_ITEM_HELP_MIDDLE",
+      "texts": {
+        "ja": "中",
+        "en": "(M)",
+        "zh-Hans": "中",
+        "zh-Hant": "中",
+        "ko": "중",
+        "fr": "(M)",
+        "de": "(M)",
+        "es": "(M)"
+      }
+    },
+    {
+      "key": "table/t_text.tbl/TXT_ITEM_HELP_LARGE",
+      "texts": {
+        "ja": "大",
+        "en": "(L)",
+        "zh-Hans": "大",
+        "zh-Hant": "大",
+        "ko": "대",
+        "fr": "(L)",
+        "de": "(G)",
+        "es": "(L)"
+      }
+    },
+    {
+      "key": "table/t_text.tbl/TXT_ITEM_HELP_MOSTLARGE",
+      "texts": {
+        "ja": "極",
+        "en": "(LL)",
+        "zh-Hans": "极",
+        "zh-Hant": "極",
+        "ko": "극대",
+        "fr": "(XL)",
+        "de": "(SG)",
+        "es": "(XL)"
+      }
+    },
+    {
+      "key": "table/t_text.tbl/TXT_ITEM_HELP_HALF",
+      "texts": {
+        "ja": "半",
+        "en": "Half",
+        "zh-Hans": "半",
+        "zh-Hant": "半",
+        "ko": "절반",
+        "fr": "Moitié",
+        "de": "Halb",
+        "es": "Mitad"
+      }
+    },
+    {
+      "key": "table/t_text.tbl/TXT_ITEM_HELP_ALL",
+      "texts": {
+        "ja": "全",
+        "en": "All",
+        "zh-Hans": "全",
+        "zh-Hant": "全",
+        "ko": "완전",
+        "fr": "Tous",
+        "de": "Alle",
+        "es": "Todo"
+      }
+    },
+    {
+      "key": "table/t_text.tbl/TXT_ITEM_HELP_PERSENT",
+      "texts": {
+        "ja": "%d％",
+        "en": "%d%%",
+        "zh-Hans": "%d％",
+        "zh-Hant": "%d％",
+        "ko": "%d％",
+        "fr": "%d %%",
+        "de": "%d%%",
+        "es": "%d%%"
+      }
+    },
+    {
+      "key": "table/t_text.tbl/TXT_ITEM_HELP_HOLLOWCORE",
+      "texts": {
+        "ja": "%s専用",
+        "en": "%s Exclusive",
+        "zh-Hans": "%s专用",
+        "zh-Hant": "%s專用",
+        "ko": "%s 전용",
+        "fr": "Pour %s",
+        "de": "%s Ausschließlich",
+        "es": "Exclusivo de %s"
+      }
+    },
+    {
+      "key": "table/t_text.tbl/TXT_ITEM_HELP_WEEK",
+      "texts": {
+        "ja": "",
+        "en": "",
+        "zh-Hans": "",
+        "zh-Hant": "",
+        "ko": "",
+        "fr": "",
+        "de": "",
+        "es": ""
+      }
+    },
+    {
+      "key": "table/t_text.tbl/TXT_ITEM_HELP_STRONG_NORMAL",
+      "texts": {
+        "ja": "+",
+        "en": "+",
+        "zh-Hans": "+",
+        "zh-Hant": "+",
+        "ko": "+",
+        "fr": "+",
+        "de": "+",
+        "es": "+"
+      }
+    },
+    {
+      "key": "table/t_text.tbl/TXT_ITEM_HELP_STRONG",
+      "texts": {
+        "ja": "++",
+        "en": "++",
+        "zh-Hans": "++",
+        "zh-Hant": "++",
+        "ko": "++",
+        "fr": "++",
+        "de": "++",
+        "es": "++"
+      }
+    },
+    {
+      "key": "table/t_text.tbl/TXT_ITEM_HELP_MOST_STRONG",
+      "texts": {
+        "ja": "+++",
+        "en": "+++",
+        "zh-Hans": "+++",
+        "zh-Hant": "+++",
+        "ko": "+++",
+        "fr": "+++",
+        "de": "+++",
+        "es": "+++"
+      }
+    },
+    {
+      "key": "table/t_text.tbl/TXT_ITEM_HELP_EFFECT",
+      "texts": {
+        "ja": "効果：",
+        "en": "Effect:",
+        "zh-Hans": "效果：",
+        "zh-Hant": "效果：",
+        "ko": "효과:",
+        "fr": "Effet :",
+        "de": "Effekt:",
+        "es": "Efecto:"
+      }
+    },
+    {
+      "key": "table/t_text.tbl/TXT_ITEM_HELP_LINK",
+      "texts": {
+        "ja": "･",
+        "en": "/",
+        "zh-Hans": "･",
+        "zh-Hant": "･",
+        "ko": "･",
+        "fr": "/",
+        "de": "/",
+        "es": "/"
+      }
+    },
+    {
+      "key": "table/t_text.tbl/TXT_ITEM_HELP_RANGE_S",
+      "texts": {
+        "ja": "Ｓ",
+        "en": "(S)",
+        "zh-Hans": "S",
+        "zh-Hant": "S",
+        "ko": "S",
+        "fr": "(S)",
+        "de": "(K)",
+        "es": "(S)"
+      }
+    },
+    {
+      "key": "table/t_text.tbl/TXT_ITEM_HELP_RANGE_M",
+      "texts": {
+        "ja": "Ｍ",
+        "en": "(M)",
+        "zh-Hans": "M",
+        "zh-Hant": "M",
+        "ko": "M",
+        "fr": "(M)",
+        "de": "(M)",
+        "es": "(M)"
+      }
+    },
+    {
+      "key": "table/t_text.tbl/TXT_ITEM_HELP_RANGE_L",
+      "texts": {
+        "ja": "Ｌ",
+        "en": "(L)",
+        "zh-Hans": "L",
+        "zh-Hant": "L",
+        "ko": "L",
+        "fr": "(L)",
+        "de": "(G)",
+        "es": "(L)"
+      }
+    },
+    {
+      "key": "table/t_text.tbl/TXT_ITEM_HELP_RANGE_LL",
+      "texts": {
+        "ja": "ＬＬ",
+        "en": "(LL)",
+        "zh-Hans": "LL",
+        "zh-Hant": "LL",
+        "ko": "LL",
+        "fr": "(XL)",
+        "de": "(SG)",
+        "es": "(XL)"
+      }
+    },
+    {
+      "key": "table/t_text.tbl/TXT_ITEM_HELP_SELF",
+      "texts": {
+        "ja": "自己",
+        "en": "(Self)",
+        "zh-Hans": "自身",
+        "zh-Hant": "自身",
+        "ko": "자신 ",
+        "fr": "(Soi-même)",
+        "de": "(Selbst)",
+        "es": "(Usuario) "
+      }
+    },
+    {
+      "key": "table/t_text.tbl/TXT_ITEM_HELP_FRIEND",
+      "texts": {
+        "ja": "仲間",
+        "en": "Ally",
+        "zh-Hans": "伙伴",
+        "zh-Hant": "夥伴",
+        "ko": "동료 ",
+        "fr": "Allié",
+        "de": "Verbündeter",
+        "es": "Aliado"
+      }
+    },
+    {
+      "key": "table/t_text.tbl/TXT_ITEM_HELP_HITTING",
+      "texts": {
+        "ja": "必中",
+        "en": "Sure Hit",
+        "zh-Hans": "必中",
+        "zh-Hant": "必中",
+        "ko": "반드시 명중",
+        "fr": "Frappe garantie",
+        "de": "Sicherer Treffer",
+        "es": "Golpe garantizado"
+      }
+    },
+    {
+      "key": "table/t_text.tbl/TXT_ITEM_HELP_STUN_L",
+      "texts": {
+        "ja": "スタン大",
+        "en": "Heavy Stun",
+        "zh-Hans": "眩晕·大",
+        "zh-Hant": "暈眩・大",
+        "ko": "스턴 대",
+        "fr": "Étourdissement (L)",
+        "de": "Schwere Betäubung",
+        "es": "Aturdimiento fuerte"
+      }
+    },
+    {
+      "key": "table/t_text.tbl/TXT_ITEM_HELP_STUN_LL",
+      "texts": {
+        "ja": "スタン極",
+        "en": "Extreme Stun",
+        "zh-Hans": "眩晕·极",
+        "zh-Hant": "暈眩・極",
+        "ko": "스턴 극",
+        "fr": "Étourdissement (XL)",
+        "de": "Extreme Betäubung",
+        "es": "Aturdimiento extremo"
+      }
+    },
+    {
+      "key": "table/t_text.tbl/TXT_ITEM_HELP_DELAY_SHORT",
+      "texts": {
+        "ja": "硬直短",
+        "en": "Short Delay",
+        "zh-Hans": "僵直短",
+        "zh-Hant": "僵直短",
+        "ko": "경직 짧음",
+        "fr": "Délai court",
+        "de": "Kurze Verzögerung",
+        "es": "Retraso breve"
+      }
+    },
+    {
+      "key": "table/t_text.tbl/TXT_ITEM_HELP_DEBUFF_CANCEL",
+      "texts": {
+        "ja": "デバフ解除",
+        "en": "Remove Debuff",
+        "zh-Hans": "解除减益",
+        "zh-Hant": "解除減益",
+        "ko": "상태 이상 회복",
+        "fr": "Retire malus",
+        "de": "Schwächung entfernen",
+        "es": "Elimina debilitamiento"
+      }
+    },
+    {
+      "key": "table/t_text.tbl/TXT_ITEM_HELP_SHARD_COMMAND",
+      "texts": {
+        "ja": "発動時",
+        "en": "Upon Activation",
+        "zh-Hans": "发动时",
+        "zh-Hant": "發動時",
+        "ko": "발동 시 ",
+        "fr": "Dès l'activation",
+        "de": "Bei Aktivierung",
+        "es": "Al activarse"
+      }
+    },
+    {
+      "key": "table/t_text.tbl/TXT_ITEM_HELP_FORMAT1",
+      "texts": {
+        "ja": "【<I%03d>%s：",
+        "en": "[<I%03d>%s - ",
+        "zh-Hans": "【<I%03d>%s：",
+        "zh-Hant": "【<I%03d>%s：",
+        "ko": "【<I%03d>%s: ",
+        "fr": "[<I%03d>%s - ",
+        "de": "[<I%03d>%s - ",
+        "es": "[<I%03d>%s - "
+      }
+    },
+    {
+      "key": "table/t_text.tbl/TXT_ITEM_HELP_FORMAT2",
+      "texts": {
+        "ja": "【 %s",
+        "en": "[%s",
+        "zh-Hans": "【 %s",
+        "zh-Hant": "【 %s",
+        "ko": "【 %s",
+        "fr": "[%s",
+        "de": "[%s",
+        "es": "[%s"
+      }
+    },
+    {
+      "key": "table/t_text.tbl/TXT_ITEM_HELP_FORMAT3",
+      "texts": {
+        "ja": " 】\n%s%s",
+        "en": "  ] \n%s%s",
+        "zh-Hans": " 】\n%s%s",
+        "zh-Hant": " 】\n%s%s",
+        "ko": " 】\n%s%s",
+        "fr": "  ] \n%s%s",
+        "de": "  ] \n%s%s",
+        "es": "  ] \n%s%s"
+      }
+    },
+    {
+      "key": "table/t_text.tbl/TXT_ITEM_HELP_FORMAT4",
+      "texts": {
+        "ja": "%s 】\n%s",
+        "en": "%s] \n%s",
+        "zh-Hans": "%s 】\n%s",
+        "zh-Hant": "%s 】\n%s",
+        "ko": "%s 】 \n%s",
+        "fr": "%s] \n%s",
+        "de": "%s] \n%s",
+        "es": "%s] \n%s"
+      }
+    },
+    {
+      "key": "table/t_text.tbl/TXT_ITEM_HELP_FORMAT5",
+      "texts": {
+        "ja": "【",
+        "en": "[",
+        "zh-Hans": "【",
+        "zh-Hant": "【",
+        "ko": "【",
+        "fr": "[",
+        "de": "[",
+        "es": "["
+      }
+    },
+    {
+      "key": "table/t_text.tbl/TXT_ITEM_HELP_FORMAT6",
+      "texts": {
+        "ja": "】",
+        "en": "]",
+        "zh-Hans": "】",
+        "zh-Hant": "】",
+        "ko": "】",
+        "fr": "]",
+        "de": "]",
+        "es": "]"
+      }
+    },
+    {
+      "key": "table/t_text.tbl/TXT_ITEM_HELP_FORMAT7",
+      "texts": {
+        "ja": "%s%s%s】\n%s",
+        "en": "%s%s%s] \n%s",
+        "zh-Hans": "%s%s%s】\n%s",
+        "zh-Hant": "%s%s%s】\n%s",
+        "ko": "%s%s%s】\n%s",
+        "fr": "%s%s%s] \n%s",
+        "de": "%s%s%s] \n%s",
+        "es": "%s%s%s] \n%s"
+      }
+    },
+    {
+      "key": "table/t_text.tbl/TXT_ITEM_HELP_FORMAT8",
+      "texts": {
+        "ja": "／",
+        "en": ", ",
+        "zh-Hans": "／",
+        "zh-Hant": "／",
+        "ko": "／",
+        "fr": ", ",
+        "de": ", ",
+        "es": ", "
+      }
+    },
+    {
+      "key": "script/scena/mp4000_ev.dat/EV_00_01_01/called/89/arg/1",
+      "texts": {
+        "ja": "巡回兵",
+        "en": "Guard",
+        "zh-Hans": "巡逻兵",
+        "zh-Hant": "巡邏兵",
+        "ko": "순회병",
+        "fr": "Garde",
+        "de": "Wache",
+        "es": "Guardia"
+      },
+      "display_role": "speaker"
+    },
+    {
+      "key": "script/scena/mp4000_ev.dat/EV_00_01_01/code/21/alignment/0f4b29c3cd74be28560f87152f7b7ec17622dd7be8ace46a99b7529268e6bb92",
+      "texts": {
+        "ja": "巡回兵",
+        "en": "Guard",
+        "fr": "Garde",
+        "de": "Wache",
+        "es": "Guardia"
+      }
+    },
+    {
+      "key": "table/t_help.tbl/sha256:b08db38513b22a9b003c43b11b070dd245ba0d815955d8a45d4d7978d8f7ef15/title",
+      "texts": {
+        "ja": "防御",
+        "en": "Guard",
+        "zh-Hans": "防御",
+        "zh-Hant": "防禦",
+        "ko": "방어",
+        "fr": "Garde",
+        "de": "Abwehr",
+        "es": "Guardia"
+      }
+    },
+    {
+      "key": "table/t_item.tbl/sha256:da84175e4068a536f148ce4a530ec19ffd52a2d1154345084f9106f43a7a98ba/name",
+      "texts": {
+        "ja": "クローゼ・Ｌブラウンヘア　",
+        "en": "Kloe - Light Brown Hair　",
+        "zh-Hans": "克萝赛·浅棕发色",
+        "zh-Hant": "克蘿賽・淺棕髮色",
+        "ko": "클로제・L브라운 헤어　",
+        "fr": "Kloe - Cheveux brun clair　",
+        "de": "Kloe – Hellbraunes Haar　",
+        "es": "Kloe - Pelo castaño claro　"
+      }
+    },
+    {
+      "key": "table/t_item.tbl/sha256:e3e7723d0f034ea7026e109f3bb8349f4eaf8426cbd041635817d3f952102f57/name",
+      "texts": {
+        "ja": "プロメテウス",
+        "en": "Prometheus",
+        "zh-Hans": "普罗米修斯",
+        "zh-Hant": "普羅米修斯",
+        "ko": "프로메테우스",
+        "fr": "Prométhée",
+        "de": "Prometheus",
+        "es": "Prometeo"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillTypeHelpData/sha256:411a08912d84815d1f7c946cf5f8cad8a0af8569acff133cb0be2c0754aa764d/label",
+      "texts": {
+        "ja": "防御",
+        "en": "Guard",
+        "zh-Hans": "防御",
+        "zh-Hant": "防禦",
+        "ko": "방어",
+        "fr": "Garde",
+        "de": "Abwehr",
+        "es": "Guardia"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillItemStatusData/sha256:436f380a84fde0dc57716762cad9f2aa310aa4e389aafc77aaa88c68b49b4d2e/name",
+      "texts": {
+        "ja": "防御",
+        "en": "Guard",
+        "zh-Hans": "防御",
+        "zh-Hant": "防禦",
+        "ko": "방어",
+        "fr": "Garde",
+        "de": "Abwehr",
+        "es": "Guardia"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillTextArrayData/sha256:633cba44a4160e6e586812f39dac30e0c984a1291a65d6083e39c996f8175412/format",
+      "texts": {
+        "ja": "防御",
+        "en": "Guard",
+        "zh-Hans": "防御",
+        "zh-Hant": "防禦",
+        "ko": "방어",
+        "fr": "Garde",
+        "de": "Abwehr",
+        "es": "Guardia"
+      }
+    },
+    {
+      "key": "table/t_name.tbl/group:0/sequence:be3f171657819554f55c3cde829f654ff034f8f53b7b05af48738dff9085d2ac/record:663/name",
+      "texts": {
+        "ja": "衛兵",
+        "en": "Guard",
+        "zh-Hans": "卫兵",
+        "zh-Hant": "衛兵",
+        "ko": "위병",
+        "fr": "Soldat",
+        "de": "Soldat",
+        "es": "Soldado"
+      },
+      "table_rows": {
+        "ja": [
+          663
+        ],
+        "en": [
+          663
+        ],
+        "zh-Hans": [
+          663
+        ],
+        "zh-Hant": [
+          663
+        ],
+        "ko": [
+          663
+        ],
+        "fr": [
+          663
+        ],
+        "de": [
+          663
+        ],
+        "es": [
+          663
+        ]
+      }
+    },
+    {
+      "key": "table/t_name.tbl/group:0/sequence:be3f171657819554f55c3cde829f654ff034f8f53b7b05af48738dff9085d2ac/record:924/name",
+      "texts": {
+        "ja": "プロメテ",
+        "en": "Prometheus",
+        "zh-Hans": "普罗梅笛",
+        "zh-Hant": "普羅梅笛",
+        "ko": "프로메테",
+        "fr": "Prometheus",
+        "de": "Prometheus",
+        "es": "Prometeo"
+      },
+      "table_rows": {
+        "ja": [
+          924
+        ],
+        "en": [
+          924
+        ],
+        "zh-Hans": [
+          924
+        ],
+        "zh-Hant": [
+          924
+        ],
+        "ko": [
+          924
+        ],
+        "fr": [
+          924
+        ],
+        "de": [
+          924
+        ],
+        "es": [
+          924
+        ]
+      }
+    },
+    {
+      "key": "table/t_name.tbl/group:0/sequence:be3f171657819554f55c3cde829f654ff034f8f53b7b05af48738dff9085d2ac/record:1547/name",
+      "texts": {
+        "ja": "山猫号",
+        "en": "Bobcat",
+        "zh-Hans": "山猫号",
+        "zh-Hant": "山貓號",
+        "ko": "살쾡이호",
+        "fr": "Bobcat",
+        "de": "Bobcat",
+        "es": "Bobcat"
+      },
+      "table_rows": {
+        "ja": [
+          1547
+        ],
+        "en": [
+          1547
+        ],
+        "zh-Hans": [
+          1547
+        ],
+        "zh-Hant": [
+          1547
+        ],
+        "ko": [
+          1547
+        ],
+        "fr": [
+          1547
+        ],
+        "de": [
+          1547
+        ],
+        "es": [
+          1547
+        ]
+      }
+    },
+    {
+      "key": "table/t_place.tbl/sha256:88010561efe21cb5f00146bca9fc311c6f8d978ad891b5287611921d6cfe1ff3/name",
+      "texts": {
+        "ja": "《山猫号》",
+        "en": "Bobcat",
+        "zh-Hans": "《山猫号》",
+        "zh-Hant": "《山貓號》",
+        "ko": "《살쾡이호》",
+        "fr": "Bobcat",
+        "de": "Bobcat",
+        "es": "Bobcat"
+      }
+    },
+    {
+      "key": "table/t_place.tbl/sha256:de69be59a5c24d29f7833c93739a5fe8289580e2d5e8e64d2a972080ddb3c788/name",
+      "texts": {
+        "ja": "《山猫号》",
+        "en": "Bobcat",
+        "zh-Hans": "《山猫号》",
+        "zh-Hant": "《山貓號》",
+        "ko": "《살쾡이호》",
+        "fr": "Bobcat",
+        "de": "Bobcat",
+        "es": "Bobcat"
+      }
+    },
+    {
+      "key": "table/t_skill.tbl/sha256:2b40755242ba109c00b99f78579433bbd52fa53b0e8019d45a932dba7587214a/name",
+      "texts": {
+        "ja": "ワイルドキャット",
+        "en": "Bobcat",
+        "zh-Hans": "野猫一家",
+        "zh-Hant": "野貓一家",
+        "ko": "와일드 캣",
+        "fr": "Bobcat",
+        "de": "Bobcat",
+        "es": "Bobcat"
+      }
+    },
+    {
+      "key": "table/t_skill.tbl/sha256:755382e63e3edc8a02bca1198f091cfe5d6dbcce83c5cd177d58a5c19597f3e2/name",
+      "texts": {
+        "ja": "防御",
+        "en": "Guard",
+        "zh-Hans": "防御",
+        "zh-Hant": "防禦",
+        "ko": "방어",
+        "fr": "Garde",
+        "de": "Abwehr",
+        "es": "Guardia"
+      }
+    },
+    {
+      "key": "table/t_text.tbl/TXT_STEAM_OPT_TEXT_COMMAND_BATTLE_GUARD",
+      "texts": {
+        "ja": "防御",
+        "en": "Guard",
+        "zh-Hans": "防御",
+        "zh-Hant": "防禦",
+        "ko": "방어",
+        "fr": "Garde",
+        "de": "Abwehr",
+        "es": "Guardia"
+      }
+    },
+    {
+      "key": "table/t_tips.tbl/sha256:0d951c70dda28f266307b133617aaf1193292785e46bcef96956de78fe0fd123/title",
+      "texts": {
+        "ja": "【山猫号】",
+        "en": "Bobcat",
+        "zh-Hans": "【山猫号】",
+        "zh-Hant": "【山貓號】",
+        "ko": "【살쾡이호】",
+        "fr": "Bobcat",
+        "de": "Bobcat",
+        "es": "Bobcat"
+      }
+    },
+    {
+      "key": "table/t_viewer.tbl/ViewerMapData/sha256:f7b7fb7442ae4bd17d122184a6bc54c1d489770a676a8ef7229631934e48da68/name",
+      "texts": {
+        "ja": "山猫号",
+        "en": "Bobcat",
+        "zh-Hans": "山猫号",
+        "zh-Hant": "山貓號",
+        "ko": "살쾡이호",
+        "fr": "Bobcat",
+        "de": "Bobcat",
+        "es": "Bobcat"
+      }
+    },
+    {
+      "key": "table/t_viewer.tbl/ViewerHairList/sha256:06ff8854e72e9bf215654d6d54bda10525a505a6ce0487f378856ee113967609/name",
+      "texts": {
+        "ja": "クローゼ・Ｌブラウンヘア　",
+        "en": "Kloe - Light Brown Hair　",
+        "zh-Hans": "克萝赛·浅棕发色　",
+        "zh-Hant": "克蘿賽・淺棕髮色　",
+        "ko": "클로제・L브라운 헤어　",
+        "fr": "Kloe - Cheveux brun clair　",
+        "de": "Kloe – Hellbraunes Haar　",
+        "es": "Kloe - Pelo castaño claro　"
+      }
+    },
+    {
+      "key": "table/t_item.tbl/sha256:573cab944d24f5e04b30256a3992482233cbaa4cf7051f134e53d65c7869eec0/description",
+      "texts": {
+        "ja": "６０回目の生誕祭　準備の進む王都の様子を特報！",
+        "en": "Special Report - Royal Capital Prepares for 60th Birthday Festival!",
+        "zh-Hans": "第６０次的诞生庆典　王都的准备工作特辑！",
+        "zh-Hant": "第６０次的誕生慶典　王都的準備工作特輯！",
+        "ko": "60회차 탄신제 준비를 향한 왕도의 근황을 특보!",
+        "fr": "Reportage spécial : la capitale royale se prépare pour le 60e Festival d'anniversaire !",
+        "de": "Aktuell: Königliche Hauptstadt bereitet 60. Geburtstagsfeier vor!",
+        "es": "Reportaje especial: ¡Se acerca el cumpleaños 60 de la reina!"
+      }
+    },
+    {
+      "key": "table/t_item.tbl/sha256:52101c186f1f2feb7f0b833c9c3a61c44ce5e9b9b762274c437285ed2510f72b/description",
+      "texts": {
+        "ja": "装備の強化に用いる万能特殊素材。",
+        "en": "A versatile special material used to enhance equipment.",
+        "zh-Hans": "用来强化装备的万能特殊材料。",
+        "zh-Hant": "用來強化裝備的萬能特殊材料。",
+        "ko": "장비 강화에 사용하는 만능 특수 소재.",
+        "fr": "Un matériau versatile servant à améliorer l'équipement.",
+        "de": "Ein vielseitiges Spezialmaterial zur Verbesserung von Geräten.",
+        "es": "Material especial versátil que se usa para mejorar el equipo."
+      }
+    },
+    {
+      "key": "table/t_item.tbl/sha256:cc14d87249dd0173bbb777f38e1651cda78d73100f015fb58fb97bd27f22e274/name",
+      "texts": {
+        "ja": "攻撃２",
+        "en": "Attack 2",
+        "zh-Hans": "攻击２",
+        "zh-Hant": "攻擊２",
+        "ko": "공격2",
+        "fr": "Attaque 2",
+        "de": "Angriff 2",
+        "es": "Ataque 2"
+      }
+    },
+    {
+      "key": "table/t_skill.tbl/sha256:823e40714410164933b52a28a785c0c76b3ba6152554ee6c330367500d03de86/name",
+      "texts": {
+        "ja": "<C9>マーキング",
+        "en": "<C9>Marking",
+        "zh-Hans": "<C9>紧迫盯人",
+        "zh-Hant": "<C9>緊迫盯人",
+        "ko": "<C9>마킹",
+        "fr": "<C9>Ciblage",
+        "de": "<C9>Markierung",
+        "es": "<C9>Marcado"
+      }
+    },
+    {
+      "key": "table/t_skill.tbl/sha256:99e2a2690d612860ef576726c48f82f6067e1683f38f6be42b173c38270f836e/name",
+      "texts": {
+        "ja": "<C9>EP吸収",
+        "en": "<C9>Absorb EP",
+        "zh-Hans": "<C9>吸收EP",
+        "zh-Hant": "<C9>吸收EP",
+        "ko": "<C9>EP 흡수",
+        "fr": "<C9>Absorption de PE",
+        "de": "<C9>EP absorbieren",
+        "es": "<C9>Absorción de PE"
+      }
+    },
+    {
+      "key": "table/t_skill.tbl/sha256:aabe562e332f5c1d8f766c0f7751af405beca56330da5a683c208ee680644dfd/name",
+      "texts": {
+        "ja": "<C9>単体",
+        "en": "<C9>Single",
+        "zh-Hans": "<C9>单体",
+        "zh-Hant": "<C9>單體",
+        "ko": "<C9>개별",
+        "fr": "<C9>Simple",
+        "de": "<C9>Einzel",
+        "es": "<C9>Solo"
+      }
+    },
+    {
+      "key": "table/t_skill.tbl/sha256:823e40714410164933b52a28a785c0c76b3ba6152554ee6c330367500d03de86/description",
+      "texts": {
+        "ja": "<C9>マーキング",
+        "en": "<C9>Marking",
+        "zh-Hans": "<C9>紧迫盯人",
+        "zh-Hant": "<C9>緊迫盯人",
+        "ko": "<C9>마킹",
+        "fr": "<C9>Ciblage",
+        "de": "<C9>Markierung",
+        "es": "<C9>Marcado"
+      }
+    },
+    {
+      "key": "table/t_skill.tbl/sha256:99e2a2690d612860ef576726c48f82f6067e1683f38f6be42b173c38270f836e/description",
+      "texts": {
+        "ja": "<C9>EP吸収",
+        "en": "<C9>Absorb EP",
+        "zh-Hans": "<C9>吸收EP",
+        "zh-Hant": "<C9>吸收EP",
+        "ko": "<C9>EP 흡수",
+        "fr": "<C9>Absorption de PE",
+        "de": "<C9>EP absorbieren",
+        "es": "<C9>Absorción de PE"
+      }
+    },
+    {
+      "key": "table/t_viewer.tbl/ViewerMotionList/sha256:2bf9ef7e4013e6074f514bbbd6e8f740f888f86723529c296c1c8e16725810b3/name",
+      "texts": {
+        "ja": "攻撃②",
+        "en": "Attack 2",
+        "zh-Hans": "攻击②",
+        "zh-Hant": "攻擊②",
+        "ko": "공격②",
+        "fr": "Attaque 2",
+        "de": "Angriff 2",
+        "es": "Ataque 2"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:3fea546e769841421b8fb2dfcc8da9ea60cf31b6c5c5908ce5bdff5bf7fa47eb/name",
+      "texts": {
+        "ja": "CP+%d",
+        "en": "CP+%d",
+        "zh-Hans": "CP+%d",
+        "zh-Hant": "CP+%d",
+        "ko": "CP+%d",
+        "fr": "PT +%d",
+        "de": "TP +%d",
+        "es": "PT +%d"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:3fea546e769841421b8fb2dfcc8da9ea60cf31b6c5c5908ce5bdff5bf7fa47eb/stat",
+      "texts": {
+        "ja": "CP",
+        "en": "CP",
+        "zh-Hans": "CP",
+        "zh-Hant": "CP",
+        "ko": "CP",
+        "fr": "PT",
+        "de": "TP",
+        "es": "PT"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:3fea546e769841421b8fb2dfcc8da9ea60cf31b6c5c5908ce5bdff5bf7fa47eb/format",
+      "texts": {
+        "ja": "+%d",
+        "en": "+%d",
+        "zh-Hans": "+%d",
+        "zh-Hant": "+%d",
+        "ko": "+%d",
+        "fr": "+%d",
+        "de": "+%d",
+        "es": "+%d"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:3fea546e769841421b8fb2dfcc8da9ea60cf31b6c5c5908ce5bdff5bf7fa47eb/turns",
+      "texts": {
+        "ja": "",
+        "en": "",
+        "zh-Hans": "",
+        "zh-Hant": "",
+        "ko": "",
+        "fr": "",
+        "de": "",
+        "es": ""
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:3fea546e769841421b8fb2dfcc8da9ea60cf31b6c5c5908ce5bdff5bf7fa47eb/value",
+      "texts": {
+        "ja": "",
+        "en": "",
+        "zh-Hans": "",
+        "zh-Hant": "",
+        "ko": "",
+        "fr": "",
+        "de": "",
+        "es": ""
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:76f1f1ba08422fea0c2849bb495fa061f0db80f005fcbf97bd72c3fdb2f4c10a/name",
+      "texts": {
+        "ja": "最大HP%d％アップ",
+        "en": "Max HP+%d%%",
+        "zh-Hans": "HP上限提升%d％",
+        "zh-Hant": "HP上限提升%d％",
+        "ko": "최대 HP %d％ 상승",
+        "fr": "PV MAX +%d %%",
+        "de": "MAX LP +%d %%",
+        "es": "PV MÁX +%d%%"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:76f1f1ba08422fea0c2849bb495fa061f0db80f005fcbf97bd72c3fdb2f4c10a/stat",
+      "texts": {
+        "ja": "最大HP",
+        "en": "MAX HP",
+        "zh-Hans": "HP上限",
+        "zh-Hant": "HP上限",
+        "ko": "최대 HP",
+        "fr": "PV MAX",
+        "de": "MAX LP",
+        "es": "PV MÁX"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:76f1f1ba08422fea0c2849bb495fa061f0db80f005fcbf97bd72c3fdb2f4c10a/format",
+      "texts": {
+        "ja": "%d％アップ",
+        "en": "+%d%%",
+        "zh-Hans": "提升%d％",
+        "zh-Hant": "提升%d％",
+        "ko": "%d％ 상승",
+        "fr": "+%d %%",
+        "de": "+%d%%",
+        "es": "+%d%%"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:76f1f1ba08422fea0c2849bb495fa061f0db80f005fcbf97bd72c3fdb2f4c10a/turns",
+      "texts": {
+        "ja": "",
+        "en": "",
+        "zh-Hans": "",
+        "zh-Hant": "",
+        "ko": "",
+        "fr": "",
+        "de": "",
+        "es": ""
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:76f1f1ba08422fea0c2849bb495fa061f0db80f005fcbf97bd72c3fdb2f4c10a/value",
+      "texts": {
+        "ja": "",
+        "en": "",
+        "zh-Hans": "",
+        "zh-Hant": "",
+        "ko": "",
+        "fr": "",
+        "de": "",
+        "es": ""
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:84e20bc440ad5bd9cdff26c9eee628643900b252337b33aa9365e656c8e1bb10/name",
+      "texts": {
+        "ja": "STR+%d％",
+        "en": "STR+%d%%",
+        "zh-Hans": "STR+%d％",
+        "zh-Hant": "STR+%d％",
+        "ko": "STR +%d％",
+        "fr": "FOR +%d %%",
+        "de": "STÄ+%d%%",
+        "es": "FUE +%d%%"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:84e20bc440ad5bd9cdff26c9eee628643900b252337b33aa9365e656c8e1bb10/stat",
+      "texts": {
+        "ja": "STR",
+        "en": "STR",
+        "zh-Hans": "STR",
+        "zh-Hant": "STR",
+        "ko": "STR",
+        "fr": "FOR",
+        "de": "STÄ",
+        "es": "FUE"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:84e20bc440ad5bd9cdff26c9eee628643900b252337b33aa9365e656c8e1bb10/format",
+      "texts": {
+        "ja": "+%d％",
+        "en": "+%d%%",
+        "zh-Hans": "+%d％",
+        "zh-Hant": "+%d％",
+        "ko": "+%d％",
+        "fr": "+%d %%",
+        "de": "+%d%%",
+        "es": "+%d%%"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:84e20bc440ad5bd9cdff26c9eee628643900b252337b33aa9365e656c8e1bb10/turns",
+      "texts": {
+        "ja": "STRアップ",
+        "en": "STR UP",
+        "zh-Hans": "STR上升",
+        "zh-Hant": "STR上升",
+        "ko": "STR 상승",
+        "fr": "FOR +",
+        "de": "STÄ ERHÖHT",
+        "es": "SUBE FUE"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:84e20bc440ad5bd9cdff26c9eee628643900b252337b33aa9365e656c8e1bb10/value",
+      "texts": {
+        "ja": "%d％",
+        "en": "%d%%",
+        "zh-Hans": "%d％",
+        "zh-Hant": "%d％",
+        "ko": "%d％",
+        "fr": "%d %%",
+        "de": "%d%%",
+        "es": "%d%%"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:69e34f7fdff628250ab19c946dc5777016496accb03490f4e780ac1bca8de309/name",
+      "texts": {
+        "ja": "DEF-%d％",
+        "en": "DEF-%d%%",
+        "zh-Hans": "DEF-%d％",
+        "zh-Hant": "DEF-%d％",
+        "ko": "DEF -%d％",
+        "fr": "DÉF -%d %%",
+        "de": "VERT-%d%%",
+        "es": "DEF -%d%%"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:69e34f7fdff628250ab19c946dc5777016496accb03490f4e780ac1bca8de309/stat",
+      "texts": {
+        "ja": "DEF",
+        "en": "DEF",
+        "zh-Hans": "DEF",
+        "zh-Hant": "DEF",
+        "ko": "DEF",
+        "fr": "DÉF",
+        "de": "VERT",
+        "es": "DEF"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:69e34f7fdff628250ab19c946dc5777016496accb03490f4e780ac1bca8de309/format",
+      "texts": {
+        "ja": "-%d％",
+        "en": "-%d%%",
+        "zh-Hans": "-%d％",
+        "zh-Hant": "-%d％",
+        "ko": "-%d％",
+        "fr": "-%d %%",
+        "de": "-%d %%",
+        "es": "-%d%%"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:69e34f7fdff628250ab19c946dc5777016496accb03490f4e780ac1bca8de309/turns",
+      "texts": {
+        "ja": "DEFダウン",
+        "en": "DEF DOWN",
+        "zh-Hans": "DEF下降",
+        "zh-Hant": "DEF下降",
+        "ko": "DEF 하락",
+        "fr": "DÉF -",
+        "de": "VERT REDUZIERT",
+        "es": "BAJA DEF"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:69e34f7fdff628250ab19c946dc5777016496accb03490f4e780ac1bca8de309/value",
+      "texts": {
+        "ja": "%d％",
+        "en": "%d%%",
+        "zh-Hans": "%d％",
+        "zh-Hant": "%d％",
+        "ko": "%d％",
+        "fr": "%d %%",
+        "de": "%d%%",
+        "es": "%d%%"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:5ae25e1f65e729399a4c03a74ecfc3d12e8c255a9a4a8acb2ce535373c7e922b/name",
+      "texts": {
+        "ja": "%dターンATS%s",
+        "en": "ATS%s (%d turns)",
+        "zh-Hans": "%d回合ATS%s",
+        "zh-Hant": "%d回合ATS%s",
+        "ko": "%d턴 ATS %s",
+        "fr": "FOA %s (%d tours)",
+        "de": "KSTÄ %s (%d Züge)",
+        "es": "FA %s (%d turnos)"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:5ae25e1f65e729399a4c03a74ecfc3d12e8c255a9a4a8acb2ce535373c7e922b/stat",
+      "texts": {
+        "ja": "ATS",
+        "en": "ATS",
+        "zh-Hans": "ATS",
+        "zh-Hant": "ATS",
+        "ko": "ATS",
+        "fr": "FOA",
+        "de": "KSTÄ",
+        "es": "FA"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:5ae25e1f65e729399a4c03a74ecfc3d12e8c255a9a4a8acb2ce535373c7e922b/format",
+      "texts": {
+        "ja": "%s",
+        "en": "%s",
+        "zh-Hans": "%s",
+        "zh-Hant": "%s",
+        "ko": "%s",
+        "fr": "%s",
+        "de": "%s",
+        "es": "%s"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:5ae25e1f65e729399a4c03a74ecfc3d12e8c255a9a4a8acb2ce535373c7e922b/turns",
+      "texts": {
+        "ja": "%dターン",
+        "en": "(%d turns)",
+        "zh-Hans": "%d回合",
+        "zh-Hant": "%d回合",
+        "ko": "%d턴",
+        "fr": "(%d tours)",
+        "de": "(%d Züge)",
+        "es": "(%d turnos)"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:5ae25e1f65e729399a4c03a74ecfc3d12e8c255a9a4a8acb2ce535373c7e922b/value",
+      "texts": {
+        "ja": "",
+        "en": "",
+        "zh-Hans": "",
+        "zh-Hant": "",
+        "ko": "",
+        "fr": "",
+        "de": "",
+        "es": ""
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:dae76d0cf2b20ddbefd134ee7bbc2e0d776c897ceb6b337d5644ce7fc4f62108/name",
+      "texts": {
+        "ja": "%dターンADF%s",
+        "en": "ADF%s (%d turns) ",
+        "zh-Hans": "%d回合ADF%s",
+        "zh-Hant": "%d回合ADF%s",
+        "ko": "%d턴 ADF %s",
+        "fr": "DFA %s (%d tours) ",
+        "de": "KVERT %s (%d Züge) ",
+        "es": "DA %s (%d turnos) "
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:dae76d0cf2b20ddbefd134ee7bbc2e0d776c897ceb6b337d5644ce7fc4f62108/stat",
+      "texts": {
+        "ja": "ADF",
+        "en": "ADF",
+        "zh-Hans": "ADF",
+        "zh-Hant": "ADF",
+        "ko": "ADF",
+        "fr": "DFA",
+        "de": "KVERT",
+        "es": "DA"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:dae76d0cf2b20ddbefd134ee7bbc2e0d776c897ceb6b337d5644ce7fc4f62108/format",
+      "texts": {
+        "ja": "%s",
+        "en": "%s",
+        "zh-Hans": "%s",
+        "zh-Hant": "%s",
+        "ko": "%s",
+        "fr": "%s",
+        "de": "%s",
+        "es": "%s"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:dae76d0cf2b20ddbefd134ee7bbc2e0d776c897ceb6b337d5644ce7fc4f62108/turns",
+      "texts": {
+        "ja": "%dターン",
+        "en": "(%d turns)",
+        "zh-Hans": "%d回合",
+        "zh-Hant": "%d回合",
+        "ko": "%d턴",
+        "fr": "(%d tours)",
+        "de": "(%d Züge)",
+        "es": "(%d turnos)"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:dae76d0cf2b20ddbefd134ee7bbc2e0d776c897ceb6b337d5644ce7fc4f62108/value",
+      "texts": {
+        "ja": "",
+        "en": "",
+        "zh-Hans": "",
+        "zh-Hant": "",
+        "ko": "",
+        "fr": "",
+        "de": "",
+        "es": ""
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:2a68563858e5e8c03f097e398ac352be7dded163c6769db4d71ad59e45ed2f0b/name",
+      "texts": {
+        "ja": "%dターンSPD%s",
+        "en": "SPD%s (%d turns)",
+        "zh-Hans": "%d回合SPD%s",
+        "zh-Hant": "%d回合SPD%s",
+        "ko": "%d턴 SPD %s",
+        "fr": "VIT %s (%d tours)",
+        "de": "GESCHW %s (%d Züge)",
+        "es": "VEL %s (%d turnos)"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:2a68563858e5e8c03f097e398ac352be7dded163c6769db4d71ad59e45ed2f0b/stat",
+      "texts": {
+        "ja": "SPD",
+        "en": "SPD",
+        "zh-Hans": "SPD",
+        "zh-Hant": "SPD",
+        "ko": "SPD",
+        "fr": "VIT",
+        "de": "GESCHW",
+        "es": "VEL"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:2a68563858e5e8c03f097e398ac352be7dded163c6769db4d71ad59e45ed2f0b/format",
+      "texts": {
+        "ja": "%s",
+        "en": "%s",
+        "zh-Hans": "%s",
+        "zh-Hant": "%s",
+        "ko": "%s",
+        "fr": "%s",
+        "de": "%s",
+        "es": "%s"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:2a68563858e5e8c03f097e398ac352be7dded163c6769db4d71ad59e45ed2f0b/turns",
+      "texts": {
+        "ja": "%dターン",
+        "en": "(%d turns)",
+        "zh-Hans": "%d回合",
+        "zh-Hant": "%d回合",
+        "ko": "%d턴",
+        "fr": "(%d tours)",
+        "de": "(%d Züge)",
+        "es": "(%d turnos)"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:2a68563858e5e8c03f097e398ac352be7dded163c6769db4d71ad59e45ed2f0b/value",
+      "texts": {
+        "ja": "",
+        "en": "",
+        "zh-Hans": "",
+        "zh-Hant": "",
+        "ko": "",
+        "fr": "",
+        "de": "",
+        "es": ""
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:3d62a0de7840820df9fa42800a85322174d779a71fb0ece3d4d9187e42d4a181/name",
+      "texts": {
+        "ja": "ヘイト%s",
+        "en": "Hate%s",
+        "zh-Hans": "仇恨值%s",
+        "zh-Hant": "仇恨值%s",
+        "ko": "적개심 %s",
+        "fr": "Hostilité %s",
+        "de": "Zorn %s",
+        "es": "Odio %s"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:3d62a0de7840820df9fa42800a85322174d779a71fb0ece3d4d9187e42d4a181/stat",
+      "texts": {
+        "ja": "ヘイト",
+        "en": "Hate",
+        "zh-Hans": "仇恨值",
+        "zh-Hant": "仇恨值",
+        "ko": "적개심",
+        "fr": "Hostilité",
+        "de": "Zorn",
+        "es": "Odio"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:3d62a0de7840820df9fa42800a85322174d779a71fb0ece3d4d9187e42d4a181/format",
+      "texts": {
+        "ja": "%s",
+        "en": "%s",
+        "zh-Hans": "%s",
+        "zh-Hant": "%s",
+        "ko": "%s",
+        "fr": "%s",
+        "de": "%s",
+        "es": "%s"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:3d62a0de7840820df9fa42800a85322174d779a71fb0ece3d4d9187e42d4a181/turns",
+      "texts": {
+        "ja": "",
+        "en": "",
+        "zh-Hans": "",
+        "zh-Hant": "",
+        "ko": "",
+        "fr": "",
+        "de": "",
+        "es": ""
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:3d62a0de7840820df9fa42800a85322174d779a71fb0ece3d4d9187e42d4a181/value",
+      "texts": {
+        "ja": "",
+        "en": "",
+        "zh-Hans": "",
+        "zh-Hant": "",
+        "ko": "",
+        "fr": "",
+        "de": "",
+        "es": ""
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:8a6d1be708f0c2decf5e30f0d17ac8feb1fe77a0bd04e40cd8e00ccc47d2b6bc/name",
+      "texts": {
+        "ja": "ヘイト%s",
+        "en": "Hate%s",
+        "zh-Hans": "仇恨值%s",
+        "zh-Hant": "仇恨值%s",
+        "ko": "적개심 %s",
+        "fr": "Hostilité %s",
+        "de": "Zorn %s",
+        "es": "Odio %s"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:8a6d1be708f0c2decf5e30f0d17ac8feb1fe77a0bd04e40cd8e00ccc47d2b6bc/stat",
+      "texts": {
+        "ja": "ヘイト",
+        "en": "Hate",
+        "zh-Hans": "仇恨值",
+        "zh-Hant": "仇恨值",
+        "ko": "적개심",
+        "fr": "Hostilité",
+        "de": "Zorn",
+        "es": "Odio"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:8a6d1be708f0c2decf5e30f0d17ac8feb1fe77a0bd04e40cd8e00ccc47d2b6bc/format",
+      "texts": {
+        "ja": "%s",
+        "en": "%s",
+        "zh-Hans": "%s",
+        "zh-Hant": "%s",
+        "ko": "%s",
+        "fr": "%s",
+        "de": "%s",
+        "es": "%s"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:8a6d1be708f0c2decf5e30f0d17ac8feb1fe77a0bd04e40cd8e00ccc47d2b6bc/turns",
+      "texts": {
+        "ja": "",
+        "en": "",
+        "zh-Hans": "",
+        "zh-Hant": "",
+        "ko": "",
+        "fr": "",
+        "de": "",
+        "es": ""
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:8a6d1be708f0c2decf5e30f0d17ac8feb1fe77a0bd04e40cd8e00ccc47d2b6bc/value",
+      "texts": {
+        "ja": "",
+        "en": "",
+        "zh-Hans": "",
+        "zh-Hant": "",
+        "ko": "",
+        "fr": "",
+        "de": "",
+        "es": ""
+      }
+    },
+    {
+      "key": "table/t_skill.tbl/sha256:782e706d28a8e31450e373ee9495a1ea1ca28e4f2c5db550072ce5878fb31ce5/description",
+      "texts": {
+        "ja": "－－－\n－－－",
+        "en": "---\n---",
+        "zh-Hans": "－－－\n－－－",
+        "zh-Hant": "－－－\n－－－",
+        "ko": "－－－\n－－－",
+        "fr": "---\n---",
+        "de": "---\n---",
+        "es": "---\n---"
+      }
+    },
+    {
+      "key": "table/t_skill.tbl/sha256:aba928273b1689775e79033e2f749018fd5ffa79214dfdd18d30d360d200718f/description",
+      "texts": {
+        "ja": "－－－\n－－－",
+        "en": "---\n---",
+        "zh-Hans": "－－－\n－－－",
+        "zh-Hant": "－－－\n－－－",
+        "ko": "－－－\n－－－",
+        "fr": "---\n---",
+        "de": "---\n---",
+        "es": "---\n---"
+      }
+    },
+    {
+      "key": "table/t_skill.tbl/sha256:e03cba3ab4298eff1ea06613c9946cd1a770276b3ea0f0b273efd193abc8e7ab/description",
+      "texts": {
+        "ja": "－－－\n－－－",
+        "en": "---\n---",
+        "zh-Hans": "－－－\n－－－",
+        "zh-Hant": "－－－\n－－－",
+        "ko": "－－－\n－－－",
+        "fr": "---\n---",
+        "de": "---\n---",
+        "es": "---\n---"
+      }
+    },
+    {
+      "key": "table/t_skill.tbl/sha256:4f26a632a8b3df4eaa06900acf71a500e1412def496d145d771545f676ce91e2/description",
+      "texts": {
+        "ja": "",
+        "en": "",
+        "zh-Hans": "",
+        "zh-Hant": "",
+        "ko": "",
+        "fr": "",
+        "de": "",
+        "es": ""
+      }
+    },
+    {
+      "key": "table/t_skill.tbl/sha256:88bcb44322dab2793832ae8cca8bb4cbbc25499640dd27ee3e5324f6bf7215b4/description",
+      "texts": {
+        "ja": "",
+        "en": "",
+        "zh-Hans": "",
+        "zh-Hant": "",
+        "ko": "",
+        "fr": "",
+        "de": "",
+        "es": ""
+      }
+    },
+    {
+      "key": "table/t_skill.tbl/sha256:36a946e50f95225d794c80d2b522a53835410c3a69902d5db2548f3a9576ee59/description",
+      "texts": {
+        "ja": "",
+        "en": "",
+        "zh-Hans": "",
+        "zh-Hant": "",
+        "ko": "",
+        "fr": "",
+        "de": "",
+        "es": ""
+      }
+    },
+    {
+      "key": "table/t_skill.tbl/sha256:6e581e4f373bf1c5e74714e3f33f0ac2d850943dc2dba6e2fc956d1a309876a6/description",
+      "texts": {
+        "ja": "",
+        "en": "",
+        "zh-Hans": "",
+        "zh-Hant": "",
+        "ko": "",
+        "fr": "",
+        "de": "",
+        "es": ""
+      }
+    },
+    {
+      "key": "table/t_skill.tbl/sha256:86c60d4afde113538bee3b5dad0074f4dc4ad339cb4de223d3ef7a961114c274/description",
+      "texts": {
+        "ja": "",
+        "en": "",
+        "zh-Hans": "",
+        "zh-Hant": "",
+        "ko": "",
+        "fr": "",
+        "de": "",
+        "es": ""
+      }
+    },
+    {
+      "key": "table/t_skill.tbl/sha256:62a18a3669693bb3be4678af43e952378473b27bb2311af064f5217b3b1ec77e/description",
+      "texts": {
+        "ja": "",
+        "en": "",
+        "zh-Hans": "",
+        "zh-Hant": "",
+        "ko": "",
+        "fr": "",
+        "de": "",
+        "es": ""
+      }
+    },
+    {
+      "key": "table/t_skill.tbl/sha256:e5e2a225401499339f409392e7aff323d3fad2db012e62cb206b79ce70ad92d9/description",
+      "texts": {
+        "ja": "－－－\n－－－",
+        "en": "---\n---",
+        "zh-Hans": "－－－\n－－－",
+        "zh-Hant": "－－－\n－－－",
+        "ko": "－－－\n－－－",
+        "fr": "---\n---",
+        "de": "---\n---",
+        "es": "---\n---"
+      }
+    },
+    {
+      "key": "table/t_skill.tbl/sha256:78afc935dbdc3c1e112b869315716b86304349c26adcc4f5af4cd4d4218bdd39/description",
+      "texts": {
+        "ja": "－－－\n－－－",
+        "en": "---\n---",
+        "zh-Hans": "－－－\n－－－",
+        "zh-Hant": "－－－\n－－－",
+        "ko": "－－－\n－－－",
+        "fr": "---\n---",
+        "de": "---\n---",
+        "es": "---\n---"
+      }
+    },
+    {
+      "key": "table/t_skill.tbl/sha256:820ff6a635780c676518a637192ffc05b3129aaa9b144e2d523fcdf903b32458/description",
+      "texts": {
+        "ja": "－－－\n－－－",
+        "en": "---\n---",
+        "zh-Hans": "－－－\n－－－",
+        "zh-Hant": "－－－\n－－－",
+        "ko": "－－－\n－－－",
+        "fr": "---\n---",
+        "de": "---\n---",
+        "es": "---\n---"
+      }
+    },
+    {
+      "key": "table/t_skill.tbl/sha256:295574fa1dd50a7135ee344df1ac3ae1f02c7f17b4e90e019de57f6e9b9d55bc/description",
+      "texts": {
+        "ja": "－－－\n－－－",
+        "en": "---\n---",
+        "zh-Hans": "－－－\n－－－",
+        "zh-Hant": "－－－\n－－－",
+        "ko": "－－－\n－－－",
+        "fr": "---\n---",
+        "de": "---\n---",
+        "es": "---\n---"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:9792ad85797c0b1a6ea1d3a7efb83d51b75a2d47d37d762623d852392fa0595e/name",
+      "texts": {
+        "ja": "EP%s回復",
+        "en": "Recover %s EP",
+        "zh-Hans": "回复EP%s",
+        "zh-Hant": "回復EP%s",
+        "ko": "EP %s 회복",
+        "fr": "Restaure %s PE",
+        "de": "Regeneriert %s EP",
+        "es": "Recuperación de %s PE"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:9792ad85797c0b1a6ea1d3a7efb83d51b75a2d47d37d762623d852392fa0595e/stat",
+      "texts": {
+        "ja": "EP",
+        "en": "EP",
+        "zh-Hans": "EP",
+        "zh-Hant": "EP",
+        "ko": "EP",
+        "fr": "PE",
+        "de": "EP",
+        "es": "PE"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:9792ad85797c0b1a6ea1d3a7efb83d51b75a2d47d37d762623d852392fa0595e/format",
+      "texts": {
+        "ja": "%s回復",
+        "en": "Recover %s ",
+        "zh-Hans": "回复%s",
+        "zh-Hant": "回復%s",
+        "ko": "%s 회복",
+        "fr": "Soin %s ",
+        "de": "Regeneriert %s ",
+        "es": "Recuperación %s "
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:9792ad85797c0b1a6ea1d3a7efb83d51b75a2d47d37d762623d852392fa0595e/turns",
+      "texts": {
+        "ja": "",
+        "en": "",
+        "zh-Hans": "",
+        "zh-Hant": "",
+        "ko": "",
+        "fr": "",
+        "de": "",
+        "es": ""
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:9792ad85797c0b1a6ea1d3a7efb83d51b75a2d47d37d762623d852392fa0595e/value",
+      "texts": {
+        "ja": "",
+        "en": "",
+        "zh-Hans": "",
+        "zh-Hant": "",
+        "ko": "",
+        "fr": "",
+        "de": "",
+        "es": ""
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:a16007a411879d8a36f7193fc722bf2091153a032077d6481c077110c5ddea9f/name",
+      "texts": {
+        "ja": "EP徐々回復",
+        "en": "EP Regen",
+        "zh-Hans": "逐渐回复EP",
+        "zh-Hant": "逐漸回復EP",
+        "ko": "EP 서서히 회복",
+        "fr": "Afflux de PE",
+        "de": "EP-Regeneration",
+        "es": "Regeneración de PE"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:a16007a411879d8a36f7193fc722bf2091153a032077d6481c077110c5ddea9f/stat",
+      "texts": {
+        "ja": "",
+        "en": "",
+        "zh-Hans": "",
+        "zh-Hant": "",
+        "ko": "",
+        "fr": "",
+        "de": "",
+        "es": ""
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:a16007a411879d8a36f7193fc722bf2091153a032077d6481c077110c5ddea9f/format",
+      "texts": {
+        "ja": "",
+        "en": "",
+        "zh-Hans": "",
+        "zh-Hant": "",
+        "ko": "",
+        "fr": "",
+        "de": "",
+        "es": ""
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:a16007a411879d8a36f7193fc722bf2091153a032077d6481c077110c5ddea9f/turns",
+      "texts": {
+        "ja": "",
+        "en": "",
+        "zh-Hans": "",
+        "zh-Hant": "",
+        "ko": "",
+        "fr": "",
+        "de": "",
+        "es": ""
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:a16007a411879d8a36f7193fc722bf2091153a032077d6481c077110c5ddea9f/value",
+      "texts": {
+        "ja": "",
+        "en": "",
+        "zh-Hans": "",
+        "zh-Hant": "",
+        "ko": "",
+        "fr": "",
+        "de": "",
+        "es": ""
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:9f843641c156a5f667541eacea88548394f3b1c4f7a04a445e14b1fd36eaaf0f/name",
+      "texts": {
+        "ja": "CP徐々上昇",
+        "en": "CP Regen",
+        "zh-Hans": "CP逐渐上升",
+        "zh-Hant": "CP逐漸上升",
+        "ko": "CP 서서히 상승",
+        "fr": "Afflux de PT",
+        "de": "TP-Regeneration",
+        "es": "Regeneración de PT"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:9f843641c156a5f667541eacea88548394f3b1c4f7a04a445e14b1fd36eaaf0f/stat",
+      "texts": {
+        "ja": "",
+        "en": "",
+        "zh-Hans": "",
+        "zh-Hant": "",
+        "ko": "",
+        "fr": "",
+        "de": "",
+        "es": ""
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:9f843641c156a5f667541eacea88548394f3b1c4f7a04a445e14b1fd36eaaf0f/format",
+      "texts": {
+        "ja": "",
+        "en": "",
+        "zh-Hans": "",
+        "zh-Hant": "",
+        "ko": "",
+        "fr": "",
+        "de": "",
+        "es": ""
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:9f843641c156a5f667541eacea88548394f3b1c4f7a04a445e14b1fd36eaaf0f/turns",
+      "texts": {
+        "ja": "",
+        "en": "",
+        "zh-Hans": "",
+        "zh-Hant": "",
+        "ko": "",
+        "fr": "",
+        "de": "",
+        "es": ""
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:9f843641c156a5f667541eacea88548394f3b1c4f7a04a445e14b1fd36eaaf0f/value",
+      "texts": {
+        "ja": "",
+        "en": "",
+        "zh-Hans": "",
+        "zh-Hant": "",
+        "ko": "",
+        "fr": "",
+        "de": "",
+        "es": ""
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:a14e8928122e14d2c682546a794e83321da813584b2ac3c583ef206ddaafa9cc/name",
+      "texts": {
+        "ja": "HP吸収",
+        "en": "Absorb HP",
+        "zh-Hans": "吸收HP",
+        "zh-Hant": "吸收HP",
+        "ko": "HP 흡수",
+        "fr": "Absorption de PV",
+        "de": "LP absorbieren",
+        "es": "Absorción de PV"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:a14e8928122e14d2c682546a794e83321da813584b2ac3c583ef206ddaafa9cc/stat",
+      "texts": {
+        "ja": "HP",
+        "en": "HP",
+        "zh-Hans": "HP",
+        "zh-Hant": "HP",
+        "ko": "HP",
+        "fr": "PV",
+        "de": "LP",
+        "es": "PV"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:a14e8928122e14d2c682546a794e83321da813584b2ac3c583ef206ddaafa9cc/format",
+      "texts": {
+        "ja": "吸収",
+        "en": " Absorb",
+        "zh-Hans": "吸收",
+        "zh-Hant": "吸收",
+        "ko": "흡수",
+        "fr": " Absorption",
+        "de": " Absorbieren",
+        "es": " Absorción"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:a14e8928122e14d2c682546a794e83321da813584b2ac3c583ef206ddaafa9cc/turns",
+      "texts": {
+        "ja": "",
+        "en": "",
+        "zh-Hans": "",
+        "zh-Hant": "",
+        "ko": "",
+        "fr": "",
+        "de": "",
+        "es": ""
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:a14e8928122e14d2c682546a794e83321da813584b2ac3c583ef206ddaafa9cc/value",
+      "texts": {
+        "ja": "",
+        "en": "",
+        "zh-Hans": "",
+        "zh-Hant": "",
+        "ko": "",
+        "fr": "",
+        "de": "",
+        "es": ""
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:2d48bc91299ce7a9643709ae1d0eab20dda6ae0ea5de55290e890665787a6540/name",
+      "texts": {
+        "ja": "EP吸収",
+        "en": "Absorb EP",
+        "zh-Hans": "吸收EP",
+        "zh-Hant": "吸收EP",
+        "ko": "EP 흡수",
+        "fr": "Absorption de PE",
+        "de": "EP absorbieren",
+        "es": "Absorción de PE"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:2d48bc91299ce7a9643709ae1d0eab20dda6ae0ea5de55290e890665787a6540/stat",
+      "texts": {
+        "ja": "EP",
+        "en": "EP",
+        "zh-Hans": "EP",
+        "zh-Hant": "EP",
+        "ko": "EP",
+        "fr": "PE",
+        "de": "EP",
+        "es": "PE"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:2d48bc91299ce7a9643709ae1d0eab20dda6ae0ea5de55290e890665787a6540/format",
+      "texts": {
+        "ja": "吸収",
+        "en": " Absorb",
+        "zh-Hans": "吸收",
+        "zh-Hant": "吸收",
+        "ko": "흡수",
+        "fr": " Absorption",
+        "de": " Absorbieren",
+        "es": " Absorción"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:2d48bc91299ce7a9643709ae1d0eab20dda6ae0ea5de55290e890665787a6540/turns",
+      "texts": {
+        "ja": "",
+        "en": "",
+        "zh-Hans": "",
+        "zh-Hant": "",
+        "ko": "",
+        "fr": "",
+        "de": "",
+        "es": ""
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:2d48bc91299ce7a9643709ae1d0eab20dda6ae0ea5de55290e890665787a6540/value",
+      "texts": {
+        "ja": "",
+        "en": "",
+        "zh-Hans": "",
+        "zh-Hant": "",
+        "ko": "",
+        "fr": "",
+        "de": "",
+        "es": ""
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:1fdc6d0ce32e07c4b6e59d20b35476afe0452314abe1ef6682872ae92fcb3e2f/name",
+      "texts": {
+        "ja": "CP吸収",
+        "en": "Absorb CP",
+        "zh-Hans": "吸收CP",
+        "zh-Hant": "吸收CP",
+        "ko": "CP 흡수",
+        "fr": "Absorption de PT",
+        "de": "TP absorbieren",
+        "es": "Absorción de PT"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:1fdc6d0ce32e07c4b6e59d20b35476afe0452314abe1ef6682872ae92fcb3e2f/stat",
+      "texts": {
+        "ja": "CP",
+        "en": "CP",
+        "zh-Hans": "CP",
+        "zh-Hant": "CP",
+        "ko": "CP",
+        "fr": "PT",
+        "de": "TP",
+        "es": "PT"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:1fdc6d0ce32e07c4b6e59d20b35476afe0452314abe1ef6682872ae92fcb3e2f/format",
+      "texts": {
+        "ja": "吸収",
+        "en": " Absorb",
+        "zh-Hans": "吸收",
+        "zh-Hant": "吸收",
+        "ko": "흡수",
+        "fr": " Absorption",
+        "de": " Absorbieren",
+        "es": " Absorción"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:1fdc6d0ce32e07c4b6e59d20b35476afe0452314abe1ef6682872ae92fcb3e2f/turns",
+      "texts": {
+        "ja": "",
+        "en": "",
+        "zh-Hans": "",
+        "zh-Hant": "",
+        "ko": "",
+        "fr": "",
+        "de": "",
+        "es": ""
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:1fdc6d0ce32e07c4b6e59d20b35476afe0452314abe1ef6682872ae92fcb3e2f/value",
+      "texts": {
+        "ja": "",
+        "en": "",
+        "zh-Hans": "",
+        "zh-Hant": "",
+        "ko": "",
+        "fr": "",
+        "de": "",
+        "es": ""
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:9af2a8152599f2657b7d5fc8ae6abf8e87abf948e87b44a33525743d995277ac/name",
+      "texts": {
+        "ja": "EP吸収",
+        "en": "Absorb EP",
+        "zh-Hans": "吸收EP",
+        "zh-Hant": "吸收EP",
+        "ko": "EP 흡수",
+        "fr": "Absorption de PE",
+        "de": "EP absorbieren",
+        "es": "Absorción de PE"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:9af2a8152599f2657b7d5fc8ae6abf8e87abf948e87b44a33525743d995277ac/stat",
+      "texts": {
+        "ja": "EP",
+        "en": "EP",
+        "zh-Hans": "EP",
+        "zh-Hant": "EP",
+        "ko": "EP",
+        "fr": "PE",
+        "de": "EP",
+        "es": "PE"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:9af2a8152599f2657b7d5fc8ae6abf8e87abf948e87b44a33525743d995277ac/format",
+      "texts": {
+        "ja": "吸収",
+        "en": " Absorb",
+        "zh-Hans": "吸收",
+        "zh-Hant": "吸收",
+        "ko": "흡수",
+        "fr": " Absorption",
+        "de": " Absorbieren",
+        "es": " Absorción"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:9af2a8152599f2657b7d5fc8ae6abf8e87abf948e87b44a33525743d995277ac/turns",
+      "texts": {
+        "ja": "",
+        "en": "",
+        "zh-Hans": "",
+        "zh-Hant": "",
+        "ko": "",
+        "fr": "",
+        "de": "",
+        "es": ""
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:9af2a8152599f2657b7d5fc8ae6abf8e87abf948e87b44a33525743d995277ac/value",
+      "texts": {
+        "ja": "",
+        "en": "",
+        "zh-Hans": "",
+        "zh-Hant": "",
+        "ko": "",
+        "fr": "",
+        "de": "",
+        "es": ""
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:47c3cea44e9fb88da1f506f61c50522e088c5406f3783ec8864aec8615a3e3db/turns",
+      "texts": {
+        "ja": "行動後EP回復",
+        "en": "EP Regen",
+        "zh-Hans": "行动后回复EP",
+        "zh-Hant": "行動後回復EP",
+        "ko": "행동 후 EP 회복",
+        "fr": "Afflux de PE",
+        "de": "EP-Regeneration",
+        "es": "Regeneración de PE"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:ca0272be1ae085da6050e84b2fe2a535d73c2a5fbc0486df3edc167f0eee0a4e/turns",
+      "texts": {
+        "ja": "行動後CP回復",
+        "en": "CP Regen",
+        "zh-Hans": "行动后回复CP",
+        "zh-Hant": "行動後回復CP",
+        "ko": "행동 후 CP 회복",
+        "fr": "Afflux de PT",
+        "de": "TP-Regeneration",
+        "es": "Regeneración de PT"
+      }
+    }
+  ],
+  "metadata": {
+    "SkillItemStatusData": {
+      "sha256:17b0761f87b081d5cf10757ccc89f12be355c70e2e29df288b65b30710dcbcd1": {
+        "id": 0,
+        "parameter_types": []
+      }
+    },
+    "SkillEffectHelpData": {
+      "sha256:c7647ebab85291ee4b9d0ce443c043cb89c22397cfad696daec27e7ee1191211": {
+        "id": 80,
+        "parameter_types": [
+          16
+        ]
+      },
+      "sha256:d833076b3ae7e9525c6af28af320c28c2bd2d4afce293b8c715cd8324008b959": {
+        "id": 81,
+        "parameter_types": [
+          16
+        ]
+      },
+      "sha256:fb8dd4ee62074c4047603ed845c48f723a2c6cbbf3320c6e28bbf776bbbc9144": {
+        "id": 95,
+        "parameter_types": []
+      },
+      "sha256:b244e9f5b576cf8c158de2942fd54c881bb097d07f46c5e8a3d362dd03655a6e": {
+        "id": 96,
+        "parameter_types": []
+      },
+      "sha256:40e8036299b664fb977c41ecc4d4bf3e861952f2f4fc8654ba6ed9da17d9f12f": {
+        "id": 120,
+        "parameter_types": [
+          0,
+          0
+        ]
+      },
+      "sha256:c4f61ce51dfb9da17a35c38f34cf31196a587073983c520726e99d1029c3a9f7": {
+        "id": 121,
+        "parameter_types": [
+          0,
+          0
+        ]
+      },
+      "sha256:df1cd77615efffbef0c60ea7948cf4aebb17da0a9efa21aea8d9794c8796d00c": {
+        "id": 128,
+        "parameter_types": [
+          12
+        ]
+      },
+      "sha256:53792fa0b13f97099c10fa72f9124c5be4f745cc94a1f7c8c783ac367ac4216c": {
+        "id": 225,
+        "parameter_types": [
+          13
+        ]
+      },
+      "sha256:3fea546e769841421b8fb2dfcc8da9ea60cf31b6c5c5908ce5bdff5bf7fa47eb": {
+        "id": 126,
+        "parameter_types": [
+          1
+        ]
+      },
+      "sha256:76f1f1ba08422fea0c2849bb495fa061f0db80f005fcbf97bd72c3fdb2f4c10a": {
+        "id": 1001,
+        "parameter_types": [
+          1
+        ]
+      },
+      "sha256:84e20bc440ad5bd9cdff26c9eee628643900b252337b33aa9365e656c8e1bb10": {
+        "id": 1004,
+        "parameter_types": [
+          1
+        ]
+      },
+      "sha256:69e34f7fdff628250ab19c946dc5777016496accb03490f4e780ac1bca8de309": {
+        "id": 1010,
+        "parameter_types": [
+          1
+        ]
+      },
+      "sha256:5ae25e1f65e729399a4c03a74ecfc3d12e8c255a9a4a8acb2ce535373c7e922b": {
+        "id": 82,
+        "parameter_types": [
+          16
+        ]
+      },
+      "sha256:dae76d0cf2b20ddbefd134ee7bbc2e0d776c897ceb6b337d5644ce7fc4f62108": {
+        "id": 83,
+        "parameter_types": [
+          16
+        ]
+      },
+      "sha256:2a68563858e5e8c03f097e398ac352be7dded163c6769db4d71ad59e45ed2f0b": {
+        "id": 84,
+        "parameter_types": [
+          16
+        ]
+      },
+      "sha256:3d62a0de7840820df9fa42800a85322174d779a71fb0ece3d4d9187e42d4a181": {
+        "id": 101,
+        "parameter_types": [
+          9
+        ]
+      },
+      "sha256:8a6d1be708f0c2decf5e30f0d17ac8feb1fe77a0bd04e40cd8e00ccc47d2b6bc": {
+        "id": 102,
+        "parameter_types": [
+          10
+        ]
+      },
+      "sha256:9792ad85797c0b1a6ea1d3a7efb83d51b75a2d47d37d762623d852392fa0595e": {
+        "id": 125,
+        "parameter_types": [
+          4
+        ]
+      },
+      "sha256:a16007a411879d8a36f7193fc722bf2091153a032077d6481c077110c5ddea9f": {
+        "id": 130,
+        "parameter_types": []
+      },
+      "sha256:9f843641c156a5f667541eacea88548394f3b1c4f7a04a445e14b1fd36eaaf0f": {
+        "id": 131,
+        "parameter_types": []
+      },
+      "sha256:a14e8928122e14d2c682546a794e83321da813584b2ac3c583ef206ddaafa9cc": {
+        "id": 200,
+        "parameter_types": []
+      },
+      "sha256:2d48bc91299ce7a9643709ae1d0eab20dda6ae0ea5de55290e890665787a6540": {
+        "id": 205,
+        "parameter_types": []
+      },
+      "sha256:1fdc6d0ce32e07c4b6e59d20b35476afe0452314abe1ef6682872ae92fcb3e2f": {
+        "id": 206,
+        "parameter_types": []
+      },
+      "sha256:9af2a8152599f2657b7d5fc8ae6abf8e87abf948e87b44a33525743d995277ac": {
+        "id": 211,
+        "parameter_types": []
+      }
+    }
+  },
+  "contexts": [
+    {
+      "description_key": "table/t_skill.tbl/sha256:07d3542054a3956227e6c6a64cbaa7f317914bdedb5b0ba20a7c9912e2cb7ca1/description",
+      "group": [
+        [
+          128,
+          1500,
+          25,
+          0
+        ]
+      ]
+    },
+    {
+      "description_key": "table/t_skill.tbl/sha256:139a56fe653e61a1c69623e46e9cfbf650b3f7318a0a066168aa889ed42ffab9/description",
+      "group": [
+        [
+          128,
+          1750,
+          25,
+          0
+        ]
+      ]
+    },
+    {
+      "description_key": "table/t_skill.tbl/sha256:577651642cc07ca4b65687026586ab84eaf27fe820542fcede61189a1d01413c/description",
+      "group": [
+        [
+          120,
+          100,
+          0,
+          0
+        ],
+        [
+          225,
+          4000,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "description_key": "table/t_skill.tbl/sha256:6879f39a9547df9af63fafe23d411f93f0718e6843b10bf7d5eaa9fc0c7c90b3/description",
+      "group": [
+        [
+          120,
+          50,
+          0,
+          0
+        ],
+        [
+          95,
+          100,
+          0,
+          0
+        ],
+        [
+          96,
+          100,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "description_key": "table/t_item.tbl/sha256:f6973cc5193b1b1ac0ca8d0a44ef538b7588f0e557c12b39b17b9727b360580a/description",
+      "group": [
+        [
+          1004,
+          15,
+          0,
+          0
+        ],
+        [
+          1010,
+          3,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "description_key": "table/t_skill.tbl/sha256:4dfcd9311c47f9adab05fa50b1ca306423275ae0625e5d6268b9aadc33498739/description",
+      "group": [
+        [
+          126,
+          20,
+          0,
+          0
+        ],
+        [
+          80,
+          100,
+          3,
+          1
+        ]
+      ]
+    },
+    {
+      "description_key": "table/t_skill.tbl/sha256:782e706d28a8e31450e373ee9495a1ea1ca28e4f2c5db550072ce5878fb31ce5/description",
+      "group": [
+        [
+          101,
+          100,
+          0,
+          90
+        ]
+      ]
+    },
+    {
+      "description_key": "table/t_skill.tbl/sha256:aba928273b1689775e79033e2f749018fd5ffa79214dfdd18d30d360d200718f/description",
+      "group": [
+        [
+          80,
+          100,
+          0,
+          2
+        ],
+        [
+          81,
+          100,
+          0,
+          2
+        ]
+      ]
+    },
+    {
+      "description_key": "table/t_skill.tbl/sha256:e03cba3ab4298eff1ea06613c9946cd1a770276b3ea0f0b273efd193abc8e7ab/description",
+      "group": [
+        [
+          83,
+          100,
+          0,
+          2
+        ],
+        [
+          84,
+          100,
+          0,
+          2
+        ]
+      ]
+    },
+    {
+      "description_key": "table/t_skill.tbl/sha256:4f26a632a8b3df4eaa06900acf71a500e1412def496d145d771545f676ce91e2/description",
+      "group": [
+        [
+          125,
+          10,
+          0,
+          0
+        ],
+        [
+          126,
+          15,
+          0,
+          0
+        ],
+        [
+          130,
+          10,
+          3,
+          0
+        ]
+      ]
+    },
+    {
+      "description_key": "table/t_skill.tbl/sha256:88bcb44322dab2793832ae8cca8bb4cbbc25499640dd27ee3e5324f6bf7215b4/description",
+      "group": [
+        [
+          125,
+          20,
+          0,
+          0
+        ],
+        [
+          126,
+          30,
+          0,
+          0
+        ],
+        [
+          130,
+          10,
+          4,
+          0
+        ]
+      ]
+    },
+    {
+      "description_key": "table/t_skill.tbl/sha256:36a946e50f95225d794c80d2b522a53835410c3a69902d5db2548f3a9576ee59/description",
+      "group": [
+        [
+          126,
+          20,
+          0,
+          0
+        ],
+        [
+          131,
+          10,
+          3,
+          0
+        ]
+      ]
+    },
+    {
+      "description_key": "table/t_skill.tbl/sha256:6e581e4f373bf1c5e74714e3f33f0ac2d850943dc2dba6e2fc956d1a309876a6/description",
+      "group": [
+        [
+          126,
+          40,
+          0,
+          0
+        ],
+        [
+          131,
+          10,
+          4,
+          0
+        ]
+      ]
+    },
+    {
+      "description_key": "table/t_skill.tbl/sha256:86c60d4afde113538bee3b5dad0074f4dc4ad339cb4de223d3ef7a961114c274/description",
+      "group": [
+        [
+          126,
+          20,
+          0,
+          0
+        ],
+        [
+          131,
+          10,
+          3,
+          0
+        ]
+      ]
+    },
+    {
+      "description_key": "table/t_skill.tbl/sha256:62a18a3669693bb3be4678af43e952378473b27bb2311af064f5217b3b1ec77e/description",
+      "group": [
+        [
+          126,
+          40,
+          0,
+          0
+        ],
+        [
+          131,
+          10,
+          4,
+          0
+        ]
+      ]
+    },
+    {
+      "description_key": "table/t_skill.tbl/sha256:e5e2a225401499339f409392e7aff323d3fad2db012e62cb206b79ce70ad92d9/description",
+      "group": [
+        [
+          200,
+          40,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "description_key": "table/t_skill.tbl/sha256:78afc935dbdc3c1e112b869315716b86304349c26adcc4f5af4cd4d4218bdd39/description",
+      "group": [
+        [
+          200,
+          50,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "description_key": "table/t_skill.tbl/sha256:820ff6a635780c676518a637192ffc05b3129aaa9b144e2d523fcdf903b32458/description",
+      "group": [
+        [
+          200,
+          30,
+          0,
+          0
+        ],
+        [
+          205,
+          100,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "description_key": "table/t_skill.tbl/sha256:295574fa1dd50a7135ee344df1ac3ae1f02c7f17b4e90e019de57f6e9b9d55bc/description",
+      "group": [
+        [
+          200,
+          30,
+          0,
+          0
+        ],
+        [
+          205,
+          100,
+          0,
+          0
+        ],
+        [
+          206,
+          100,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "description_key": "table/t_skill.tbl/sha256:99e2a2690d612860ef576726c48f82f6067e1683f38f6be42b173c38270f836e/description",
+      "group": [
+        [
+          211,
+          100,
+          0,
+          0
+        ]
+      ]
+    }
+  ],
+  "groups": [
+    [
+      [
+        128,
+        1500,
+        25,
+        0
+      ]
+    ],
+    [
+      [
+        128,
+        1750,
+        25,
+        0
+      ]
+    ],
+    [
+      [
+        120,
+        100,
+        0,
+        0
+      ],
+      [
+        225,
+        4000,
+        0,
+        0
+      ]
+    ],
+    [
+      [
+        120,
+        50,
+        0,
+        0
+      ],
+      [
+        95,
+        100,
+        0,
+        0
+      ],
+      [
+        96,
+        100,
+        0,
+        0
+      ]
+    ],
+    [
+      [
+        1004,
+        15,
+        0,
+        0
+      ],
+      [
+        1010,
+        3,
+        0,
+        0
+      ]
+    ],
+    [
+      [
+        126,
+        20,
+        0,
+        0
+      ],
+      [
+        80,
+        100,
+        3,
+        1
+      ]
+    ],
+    [
+      [
+        101,
+        100,
+        0,
+        90
+      ]
+    ],
+    [
+      [
+        80,
+        100,
+        0,
+        2
+      ],
+      [
+        81,
+        100,
+        0,
+        2
+      ]
+    ],
+    [
+      [
+        83,
+        100,
+        0,
+        2
+      ],
+      [
+        84,
+        100,
+        0,
+        2
+      ]
+    ],
+    [
+      [
+        125,
+        10,
+        0,
+        0
+      ],
+      [
+        126,
+        15,
+        0,
+        0
+      ],
+      [
+        130,
+        10,
+        3,
+        0
+      ]
+    ],
+    [
+      [
+        125,
+        20,
+        0,
+        0
+      ],
+      [
+        126,
+        30,
+        0,
+        0
+      ],
+      [
+        130,
+        10,
+        4,
+        0
+      ]
+    ],
+    [
+      [
+        126,
+        20,
+        0,
+        0
+      ],
+      [
+        131,
+        10,
+        3,
+        0
+      ]
+    ],
+    [
+      [
+        126,
+        40,
+        0,
+        0
+      ],
+      [
+        131,
+        10,
+        4,
+        0
+      ]
+    ],
+    [
+      [
+        200,
+        40,
+        0,
+        0
+      ]
+    ],
+    [
+      [
+        200,
+        50,
+        0,
+        0
+      ]
+    ],
+    [
+      [
+        200,
+        30,
+        0,
+        0
+      ],
+      [
+        205,
+        100,
+        0,
+        0
+      ]
+    ],
+    [
+      [
+        200,
+        30,
+        0,
+        0
+      ],
+      [
+        205,
+        100,
+        0,
+        0
+      ],
+      [
+        206,
+        100,
+        0,
+        0
+      ]
+    ],
+    [
+      [
+        211,
+        100,
+        0,
+        0
+      ]
+    ]
+  ],
+  "connect_groups": [
+    {
+      "kind": 4,
+      "ids": [
+        80,
+        81,
+        82,
+        83,
+        84
+      ]
+    },
+    {
+      "kind": 8,
+      "ids": [
+        101
+      ]
+    },
+    {
+      "kind": 9,
+      "ids": [
+        102
+      ]
+    },
+    {
+      "kind": 10,
+      "ids": [
+        95,
+        96
+      ]
+    },
+    {
+      "kind": 11,
+      "ids": [
+        211
+      ]
+    },
+    {
+      "kind": 12,
+      "ids": [
+        200,
+        205,
+        206
+      ]
+    },
+    {
+      "kind": 13,
+      "ids": [
+        125
+      ]
+    },
+    {
+      "kind": 14,
+      "ids": [
+        95,
+        96
+      ]
+    },
+    {
+      "kind": 16,
+      "ids": [
+        120,
+        121
+      ]
+    }
+  ],
+  "routing_counterexample_sources": "Complete physical ItemKind headers and their own raw ItemTable descriptions; all exact conflicting names retained from the current raw catalogue.",
+  "raw_connect_groups": [
+    {
+      "kind": 1,
+      "ids": [
+        1100,
+        1101,
+        1102,
+        1103,
+        1104,
+        1105,
+        1106,
+        1107,
+        1108,
+        1110,
+        1111,
+        1112,
+        1113
+      ]
+    },
+    {
+      "kind": 2,
+      "ids": [
+        1059,
+        1060,
+        1061,
+        1062,
+        1063,
+        1088
+      ]
+    },
+    {
+      "kind": 4,
+      "ids": [
+        80,
+        81,
+        82,
+        83,
+        84,
+        85,
+        92
+      ]
+    },
+    {
+      "kind": 5,
+      "ids": [
+        43
+      ]
+    },
+    {
+      "kind": 6,
+      "ids": [
+        86,
+        87,
+        88,
+        89,
+        90,
+        91,
+        93
+      ]
+    },
+    {
+      "kind": 7,
+      "ids": [
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        41,
+        53
+      ]
+    },
+    {
+      "kind": 8,
+      "ids": [
+        101
+      ]
+    },
+    {
+      "kind": 9,
+      "ids": [
+        98,
+        102
+      ]
+    },
+    {
+      "kind": 10,
+      "ids": [
+        95,
+        96
+      ]
+    },
+    {
+      "kind": 11,
+      "ids": [
+        210,
+        211,
+        212,
+        213
+      ]
+    },
+    {
+      "kind": 12,
+      "ids": [
+        200,
+        201,
+        202,
+        205,
+        206
+      ]
+    },
+    {
+      "kind": 13,
+      "ids": [
+        123,
+        125
+      ]
+    },
+    {
+      "kind": 14,
+      "ids": [
+        95,
+        96
+      ]
+    },
+    {
+      "kind": 15,
+      "ids": [
+        22,
+        26
+      ]
+    },
+    {
+      "kind": 16,
+      "ids": [
+        120,
+        121
+      ]
+    },
+    {
+      "kind": 17,
+      "ids": [
+        1033,
+        1092
+      ]
+    },
+    {
+      "kind": 18,
+      "ids": [
+        1200,
+        1201,
+        1202,
+        1203,
+        1204,
+        1205,
+        1206
+      ]
+    }
+  ],
+  "self_hate_provenance": {
+    "raw_fields": "generated/r25-raw-entity-denominator.json",
+    "contexts_and_connection_membership": "generated/r25-raw-contract-inventory.json",
+    "self_actual_groups": [
+      [
+        80,
+        81
+      ],
+      [
+        83,
+        84
+      ]
+    ],
+    "raw_slots_preserved": true,
+    "duration4_tests": "legal typed constructor argument matching visible screenshot, not a captured setter",
+    "type9_strength_tests": "machine-code domain 0/1,2,3; raw actual slot100 remains unproven",
+    "ingress_identity_supplied": false
+  },
+  "complete_effect_gap_cases": [
+    {
+      "id": "SkillParam/233/effects",
+      "source": "<c698>Recover 10% EP, CP+15, EP Regen</C>\n",
+      "texts": {
+        "en": "<c698>Recover 10% EP, CP+15, EP Regen</C>\n",
+        "ja": "<c698>EP10％回復／CP+15／EP徐々回復</C>\n",
+        "zh-Hans": "<c698>EP回复10％／CP+15／逐渐回复EP</C>\n",
+        "zh-Hant": "<c698>EP回復10％／CP+15／逐漸回復EP</C>\n",
+        "ko": "<c698>EP 10％ 회복／CP+15／EP 서서히 회복</C>\n",
+        "fr": "<c698>Soin 10 % PE, PT +15, Afflux de PE</C>\n",
+        "de": "<c698>Regeneriert 10% EP, TP +15, EP-Regeneration</C>\n",
+        "es": "<c698>Recuperación 10% PE, PT +15, Regeneración de PE</C>\n"
+      },
+      "resource_key": "table/t_skill.tbl/sha256:4f26a632a8b3df4eaa06900acf71a500e1412def496d145d771545f676ce91e2/description"
+    },
+    {
+      "id": "SkillParam/234/effects",
+      "source": "<c698>Recover 20% EP, CP+30, EP Regen</C>\n",
+      "texts": {
+        "en": "<c698>Recover 20% EP, CP+30, EP Regen</C>\n",
+        "ja": "<c698>EP20％回復／CP+30／EP徐々回復</C>\n",
+        "zh-Hans": "<c698>EP回复20％／CP+30／逐渐回复EP</C>\n",
+        "zh-Hant": "<c698>EP回復20％／CP+30／逐漸回復EP</C>\n",
+        "ko": "<c698>EP 20％ 회복／CP+30／EP 서서히 회복</C>\n",
+        "fr": "<c698>Soin 20 % PE, PT +30, Afflux de PE</C>\n",
+        "de": "<c698>Regeneriert 20% EP, TP +30, EP-Regeneration</C>\n",
+        "es": "<c698>Recuperación 20% PE, PT +30, Regeneración de PE</C>\n"
+      },
+      "resource_key": "table/t_skill.tbl/sha256:88bcb44322dab2793832ae8cca8bb4cbbc25499640dd27ee3e5324f6bf7215b4/description"
+    },
+    {
+      "id": "SkillParam/237/effects",
+      "source": "<c698>CP+20, CP Regen</C>\n",
+      "texts": {
+        "en": "<c698>CP+20, CP Regen</C>\n",
+        "ja": "<c698>CP+20／CP徐々上昇</C>\n",
+        "zh-Hans": "<c698>CP+20／CP逐渐上升</C>\n",
+        "zh-Hant": "<c698>CP+20／CP逐漸上升</C>\n",
+        "ko": "<c698>CP+20／CP 서서히 상승</C>\n",
+        "fr": "<c698>PT +20, Afflux de PT</C>\n",
+        "de": "<c698>TP +20, TP-Regeneration</C>\n",
+        "es": "<c698>PT +20, Regeneración de PT</C>\n"
+      },
+      "resource_key": "table/t_skill.tbl/sha256:36a946e50f95225d794c80d2b522a53835410c3a69902d5db2548f3a9576ee59/description"
+    },
+    {
+      "id": "SkillParam/238/effects",
+      "source": "<c698>CP+40, CP Regen</C>\n",
+      "texts": {
+        "en": "<c698>CP+40, CP Regen</C>\n",
+        "ja": "<c698>CP+40／CP徐々上昇</C>\n",
+        "zh-Hans": "<c698>CP+40／CP逐渐上升</C>\n",
+        "zh-Hant": "<c698>CP+40／CP逐漸上升</C>\n",
+        "ko": "<c698>CP+40／CP 서서히 상승</C>\n",
+        "fr": "<c698>PT +40, Afflux de PT</C>\n",
+        "de": "<c698>TP +40, TP-Regeneration</C>\n",
+        "es": "<c698>PT +40, Regeneración de PT</C>\n"
+      },
+      "resource_key": "table/t_skill.tbl/sha256:6e581e4f373bf1c5e74714e3f33f0ac2d850943dc2dba6e2fc956d1a309876a6/description"
+    },
+    {
+      "id": "SkillParam/245/effects",
+      "source": "<c698>CP+20, CP Regen</C>\n",
+      "texts": {
+        "en": "<c698>CP+20, CP Regen</C>\n",
+        "ja": "<c698>CP+20／CP徐々上昇</C>\n",
+        "zh-Hans": "<c698>CP+20／CP逐渐上升</C>\n",
+        "zh-Hant": "<c698>CP+20／CP逐漸上升</C>\n",
+        "ko": "<c698>CP+20／CP 서서히 상승</C>\n",
+        "fr": "<c698>PT +20, Afflux de PT</C>\n",
+        "de": "<c698>TP +20, TP-Regeneration</C>\n",
+        "es": "<c698>PT +20, Regeneración de PT</C>\n"
+      },
+      "resource_key": "table/t_skill.tbl/sha256:86c60d4afde113538bee3b5dad0074f4dc4ad339cb4de223d3ef7a961114c274/description"
+    },
+    {
+      "id": "SkillParam/246/effects",
+      "source": "<c698>CP+40, CP Regen</C>\n",
+      "texts": {
+        "en": "<c698>CP+40, CP Regen</C>\n",
+        "ja": "<c698>CP+40／CP徐々上昇</C>\n",
+        "zh-Hans": "<c698>CP+40／CP逐渐上升</C>\n",
+        "zh-Hant": "<c698>CP+40／CP逐漸上升</C>\n",
+        "ko": "<c698>CP+40／CP 서서히 상승</C>\n",
+        "fr": "<c698>PT +40, Afflux de PT</C>\n",
+        "de": "<c698>TP +40, TP-Regeneration</C>\n",
+        "es": "<c698>PT +40, Regeneración de PT</C>\n"
+      },
+      "resource_key": "table/t_skill.tbl/sha256:62a18a3669693bb3be4678af43e952378473b27bb2311af064f5217b3b1ec77e/description"
+    },
+    {
+      "id": "SkillParam/271/effects",
+      "source": "<c698>HP Absorb</C>\n---\n---",
+      "texts": {
+        "en": "<c698>HP Absorb</C>\n---\n---",
+        "ja": "<c698>HP吸収</C>\n－－－\n－－－",
+        "zh-Hans": "<c698>HP吸收</C>\n－－－\n－－－",
+        "zh-Hant": "<c698>HP吸收</C>\n－－－\n－－－",
+        "ko": "<c698>HP흡수</C>\n－－－\n－－－",
+        "fr": "<c698>PV Absorption</C>\n---\n---",
+        "de": "<c698>LP Absorbieren</C>\n---\n---",
+        "es": "<c698>PV Absorción</C>\n---\n---"
+      },
+      "resource_key": "table/t_skill.tbl/sha256:e5e2a225401499339f409392e7aff323d3fad2db012e62cb206b79ce70ad92d9/description"
+    },
+    {
+      "id": "SkillParam/273/effects",
+      "source": "<c698>HP Absorb</C>\n---\n---",
+      "texts": {
+        "en": "<c698>HP Absorb</C>\n---\n---",
+        "ja": "<c698>HP吸収</C>\n－－－\n－－－",
+        "zh-Hans": "<c698>HP吸收</C>\n－－－\n－－－",
+        "zh-Hant": "<c698>HP吸收</C>\n－－－\n－－－",
+        "ko": "<c698>HP흡수</C>\n－－－\n－－－",
+        "fr": "<c698>PV Absorption</C>\n---\n---",
+        "de": "<c698>LP Absorbieren</C>\n---\n---",
+        "es": "<c698>PV Absorción</C>\n---\n---"
+      },
+      "resource_key": "table/t_skill.tbl/sha256:78afc935dbdc3c1e112b869315716b86304349c26adcc4f5af4cd4d4218bdd39/description"
+    },
+    {
+      "id": "SkillParam/296/effects",
+      "source": "<c698>HP Absorb, EP Absorb</C>\n---\n---",
+      "texts": {
+        "en": "<c698>HP Absorb, EP Absorb</C>\n---\n---",
+        "ja": "<c698>HP吸収／EP吸収</C>\n－－－\n－－－",
+        "zh-Hans": "<c698>HP吸收／EP吸收</C>\n－－－\n－－－",
+        "zh-Hant": "<c698>HP吸收／EP吸收</C>\n－－－\n－－－",
+        "ko": "<c698>HP흡수／EP흡수</C>\n－－－\n－－－",
+        "fr": "<c698>PV Absorption, PE Absorption</C>\n---\n---",
+        "de": "<c698>LP Absorbieren, EP Absorbieren</C>\n---\n---",
+        "es": "<c698>PV Absorción, PE Absorción</C>\n---\n---"
+      },
+      "resource_key": "table/t_skill.tbl/sha256:820ff6a635780c676518a637192ffc05b3129aaa9b144e2d523fcdf903b32458/description"
+    },
+    {
+      "id": "SkillParam/360/effects",
+      "source": "<c698>HP Absorb, EP/CP Absorb</C>\n---\n---",
+      "texts": {
+        "en": "<c698>HP Absorb, EP/CP Absorb</C>\n---\n---",
+        "ja": "<c698>HP吸収／EP･CP吸収</C>\n－－－\n－－－",
+        "zh-Hans": "<c698>HP吸收／EP･CP吸收</C>\n－－－\n－－－",
+        "zh-Hant": "<c698>HP吸收／EP･CP吸收</C>\n－－－\n－－－",
+        "ko": "<c698>HP흡수／EP･CP흡수</C>\n－－－\n－－－",
+        "fr": "<c698>PV Absorption, PE/PT Absorption</C>\n---\n---",
+        "de": "<c698>LP Absorbieren, EP/TP Absorbieren</C>\n---\n---",
+        "es": "<c698>PV Absorción, PE/PT Absorción</C>\n---\n---"
+      },
+      "resource_key": "table/t_skill.tbl/sha256:295574fa1dd50a7135ee344df1ac3ae1f02c7f17b4e90e019de57f6e9b9d55bc/description"
+    },
+    {
+      "id": "SkillParam/413/effects",
+      "source": "<c698>EP Absorb</C>\n<C9>Absorb EP",
+      "texts": {
+        "en": "<c698>EP Absorb</C>\n<C9>Absorb EP",
+        "ja": "<c698>EP吸収</C>\n<C9>EP吸収",
+        "zh-Hans": "<c698>EP吸收</C>\n<C9>吸收EP",
+        "zh-Hant": "<c698>EP吸收</C>\n<C9>吸收EP",
+        "ko": "<c698>EP흡수</C>\n<C9>EP 흡수",
+        "fr": "<c698>PE Absorption</C>\n<C9>Absorption de PE",
+        "de": "<c698>EP Absorbieren</C>\n<C9>EP absorbieren",
+        "es": "<c698>PE Absorción</C>\n<C9>Absorción de PE"
+      },
+      "resource_key": "table/t_skill.tbl/sha256:99e2a2690d612860ef576726c48f82f6067e1683f38f6be42b173c38270f836e/description"
+    }
+  ],
+  "complete_effect_gap_cases_original": [
+    {
+      "id": "SkillParam/233/effects",
+      "source": "<c698>Recover 10% EP, CP+15, EP Regen</C>\n",
+      "texts": {
+        "en": "<c698>Recover 10% EP, CP+15, EP Regen</C>\n",
+        "ja": "<c698>EP10％回復／CP+15／EP徐々回復</C>\n",
+        "zh-Hans": "<c698>EP回复10％／CP+15／逐渐回复EP</C>\n",
+        "zh-Hant": "<c698>EP回復10％／CP+15／逐漸回復EP</C>\n",
+        "ko": "<c698>EP 10％ 회복／CP+15／EP 서서히 회복</C>\n",
+        "fr": "<c698>Soin 10 % PE, PT +15, Afflux de PE</C>\n",
+        "de": "<c698>Regeneriert 10% EP, TP +15, EP-Regeneration</C>\n",
+        "es": "<c698>Recuperación 10% PE, PT +15, Regeneración de PE</C>\n"
+      },
+      "resource_key": "table/t_skill.tbl/sha256:4f26a632a8b3df4eaa06900acf71a500e1412def496d145d771545f676ce91e2/description"
+    },
+    {
+      "id": "SkillParam/234/effects",
+      "source": "<c698>Recover 20% EP, CP+30, EP Regen</C>\n",
+      "texts": {
+        "en": "<c698>Recover 20% EP, CP+30, EP Regen</C>\n",
+        "ja": "<c698>EP20％回復／CP+30／EP徐々回復</C>\n",
+        "zh-Hans": "<c698>EP回复20％／CP+30／逐渐回复EP</C>\n",
+        "zh-Hant": "<c698>EP回復20％／CP+30／逐漸回復EP</C>\n",
+        "ko": "<c698>EP 20％ 회복／CP+30／EP 서서히 회복</C>\n",
+        "fr": "<c698>Soin 20 % PE, PT +30, Afflux de PE</C>\n",
+        "de": "<c698>Regeneriert 20% EP, TP +30, EP-Regeneration</C>\n",
+        "es": "<c698>Recuperación 20% PE, PT +30, Regeneración de PE</C>\n"
+      },
+      "resource_key": "table/t_skill.tbl/sha256:88bcb44322dab2793832ae8cca8bb4cbbc25499640dd27ee3e5324f6bf7215b4/description"
+    },
+    {
+      "id": "SkillParam/237/effects",
+      "source": "<c698>CP+20, CP Regen</C>\n",
+      "texts": {
+        "en": "<c698>CP+20, CP Regen</C>\n",
+        "ja": "<c698>CP+20／CP徐々上昇</C>\n",
+        "zh-Hans": "<c698>CP+20／CP逐渐上升</C>\n",
+        "zh-Hant": "<c698>CP+20／CP逐漸上升</C>\n",
+        "ko": "<c698>CP+20／CP 서서히 상승</C>\n",
+        "fr": "<c698>PT +20, Afflux de PT</C>\n",
+        "de": "<c698>TP +20, TP-Regeneration</C>\n",
+        "es": "<c698>PT +20, Regeneración de PT</C>\n"
+      },
+      "resource_key": "table/t_skill.tbl/sha256:36a946e50f95225d794c80d2b522a53835410c3a69902d5db2548f3a9576ee59/description"
+    },
+    {
+      "id": "SkillParam/238/effects",
+      "source": "<c698>CP+40, CP Regen</C>\n",
+      "texts": {
+        "en": "<c698>CP+40, CP Regen</C>\n",
+        "ja": "<c698>CP+40／CP徐々上昇</C>\n",
+        "zh-Hans": "<c698>CP+40／CP逐渐上升</C>\n",
+        "zh-Hant": "<c698>CP+40／CP逐漸上升</C>\n",
+        "ko": "<c698>CP+40／CP 서서히 상승</C>\n",
+        "fr": "<c698>PT +40, Afflux de PT</C>\n",
+        "de": "<c698>TP +40, TP-Regeneration</C>\n",
+        "es": "<c698>PT +40, Regeneración de PT</C>\n"
+      },
+      "resource_key": "table/t_skill.tbl/sha256:6e581e4f373bf1c5e74714e3f33f0ac2d850943dc2dba6e2fc956d1a309876a6/description"
+    },
+    {
+      "id": "SkillParam/245/effects",
+      "source": "<c698>CP+20, CP Regen</C>\n",
+      "texts": {
+        "en": "<c698>CP+20, CP Regen</C>\n",
+        "ja": "<c698>CP+20／CP徐々上昇</C>\n",
+        "zh-Hans": "<c698>CP+20／CP逐渐上升</C>\n",
+        "zh-Hant": "<c698>CP+20／CP逐漸上升</C>\n",
+        "ko": "<c698>CP+20／CP 서서히 상승</C>\n",
+        "fr": "<c698>PT +20, Afflux de PT</C>\n",
+        "de": "<c698>TP +20, TP-Regeneration</C>\n",
+        "es": "<c698>PT +20, Regeneración de PT</C>\n"
+      },
+      "resource_key": "table/t_skill.tbl/sha256:86c60d4afde113538bee3b5dad0074f4dc4ad339cb4de223d3ef7a961114c274/description"
+    },
+    {
+      "id": "SkillParam/246/effects",
+      "source": "<c698>CP+40, CP Regen</C>\n",
+      "texts": {
+        "en": "<c698>CP+40, CP Regen</C>\n",
+        "ja": "<c698>CP+40／CP徐々上昇</C>\n",
+        "zh-Hans": "<c698>CP+40／CP逐渐上升</C>\n",
+        "zh-Hant": "<c698>CP+40／CP逐漸上升</C>\n",
+        "ko": "<c698>CP+40／CP 서서히 상승</C>\n",
+        "fr": "<c698>PT +40, Afflux de PT</C>\n",
+        "de": "<c698>TP +40, TP-Regeneration</C>\n",
+        "es": "<c698>PT +40, Regeneración de PT</C>\n"
+      },
+      "resource_key": "table/t_skill.tbl/sha256:62a18a3669693bb3be4678af43e952378473b27bb2311af064f5217b3b1ec77e/description"
+    },
+    {
+      "id": "SkillParam/271/effects",
+      "source": "<c698> AbsorbHP</C>\n---\n---",
+      "texts": {
+        "en": "<c698> AbsorbHP</C>\n---\n---",
+        "ja": "<c698>HP吸収</C>\n－－－\n－－－",
+        "zh-Hans": "<c698>HP吸收</C>\n－－－\n－－－",
+        "zh-Hant": "<c698>HP吸收</C>\n－－－\n－－－",
+        "ko": "<c698>HP흡수</C>\n－－－\n－－－",
+        "fr": "<c698> AbsorptionPV</C>\n---\n---",
+        "de": "<c698> AbsorbierenLP</C>\n---\n---",
+        "es": "<c698> AbsorciónPV</C>\n---\n---"
+      },
+      "resource_key": "table/t_skill.tbl/sha256:e5e2a225401499339f409392e7aff323d3fad2db012e62cb206b79ce70ad92d9/description"
+    },
+    {
+      "id": "SkillParam/273/effects",
+      "source": "<c698> AbsorbHP</C>\n---\n---",
+      "texts": {
+        "en": "<c698> AbsorbHP</C>\n---\n---",
+        "ja": "<c698>HP吸収</C>\n－－－\n－－－",
+        "zh-Hans": "<c698>HP吸收</C>\n－－－\n－－－",
+        "zh-Hant": "<c698>HP吸收</C>\n－－－\n－－－",
+        "ko": "<c698>HP흡수</C>\n－－－\n－－－",
+        "fr": "<c698> AbsorptionPV</C>\n---\n---",
+        "de": "<c698> AbsorbierenLP</C>\n---\n---",
+        "es": "<c698> AbsorciónPV</C>\n---\n---"
+      },
+      "resource_key": "table/t_skill.tbl/sha256:78afc935dbdc3c1e112b869315716b86304349c26adcc4f5af4cd4d4218bdd39/description"
+    },
+    {
+      "id": "SkillParam/296/effects",
+      "source": "<c698> AbsorbHP,  AbsorbEP</C>\n---\n---",
+      "texts": {
+        "en": "<c698> AbsorbHP,  AbsorbEP</C>\n---\n---",
+        "ja": "<c698>HP吸収／EP吸収</C>\n－－－\n－－－",
+        "zh-Hans": "<c698>HP吸收／EP吸收</C>\n－－－\n－－－",
+        "zh-Hant": "<c698>HP吸收／EP吸收</C>\n－－－\n－－－",
+        "ko": "<c698>HP흡수／EP흡수</C>\n－－－\n－－－",
+        "fr": "<c698> AbsorptionPV,  AbsorptionPE</C>\n---\n---",
+        "de": "<c698> AbsorbierenLP,  AbsorbierenEP</C>\n---\n---",
+        "es": "<c698> AbsorciónPV,  AbsorciónPE</C>\n---\n---"
+      },
+      "resource_key": "table/t_skill.tbl/sha256:820ff6a635780c676518a637192ffc05b3129aaa9b144e2d523fcdf903b32458/description"
+    },
+    {
+      "id": "SkillParam/360/effects",
+      "source": "<c698> AbsorbHP,  AbsorbEP/CP</C>\n---\n---",
+      "texts": {
+        "en": "<c698> AbsorbHP,  AbsorbEP/CP</C>\n---\n---",
+        "ja": "<c698>HP吸収／EP･CP吸収</C>\n－－－\n－－－",
+        "zh-Hans": "<c698>HP吸收／EP･CP吸收</C>\n－－－\n－－－",
+        "zh-Hant": "<c698>HP吸收／EP･CP吸收</C>\n－－－\n－－－",
+        "ko": "<c698>HP흡수／EP･CP흡수</C>\n－－－\n－－－",
+        "fr": "<c698> AbsorptionPV,  AbsorptionPE/PT</C>\n---\n---",
+        "de": "<c698> AbsorbierenLP,  AbsorbierenEP/TP</C>\n---\n---",
+        "es": "<c698> AbsorciónPV,  AbsorciónPE/PT</C>\n---\n---"
+      },
+      "resource_key": "table/t_skill.tbl/sha256:295574fa1dd50a7135ee344df1ac3ae1f02c7f17b4e90e019de57f6e9b9d55bc/description"
+    },
+    {
+      "id": "SkillParam/413/effects",
+      "source": "<c698> AbsorbEP</C>\n<C9>Absorb EP",
+      "texts": {
+        "en": "<c698> AbsorbEP</C>\n<C9>Absorb EP",
+        "ja": "<c698>EP吸収</C>\n<C9>EP吸収",
+        "zh-Hans": "<c698>EP吸收</C>\n<C9>吸收EP",
+        "zh-Hant": "<c698>EP吸收</C>\n<C9>吸收EP",
+        "ko": "<c698>EP흡수</C>\n<C9>EP 흡수",
+        "fr": "<c698> AbsorptionPE</C>\n<C9>Absorption de PE",
+        "de": "<c698> AbsorbierenEP</C>\n<C9>EP absorbieren",
+        "es": "<c698> AbsorciónPE</C>\n<C9>Absorción de PE"
+      },
+      "resource_key": "table/t_skill.tbl/sha256:99e2a2690d612860ef576726c48f82f6067e1683f38f6be42b173c38270f836e/description"
+    }
+  ],
+  "absorb_oracle_correction_evidence": [
+    "generated/r25-stage5-absorb-static.json",
+    "generated/r25-stage5-absorb-continuation.json"
+  ]
+}

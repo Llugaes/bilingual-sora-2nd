@@ -1,0 +1,108 @@
+'use strict';
+const fs=require('fs'),path=require('path'),assert=require('assert');
+const root=process.cwd();
+const {ItemHelpIdentities}=require(path.join(root,'sora_bilingual/game/scripts/runtime_identity.js'));
+const {RuntimeText}=require(path.join(root,'sora_bilingual/game/scripts/runtime_text.js'));
+const fixtures=JSON.parse(fs.readFileSync(path.join(root,'generated/r26-item-help-resource-fixtures.json'),'utf8'));
+class Pointer {
+    constructor(n){this.n=BigInt(n);}add(n){return new Pointer(this.n+BigInt(n));}sub(p){return new Pointer(this.n-(p instanceof Pointer?p.n:BigInt(p)));}
+    compare(p){return this.n<p.n?-1:this.n>p.n?1:0;}equals(p){return p instanceof Pointer&&this.n===p.n;}isNull(){return this.n===0n;}
+    toString(){return '0x'+this.n.toString(16);}valueOf(){return this.n;}
+}
+function fixture(input) {
+    const item=Buffer.from(input.files.item,'base64'),help=Buffer.from(input.files.help,'base64'),arena=Buffer.alloc(0x8000),owned=Buffer.alloc(2048);
+    const regions=[{base:new Pointer(0x1000000),bytes:arena},{base:new Pointer(0x2000000),bytes:item},
+        {base:new Pointer(0x3000000),bytes:help},{base:new Pointer(0x4000000),bytes:owned}];
+    const locate=(p,n)=>{const r=regions.find(r=>p.n>=r.base.n&&p.n+BigInt(n)<=r.base.n+BigInt(r.bytes.length));assert(r,'unreadable fixture address');return [r.bytes,Number(p.n-r.base.n)];};
+    const write=(p,bytes)=>{const [b,n]=locate(p,bytes.length);Buffer.from(bytes).copy(b,n);};
+    const pointer=(p,q)=>{const [b,n]=locate(p,8);b.writeBigUInt64LE(q.n,n);};
+    const slot=regions[0].base.add(0x100),owner=regions[0].base.add(0x400),iw=regions[0].base.add(0x1000),hw=regions[0].base.add(0x1800),io=regions[0].base.add(0x2000),ho=regions[0].base.add(0x2800);
+    pointer(slot,owner);pointer(owner.add(0x40),iw);pointer(owner.add(0x1b0),hw);pointer(iw.add(8),io);pointer(hw.add(8),ho);
+    pointer(io.add(0x10),regions[1].base);pointer(io.add(0x20),regions[1].base.add(8));pointer(ho.add(0x10),regions[2].base);pointer(ho.add(0x20),regions[2].base.add(8));
+    const u32=(p,value)=>{const b=Buffer.alloc(4);b.writeUInt32LE(value);write(p,b);};
+    u32(io.add(0x28),input.model.item_table.section_index);u32(ho.add(0x40),input.model.help_table.section_index);
+    // Resource-derived postload fixture. Full native loader/parser capability
+    // is verified separately; this does not execute those native functions.
+    for(const row of Object.values(input.model.records))for(const [base,r] of [[regions[1].base,row.item],[regions[2].base,row.help]]) {
+        write(base.add(r.at),Buffer.from(r.scalar,'hex'));
+        for(const s of r.strings)if(s.kind!=='scalar_source')pointer(base.add(r.at+s.field),base.add(s.offset));
+    }
+    let count=0,readBytes=0,onPointer=null;
+    const memory={read(p,n){const [b,at]=locate(p,n);count++;readBytes+=n;return Uint8Array.from(b.subarray(at,at+n)).buffer;},
+        pointer(p){if(onPointer)onPointer(p);const [b,at]=locate(p,8);count++;readBytes+=8;return new Pointer(b.readBigUInt64LE(at));}};
+    return {item,help,arena,regions,slot,owner,iw,hw,io,ho,write,pointer,u32,memory,
+        setMutation(fn){onPointer=fn;},resetCounts(){count=0;readBytes=0;},cost(){return {count,readBytes};},
+        select(ids,row){owned.fill(0);Buffer.from(row.input,'hex').copy(owned);this.resetCounts();
+            return ids.select({ownerSlot:slot,record:regions[1].base.add(row.item.at),pointer:regions[3].base,source:row.source,
+                initialReadBytes:2048+Buffer.byteLength(row.source)},memory);}};
+}
+let positive=0,plans=0,bookPositive=0,maxRead=0,negative=0,irrelevant=0;
+const byLocale=[];
+for(const input of fixtures) {
+    const f=fixture(input),ids=new ItemHelpIdentities(input.model);let localPositive=0;
+    for(const row of Object.values(input.model.records)) {
+        const identity=f.select(ids,row);assert(identity,input.locale+'/'+row.key+' '+ids.lastOutcome);
+        assert.equal(identity.key,row.key);assert.equal(ids.lastReadBytes,f.cost().readBytes+2048+Buffer.byteLength(row.source));
+        assert(ids.lastReadBytes<=16384);maxRead=Math.max(maxRead,ids.lastReadBytes);positive++;localPositive++;
+        if(input.book_keys.includes(row.key)) {
+            bookPositive++;
+            const c=ids.lookup(identity,row.source),tr=new RuntimeText(c.model),pair=c.model.pairs[row.source];assert(pair);
+            assert.equal(tr.render(row.source,'primary').text,pair[0]);assert.equal(tr.render(row.source,'secondary').text,pair[1]);
+            const annotation=tr.render(row.source,'annotation');assert.notEqual(annotation.kind,'plain');
+            // The reviewed book fixture is two balanced-colour lines with
+            // no original ruby. Check both exact empty anchors and byte
+            // offsets; do not strip R tags to turn a bad plan into a pass.
+            const primary=pair[0].split('\n'),secondary=pair[1].split('\n');
+            assert.equal(primary.length,2);assert.equal(secondary.length,2);
+            assert(!pair.some(s=>s.includes('<R>')||s.includes('</R')));
+            const first='<R></R_>'+primary[0]+'\n';
+            assert.deepEqual(annotation,{kind:'layered',text:first+'<R></R_>'+primary[1],layers:[
+                {offset:6,text:secondary[0],primary:primary[0],protected:false},
+                {offset:Buffer.byteLength(first)+6,text:secondary[1],primary:primary[1],protected:false}
+            ]});plans+=3;
+        }
+    }
+    const first=Object.values(input.model.records).find(r=>input.book_keys.includes(r.key));
+    const mutations=[
+        ['selected_scalar',g=>{g.item[first.item.at+44]^=1;}],
+        ['selected_array',g=>{const s=first.item.strings.find(s=>s.kind==='array');g.item[s.offset]^=1;}],
+        ['selected_name',g=>{const s=first.item.strings.find(s=>s.field===224);g.item[s.offset]^=1;}],
+        ['selected_body',g=>{const s=first.item.strings.find(s=>s.field===232);g.item[s.offset]^=1;}],
+        ['native_flags',g=>{g.item[first.item.at+24]^=1;}],
+        ['native_character_mask',g=>{g.item[first.item.at+32]^=1;}],
+        ['original_flags_source',g=>{const s=first.item.strings.find(s=>s.field===24);g.item[s.offset]=65;}],
+        ['original_character_source',g=>{const s=first.item.strings.find(s=>s.field===32);g.item[s.offset]^=1;}],
+        ['description_pointer',g=>{g.pointer(g.regions[1].base.add(first.item.at+232),g.regions[1].base.add(first.item.strings.find(s=>s.field===232).offset+1));}],
+        ['help_kind',g=>{g.help[first.help.at+16]^=1;}],
+        ['help_header',g=>{g.help[first.help.strings.find(s=>s.field===8).offset]^=1;}],
+        ['help_label',g=>{g.help[first.help.strings.find(s=>s.field===24).offset]^=1;}],
+        ['item_header',g=>{g.item[4]^=1;}],
+        ['help_descriptor',g=>{g.help[8+input.model.help_table.section_index*80+76]^=1;}],
+        ['item_section',g=>g.u32(g.io.add(0x28),1)],
+        ['help_section',g=>g.u32(g.ho.add(0x40),0)],
+        ['owner_changed_on_second_sample',g=>{let n=0;g.setMutation(p=>{if(p.equals(g.slot)&&++n===2)g.pointer(g.slot,g.owner.add(8));});}],
+    ];
+    for(const [name,mutate] of mutations) {
+        const g=fixture(input),next=new ItemHelpIdentities(input.model);mutate(g);assert.equal(g.select(next,first),null,input.locale+'/'+name);assert(next.lastReadBytes<=16384);negative++;
+    }
+    const other=Object.values(input.model.records).find(r=>r.help.at>input.model.help_table.start);
+    if(other) {
+        const g=fixture(input),next=new ItemHelpIdentities(input.model);g.help[input.model.help_table.start]^=1;
+        assert.equal(g.select(next,other),null);negative++;
+    }
+    const g=fixture(input),next=new ItemHelpIdentities(input.model);
+    const outside=Object.values(input.model.records).flatMap(r=>r.item.strings).find(s=>s.bytes.length>2&&
+        !first.item.strings.some(t=>s.offset>=t.offset&&s.offset<t.offset+t.bytes.length/2));assert(outside);
+    g.item[outside.offset]^=1;assert(g.select(next,first));irrelevant++;
+    const bad=fixture(input),limited=new ItemHelpIdentities(input.model);
+    const realRead=bad.memory.read;let reached=0;bad.memory.read=(p,n)=>{reached+=n;return realRead(p,n);};
+    const copy=structuredClone(first);copy.source='same-address wrong full source';
+    assert.equal(bad.select(limited,copy),null);negative++;
+    assert.equal(ids.lookup({key:first.key,generation:'wrong-generation'},first.source),null);negative++;
+    byLocale.push({locale:input.locale,positive:localPositive});
+}
+const output={created_utc:new Date().toISOString(),positive_records:positive,book_records:bookPositive,book_mode_plans:plans,
+    negative_cases:negative,unrelated_pool_positive:irrelevant,max_callback_read_bytes:maxRead,budget:16384,locales:byLocale,
+    native_postload_machine_code_executed:false,actual_ui_setter_captured:false,game_attached:false};
+if(process.argv[2])fs.writeFileSync(process.argv[2],JSON.stringify(output,null,2));
+console.log(JSON.stringify(output));

@@ -1,0 +1,73 @@
+{
+  "entries": [
+    {
+      "key": "table/t_text.tbl/TXT_ITEM_HELP_FORMAT8",
+      "texts": {
+        "en": ", ",
+        "ja": "／",
+        "zh-Hans": "／"
+      }
+    },
+    {
+      "key": "table/t_skill.tbl/audit/description",
+      "texts": {
+        "en": "<C9>Official body",
+        "ja": "<C9>説明本文",
+        "zh-Hans": "<C9>说明正文"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/generated/typed/percent_recovery_header/123-125-95-96/4e7ee6b2898017ae",
+      "texts": {
+        "en": "Recover %d%% HP/EP, Cure Status Ailments, Cure Stat Debuff",
+        "ja": "HP･EP%d％回復／状態異常解除／能力低下解除",
+        "zh-Hans": "HP･EP回复%d％／解除异常状态／解除能力降低"
+      },
+      "item_help_contract": {
+        "family": "percent_recovery_header"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/generated/typed/percent_recovery_group/123-125/35d6cabe72aca0be",
+      "texts": {
+        "en": "Recover %d%% HP/EP",
+        "ja": "HP･EP%d％回復",
+        "zh-Hans": "HP･EP回复%d％"
+      },
+      "item_help_contract": {
+        "family": "percent_recovery_group"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:fb8dd4ee62074c4047603ed845c48f723a2c6cbbf3320c6e28bbf776bbbc9144/name",
+      "texts": {
+        "en": "Cure Status Ailments",
+        "ja": "状態異常解除",
+        "zh-Hans": "解除异常状态"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:b244e9f5b576cf8c158de2942fd54c881bb097d07f46c5e8a3d362dd03655a6e/name",
+      "texts": {
+        "en": "Cure Stat Debuff",
+        "ja": "能力低下解除",
+        "zh-Hans": "解除能力降低"
+      }
+    },
+    {
+      "key": "table/t_itemhelp.tbl/generated/audit-independent-veto",
+      "texts": {
+        "en": "Recover %d%% HP/EP, Cure Status Ailments, Cure Stat Debuff",
+        "ja": "競合役割%d",
+        "zh-Hans": "冲突角色%d"
+      },
+      "detail_authority": true
+    }
+  ],
+  "source": "Recover 30% HP/EP, Cure Status Ailments, Cure Stat Debuff\n<C9>Official body",
+  "member": "Recover 30% HP/EP, Cure Status Ailments, Cure Stat Debuff",
+  "blocked_pattern": "Recover\\ ([+-]?\\d+)%\\ HP/EP,\\ Cure\\ Status\\ Ailments,\\ Cure\\ Stat\\ Debuff",
+  "level": "independent real MenuTranslator negative resource fixture; no actual setter claim",
+  "original_script_sha256": "564cd6ec8fea89db2995cfbd624e85b0867157383fda43e9ea185aee47af9a9c",
+  "adapter": "only dev input directory changed; original assertions and counterexample unchanged"
+}

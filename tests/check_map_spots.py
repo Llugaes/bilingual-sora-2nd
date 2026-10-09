@@ -1,4 +1,4 @@
-"""Compare every physical map spot name with the copied-name renderer in eight languages."""
+"""Compare physical map area/spot names with the copied-name renderer in eight languages."""
 
 import argparse
 from collections import Counter
@@ -23,21 +23,26 @@ def check(game, catalog):
     spots = [
         e
         for e in entries
-        if e["key"].startswith("table/t_mapjump.tbl/MapJumpSpotData/")
-        and e["key"].endswith("/name")
+        if e["key"].startswith("table/t_mapjump.tbl/") and e["key"].endswith("/name")
     ]
-    raw, missing, checks, models = {}, {}, [], []
+    raw, missing, checks, models, raw_names, shapes = {}, {}, [], [], {}, {}
     for language, filename in archive_names("table").items():
         with FpacArchive(game / "pac/steam" / filename) as archive:
             data = archive.read(_logical_tables(archive)["table/t_mapjump.tbl"])
         names = []
+        shapes[language] = []
         for kind, start, stride, count in sections(data):
-            if kind != "MapJumpSpotData":
+            if kind not in ("MapJumpAreaData", "MapJumpSpotData"):
                 continue
-            assert stride == 152
+            # Independent disk field contract, not the production extractor's schema.
+            assert stride == (56 if kind == "MapJumpAreaData" else 152)
+            shapes[language].append((kind, count))
             for index in range(count):
-                at = struct.unpack_from("<Q", data, start + index * stride + 16)[0]
+                at = struct.unpack_from(
+                    "<Q", data, start + index * stride + (8 if kind == "MapJumpAreaData" else 16)
+                )[0]
                 names.append(data[at : data.index(b"\0", at)].decode("utf-8"))
+        raw_names[language] = names
         raw[language] = {
             "records": len(names),
             "nonempty": sum(bool(n.strip()) for n in names),
@@ -59,6 +64,31 @@ def check(game, catalog):
                     "missing": [s for s in inputs if s not in pairs],
                 }
             )
+    # Expected target strings come from the other original PAC at the same
+    # physical family/occurrence/row, not from the renderer's returned pair.
+    # Section shape and scalar/resource identity alignment are separately audited.
+    oracle_failures = []
+    for row in models:
+        source, target = row["source"], row["target"]
+        assert shapes[source] == shapes[target]
+        expected = {}
+        for left, right in zip(raw_names[source], raw_names[target], strict=True):
+            left, right = left.replace("\n", ""), right.replace("\n", "")
+            if left.strip():
+                expected.setdefault(left, set()).add((left, right))
+        actual = row["model"]["scoped"]["map_spot"]["pairs"]
+        for text, pairs in expected.items():
+            result = tuple(actual.get(text, ()))
+            if (len(pairs) == 1 and result not in pairs) or (len(pairs) > 1 and result):
+                oracle_failures.append(
+                    {
+                        "source": source,
+                        "target": target,
+                        "text": text,
+                        "expected": sorted(pairs),
+                        "actual": result,
+                    }
+                )
     # Keep the reported cross-table conflict in a complete production model;
     # the all-language family sweep alone cannot prove global isolation.
     complete = MenuTranslator(entries, "zh-Hans", "ja", "zh-Hans")
@@ -96,6 +126,7 @@ process.stdout.write(JSON.stringify({checked,failures}));
         "language_pairs": checks,
         "render": json.loads(result.stdout),
         "complete_catalog_pair": ["zh-Hans", "ja"],
+        "raw_target_oracle_failures": oracle_failures,
     }
     report["missing_counts"] = dict(
         Counter({language: len(rows) for language, rows in missing.items()})
@@ -125,3 +156,4 @@ if __name__ == "__main__":
     assert not any(report["missing_raw_names"].values())
     assert not any(row["missing"] for row in report["language_pairs"])
     assert not report["render"]["failures"]
+    assert not report["raw_target_oracle_failures"]

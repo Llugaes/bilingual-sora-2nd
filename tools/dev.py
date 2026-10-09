@@ -52,10 +52,12 @@ def main():
             run(sys.executable, "-X", "utf8", "tests/check_native_nested_ruby.py")
             run(sys.executable, "-X", "utf8", "tests/check_native_popup_lifecycle.py")
             run(sys.executable, "-X", "utf8", "tests/check_native_reentry.py")
+            run(sys.executable, "-X", "utf8", "tests/check_native_shop_copy.py")
             run(sys.executable, "-X", "utf8", "tests/check_native_log_activation.py")
             run(sys.executable, "-X", "utf8", "tests/check_native_log_commit.py")
             run(sys.executable, "-X", "utf8", "tests/check_native_dynamic_identity.py")
             run(sys.executable, "-X", "utf8", "tests/check_native_books.py")
+            run(sys.executable, "-X", "utf8", "tests/check_native_input_diagnostics.py")
             run(sys.executable, "-X", "utf8", "tests/check_native_refresh.py")
             run(sys.executable, "-X", "utf8", "tests/check_native_timing.py")
     elif command == "publish-local":

@@ -23,6 +23,7 @@ AGENT = Path(
     os.environ.get("NATIVE_AGENT_SOURCE", ROOT / "sora_bilingual/game/scripts/native_agent.js")
 ).read_text("utf-8")
 BRIDGE = (ROOT / "sora_bilingual/game/scripts/native_measure.js").read_text("utf-8")
+IDENTITY = (ROOT / "sora_bilingual/game/scripts/runtime_identity.js").read_text("utf-8")
 
 
 def bootstrap_source() -> str:
@@ -57,7 +58,7 @@ function start(corrupt){
 }
 const clean=start(false),foreign=start(true);
 rpc.exports.run=()=>({clean,foreign,messages,ok:!clean.error&&!clean.status.failed&&clean.resetPatched&&!!foreign.error&&!foreign.resetPatched});
-""".replace("__AGENT__", json.dumps(AGENT))
+""".replace("__AGENT__", json.dumps(IDENTITY + "\n" + AGENT))
     )
 
 

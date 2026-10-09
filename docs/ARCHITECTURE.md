@@ -1,5 +1,11 @@
 # 工程结构与契约
 
+## 有限控制对白与效果注音单元（dev4 候选）
+
+`control_dialogue.py` 对原 SCP 局部控制值做有界 CFG／栈证明，只有所有到达路径均为有限字面控制才生成变体。跨调用保留局部值，helper 参数须同时满足原生产者和正式参数声明；未知操作、地址传递、外部入口、回边、可见动态输出不猜测。重复元数据只有完整 leaf producer 序列一致时才能用原 PC 区分。跨语对齐保留原函数、called ID、actor、参数槽与控制值；`runtime_identity` 在真实 PC／token／原输出吻合后才给予稳定记录键，重载复用键而不按短句猜译。
+
+`MenuTranslator` 在已证明的完整详情上下文内建立 `detail_effect_units`，角色来自原 name/stat、typed 原生构造合同和已证 flag，不从任意片段或参数标签推导成员。完整语句用于安全准入，独立语义效果用于副文排版；每层携带稳定资源身份、参数及 UTF-8 锚点。共享参数的原生组合构造器保持原子性，相邻独立效果分别对齐；分隔符不拥有副文。缺语言、角色冲突、未知参数和不支持的原控制继续拒绝并列出理由，保留硬换行及原生注音。完整包回放与未测边界见 [dev4 验证](verification/dev4-correctness.md)。
+
 这个仓库只负责《空之轨迹 the 2nd》。其他游戏可以建立同命名系列仓库；在第二个真实接入需求出现之前，不引入通用游戏插件框架或工厂层。
 
 ## 模块职责
@@ -28,7 +34,7 @@ launch.py 是稳定桌面入口，bootstrap.py 是组装入口：先恢复未完
 - `platform/gamepad_labels.py` 负责 SDL 设备映射到按键名称的转换。设置页发现设备时读取并缓存同一 pygame SDL 的类型与映射，录制时将 `profile` 元数据随原始绑定保存；后端轮询不查询这份元数据。`label_style` 只决定显示名称，触发仍使用原始 GUID、按钮、轴方向与阈值。Nintendo 面键在设备边界统一为位置语义，单只 Joy-Con 的横／竖握和成对模式分别命名；名称表不假设设备原始轴号。
 - “语言”页只放 MOD 配置，启用开关在首位，主副语言用两列；界面语言归入“工具外观”，更新使用独立的标题栏入口。关闭的下拉框忽略滚轮，展开列表仍可滚动。
 - 桌面主题由 `app/appearance.py` 定义配色与资源，`handbook.paint_surface` 统一绘制窗口、页签、悬浮条和主题预览；只在 `overlay-window.ini` 保存选择，不触发游戏配置变更或映射重载。资源在构建时从本机游戏图集裁切，随 Qt 资源模块交付，启动不扫描游戏档案。
-- `apply_startup_language` 以 EXE 路径、PID、创建时间记录游戏会话；每个新进程按实际检测的文字语言同步主语言一次。相同进程重连不覆盖手动选择，检测期间用户改动也保留；副语言只在首次无配置时应用默认值。
+- `apply_pending_language_defaults` 只消费全新配置的首次初始化标记：主语言采用实际 gamebase，副语言采用日文（日文 gamebase 的副语言为英文）。已有配置缺少标记时保留旧偏好；用户主副选择取消初始化，选择当前显示值也算手选。游戏/工具重开、换 base 和重连只改变独立的来源识别与模型，不重算主副偏好；检测返回前重新读取最新选择。
 - 游戏来源语言与主副显示语言独立：连接期间由工具侧只读线程每秒采样已验证的 TextTableData，表头／记录变化时退休采样地址缓存。来源变化走既有异步模型准备，旧结果不得覆盖新请求；暂时不可读或模型尚未匹配时显示游戏原文，恢复后沿用用户模式。热切换不再次同步主语言、不新增游戏钩子。验证范围见 [来源语言热切换](verification/source-language-switch.md)。
 - ui_language 与游戏语言独立。app/i18n.py 保存中英日界面文本，app/ui_widgets.py 保留 Qt 控件的源文案并在语言改变时重新翻译；不改动游戏文本模型。app/presentation.py 只把状态转换成可显示内容，不创建 Qt 对象、不访问文件。
 - 资源缓存的语言依赖只包含档案名称映射，界面名称和默认偏好不参与失效判断。编译器代码及游戏资源变化仍使缓存失效；旧索引必须匹配资源和旧解析器指纹才能迁移。模型构建复用全局配对结果，缓存通过 C JSON 编码器原子写入。
@@ -251,7 +257,7 @@ VM 的 `+0x10` 是 system-call 消费操作码和参数数量后的 PC。仅当�
 
 字体 face 切换后，原生 SetText 和字形重测不会自动更换已存在标签的材质图集。Update 按 font generation 调用 `createFontMaterialRefresh`，比较 normal 和有效 shadow image，再按需调用标签虚函数 `+0x28`（`0x588B40`）更新普通字形 primitive、退休旧 icon/shadow batch。释放后的 shadow handle 清零；完成后才登记新代次，setter 元数据采集不能提前登记。稳定帧不重复检查，新标签已使用新图集时不重复重建。
 
-地图列表与详情的 `spot_name` builder 先复制 MapJumpSpotData 名称并删除 LF，SetText 时已丢失表指针。该控件家族使用由完整地点表生成的 `map_spot` 上下文；不按具体地名补词，不覆盖 ViewerMapData 的真实措辞差异。原始八语资源、完整目录与最终副文审计见 [字体、性能与地图地点检查](verification/hud-performance-and-map.md)。
+地图列表与详情的 `spot_name` builder 先复制名称并删除 LF，SetText 时已丢失表指针。该控件家族使用由完整 MapJumpAreaData 地区与 MapJumpSpotData 地点名称生成的 `map_spot` 上下文；不按具体地名补词，不覆盖 ViewerMapData 的真实措辞差异。原始八语资源、完整目录与最终副文审计见 [字体、性能与地图地点检查](verification/hud-performance-and-map.md)；地区扩展与未闭环入口见 [r15 离线交付](verification/dev5-r15-handoff.md)。
 
 
 ## 书籍全文与分页
@@ -267,3 +273,19 @@ BooksText 使用章节 ID 建立完整文档；各语言物理页保留为原始
 自动调度只执行稳定版发现。下载安装和历史回退由独立的用户确认入口触发；确认固定 tag，重新核对公开稳定状态与包摘要，不以 latest 替代。连接忙时返回并要求手动重试，定时检查不会恢复安装。双源历史按版本合并，清单缓存以来源和 tag 为键；镜像缺项只回退到同版本官方包。
 
 历史版本复用现有安装事务，明确 rollback 才允许降级。关闭旧版自动更新的 preferences 写入与程序回退共用日志和故障恢复，成功前不发布界面重载标记；失败恢复原程序与原偏好。游戏配置、窗口配置和语言缓存保持不变。
+
+## r15 配置与角色合同
+
+r16 的完整 Tips／HelpTitle 标题按原资源族编译独立 scope；只在已登记布局59／89的真实标题祖先链中使用，最多12祖先，移出后撤销。地图确认与登录通知共用完整 MapJumpSpotData 参数派生器，未知成员和同族目标冲突拒绝。商店 YES／NO 资源通过两个精确已验证 setter caller 暂缓翻译，owned copy后保存实际无符号hash对应key；Update复用既有翻译流程。动态域的key拒绝或撤销不会恢复旧layout key，Destroy结束身份生命周期。调用、常量、manager及formatter直接依赖均进入生产原生合同和resident revision。证据与剩余现场门槛见 [r16逐案例回归](verification/dev5-r16-case-regression.md)。
+
+语言配置读改写复用既有 OS 文件锁。UI 窄 patch 与后端启动命令、首次默认及手柄绑定共享同一短事务；先读取最新值，再应用各自拥有的字段。原子文件替换负责完整字节，事务锁负责避免旧快照丢更新。
+
+物品交付和获得通知均经过原 SCP helper 的完整 prefix、opcode-17 item 参数与 suffix 合同，覆盖 ITEM_ADD_MESSAGE／ITEM_SUB_MESSAGE 的 EV／TK、单段／双段家族。add/remove 不混作一个 alignment 身份；运行时仍验证原脚本 SHA、VM tokens、转发 PC 与独立输出 buffer provenance。状态枚举参数另属 itemhelp effect98/type10 完整 formatter：只准入 ConditionInfo 名称并按资源 LINK/PERSENT 组装，角色内冲突、完整句歧义及未知成员拒绝，不向全局同名物品词典加入例外。详见 [r15 离线交接](verification/dev5-r15-handoff.md)。
+
+## r18 输入身份诊断
+
+诊断默认关闭，开关只在新驻留初始化时生效。现有 SetText／dirty-owned Update 捕获至多64个输入；表／脚本指针验证各保留12个事件，超限仍保留最终失败阶段。诊断不增加钩子、栈回溯或背景指针读取，也不为全局已有配对的字符串额外验证资源。身份验证和歧义拒绝合同不变。
+
+r17独立审查发现错误类型、超长候选元数据及快照RPC错误可破坏业务隔离，未部署。r18对trace采用限定标量类型和逐字段预算，拒绝对象／数组及未知字段，不调用自定义类型转换；key／file／sha256／stage分别最多512／256／64／64字符。记录回调的异常只终止该条诊断；原有身份选择／拒绝逻辑的错误仍走业务错误处理。Python只隔离可选快照、序列化与诊断错误记录，失败保留健康后端循环，错误摘要最多256字符。默认关闭仍有少量note调用和status元数据开销，不能称为零开销。修复反例及验证见 [r18诊断隔离](verification/dev5-r18-diagnostic-isolation.md)。
+
+自动遥测改用同一控制通道的 `snapshot(true)`，只枚举有界捕获集合，写 `generated/native-input-identities.json`。`snapshot()` 的显式完整只读接口不变。Python先用已读取的resident status核对schema2和实际开关；旧resident或未开启时不请求完整快照，准确返回unsupported／disabled。状态包含磁盘EXE摘要、native contract、module范围、实际来源语言／epoch／render mode与成功提交的model transport路径／格式／长度。路径和长度不是内容摘要，标记`content_hash_verified:false`；须另核对候选和只读缓存文件摘要。原串／显示文字各上限2048字符，截断输入不声称完整匹配。静态链、最小实机计划和证据限制见 [r17遗漏链](verification/dev5-r17-omission-paths.md)。

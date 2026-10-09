@@ -2,6 +2,9 @@ import unittest
 import itertools
 import json
 import re
+import os
+import subprocess
+import sys
 from pathlib import Path
 from sora_bilingual.localization.menu_text import MenuTranslator
 
@@ -11,6 +14,180 @@ def entry(sc, ja, en=None):
 
 
 class MenuTextTests(unittest.TestCase):
+    def test_aligned_voice_body_uses_real_production_key_and_row_identity(self):
+        rows = [
+            {
+                "key": f"table/t_active_voice.tbl/group:{n}/sequence:{'a' * 64}/record:0/body",
+                "texts": {"zh-Hant": "甲\n乙", "ja": "台詞" + str(n), "en": "voice " + str(n)},
+                "table_rows": {l: [n] for l in ("zh-Hant", "ja", "en")},
+                "table_record_identities": {
+                    l: "sha256:" + str(n) * 64 for l in ("zh-Hant", "ja", "en")
+                },
+            }
+            for n in (1, 2)
+        ]
+        rows += [{"texts": {"zh-Hant": "乙", "ja": "別人", "en": "OTHER"}}]
+        tr = MenuTranslator(rows, "ja", "en", "zh-Hant")
+        self.assertEqual(tr.translate("甲\n乙", "primary"), "甲\n乙")
+        reason = next(
+            r for r in tr.runtime_model()["display_rejections"] if r["source"] == "甲\n乙"
+        )
+        self.assertEqual(reason["reason"], "conflicting_complete_display_targets")
+        self.assertEqual(reason["keys"], sorted(r["key"] for r in rows[:2]))
+        missing = {**rows[0], "texts": {"zh-Hant": "甲\n乙", "ja": "欠落"}}
+        tr = MenuTranslator([missing, rows[-1]], "ja", "en", "zh-Hant")
+        self.assertEqual(tr.translate("甲\n乙", "primary"), "甲\n乙")
+        self.assertEqual(
+            next(r for r in tr.runtime_model()["display_rejections"] if r["source"] == "甲\n乙")[
+                "reason"
+            ],
+            "missing_complete_display_pair",
+        )
+        # A different physical whole voice with the same wording is not
+        # evidence that the missing record's target is known.
+        tr = MenuTranslator([missing, rows[1]], "ja", "en", "zh-Hant")
+        self.assertEqual(tr.translate("甲\n乙", "primary"), "甲\n乙")
+
+    def test_complete_voice_and_menu_records_do_not_borrow_unrelated_fragments(self):
+        for key, role in (
+            ("table/t_active_voice.tbl/ActiveVoiceTableData/voice/body", None),
+            ("script/a.dat/Event/called/1/arg/1", "script_menu"),
+        ):
+            with self.subTest(key=key):
+                whole = {"key": key, "texts": {"zh-Hant": "甲\n乙", "ja": "本文"}}
+                if role:
+                    whole["display_role"] = role
+                tr = MenuTranslator(
+                    [whole, {"texts": {"zh-Hant": "乙", "ja": "他人", "en": "OTHER"}}],
+                    "ja",
+                    "en",
+                    "zh-Hant",
+                )
+                self.assertEqual(tr.translate("甲\n乙", "primary"), "甲\n乙")
+                self.assertIn("甲\n乙", tr.runtime_model()["ambiguous_display"])
+
+    def test_conflicting_complete_voice_bodies_remain_whole_identity_refusals(self):
+        rows = [
+            {
+                "key": f"table/t_active_voice.tbl/ActiveVoiceTableData/group:{n}/body",
+                "texts": {"zh-Hant": "甲\n乙", "ja": "あ" + str(n), "en": "voice " + str(n)},
+            }
+            for n in (1, 2)
+        ]
+        rows += [{"texts": {"zh-Hant": "乙", "ja": "他人", "en": "OTHER"}}]
+        tr = MenuTranslator(rows, "ja", "en", "zh-Hant")
+        self.assertEqual(tr.translate("甲\n乙", "primary"), "甲\n乙")
+        reasons = tr.runtime_model()["display_rejections"]
+        rejection = next(r for r in reasons if r["source"] == "甲\n乙")
+        self.assertEqual(rejection["reason"], "conflicting_complete_display_targets")
+        self.assertEqual(len(rejection["keys"]), 2)
+
+    def test_runtime_rules_are_stable_across_python_hash_seeds(self):
+        source = """
+import json
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path.cwd()))
+from sora_bilingual.localization.menu_text import MenuTranslator
+entries = [{"key": "table/t_text.tbl/TXT_FIXTURE", "texts": {
+    "en": "<C1>Received <C2>%d</C> units.</C>", "ja": "%d個受領", "zh-Hans": "收到%d个"}},
+    {"key": "table/t_itemhelp.tbl/SkillEffectHelpData/71/name", "texts": {
+    "en": "Restore +%d%%", "ja": "%d%%回復", "zh-Hans": "回复%d%%"},
+    "source_variants": {"en": ["Recover +%d%%", "Restore +%d%%"]}}]
+print(json.dumps(MenuTranslator(entries, "ja", "zh-Hans", "en").runtime_model(), ensure_ascii=False))
+"""
+        outputs = [
+            subprocess.run(
+                [sys.executable, "-B", "-X", "utf8", "-c", source],
+                cwd=Path(__file__).resolve().parents[1],
+                env={**os.environ, "PYTHONHASHSEED": str(seed)},
+                encoding="utf-8",
+                capture_output=True,
+                check=True,
+            ).stdout
+            for seed in range(1, 11)
+        ]
+        self.assertTrue(
+            all(output == outputs[0] for output in outputs[1:]),
+            "rule ordering changes model bytes across normal fresh processes",
+        )
+
+    def test_typed_item_panel_accepts_eight_independent_icon_slots(self):
+        row = {
+            "key": "dynamic/script/a.dat/Reward/called/9/static_item_panel",
+            "texts": {
+                lang: verb + "\n".join(f"<C0><I%d></C><C5>{name}{n}</C>" for n in range(8)) + end
+                for lang, verb, name, end in (
+                    ("en", "Handed over ", "Item", "."),
+                    ("ja", "", "道具", "を渡した。"),
+                    ("zh-Hans", "交出了", "物品", "。"),
+                )
+            },
+            "called_ids": {"en": 9, "ja": 9, "zh-Hans": 9},
+            "producer_origin": {
+                "family": "static_item_panel",
+                "signature": {
+                    "path": "script/a.dat",
+                    "function": "Reward",
+                    "called": 9,
+                    "kind": 3,
+                    "command": 8,
+                },
+                "item_ids": list(range(100, 108)),
+            },
+            "dynamic_producer": {
+                "family": "static_item_panel",
+                "dynamic_icon": True,
+                "numbers": {lang: ["ascii"] * 8 for lang in ("en", "ja", "zh-Hans")},
+                "slots": [{"kind": "icon", "opcode": 17} for _ in range(8)],
+            },
+        }
+        values = tuple(range(12, 20))
+        source = row["texts"]["en"] % values
+        tr = MenuTranslator([row], "ja", "zh-Hans", "en")
+        self.assertEqual(
+            tr.raw_pair(source), tuple(row["texts"][l] % values for l in ("ja", "zh-Hans"))
+        )
+        self.assertIsNone(tr.raw_pair(source.replace("<I12>", "<I2147483648>")))
+        self.assertIsNone(tr.raw_pair(source + " changed"))
+        for change in (
+            {"producer_origin": {}},
+            {
+                "dynamic_producer": {
+                    **row["dynamic_producer"],
+                    "slots": [{"kind": "integer", "opcode": 16}] * 8,
+                }
+            },
+            {"producer_origin": {**row["producer_origin"], "item_ids": [100]}},
+            {"texts": {**row["texts"], "en": row["texts"]["en"].replace("<I%d>", "%d", 1)}},
+        ):
+            denied = MenuTranslator([{**row, **change}], "ja", "zh-Hans", "en")
+            self.assertEqual(denied.producer_numeric, [])
+
+    def test_proven_script_menu_record_supersedes_its_partial_alignment_only(self):
+        full = {
+            "key": "script/a.dat/Terminal/called/3/arg/1/alignment/full",
+            "texts": {"en": "[Quit]", "ja": "【終了】", "zh-Hans": "【退出】"},
+            "display_role": "script_menu",
+            "called_ids": {"en": 3, "ja": 3, "zh-Hans": 3},
+        }
+        partial = {
+            "key": "script/a.dat/Terminal/called/3/arg/1/alignment/partial",
+            "texts": {"en": "[Quit]", "zh-Hans": "【退出】"},
+        }
+        tr = MenuTranslator([full, partial], "ja", "zh-Hans", "en")
+        self.assertEqual(tr.translate("[Quit]", "primary"), "【終了】")
+        self.assertEqual(tr.translate("[Quit]", "secondary"), "【退出】")
+        for unknown in (
+            {
+                "key": "script/b.dat/Other/called/3/arg/1",
+                "texts": {"en": "[Quit]", "zh-Hans": "【退出】"},
+            },
+            {"key": partial["key"], "texts": {"en": "[Quit]", "zh-Hans": "【其他含义】"}},
+        ):
+            denied = MenuTranslator([full, partial, unknown], "ja", "zh-Hans", "en")
+            self.assertNotIn("[Quit]", denied.pairs)
+
     def test_embedded_engine_unicode_ranges_match_python_classification(self):
         source = (
             Path(__file__).resolve().parents[1] / "sora_bilingual/game/scripts/runtime_text.js"
@@ -213,15 +390,25 @@ class MenuTextTests(unittest.TestCase):
         unknown = "<#E_9#M_0#B_0>" + body
         self.assertEqual(tr.translate(unknown, "secondary"), unknown)
 
-    def test_verified_name_authority_clears_conflicting_speaker_guard(self):
+    def test_verified_name_authority_clears_missing_speaker_guard(self):
+        records = [
+            {"display_role": "speaker", **entry("绯", "フェイ", "Fey")},
+            {"display_role": "speaker", **entry("绯", "フェイ")},
+            {"key": "table/t_name.tbl/verified/name", **entry("绯", "フェイ", "Fey")},
+        ]
+        tr = MenuTranslator(records, "en", "ja")
+        self.assertEqual(tr.translate("绯", "primary"), "Fey")
+        self.assertNotIn("绯", tr.runtime_model()["ambiguous_display"])
+
+    def test_verified_name_authority_cannot_override_complete_speaker_conflict(self):
         records = [
             {"display_role": "speaker", **entry("绯", "フェイ", "Fey")},
             {"display_role": "speaker", **entry("绯", "フェイ", "Voice_Fey")},
             {"key": "table/t_name.tbl/verified/name", **entry("绯", "フェイ", "Fey")},
         ]
         tr = MenuTranslator(records, "en", "ja")
-        self.assertEqual(tr.translate("绯", "primary"), "Fey")
-        self.assertNotIn("绯", tr.runtime_model()["ambiguous_display"])
+        self.assertEqual(tr.translate("绯", "primary"), "绯")
+        self.assertIn("绯", tr.runtime_model()["ambiguous_display"])
 
     def test_conflicting_complete_dialogue_cannot_fall_back_to_freeform_format(self):
         body = "<K>啊，绯小姐！"

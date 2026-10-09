@@ -37,7 +37,12 @@ from sora_bilingual.app.native_settings import (
 )
 from sora_bilingual.platform.win32 import foreground_rect
 from sora_bilingual.platform.runtime_process import runtime_executable
-from sora_bilingual.app.presentation import describe_state, with_font_status, STATUS_COLORS
+from sora_bilingual.app.presentation import (
+    describe_state,
+    with_font_status,
+    STATUS_COLORS,
+    compact_status,
+)
 from sora_bilingual.app.i18n import set_language, tr
 from sora_bilingual.app.ui_widgets import NATIVE_THEME, QLabel, QPushButton, retranslate
 from sora_bilingual.app.handbook import (
@@ -55,9 +60,17 @@ from sora_bilingual.paths import build_label
 
 # Kept as a public alias because preview and regression tests import STYLE.
 STYLE = NATIVE_THEME
+
+
+def build_suffix(root: Path) -> str:
+    """DEV identity is separate from the stable update/package version."""
+    label = build_label(root)
+    return " · " + label if label == "DEV" or label.startswith("DEV ") else ""
+
+
 BUILD_LABEL = build_label(ROOT)
-DEVELOPMENT = BUILD_LABEL.startswith("DEV ")
-BUILD_SUFFIX = " · " + BUILD_LABEL if DEVELOPMENT else ""
+DEVELOPMENT = BUILD_LABEL == "DEV" or BUILD_LABEL.startswith("DEV ")
+BUILD_SUFFIX = build_suffix(ROOT)
 
 
 class JsonSnapshot:
@@ -207,7 +220,21 @@ class StatusBar(QWidget):
         # One alpha step keeps the visually clear surface hit-testable on
         # Windows layered windows. Text/icons never inherit this alpha.
         self._background_alpha = max(1, round(255 * (1 - value / 100)))
+        if hasattr(self, "_status_palette"):
+            self._apply_status_palette()
         self.update()
+
+    def _apply_status_palette(self):
+        foreground, background = self._status_palette
+        alpha = f"{round(self._background_alpha / 255 * 100)}%"
+        color = QColor(background)
+        background = f"rgba({color.red()},{color.green()},{color.blue()},{alpha})"
+        edge = QColor(foreground)
+        edge_color = f"rgba({edge.red()},{edge.green()},{edge.blue()},{alpha})"
+        self.status.setStyleSheet(
+            f"color:{foreground};background:{background};border-left:3px solid {edge_color};"
+            "border-radius:3px;padding:3px 6px;font-weight:700;"
+        )
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -240,16 +267,12 @@ class StatusBar(QWidget):
             detail += " · " + tr("可打开设置后手动重新连接。")
         marker_name = tr("状态：") + tr(state["title"])
         marker_hint = marker_name + "。" + tr(detail)
-        self.marker.setText(state.get("marker", "●"))
-        # Pale semantic colours remain visible on the dark game metal.
-        self.marker.setStyleSheet(
-            "color:"
-            + {
-                "#a32b22": "#ff9b87",
-                "#086b68": "#b6e3b4",
-                "#4f6270": "#e9d386",
-            }.get(state["color"], "#f3da93")
-        )
+        tone, (marker, foreground, background) = compact_status(state)
+        self.setProperty("statusTone", tone)
+        self.marker.setText(marker)
+        self.marker.setStyleSheet(f"color:{foreground};font-weight:700;")
+        self._status_palette = foreground, background
+        self._apply_status_palette()
         self.marker.setAccessibleName(marker_name)
         self.marker.setToolTip(marker_hint)
         activity = state.get("activity", {})
@@ -428,6 +451,7 @@ class OverlayPanel(SkinSurface):
             tr("关于"),
             "Sora Bilingual "
             + self.settings.updates.service.distribution["version"]
+            + BUILD_SUFFIX
             + "\n"
             + tr("游戏美术资源：Nihon Falcom Corporation。"),
         )
@@ -894,6 +918,8 @@ def main():
                     json.dumps(
                         {
                             "pid": os.getpid(),
+                            "build_suffix": BUILD_SUFFIX,
+                            "window_title": controller.panel.windowTitle(),
                             "hidden": controller._interface_hidden,
                             "expanded": controller.panel.isVisible(),
                             "tab": controller.panel.settings.tabs.currentIndex(),

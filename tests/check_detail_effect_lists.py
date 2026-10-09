@@ -224,6 +224,7 @@ def check(game, output, baseline):
             translator = MenuTranslator(all_entries, source, secondary, source)
             details = translator.details
             rejected = Counter()
+            constructor_parameter_rows = []
             width_equivalents = 0
             atoms = {}
             representatives = {}
@@ -238,6 +239,28 @@ def check(game, output, baseline):
                     continue
                 if not all(any(c.isalnum() for c in value) for value in values):
                     rejected["punctuation_only"] += 1
+                    continue
+                # A raw literal turns/value/format field is a builder parameter,
+                # not an effect-list member. The same source can also be a name
+                # with another official target (HP Regen is a real example).
+                # Keep this physical field in the census and record its role;
+                # never demand its target from an unrelated display-name lookup.
+                field = row["key"].rsplit("/", 1)[-1]
+                if (
+                    row["key"].startswith("table/t_itemhelp.tbl/SkillEffectHelpData/")
+                    and field in {"turns", "value", "format"}
+                    and not FORMAT.findall(row["texts"][source])
+                ):
+                    rejected["literal_constructor_parameter"] += 1
+                    constructor_parameter_rows.append(
+                        {
+                            "key": row["key"],
+                            "field": field,
+                            "source": row["texts"][source],
+                            "target": row["texts"][secondary],
+                            "reason": "literal_constructor_parameter",
+                        }
+                    )
                     continue
                 # A candidate may be ambiguous in the complete catalog. Keep
                 # that denominator rather than treating rejected rows as passes.
@@ -360,6 +383,7 @@ def check(game, output, baseline):
                 "render_representatives": len(samples),
                 "raw_fields_without_complete_constructor_not_rendered": raw_fragments_not_rendered,
                 "rejected_rows": dict(rejected),
+                "constructor_parameter_rows": constructor_parameter_rows,
                 "existing_width_equivalent_target_spellings": width_equivalents,
                 "detail_numeric_rules": len(details.detail_join_numeric),
                 "compile_and_python_replay_seconds": round(compiled, 3),

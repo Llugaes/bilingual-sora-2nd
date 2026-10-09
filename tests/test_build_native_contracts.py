@@ -1,6 +1,7 @@
 """Normalized operands must keep the reviewed ABI and target boundaries."""
 
 import copy
+import hashlib
 import struct
 import tempfile
 import unittest
@@ -202,6 +203,10 @@ class RelinkedLoaderTests(unittest.TestCase):
         )
         self.assertEqual(callee["template"]["size"], 8)
         self.assertEqual(callee["template"]["masks"], [[3, 4]])
+        self.assertEqual(
+            callee["template"]["data_refs"][0]["sha256"], hashlib.sha256(crc32_table()).hexdigest()
+        )
+        self.assertEqual(callee["template"]["data_refs"][0]["displacement"], [3, 4])
         self.assertEqual(
             template["equal_targets"],
             [

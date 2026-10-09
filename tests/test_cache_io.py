@@ -83,6 +83,17 @@ with patch('sora_bilingual.localization.native_catalog.load_entries',
                 publish_json(path, {**model, "pairs": {"Ready": pair}})
                 self.assertIsNone(read_model(path))
 
+    @patch(
+        "sora_bilingual.localization.npc_facilities.compile_npc_facilities", new=lambda *_, **__: []
+    )
+    @patch(
+        "sora_bilingual.localization.notebook_composition.compile_fishing_lists",
+        new=lambda *_, **__: [],
+    )
+    @patch(
+        "sora_bilingual.localization.notebook_composition.compile_bracer_history",
+        new=lambda *_, **__: [],
+    )
     def test_unavailable_locale_is_not_acknowledged_as_a_successful_switch(self):
         with tempfile.TemporaryDirectory() as tmp:
             config = {"primary": "fr", "secondary": "de", "game_language": "es"}
@@ -105,6 +116,17 @@ with patch('sora_bilingual.localization.native_catalog.load_entries',
             self.assertEqual(result["values"], [result["n"]] * 1000)
             self.assertEqual(list(Path(tmp).glob("*.tmp")), [])
 
+    @patch(
+        "sora_bilingual.localization.npc_facilities.compile_npc_facilities", new=lambda *_, **__: []
+    )
+    @patch(
+        "sora_bilingual.localization.notebook_composition.compile_fishing_lists",
+        new=lambda *_, **__: [],
+    )
+    @patch(
+        "sora_bilingual.localization.notebook_composition.compile_bracer_history",
+        new=lambda *_, **__: [],
+    )
     def test_broken_model_cache_rebuilds_from_resources(self):
         with tempfile.TemporaryDirectory() as tmp:
             config = {"primary": "fr", "secondary": "de", "game_language": "es"}

@@ -1,0 +1,26 @@
+'use strict';
+const fs=require('fs'),assert=require('assert'),path=require('path');
+let source=fs.readFileSync(path.join(process.cwd(),'tests/test_item_help_callbacks.js'),'utf8');
+source=source.slice(0,source.indexOf('\nlet positive='));
+const fixtureModule={exports:{}};new Function('require','module',source+'\nmodule.exports={runtime,model,fixtures};')(require,fixtureModule);
+const {runtime,model,fixtures}=fixtureModule.exports,input=fixtures.find(f=>f.locale==='en');
+const {r}=runtime(input);
+r.api.load(model(input,{'previous native source':['previous wrong global translation','old secondary']}),'primary',true,1);
+const previous=r.label(0x70005000,'');r.externalSet(previous,'previous native source');
+assert.equal(previous.text(),'previous wrong global translation');
+for(let i=0;i<10000;i++)r.unreadableItem(r.label(0xe00000+i*1024,''));
+assert.equal(r.itemStats().domains,10000);assert.equal(r.api.status().failed,false);
+r.unreadableItem(previous);
+assert.equal(r.itemStats().domains,10000);assert.equal(r.itemStats().leases,0);
+assert.equal(r.api.status().failed,true);assert.equal(r.api.status().enabled,false);
+assert.match(r.api.status().failureReason,/tracking limit/);
+// A retained old raw source is solely used to undo the already owned
+// translation on its next normal Update. Failure never enables a resolver.
+r.update(previous);assert.equal(previous.text(),'previous native source');
+const row=r.itemStats(previous).row;assert.equal(row.displayed,row.original);
+assert.equal(row.plan.kind,'plain');assert.equal(row.plan.layers.length,0);
+assert.equal(r.itemStats().leases,0);r.destroy(previous);assert.equal(r.itemStats(previous).row,undefined);
+const result={created_utc:new Date().toISOString(),actual_callback_over_limit_sets_failed:true,enabled_after_limit:false,
+ old_translation_restored_by_next_update:true,old_source_retained_only_for_restoration:true,lease_after_onleave:0,
+ domain_size:10000,destroy_removes_old_row:true,actual_ui_setter_captured:false,game_attached:false};
+if(process.argv[2])fs.writeFileSync(process.argv[2],JSON.stringify(result,null,2));console.log(JSON.stringify(result));

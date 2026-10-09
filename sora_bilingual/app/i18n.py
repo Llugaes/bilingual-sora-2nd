@@ -88,6 +88,11 @@ _ROWS = """
 更新|Updates|更新
 设置和更新|Settings and updates|設定と更新
 每次游戏启动时同步主语言；本次运行中可自行调整。|Primary language follows the game at startup. You can change it during this session.|ゲーム起動時に主言語を合わせます。起動後は自由に変更できます。
+跟随游戏内语言（等待检测）|Follows the game (waiting for detection)|ゲーム内言語に合わせる（確認待ち）
+主语言自动跟随游戏内语言；如需体验其他主语言，建议在游戏内切换。|Primary language follows the game automatically. To try another primary language, change it in the game.|主言語はゲーム内言語に自動で合わせます。別の主言語を試す場合は、ゲーム内で変更してください。
+Experimental：手动设置主语言|Experimental: choose primary language manually|Experimental：主言語を手動で設定
+手动设置主语言|Choose primary language manually|主言語を手動で設定
+此功能属于实验性质，可能引入较多不稳定性、不确定性及 bug。如需体验其他主语言，建议直接在游戏内设置语言。|This feature is experimental and may introduce instability, unpredictable behavior and bugs. To try another primary language, change the language in the game.|この機能は実験的です。不安定な動作、予期しない挙動や不具合が発生する可能性があります。別の主言語を試す場合は、ゲーム内で言語を変更することをおすすめします。
 选择界面语言|Choose interface language|画面言語を選択
 初始语言设置|Initial language setup|初期言語設定
 选择游戏当前的文本语言|Choose the game's current text language|ゲームの現在の表示言語を選択

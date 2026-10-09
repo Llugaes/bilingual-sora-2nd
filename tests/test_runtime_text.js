@@ -14,6 +14,72 @@ const baseModel = overrides => ({
     ...overrides,
 });
 
+test('owned integer template keys survive exact native formatting without admitting stale data',()=>{
+    const key='TXT_PROVEN_INTEGER',source='Grow <C2>%d</C>!',row=baseModel({
+        pairs:{[source]:['増加<C2>%d</C>！','提升<C2>%d</C>！']},
+        raw_numeric:[['Grow <C2>([+-]?\\d+)</C>!', ['増加<C2>%d</C>！','提升<C2>%d</C>！']]],
+    }),tr=new RuntimeText(baseModel({keyed:{[key]:{source,model:row}}}));
+    assert.equal(tr.keyedMatches(key,'Grow <C2>15</C>!'),true);
+    assert.equal(tr.translate('Grow <C2>15</C>!','primary',key),'増加<C2>15</C>！');
+    for(const text of ['Grow <C2>+15</C>!','Grow <C2>015</C>!','Grow <C2>-0</C>!',
+        'Grow <C2>2147483648</C>!','Grow <UNKNOWN>15</UNKNOWN>!','Other <C2>15</C>!'])
+        assert.equal(tr.keyedMatches(key,text),false,text);
+    assert.equal(tr.keyedMatches(key,'Grow <C2>-2147483648</C>!'),true);
+    const dynamic=new RuntimeText(baseModel({keyed:{KEY:{source:'Name %s %d',model:baseModel({
+        numeric:[['Name (.+) ([+-]?\\d+)', ['名前%s%d','姓名%s%d']]]})}}}));
+    assert.equal(dynamic.keyedMatches('KEY','Name actor 15'),false);
+});
+
+test('keyed formatter ownership requires canonical integer specs on both target sides',()=>{
+    for(const template of ['N %02d','N %s','N %g','N %1$d','N %d %d %d %d %d']) {
+        const t=new RuntimeText(baseModel({keyed:{KEY:{source:template,model:baseModel({
+            numeric:[['N ([+-]?\\d+)', ['M %d','Z %d']]]})}}}));
+        assert.equal(t.keyedMatches('KEY','N 15'),false,template);
+    }
+    const t=new RuntimeText(baseModel({keyed:{KEY:{source:'N %d',model:baseModel({
+        numeric:[['N ([+-]?\\d+)', ['M %02d','Z %d']]]})}}}));
+    assert.equal(t.keyedMatches('KEY','N 15'),false,'target width cannot be guessed');
+});
+
+test('complete effect sentence admission retains independent semantic annotation units',()=>{
+    const source='HP Regen, CP Regen',pair=['HP徐々回復、CP徐々上昇','HP逐渐回复，CP逐渐上升'];
+    const details=baseModel({detail_join:[', ','、','，'],detail_effect_units:[
+        {pattern:'^HP Regen$',pair:['HP徐々回復','HP逐渐回复'],ids:['effect/HP/name']},
+        {pattern:'^CP Regen$',pair:['CP徐々上昇','CP逐渐上升'],ids:['effect/CP/name']},
+    ]});
+    const tr=new RuntimeText(baseModel({pairs:{[source]:pair},plain_pairs:{[source]:pair},details}));
+    const plan=tr.render(source);
+    assert.equal(plan.layers.length,2);
+    assert.deepEqual(plan.layers.map(layer=>layer.semantic_ids),[['effect/HP/name'],['effect/CP/name']]);
+    assert.deepEqual(plan.layers.map(layer=>layer.text),['HP逐渐回复','CP逐渐上升']);
+    assert.equal(tr.translate(source,'primary'),pair[0]);
+    assert.deepEqual(tr.render(source),plan);
+    const completeRow={pattern:'^HP Regen, CP Regen$',pair,ids:['effect/combined']};
+    const combined=new RuntimeText(baseModel({pairs:{[source]:pair},details:{...details,
+        detail_effect_units:[completeRow,...details.detail_effect_units]}}));
+    assert.equal(combined.render(source).layers.length,2,'longest complete constructor swallowed independent units');
+    const disagreeing=new RuntimeText(baseModel({pairs:{[source]:pair},details:{...details,
+        detail_effect_units:[{...completeRow,pair:['別文','另文']},...details.detail_effect_units]}}));
+    assert.equal(disagreeing.details.effectUnits(source),null,'different partition targets must not pick an arbitrary partition');
+    const numericSource='HP Regen 5, CP Regen';
+    const numericDetails={...details,detail_effect_units:[
+        {pattern:'^HP Regen ([0-9]+)$',pair:['HP徐々回復%d','HP逐渐回复%d'],ids:['effect/HP/name']},
+        details.detail_effect_units[1]]};
+    const numeric=new RuntimeText(baseModel({numeric:[['HP Regen ([0-9]+), CP Regen',
+        ['HP徐々回復%d、CP徐々上昇','HP逐渐回复%d，CP逐渐上升']]],details:numericDetails}));
+    assert.equal(numeric.render(numericSource).layers.length,2);
+    assert.equal(numeric.render('<c698>'+numericSource+'</C>').layers.length,2);
+    // Whole-source admission is mandatory for an unanchored effect line.
+    const unknown=new RuntimeText(baseModel({details}));
+    assert.equal(unknown.effectDetailPlan(source),null);
+    // A different complete translation cannot be overridden by role fragments.
+    const conflict=new RuntimeText(baseModel({pairs:{[source]:['別の正文','另一正文']},details}));
+    assert.equal(conflict.effectDetailPlan(source),null);
+    assert.equal(conflict.translate(source,'primary'),'別の正文');
+    for(const input of [source+'<K3>',source+', UNKNOWN','<R>'+source+'</Rreading>'])
+        assert.equal(tr.effectDetailPlan(input),null);
+});
+
 test('punctuation fragments cannot inject tutorial text into skill effects or printf arguments',()=>{
     const runtime=new RuntimeText(baseModel({
         pairs:{'...':['...','………']},

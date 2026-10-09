@@ -1,9 +1,25 @@
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from sora_bilingual.config.locales import LANGUAGES
 from sora_bilingual.localization.dynamic_producers import build_dynamic_entries
 from sora_bilingual.localization.resources import Called, Function, Script
+
+
+class ProducerPermissionTests(unittest.TestCase):
+    def test_book_domain_permission_is_not_a_missing_locale(self):
+        from sora_bilingual.localization.dynamic_producers import _read_book_ids
+
+        audit = {"diagnostics": []}
+        with patch(
+            "sora_bilingual.localization.dynamic_producers.FpacArchive",
+            side_effect=PermissionError("owned fixture archive denied"),
+        ) as archive:
+            with self.assertRaisesRegex(PermissionError, "owned fixture archive denied"):
+                _read_book_ids(Path("unused-owned-fixture"), audit)
+            archive.assert_called_once()
+        self.assertEqual(audit["diagnostics"], [])
 
 
 def _panel(prefix, opcode, suffix):
@@ -85,6 +101,112 @@ def _build(scripts, items, books=None):
 
 
 class DynamicProducerTests(unittest.TestCase):
+    def test_removal_helper_family_keeps_localized_prefix_and_suffix(self):
+        from sora_bilingual.localization.dynamic_producers import _item_call_parts
+
+        for family in ("EV", "TK"):
+            for split in (False, True):
+                args = (
+                    (("int", 4202), ("string", "before "), ("string", " after"))
+                    if split
+                    else (("int", 4202), ("string", " after"))
+                )
+                helper = "ITEM_SUB_MESSAGE" + ("2" if split else "") + "_" + family
+                call = Called(helper, 0, args)
+                self.assertEqual(
+                    _item_call_parts(call), (4202, "before " if split else "", " after", ())
+                )
+                scripts = _scripts(item_call=call)
+                rows, _ = _build(scripts, _items())
+                messages = [
+                    r
+                    for r in rows
+                    if r.get("producer_origin", {}).get("family") == "item_add_message"
+                ]
+                self.assertEqual(len(messages), 1)
+                for language in LANGUAGES:
+                    self.assertEqual(
+                        messages[0]["texts"][language],
+                        ("before " if split else "")
+                        + f"<C0><I%d></C><C5>{language} quartz</C> after",
+                    )
+
+    def test_literal_item_panel_keeps_full_localized_outer_text_and_item_order(self):
+        def panel(prefix, suffix):
+            return Called(
+                None,
+                3,
+                (
+                    ("int", 5),
+                    ("int", 8),
+                    ("int", 65535),
+                    ("int", 16),
+                    ("string", prefix),
+                    ("int", 17),
+                    ("int", 4202),
+                    ("int", 10),
+                    ("string", suffix),
+                ),
+            )
+
+        scripts = _scripts()
+        for language in LANGUAGES:
+            scripts[language]["script/scena/gift.dat"] = Script(
+                {
+                    "Gift": _function(
+                        "Gift",
+                        (
+                            panel(
+                                "Handed over " if language == "en" else "",
+                                "." if language == "en" else "渡した。",
+                            ),
+                        ),
+                    )
+                }
+            )
+        rows, audit = _build(scripts, _items())
+        panels = [
+            r for r in rows if r.get("producer_origin", {}).get("family") == "static_item_panel"
+        ]
+        self.assertEqual(len(panels), 1)
+        self.assertEqual(panels[0]["texts"]["en"], "Handed over <C0><I%d></C><C5>en quartz</C>\n.")
+        self.assertEqual(panels[0]["texts"]["ja"], "<C0><I%d></C><C5>ja quartz</C>\n渡した。")
+        self.assertEqual(panels[0]["called_ids"], {l: 0 for l in LANGUAGES})
+        self.assertEqual(panels[0]["dynamic_producer"]["numbers"]["ja"], ["ascii"])
+
+    def test_item_panel_rejects_unknown_dynamic_operand_and_changed_item_identity(self):
+        scripts = _scripts()
+        for language in LANGUAGES:
+            operand = (
+                ("int", 4202)
+                if language not in {"ja", "ko"}
+                else (("var", None) if language == "ja" else ("int", 2100))
+            )
+            call = Called(
+                None,
+                3,
+                (
+                    ("int", 5),
+                    ("int", 8),
+                    ("int", 65535),
+                    ("int", 16),
+                    ("string", "Handed "),
+                    ("int", 17),
+                    operand,
+                    ("string", "."),
+                ),
+            )
+            scripts[language]["script/scena/gift.dat"] = Script(
+                {"Gift": _function("Gift", (call,))}
+            )
+        rows, _ = _build(scripts, _items())
+        panels = [
+            r for r in rows if r.get("producer_origin", {}).get("family") == "static_item_panel"
+        ]
+        self.assertEqual(len(panels), 1)
+        self.assertNotIn("ja", panels[0]["texts"])
+        self.assertNotIn("ko", panels[0]["texts"])
+
     def test_compiles_only_full_typed_numeric_and_exact_recipe_entries(self):
         entries, audit = _build(_scripts(), _items())
         by_family = {

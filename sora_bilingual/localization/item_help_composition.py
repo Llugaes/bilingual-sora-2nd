@@ -232,6 +232,119 @@ def _status_fragments(catalogue, records, languages, help_titles=None):
     return result
 
 
+def _condition_list_entries(entries, catalogue, records, languages):
+    """Effect 98 owns a condition-mask list, not an arbitrary printf string.
+
+    Validate its raw ID/type and all three formatter fields. Names come only
+    from ConditionInfoTableData; homographs in inventory are separate roles.
+    """
+    matches = [(identity, row) for identity, row in records.items() if row["id"] == 98]
+    if not matches:
+        return []
+    identity, row = matches[0]
+    fields = _record_fields(catalogue, identity, languages)
+    if tuple(row["parameter_types"]) != (10,) or any(
+        fields["format"][l] != "%s"
+        or fields["name"][l].count("%s") != 1
+        or not fields["name"][l].endswith("%s")
+        or fields["name"][l][:-2].rstrip() != fields["stat"][l].rstrip()
+        for l in languages
+    ):
+        raise ItemHelpContractError("condition-list formatter contract changed")
+    names = [
+        e["texts"]
+        for e in entries
+        if re.fullmatch(r"table/t_condition_info\.tbl/sha256:[^/]+/name", e.get("key", ""))
+    ]
+    if not names or any(not names_row.get(l) for names_row in names for l in languages):
+        raise ItemHelpContractError("condition-list names incomplete")
+    return [
+        {
+            "key": f"table/t_itemhelp.tbl/generated/condition_list/{row['id']}",
+            "texts": fields["name"],
+            "detail_only": True,
+            "condition_list_contract": {
+                "id": row["id"],
+                "parameter_types": [10],
+                "templates": fields["name"],
+                "names": names,
+                "links": _constant(catalogue, "LINK", languages),
+                "percent": _constant(catalogue, "PERSENT", languages),
+            },
+        }
+    ]
+
+
+def _condition_parameter_entries(entries, fields, records, languages):
+    """Bind native type 17's condition argument inside its complete formatter.
+
+    0x34febb..0x34ff65 obtains ConditionHelpData with 0x256100 and passes
+    its +0x10 condition field, then the numeric slot, to the name formatter.
+    These enum values must never become global aliases for item homographs.
+    """
+    names = [
+        e
+        for e in entries
+        if re.fullmatch(r"table/t_itemhelp\.tbl/sha256:[^/]+/condition", e.get("key", ""))
+    ]
+    generated = {}
+    # Item panes may put a category's complete coloured hint in a separate
+    # label. Bind that entire raw span in every locale, never individual words
+    # or the surrounding category name. Conflicting complete hints stay denied.
+    for entry in entries:
+        key = entry.get("key", "")
+        if not key.startswith("table/t_itemhelp.tbl/ItemKindHelpData/") or not key.endswith(
+            "/description"
+        ):
+            continue
+        hints = {}
+        for language in languages:
+            spans = re.findall(
+                r"<[Cc][0-9a-fA-F]+>([^<>]+)</[Cc]>", entry.get("texts", {}).get(language, "")
+            )
+            if len(spans) != 1 or "%" in spans[0]:
+                break
+            hints[language] = spans[0]
+        if len(hints) == len(languages):
+            _add_unique(
+                generated,
+                hints,
+                "item_category_hint",
+                [],
+                languages,
+                resource_key=key,
+                resource_field="description.coloured_hint",
+            )
+    for identity, row in records.items():
+        if row["parameter_types"] != (17,) or identity not in fields:
+            continue
+        templates = fields[identity]["name"]
+        if any(
+            re.findall(r"%[sdiu]", templates[l]) != ["%s", "%d"]
+            or "%" in templates[l].replace("%s", "").replace("%d", "").replace("%%", "")
+            for l in languages
+        ):
+            raise ItemHelpContractError("condition-parameter formatter changed")
+        if not names:
+            raise ItemHelpContractError("condition-parameter names missing")
+        for name in names:
+            texts = name["texts"]
+            if any(not texts.get(l) or re.search(r"[%<>\r\n]", texts[l]) for l in languages):
+                raise ItemHelpContractError("condition-parameter name incomplete")
+            _add_unique(
+                generated,
+                {l: templates[l].replace("%s", texts[l]) for l in languages},
+                "condition_parameter",
+                [row["id"]],
+                languages,
+                parameter_types=[17],
+                condition_key=name["key"],
+            )
+    # Existing complete-constructor promotion exposes these as ordinary
+    # candidates too. Only the bound sentence enters that model, never a name.
+    return list(generated.values())
+
+
 def _aggregate_name(catalogue, identities, languages, *, literal_s=None):
     link = _constant(catalogue, "LINK", languages)
     fields = [_record_fields(catalogue, identity, languages) for identity in identities]
@@ -308,10 +421,10 @@ def _is_percent_recovery(fields, percent, languages):
     return True
 
 
-def _recovery_group(catalogue, fields, identities, languages):
-    """Build one native LINK + PERSENT recovery phrase from ordered slots."""
+def _recovery_group(catalogue, fields, identities, languages, *, magnitude=None):
+    """Build the native connection-13 stat/format phrase from ordered slots."""
     link = _constant(catalogue, "LINK", languages)
-    percent = _constant(catalogue, "PERSENT", languages)
+    percent = magnitude if magnitude is not None else _constant(catalogue, "PERSENT", languages)
     result = {}
     for language in languages:
         formats = {fields[identity]["format"][language] for identity in identities}
@@ -397,7 +510,9 @@ def _actual_connection_sequences(groups, members):
 # native icon is never translated or replaced with a Unicode lookalike. The
 # separate `<I267>` observation is type10 with no turn contract, so it is not
 # inferred into this family.
-INLINE_TURN_ICONS = ("<I270>",)
+# Native connection kind 4 selects 0x10e/0x10f/0x110 for strength
+# 1/2/3 (0x34c791..0x34c94d in the verified d8b2911d sample).
+INLINE_TURN_ICONS = ("<I270>", "<I271>", "<I272>")
 
 
 def _inline_icon_turn_texts(catalogue, identity, icon, languages):
@@ -505,11 +620,14 @@ def compile_item_help_grammar(
     # integer parameter or a coincidentally similar translated format.
     # The public low-level compiler also accepts metadata-only fixtures;
     # production always supplies the validated connection table.
-    connection_kinds = (
-        None
-        if connect_groups is None
-        else {record_id: row["kind"] for row in connect_groups for record_id in row["ids"]}
-    )
+    connection_kinds = None
+    if connect_groups is not None:
+        connection_kinds = {}
+        # Native 345980 returns the first physical connection row. In
+        # particular 95/96 occur in both kind10 and a later kind14 row.
+        for row in connect_groups:
+            for record_id in row["ids"]:
+                connection_kinds.setdefault(record_id, row["kind"])
     chance = {
         value["id"]: identity
         for identity, value in metadata["SkillEffectHelpData"].items()
@@ -605,6 +723,197 @@ def compile_item_help_grammar(
         and _is_percent_recovery(fields[identity], percent, languages)
     }
     generated = {}
+    # The single-effect parameter dispatcher passes type 1's integer directly
+    # to the complete name (0x34f259..0x34f292 in the current EXE). This owns
+    # stat-less names such as reflect counts too; they are not role conflicts.
+    # Type6's dispatcher (CAB62 0x34fa91) passes two integers. The second
+    # getter explicitly selects slot3 for effect1046 (0x3531b9), proving
+    # independent HP/EP percent and CP amount, including the gold doll.
+    for identity, row in metadata["SkillEffectHelpData"].items():
+        if row["id"] != 1046 or row["parameter_types"] != (6,) or identity not in fields:
+            continue
+        names = fields[identity]["name"]
+        if all(
+            names[l].count("%d") == 2 and "%" not in names[l].replace("%d", "").replace("%%", "")
+            for l in languages
+        ):
+            _add_unique(
+                generated,
+                names,
+                "before_ko_recovery",
+                [row["id"]],
+                languages,
+                parameter_types=[6],
+                arguments=["slot1", "slot3"],
+            )
+    for identity, row in metadata["SkillEffectHelpData"].items():
+        if identity not in fields or row["parameter_types"] != (1,) or row["id"] in chance:
+            continue
+        names = fields[identity]["name"]
+        if all(
+            _one_field(names[l], "d") and "%" not in names[l].replace("%d", "").replace("%%", "")
+            for l in languages
+        ):
+            _add_unique(
+                generated,
+                names,
+                "numeric_single",
+                [row["id"]],
+                languages,
+                parameter_types=[1],
+                amount_argument="slot1",
+            )
+            # Screenshot-observed event display uses LINK in place of the
+            # resource's FORMAT8. Bind the entire effect1016 template; never
+            # split arbitrary comma phrases or admit the event prefix alone.
+            if row["id"] == 1016 and source_language == "en":
+                separator = _constant(catalogue, "FORMAT8", languages)
+                link = _constant(catalogue, "LINK", languages)
+                if names["en"].count(separator["en"]) == 1:
+                    values = dict(names)
+                    values["en"] = names["en"].replace(separator["en"], " " + link["en"] + " ")
+                    _add_unique(
+                        generated,
+                        values,
+                        "event_link_display",
+                        [row["id"]],
+                        languages,
+                        parameter_types=[1],
+                        amount_argument="slot1",
+                        evidence="screenshot_display_variant_not_setter_capture",
+                    )
+    # Type12 substitutes the HP recovery magnitude into the complete name,
+    # even when its stat field is empty. Current 0x34fb81..0x34fc2f selects
+    # SMALL below 3000, MIDDLE below 4500, otherwise LARGE. This is a typed
+    # constructor, not a grade word borrowed from another effect's stat.
+    for identity, row in metadata["SkillEffectHelpData"].items():
+        if identity not in fields or row["parameter_types"] != (12,):
+            continue
+        names = fields[identity]["name"]
+        if not all(_one_field(names[l], "s") for l in languages):
+            raise ItemHelpContractError("type12 recovery name changed")
+        for constant, selector in (
+            ("SMALL", "slot1 < 3000"),
+            ("MIDDLE", "3000 <= slot1 < 4500"),
+            ("LARGE", "slot1 >= 4500"),
+        ):
+            magnitude = _constant(catalogue, constant, languages)
+            _add_unique(
+                generated,
+                {l: names[l].replace("%s", magnitude[l]) for l in languages},
+                "recovery_magnitude_single",
+                [row["id"]],
+                languages,
+                parameter_types=[12],
+                magnitude_constant=constant,
+                amount_argument="slot1",
+                selector=selector,
+            )
+
+    # Type9 binds its complete name's one string slot to the upward direction
+    # selected from slot1. CAB62 0x34ff95..0x3500b1 maps 0/1,2,3 to strength
+    # 1,2,3; display kinds5/6 use Unicode arrows, others use I270/271/272.
+    for identity, row in metadata["SkillEffectHelpData"].items():
+        if identity not in fields or row["parameter_types"] != (9,):
+            continue
+        names = fields[identity]["name"]
+        if not all(_one_field(names[l], "s") for l in languages):
+            raise ItemHelpContractError("type9 direction name changed")
+        for level in range(1, 4):
+            for arrow in (f"<I{269 + level}>", "↑" * level):
+                _add_unique(
+                    generated,
+                    {l: names[l].replace("%s", arrow) for l in languages},
+                    "direction_single_up",
+                    [row["id"]],
+                    languages,
+                    parameter_types=[9],
+                    amount_argument="slot1",
+                    strength_level=level,
+                    selector="slot1 in (0,1)" if level == 1 else f"slot1 == {level}",
+                    inline_icons=[arrow] if arrow.startswith("<I") else [],
+                    detail_inline_icon=arrow.startswith("<I"),
+                )
+
+    # Types 11 (Delay's slot2 magnitude) and 13 use finite magnitude labels.
+    # Reuse the exact admitted constants, never an arbitrary string parameter.
+    for identity, row in metadata["SkillEffectHelpData"].items():
+        if identity not in fields or row["parameter_types"] not in ((11,), (13,)):
+            continue
+        names = fields[identity]["name"]
+        if (row["parameter_types"] == (13,) and not fields[identity]["stat"]) or not all(
+            _one_field(names[l], "s") for l in languages
+        ):
+            continue
+        for constant in ("MOSTSMALL", "SMALL", "MIDDLE", "LARGE", "MOSTLARGE"):
+            magnitude = _constant(catalogue, constant, languages)
+            _add_unique(
+                generated,
+                {l: names[l].replace("%s", magnitude[l]) for l in languages},
+                "magnitude_single",
+                [row["id"]],
+                languages,
+                parameter_types=list(row["parameter_types"]),
+                magnitude_constant=constant,
+                amount_argument="slot2" if row["parameter_types"] == (11,) else "slot1",
+            )
+    # Kind 1 joins SkillEffectHelpData.stat from the equal-argument forward
+    # group, then its format and numeric slot. Unlike effect98, its argument
+    # is not a ConditionInfo mask. Exact EXE formats at 0x34bc92/0x34bd06 are
+    # %s「%s」%s and %s%s %s %d%%; the CJK format itself owns the number.
+    for connection in connect_groups or ():
+        if connection["kind"] != 1:
+            continue
+        members = connection["ids"]
+        if any(i not in by_id or by_id[i][1]["parameter_types"] != (1,) for i in members):
+            raise ItemHelpContractError("resist connection parameters changed")
+        sequences = {(i,) for i in members}
+        sequences.update(
+            tuple(slot[0] for slot in group)
+            for group in _actual_connection_sequences(raw_groups, members)
+        )
+        for ids in sorted(sequences):
+            records = [fields[by_id[i][0]] for i in ids]
+            if any(not record["stat"] or not record["format"] for record in records):
+                raise ItemHelpContractError("resist connection fields missing")
+            link = _constant(catalogue, "LINK", languages)
+            texts = {}
+            for l in languages:
+                if len({record["format"][l] for record in records}) != 1:
+                    raise ItemHelpContractError("resist connection formats differ")
+                stat = link[l].join(record["stat"][l] for record in records)
+                form = records[0]["format"][l]
+                if l in ("ja", "zh-Hans", "zh-Hant", "ko"):
+                    if not _one_field(form, "d"):
+                        raise ItemHelpContractError("resist numeric format changed")
+                    texts[l] = "「" + stat + "」" + form
+                else:
+                    if "%" in form:
+                        raise ItemHelpContractError("resist literal format changed")
+                    texts[l] = form + " " + stat + " %d%%"
+            _add_unique(
+                generated,
+                texts,
+                "resist_connection",
+                ids,
+                languages,
+                parameter_types=[1],
+                connect_kind=1,
+                amount_argument="slot1",
+                same_amount=True,
+            )
+    # A single type4 percentage uses format + stat too; its raw name can say
+    # Heal while the actual builder says Recover. Cover the complete constructor.
+    for record_id, identity in sorted(recovery.items()):
+        _add_unique(
+            generated,
+            _recovery_group(catalogue, fields, (identity,), languages),
+            "percent_recovery_single",
+            [record_id],
+            languages,
+            parameter_types=[4],
+            amount_argument="slot1",
+        )
     context_entries = []
     context_seen = set()
     for context in actual_contexts:
@@ -654,6 +963,21 @@ def compile_item_help_grammar(
             }
         )
 
+    # The single-effect path uses the same name/format and integer argument as
+    # connection kind 7. Previously only aggregates carried the typed contract,
+    # so an otherwise complete battle help constructor rejected its single
+    # chance member (e.g. a numeric status probability). Admit the entire
+    # resource family, with the same locale and native-type checks as groups.
+    for record_id, identity in sorted(chance.items()):
+        _add_unique(
+            generated,
+            _aggregate_name(catalogue, (identity,), languages),
+            "chance_single",
+            (record_id,),
+            languages,
+            parameter_types=[1],
+            connect_kind=7,
+        )
     if chance_proven:
         for ids in _aggregate_sequences(chance, raw_groups):
             _add_unique(
@@ -868,21 +1192,34 @@ def compile_item_help_grammar(
                 languages,
                 parameter_types=[],
             )
+    timed_sequences = set()
     for group in groups:
-        if len(group) != 2 or group[0][0] not in timed_labels or group[1][0] not in duration_values:
-            continue
-        label, _duration = timed_labels[group[0][0]], duration_values[group[1][0]]
+        for slot in group:
+            if slot[0] not in timed_labels:
+                continue
+            if connection_kinds is not None and connection_kinds.get(slot[0]) != 18:
+                continue
+            for companion in group:
+                if companion[0] in duration_values:
+                    timed_sequences.add((slot[0], companion[0]))
+    for label_id, duration_id in sorted(timed_sequences):
+        label, _duration = timed_labels[label_id], duration_values[duration_id]
         # The label's format owns locale punctuation/spacing.  The companion
         # record proves the duration argument, but German deliberately omits
         # this leading separator from its own display field.
         _add_unique(
             generated,
             {
-                language: fields[label]["name"][language] + fields[label]["format"][language]
+                language: (
+                    fields[label]["stat"][language]
+                    if connection_kinds is not None
+                    else fields[label]["name"][language]
+                )
+                + fields[label]["format"][language]
                 for language in languages
             },
             "timed_literal",
-            (group[0][0], group[1][0]),
+            (label_id, duration_id),
             languages,
             parameter_types=[[], [1]],
             duration_argument="slot1",
@@ -959,6 +1296,84 @@ def compile_item_help_grammar(
                 inline_icons=[icon],
                 detail_inline_icon=True,
             )
+            # Kind4's Western path concatenates stat, selected icon and the
+            # raw turns field (0x34c6..0x34ca), rather than printf-ing name.
+            # Admit that exact complete source too; no optional-whitespace rule
+            # or unproved icon is introduced by the runtime matcher.
+            if source_language == "en":
+                values = _inline_icon_turn_texts(catalogue, turn[record_id], icon, languages)
+                raw = fields[turn[record_id]]
+                values[source_language] = (
+                    "<c698>"
+                    + raw["stat"][source_language]
+                    + icon
+                    + raw["turns"][source_language]
+                    + "</C>"
+                )
+                _add_unique(
+                    generated,
+                    values,
+                    "turn_stat_native_parts",
+                    [record_id],
+                    languages,
+                    parameter_types=[16],
+                    connect_kind=4,
+                    turn_argument="slot2",
+                    strength_argument="slot3",
+                    inline_icons=[icon],
+                    detail_inline_icon=True,
+                )
+
+    # Kind4/6 join the raw stat fields before the direction token. Kind4
+    # then appends the raw turns field, without the name template's space
+    # (CAB62 0x34d263..0x34d2f5). Prove aggregate membership with the actual
+    # equal-argument forward scan, including single-member constructors.
+    for connection in connect_groups or ():
+        kind = connection["kind"]
+        if kind not in (4, 6):
+            continue
+        members = connection["ids"]
+        expected = (16,) if kind == 4 else (10,)
+        if any(by_id[i][1]["parameter_types"] != expected for i in members):
+            raise ItemHelpContractError("direction connection parameter changed")
+        sequences = _actual_connection_sequences(raw_groups, members)
+        for group in sorted(sequences):
+            ids = tuple(slot[0] for slot in group)
+            records = [fields[by_id[i][0]] for i in ids]
+            if any(not r["stat"] for r in records):
+                continue
+            for level in range(1, 4):
+                # Current EXE chooses I267/268/269 for downward strengths
+                # 1/2/3 and I270/271/272 for upward strengths 1/2/3.
+                for direction in (("up", 269, "↑"), ("down", 266, "↓")):
+                    # Current native kind4 selects upward icons and kind6
+                    # downward icons; these are distinct resource families.
+                    is_down = kind == 6
+                    if (direction[0] == "down") != is_down:
+                        continue
+                    for arrow in (f"<I{direction[1] + level}>", direction[2] * level):
+                        values = _aggregate_name(
+                            catalogue, tuple(by_id[i][0] for i in ids), languages, literal_s=arrow
+                        )
+                        if "en" in languages:
+                            joined = _constant(catalogue, "LINK", languages)["en"].join(
+                                r["stat"]["en"] for r in records
+                            )
+                            values["en"] = (
+                                joined + arrow + (records[0]["turns"]["en"] if kind == 4 else "")
+                            )
+                        _add_unique(
+                            generated,
+                            {l: "<c698>" + v + "</C>" for l, v in values.items()},
+                            "direction_native_group",
+                            ids,
+                            languages,
+                            parameter_types=list(expected),
+                            connect_kind=kind,
+                            strength_level=level,
+                            inline_icons=[arrow] if arrow.startswith("<I") else [],
+                            detail_inline_icon=arrow.startswith("<I"),
+                        )
 
     # Connection kind 2 joins each record's format (the stat name), then uses
     # the first record's stat template. Native 0x34bd71..0x34c20e passes turns,
@@ -1049,6 +1464,126 @@ def compile_item_help_grammar(
             [96, 97],
             languages,
         )
+        _add_unique(
+            generated,
+            formats,
+            "debuff_immunity_modifier",
+            [97],
+            languages,
+            resource_field="format",
+            native_effect_branch=97,
+        )
+
+    # Actual independent numeric + literal slot sequences own a complete
+    # FORMAT8 header even when the resource description is blank. A turns
+    # parameter homograph (CP/EP Regen) cannot veto that whole constructor.
+    # Reuse proved type1/type4 displays and ordinary literal-name dispatch;
+    # connection members never enter this independent-member composition.
+    single_displays = {
+        entry["item_help_contract"]["record_ids"][0]: entry["texts"]
+        for entry in generated.values()
+        if entry["item_help_contract"]["family"] in {"numeric_single", "percent_recovery_single"}
+        and len(entry["item_help_contract"]["record_ids"]) == 1
+    }
+    separator = _constant(catalogue, "FORMAT8", languages)
+    for group in groups:
+        if not 2 <= len(group) <= MAX_TYPED_GROUP_SLOTS:
+            continue
+        members, arguments, has_numeric, has_literal = [], [], False, False
+        for index, slot in enumerate(group):
+            identity, row = by_id[slot[0]]
+            kind = connection_kinds.get(slot[0]) if connection_kinds is not None else None
+            parameters = tuple(row["parameter_types"])
+            if parameters in {(1,), (4,)} and slot[0] in single_displays:
+                if kind is not None and not (
+                    kind == 13
+                    and parameters == (4,)
+                    and sum(connection_kinds.get(other[0]) == kind for other in group) == 1
+                ):
+                    break
+                members.append(single_displays[slot[0]])
+                arguments.append({"member_slot": index, "argument": "slot1"})
+                has_numeric = True
+            elif not parameters and kind is None:
+                names = _literal_tail(fields.get(identity, {}), languages)
+                if names is None:
+                    break
+                members.append(names)
+                has_literal = True
+            else:
+                break
+        else:
+            if not has_numeric or not has_literal:
+                continue
+            texts = {l: separator[l].join(member[l] for member in members) for l in languages}
+            if any(
+                len(list(re.finditer(r"%[diug]", texts[l].replace("%%", "")))) != len(arguments)
+                for l in languages
+            ):
+                continue
+            _add_unique(
+                generated,
+                texts,
+                "native_mixed_effect_sequence",
+                [slot[0] for slot in group],
+                languages,
+                parameter_types=[list(by_id[slot[0]][1]["parameter_types"]) for slot in group],
+                arguments=arguments,
+                source="actual raw independent slot group + FORMAT8",
+            )
+
+    # Qualification prefixes are constructor roles, including their native
+    # trailing padding. They enter only the detail translator/effect grammar.
+    for key in ("MAIL_ONLY", "FEMAIL_ONLY"):
+        values = catalogue.get("table/t_text.tbl/TXT_ITEM_HELP_" + key)
+        if values and all(values.get(l) for l in languages):
+            _add_unique(
+                generated,
+                values,
+                "equipment_qualification",
+                [],
+                languages,
+                resource_field="TXT_ITEM_HELP_" + key,
+            )
+
+    # Native target0x101 selects the entire SELF constant before a direction
+    # field (CAB62 0x34cbd8/0x34ccb5/0x34d811/0x34dccd/0x34ed15). Bind it
+    # to already-proved complete constructors, never to a word/prefix resolver.
+    # Partial legacy catalogues may omit this optional constructor entirely.
+    # A present constant still requires every locale; never invent a prefix.
+    self_key = "table/t_text.tbl/TXT_ITEM_HELP_SELF"
+    self_prefix = _constant(catalogue, "SELF", languages) if self_key in catalogue else None
+    for entry in list(generated.values()) if self_prefix is not None else ():
+        contract = entry["item_help_contract"]
+        if contract["family"] not in {"direction_native_group", "direction_single_up"}:
+            continue
+        for framed in (False, True) if contract["family"] == "direction_single_up" else (False,):
+            texts = {
+                l: self_prefix[l]
+                + (f"<c698>{entry['texts'][l]}</C>" if framed else entry["texts"][l])
+                for l in languages
+            }
+            for display_space in (False, True) if source_language == "en" else (False,):
+                values = dict(texts)
+                if display_space:
+                    values["en"] = self_prefix["en"] + " " + texts["en"][len(self_prefix["en"]) :]
+                _add_unique(
+                    generated,
+                    values,
+                    "self_direction_constructor",
+                    contract["record_ids"],
+                    languages,
+                    parameter_types=contract["parameter_types"],
+                    prefix_constant="SELF",
+                    native_target_code=0x101,
+                    base_family=contract["family"],
+                    strength_level=contract["strength_level"],
+                    display_space_evidence="user_visible_text_not_setter_capture"
+                    if display_space
+                    else "native_concatenation",
+                    inline_icons=contract.get("inline_icons", []),
+                    detail_inline_icon=bool(contract.get("inline_icons")),
+                )
 
     status_entries = _status_fragments(
         catalogue, metadata["SkillItemStatusData"], languages, help_titles
@@ -1056,7 +1591,19 @@ def compile_item_help_grammar(
     element_entries = _element_title_entries(catalogue, element_titles, languages)
     # These are menu headers, not effect-detail aliases.  They share this
     # return collection only so existing callers include all generated rows.
-    detail_entries = [*generated.values(), *context_entries, *element_entries]
+    condition_entries = _condition_list_entries(
+        entries, catalogue, metadata["SkillEffectHelpData"], languages
+    )
+    condition_parameters = _condition_parameter_entries(
+        entries, fields, metadata["SkillEffectHelpData"], languages
+    )
+    detail_entries = [
+        *generated.values(),
+        *context_entries,
+        *element_entries,
+        *condition_entries,
+        *condition_parameters,
+    ]
     literal_group_candidates = {
         tuple(slot[0] for slot in group)
         for group in groups
@@ -1260,6 +1807,518 @@ def _read_connect_groups(data):
     return result
 
 
+def _read_item_description_formats(data):
+    """ItemTableData +232 is the format consumed by 0x347320's printf paths.
+
+    Keep whole physical resource IDs; this does not authorize formatting a
+    script, book, arbitrary label, or dynamically supplied format string.
+    """
+    path, kind = "table/t_item.tbl", "ItemTableData"
+    layout = sections(data)
+    _, start, size, count = next(row for row in layout if row[0] == kind)
+    schema = schema_for(path, kind)
+    if size != 256 or size != schema.size:
+        raise ItemHelpContractError("item description format layout changed")
+    floor = max(at + stride * total for _, at, stride, total in layout)
+    return [
+        {
+            "key": f"{path}/{record_identity(data, start + i * size, kind, schema, floor)}/description",
+            "id": struct.unpack_from("<I", data, start + i * size)[0],
+            "formatter": "item_description_printf",
+        }
+        for i in range(count)
+    ]
+
+
+def compile_item_description_printf(entries, contracts, languages):
+    """Zero-argument printf outputs; never discard actual dynamic parameters."""
+    catalogue = _entry_map(entries)
+    result, refusals = [], []
+    for contract in contracts:
+        key = contract.get("key", "")
+        if contract.get("formatter") != "item_description_printf" or not re.fullmatch(
+            r"table/t_item\.tbl/sha256:[^/]+/description", key
+        ):
+            continue
+        values = catalogue.get(key, {})
+        if not any("%%" in values.get(language, "") for language in languages):
+            continue
+        if any(not values.get(language) for language in languages):
+            refusals.append({"key": key, "reason": "missing_description_locale"})
+            continue
+        if any("%" in values[language].replace("%%", "") for language in languages):
+            refusals.append({"key": key, "reason": "dynamic_or_unsupported_description_printf"})
+            continue
+        raw = {language: values[language] for language in languages}
+        result.append(
+            {
+                "key": key,
+                "texts": {l: t.replace("%%", "%") for l, t in raw.items()},
+                "printf_description_contract": {**contract, "raw_texts": raw, "slots": 0},
+            }
+        )
+    return result, refusals
+
+
+def _read_p0_producer_resources(item_help, item, quest):
+    """Read only the audited mode0/type4, mode1/[0,1] and kind9 paths.
+
+    The legacy metadata reader stays unchanged. CAB62 0x35041a reads mode1's
+    parameter array with a four-byte stride; that proof does not apply globally.
+    """
+
+    def records(data, path, kind):
+        layout = sections(data)
+        _, start, size, count = next(row for row in layout if row[0] == kind)
+        schema = schema_for(path, kind)
+        if size != schema.size:
+            raise ItemHelpContractError("P0 producer stride changed: " + kind)
+        floor = max(at + stride * n for _, at, stride, n in layout)
+        result = {}
+        for physical in range(count):
+            at = start + physical * size
+            identifier = struct.unpack_from("<I", data, at)[0]
+            result[identifier] = (at, record_identity(data, at, kind, schema, floor))
+        return result, floor
+
+    def string(data, at, floor):
+        pointer = struct.unpack_from("<Q", data, at)[0]
+        if not floor <= pointer < len(data):
+            raise ItemHelpContractError("P0 producer string outside pool")
+        end = data.find(b"\0", pointer, min(pointer + 2048, len(data)))
+        if end < 0:
+            raise ItemHelpContractError("P0 producer string exceeds budget")
+        return data[pointer:end].decode("utf8", "strict")
+
+    effects, effect_floor = records(item_help, "table/t_itemhelp.tbl", "SkillEffectHelpData")
+    items, item_floor = records(item, "table/t_item.tbl", "ItemTableData")
+    # Mode0 emits this record's icon before its complete name. Keep the
+    # scalar contract separate from the legacy parameter decoder.
+    effect_icons = {
+        identifier: {
+            "identity": identity,
+            "format_mode": struct.unpack_from("<I", item_help, at + 28)[0],
+            "icon": struct.unpack_from("<I", item_help, at + 64)[0],
+        }
+        for identifier, (at, identity) in effects.items()
+    }
+    effect_colours = {
+        identifier: string(item_help, at + 48, effect_floor)
+        for identifier, (at, _identity) in effects.items()
+    }
+    effects_out = {}
+    expected_effects = [
+        (120, (1, (0, 4), 347, 351)),
+        (123, (0, (4,), 351, 0)),
+        (125, (0, (4,), 352, 0)),
+        (127, (1, (0, 1), 347, 351)),
+    ]
+    expected_effects.extend((i, (1, (0, 1), 0, 378 + i - 150)) for i in range(150, 155))
+    for identifier, expected in expected_effects:
+        at, identity = effects[identifier]
+        pointer = struct.unpack_from("<Q", item_help, at + 16)[0]
+        count, mode = struct.unpack_from("<II", item_help, at + 24)
+        if count > 2 or not effect_floor <= pointer <= len(item_help) - count * 4:
+            raise ItemHelpContractError("P0 producer parameter array outside pool")
+        types = struct.unpack_from(f"<{count}I", item_help, pointer)
+        icon, parameter_icon = struct.unpack_from("<II", item_help, at + 64)
+        if (mode, types, icon, parameter_icon) != expected:
+            raise ItemHelpContractError("P0 producer dispatch changed: " + str(identifier))
+        effects_out[identifier] = {
+            "identity": identity,
+            "parameter_types_u32": types,
+            "format_mode": mode,
+            "icon": icon,
+            "parameter_icon": parameter_icon,
+            "fields": {
+                field: string(item_help, at + offset, effect_floor)
+                for field, offset in (("name", 8), ("stat", 32), ("format", 40))
+            },
+        }
+    slots = set()
+    for at, _ in items.values():
+        for index in range(5):
+            slot = struct.unpack_from("<4I", item, at + 0x3C + index * 16)
+            if slot[0] in effects_out:
+                slots.add(slot)
+    junior_at, junior_identity = items[252]
+    mode, category, third = struct.unpack_from("<BBH", item, junior_at + 40)
+    _, start, size, count = next(row for row in sections(item_help) if row[0] == "ItemKindHelpData")
+    selected = next(
+        (
+            start + i * size
+            for i in range(count)
+            if (selector := struct.unpack_from("<HHI", item_help, start + i * size))[:2]
+            == (mode, category)
+            and selector[2] in (0, third)
+        ),
+        None,
+    )
+    if selected is None or struct.unpack_from("<I", item_help, selected + 16)[0] != 9:
+        raise ItemHelpContractError("Junior notebook no longer selects help kind9")
+    rank_rows, rank_floor = records(quest, "table/t_quest.tbl", "QuestRankBefore")
+    return {
+        "effects": effects_out,
+        "effect_icons": effect_icons,
+        "effect_colours": effect_colours,
+        "slots": sorted(slots),
+        "junior": {
+            "key": "table/t_item.tbl/" + junior_identity + "/description",
+            "body": string(item, junior_at + 232, item_floor),
+            "ranks": {
+                identifier: {
+                    "key": "table/t_quest.tbl/QuestRankBefore/" + identity + "/rank",
+                    "text": string(quest, at + 8, rank_floor),
+                }
+                for identifier, (at, identity) in rank_rows.items()
+            },
+        },
+    }
+
+
+def _compile_p0_producers(entries, resources, languages):
+    """Compile complete phrases and all installed imported ranks, without owners."""
+    catalogue = _entry_map(entries)
+    generated = {}
+    first = resources[languages[0]]
+
+    def aligned(key, raw):
+        values = catalogue.get(key)
+        if not values or any(values.get(l) != raw[l] for l in languages):
+            raise ItemHelpContractError("P0 producer resource alignment changed: " + key)
+        return {l: values[l] for l in languages}
+
+    for identifier in (120, 123, 125, 127, *range(150, 155)):
+        record = first["effects"][identifier]
+        if any(
+            resources[l]["effects"][identifier]["identity"] != record["identity"] for l in languages
+        ):
+            raise ItemHelpContractError("P0 effect identity differs across locales")
+        fields = {
+            field: aligned(
+                "table/t_itemhelp.tbl/SkillEffectHelpData/" + record["identity"] + "/" + field,
+                {l: resources[l]["effects"][identifier]["fields"][field] for l in languages},
+            )
+            for field in ("name", "stat", "format")
+        }
+        if identifier in (123, 125):
+            if (identifier, 100, 0, 0) not in first["slots"] or any(
+                not _one_field(fields["name"][l], "s") for l in languages
+            ):
+                raise ItemHelpContractError("Type4 recovery actual slot/name changed")
+            magnitude = _constant(catalogue, "ALL", languages)
+            icon = f"<I{record['icon']}>"
+            # CAB62 connection-kind 13 reads format+0x28 and stat+0x20 for
+            # ALL too (0x34db97..0x34dd05). The generic name+0x08 fallback
+            # produces different EN/SC/TC wording and is not this producer.
+            all_texts = _recovery_group(
+                catalogue,
+                {record["identity"]: fields},
+                (record["identity"],),
+                languages,
+                magnitude=magnitude,
+            )
+            if all_texts is None:
+                raise ItemHelpContractError("connection-13 ALL format changed")
+            _add_unique(
+                generated,
+                {l: icon + all_texts[l] for l in languages},
+                "p0_all_ep" if identifier == 125 else "native_all_hp",
+                [identifier],
+                languages,
+                format_mode=0,
+                parameter_types=[4],
+                selector="slot1 == 100 and runtime flag false",
+                inline_icons=[icon],
+            )
+            percent = _constant(catalogue, "PERSENT", languages)
+            if not _is_percent_recovery(fields, percent, languages):
+                raise ItemHelpContractError("Type4 recovery actual stat/format changed")
+            # Both percentage and ALL select the same proven stat/format
+            # branch; only the magnitude constant changes.
+            percentage_texts = _recovery_group(
+                catalogue, {record["identity"]: fields}, (record["identity"],), languages
+            )
+            _add_unique(
+                generated,
+                {l: icon + percentage_texts[l] for l in languages},
+                "native_mode0_percent_recovery",
+                [identifier],
+                languages,
+                format_mode=0,
+                parameter_types=[4],
+                amount_argument="slot1",
+                inline_icons=[icon],
+                detail_inline_icon=True,
+            )
+        elif identifier == 120:
+            # Same mode1 stat/parameter fields as numeric revival, but its
+            # second u32 enum is type4. The existing type4 branch supplies
+            # PERSENT, or ALL for 100 with the runtime flag false.
+            if any(
+                "%" in fields["stat"][l] or not _one_field(fields["format"][l], "s")
+                for l in languages
+            ):
+                raise ItemHelpContractError("Percent revival actual fields changed")
+            icons = [f"<I{record['icon']}>", f"<I{record['parameter_icon']}>"]
+            for variant, magnitude in (("percent", "PERSENT"), ("all", "ALL")):
+                values = _constant(catalogue, magnitude, languages)
+                for separator in (" ", " - "):
+                    _add_unique(
+                        generated,
+                        {
+                            l: icons[0]
+                            + fields["stat"][l]
+                            + separator
+                            + icons[1]
+                            + fields["format"][l].replace("%s", values[l])
+                            for l in languages
+                        },
+                        "native_percent_revival",
+                        [identifier],
+                        languages,
+                        format_mode=1,
+                        parameter_types=[0, 4],
+                        amount_argument="slot1",
+                        variant=variant,
+                        separator=separator,
+                        inline_icons=icons,
+                        detail_inline_icon=True,
+                    )
+        else:
+            # 0x350195 emits stat first, then slot1 formatted by the second
+            # uint32 parameter. +0x239 selects these two literal separators.
+            if any(
+                "%" in fields["stat"][l] or not _one_field(fields["format"][l], "d")
+                for l in languages
+            ):
+                raise ItemHelpContractError("Permanent stat actual stat/format changed")
+            icon = f"<I{record['parameter_icon']}>"
+            leading_icon = f"<I{record['icon']}>" if record["icon"] else ""
+            for separator in (" ", " - "):
+                _add_unique(
+                    generated,
+                    {
+                        l: leading_icon + fields["stat"][l] + separator + icon + fields["format"][l]
+                        for l in languages
+                    },
+                    (
+                        "p0_permanent_str"
+                        if identifier == 151
+                        else "native_numeric_revival"
+                        if identifier == 127
+                        else "native_permanent_stat"
+                    ),
+                    [identifier],
+                    languages,
+                    format_mode=1,
+                    parameter_types=[0, 1],
+                    amount_argument="slot1",
+                    separator=separator,
+                    inline_icons=[leading_icon, icon] if leading_icon else [icon],
+                    detail_inline_icon=True,
+                )
+    junior = first["junior"]
+    body = aligned(junior["key"], {l: resources[l]["junior"]["body"] for l in languages})
+    if any(not _one_field(body[l], "s") for l in languages):
+        raise ItemHelpContractError("Junior complete body printf changed")
+    descriptions = []
+    for identifier, rank in junior["ranks"].items():
+        if any(set(resources[l]["junior"]["ranks"]) != set(junior["ranks"]) for l in languages):
+            raise ItemHelpContractError("Imported Junior rank domain differs across locales")
+        values = aligned(
+            rank["key"], {l: resources[l]["junior"]["ranks"][identifier]["text"] for l in languages}
+        )
+        descriptions.append(
+            {
+                "key": junior["key"].removesuffix("/description")
+                + "/imported_rank/"
+                + str(identifier)
+                + "/description",
+                "texts": {l: body[l].replace("%s", values[l]) for l in languages},
+                "junior_rank_contract": {
+                    "item_id": 252,
+                    "help_kind": 9,
+                    "event_return": 2,
+                    "body_key": junior["key"],
+                    "rank_key": rank["key"],
+                    "rank_id": identifier,
+                },
+            }
+        )
+    return [*generated.values(), *descriptions]
+
+
+def _compile_native_effect_icons(entries, detail_entries, metadata, resources, languages):
+    """Decorate already-proved complete mode0 constructors with their own icon.
+
+    No arbitrary icon or parameter fragment gains an effect role. Multi-record
+    joins keep the native per-member grammar instead of receiving a guessed
+    outer icon. The unadorned entries remain available for existing inputs.
+    """
+    first = resources[languages[0]]["effect_icons"]
+    if any(resources[l]["effect_icons"] != first for l in languages):
+        raise ItemHelpContractError("native effect icon metadata differs across locales")
+    catalogue = _entry_map(entries)
+    generated = {}
+    candidates = list(detail_entries)
+    for identity, row in metadata["SkillEffectHelpData"].items():
+        # A parameter-free complete name is already a constructor role.
+        if row["parameter_types"]:
+            continue
+        key = "table/t_itemhelp.tbl/SkillEffectHelpData/" + identity + "/name"
+        texts = catalogue.get(key)
+        if texts and all(texts.get(l) and "%" not in texts[l] for l in languages):
+            candidates.append(
+                {"key": key, "texts": texts, "item_help_contract": {"record_ids": [row["id"]]}}
+            )
+    for entry in candidates:
+        contract = entry.get("item_help_contract", {})
+        ids = contract.get("record_ids", ())
+        timed = contract.get("family") == "timed_literal" and len(ids) == 2
+        if (len(ids) != 1 and not timed) or entry.get("detail_context_only"):
+            continue
+        record = first.get(ids[0])
+        if not record or record["format_mode"] != 0 or not record["icon"]:
+            continue
+        # Type4 percentage uses stat/format, while ALL uses the complete name.
+        # Both icon roles are compiled directly above from their raw fields.
+        # Re-wrapping a generated percent template would normalize its printf
+        # escapes twice and create a competing numeric target.
+        if contract.get("family") == "percent_recovery_single" and ids[0] in (123, 125):
+            continue
+        if timed and (first[ids[1]]["format_mode"] != 0 or first[ids[1]]["icon"]):
+            raise ItemHelpContractError("timed companion now emits an independent icon")
+        icon = f"<I{record['icon']}>"
+        # These constructors prepend something before the name, or already
+        # contain the exact icon. Neither is a bare mode0 name constructor.
+        if contract.get("family") in {"self_direction_constructor", "event_link_display"}:
+            continue
+        if any(icon in entry["texts"][l] for l in languages):
+            continue
+        _add_unique(
+            generated,
+            {l: icon + entry["texts"][l] for l in languages},
+            "native_effect_icon",
+            ids,
+            languages,
+            format_mode=0,
+            base_constructor=entry["key"],
+            inline_icons=[icon],
+            detail_inline_icon=True,
+        )
+    return list(generated.values())
+
+
+def _compile_deferred_cure_icons(entries, metadata, groups, connections, resources, languages):
+    """Kind10 is a single, icon-bearing phrase appended after ordinary effects."""
+    catalogue = _entry_map(entries)
+    by_id = {value["id"]: identity for identity, value in metadata["SkillEffectHelpData"].items()}
+    kinds = {}
+    for row in connections:
+        for identifier in row["ids"]:
+            kinds.setdefault(identifier, row["kind"])
+    members = {identifier for identifier, kind in kinds.items() if kind == 10}
+    sequences = {tuple(slot[0] for slot in group if slot[0] in members) for group in groups}
+    immune_sequences = {
+        tuple(slot[0] for slot in group if slot[0] in members)
+        for group in groups
+        if any(slot[0] == 97 for slot in group)
+    }
+    sequences.discard(())
+    generated = {}
+    first = resources[languages[0]]["effect_icons"]
+    colours = resources[languages[0]]["effect_colours"]
+    cancel = _constant(catalogue, "DEBUFF_CANCEL", languages)
+    for sequence in sorted(sequences):
+        if len(sequence) > 2:
+            raise ItemHelpContractError("kind10 cure group exceeds native two members")
+        identifier = sequence[0]
+        record = first[identifier]
+        if record["format_mode"] != 0 or not record["icon"]:
+            raise ItemHelpContractError("kind10 icon formatter changed")
+        texts = (
+            cancel
+            if len(sequence) == 2
+            else _field(catalogue, "SkillEffectHelpData", by_id[identifier], "name", languages)
+        )
+        colour = colours[identifier]
+        if not re.fullmatch(r"<[Cc][0-9a-fA-F]+>", colour) or any(
+            resources[l]["effect_colours"][identifier] != colour for l in languages
+        ):
+            raise ItemHelpContractError("kind10 native colour contract changed")
+        icon = f"<I{record['icon']}>"
+        for compact in (False, True):
+            native_icon = f"<C9>{icon}</C>" if compact else icon
+            for styled in (False, True):
+                values = {
+                    l: native_icon + (colour + texts[l] + "</C>" if styled else texts[l])
+                    for l in languages
+                }
+                _add_unique(
+                    generated,
+                    values,
+                    "native_deferred_cure",
+                    sequence,
+                    languages,
+                    connect_kind=10,
+                    physical_first_match=True,
+                    deferred=True,
+                    compact=compact,
+                    styled=styled,
+                    inline_icons=[icon],
+                    detail_inline_icon=True,
+                )
+        if sequence in immune_sequences:
+            # CAB62 34edc1..34ef30 appends 97 after the closed cure phrase.
+            # r9=1 suppresses 97's own icon; ordinary r9=0 keeps that icon
+            # before its independent colour, including the connection inside.
+            immunity = _field(
+                catalogue,
+                "SkillEffectHelpData",
+                by_id[97],
+                "format" if len(sequence) == 2 else "name",
+                languages,
+            )
+            link = _constant(catalogue, "LINK" if len(sequence) == 2 else "FORMAT8", languages)
+            modifier = first[97]
+            modifier_colour = colours[97]
+            if any(
+                resources[l]["effect_icons"][97] != modifier
+                or resources[l]["effect_colours"][97] != modifier_colour
+                for l in languages
+            ):
+                raise ItemHelpContractError("deferred immunity icon/colour differs across locales")
+            modifier_icon = f"<I{modifier['icon']}>" if modifier["icon"] else ""
+            for compact, styled in ((True, False), (False, False), (False, True)):
+                native_icon = f"<C9>{icon}</C>" if compact else icon
+                values = {
+                    l: native_icon
+                    + (colour + texts[l] + "</C>" if styled else texts[l])
+                    + ("" if compact else modifier_icon)
+                    + (modifier_colour if styled else "")
+                    + link[l]
+                    + immunity[l]
+                    + ("</C>" if styled else "")
+                    for l in languages
+                }
+                _add_unique(
+                    generated,
+                    values,
+                    "native_deferred_cure_immunity",
+                    (*sequence, 97),
+                    languages,
+                    connect_kind=10,
+                    physical_first_match=True,
+                    deferred=True,
+                    compact=compact,
+                    styled=styled,
+                    inline_icons=[icon] + ([] if compact or not modifier_icon else [modifier_icon]),
+                    detail_inline_icon=True,
+                )
+    return list(generated.values())
+
+
 def read_item_help_contract(game, languages=None):
     """Read all typed records and raw PAC effect groups across installed locales."""
     game = Path(game)
@@ -1269,6 +2328,8 @@ def read_item_help_contract(game, languages=None):
     per_language, groups_by_language, contexts_by_language, titles_by_language = {}, {}, {}, {}
     help_titles = {}
     connections_by_language = {}
+    descriptions_by_language = {}
+    p0_resources = {}
     names = archive_names("table")
     for language in languages:
         filename = names[language]
@@ -1281,6 +2342,10 @@ def read_item_help_contract(game, languages=None):
                 item_help = archive.read(logical["table/t_itemhelp.tbl"])
                 connections_by_language[language] = _read_connect_groups(item_help)
                 item_table = archive.read(logical["table/t_item.tbl"])
+                p0_resources[language] = _read_p0_producer_resources(
+                    item_help, item_table, archive.read(logical["table/t_quest.tbl"])
+                )
+                descriptions_by_language[language] = _read_item_description_formats(item_table)
                 help_titles[language] = _read_help_titles(archive.read(logical["table/t_help.tbl"]))
                 element_titles = _read_element_title_contract(item_help, item_table)
                 effect_groups, effect_contexts = [], []
@@ -1338,11 +2403,14 @@ def read_item_help_contract(game, languages=None):
             raise ItemHelpContractError("item/skill effect contexts differ in " + language)
         if titles_by_language[language] != first_titles:
             raise ItemHelpContractError("element title contract differs in " + language)
+        if descriptions_by_language[language] != descriptions_by_language[languages[0]]:
+            raise ItemHelpContractError("item description identities differ in " + language)
     return (
         first_metadata,
         first_groups,
         {
             "metadata_languages": list(per_language),
+            "_p0_producer_resources": p0_resources,
             "metadata_equal": True,
             "effect_groups_equal": True,
             "effect_contexts_equal": True,
@@ -1352,6 +2420,7 @@ def read_item_help_contract(game, languages=None):
             "_element_titles": first_titles,
             "_help_titles": help_titles,
             "_connect_groups": connections_by_language[languages[0]],
+            "_item_description_formats": descriptions_by_language[languages[0]],
         },
     )
 
@@ -1362,6 +2431,7 @@ def read_item_help_metadata(game, languages=None):
     audit.pop("_element_titles", None)
     audit.pop("_help_titles", None)
     audit.pop("_connect_groups", None)
+    audit.pop("_item_description_formats", None)
     return metadata, audit
 
 
@@ -1372,6 +2442,8 @@ def build_item_help_grammar(game, entries, source_language, languages=None):
     element_titles = audit.pop("_element_titles", ())
     help_titles = audit.pop("_help_titles", {})
     connect_groups = audit.pop("_connect_groups", ())
+    formats = audit.pop("_item_description_formats", ())
+    p0_resources = audit.pop("_p0_producer_resources", {})
     result = compile_item_help_grammar(
         entries,
         source_language,
@@ -1383,5 +2455,73 @@ def build_item_help_grammar(game, entries, source_language, languages=None):
         connect_groups=connect_groups,
         languages=languages,
     )
+    descriptions, refusals = compile_item_description_printf(entries, formats, languages)
+    result["detail_entries"].extend(descriptions)
+    # EventItemCheck's exact finite branch is already proved in all eight
+    # shipped scripts. Revalidate only that function, never scan all scripts.
+    from sora_bilingual.localization.resources import _logical_script_entries, parse_scp
+
+    shape = (
+        ("slot", 2, 1),
+        ("push", "int", 90),
+        ("op", 21),
+        ("branch", 15, 10),
+        ("push", "int", 1),
+        ("byte", 10, 0),
+        ("pop", 1),
+        ("return",),
+        ("slot", 2, 1),
+        ("push", "int", 252),
+        ("op", 21),
+        ("branch", 15, 20),
+        ("push", "int", 2),
+        ("byte", 10, 0),
+        ("pop", 1),
+        ("return",),
+        ("push", "int", -1),
+        ("byte", 10, 0),
+        ("pop", 1),
+        ("return",),
+    )
+    for language in languages:
+        with FpacArchive(Path(game) / "pac/steam" / archive_names("script")[language]) as archive:
+            function = parse_scp(
+                archive.read(_logical_script_entries(archive)["script/scena/system.dat"])
+            ).functions["EventItemCheck"]
+        if (
+            function.flags != 0
+            or tuple(function.arg_types) != (1,)
+            or function.called
+            or tuple(op for op in function.code_shape if op != ("line",)) != shape
+        ):
+            raise ItemHelpContractError("Junior EventItemCheck branch changed in " + language)
+    p0_entries = _compile_p0_producers(entries, p0_resources, languages)
+    result["detail_entries"].extend(p0_entries)
+    result["detail_entries"].extend(
+        _compile_deferred_cure_icons(
+            entries, metadata, groups, connect_groups, p0_resources, languages
+        )
+    )
+    icon_entries = _compile_native_effect_icons(
+        entries, result["detail_entries"], metadata, p0_resources, languages
+    )
+    result["detail_entries"].extend(icon_entries)
+    result["audit"]["native_effect_icons"] = {
+        "compiled": len(icon_entries),
+        "new_native_reads": 0,
+        "source": "mode0 record icon + already-proved complete constructor",
+    }
+    result["audit"]["p0_producers"] = {
+        "compiled": len(p0_entries),
+        "locales": list(languages),
+        "legacy_metadata_unchanged": True,
+        "new_native_reads": 0,
+    }
+    result["audit"]["item_description_printf"] = {
+        "physical_records": len(formats),
+        "compiled": len(descriptions),
+        "refusals": refusals,
+        "literal_copy_entrance": "pending; raw escaped input is not normalized",
+    }
     result["audit"].update(audit)
     return result

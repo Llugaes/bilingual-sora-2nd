@@ -39,7 +39,11 @@ def _ordered_records(data, section, schema, floor):
         # ActiveVoice's scalar selects a conversation, not one of its lines.
         group = struct.unpack_from("<I", data, at)[0] if kind == "ActiveVoiceTableData" else 0
         groups[group].append(
-            (i, record_identity(data, at, kind, schema, floor), raw[f"row:{i}"][0])
+            (
+                i,
+                record_identity(data, at, kind, schema, floor, display_alignment=True),
+                raw[f"row:{i}"][0],
+            )
         )
     for group, rows in groups.items():
         signature = _signature([identity for _, identity, _ in rows])
@@ -116,11 +120,18 @@ def align_record_sections(files, descriptors, schema, *, path, prefix, kind, occ
     if kind == "BooksText":
         return _align_books(files, descriptors, schema, prefix, occurrence, audit)
     records = defaultdict(dict)
+    native_identities = {}
     for language, data in files.items():
         matching = [s for s in descriptors.get(language, []) if s[0] == kind]
         if occurrence >= len(matching):
             continue
         floor = max(s + z * n for _, s, z, n in descriptors[language])
+        if kind == "ActiveVoiceTableData":
+            _, start, size, count = matching[occurrence]
+            native_identities[language] = {
+                row: record_identity(data, start + size * row, kind, schema, floor)
+                for row in range(count)
+            }
         reader = {"HelpIconList": _help_records, "HelpPage": _help_page_records}.get(
             kind, _ordered_records
         )
@@ -128,8 +139,23 @@ def align_record_sections(files, descriptors, schema, *, path, prefix, kind, occ
             records[key][language] = fields
     entries = []
 
-    def emit(key, field, pieces):
+    def emit(key, field, pieces, expected_languages=None):
         texts = {language: "\n".join(text for _, text in rows) for language, rows in pieces.items()}
+        missing = sorted(
+            set(files if expected_languages is None else expected_languages) - set(texts)
+        )
+        if missing and len(texts) >= 2:
+            audit["diagnostics"].append(
+                {
+                    "path": path,
+                    "class": kind,
+                    "key": key,
+                    "field": field,
+                    "reason": "ordered_record_missing_languages",
+                    "languages": sorted(texts),
+                    "missing_languages": missing,
+                }
+            )
         if len(texts) < 2:
             audit["diagnostics"].append(
                 {
@@ -142,13 +168,31 @@ def align_record_sections(files, descriptors, schema, *, path, prefix, kind, occ
                 }
             )
             return
-        entries.append(
-            {
-                "key": f"{prefix}/{key}/{field}",
-                "texts": texts,
-                "table_rows": {language: [i for i, _ in rows] for language, rows in pieces.items()},
+        entry = {
+            "key": f"{prefix}/{key}/{field}",
+            "texts": texts,
+            "table_rows": {language: [i for i, _ in rows] for language, rows in pieces.items()},
+        }
+        if kind == "ActiveVoiceTableData":
+            identities = {
+                language: native_identities[language][rows[0][0]]
+                for language, rows in pieces.items()
             }
-        )
+            entry["table_record_identities"] = identities
+            if len(set(identities.values())) > 1:
+                audit["diagnostics"].append(
+                    {
+                        "path": path,
+                        "class": kind,
+                        "key": key,
+                        "field": field,
+                        "reason": "localized_replay_flags",
+                        "status": "aligned",
+                        "table_rows": entry["table_rows"],
+                        "record_identities": identities,
+                    }
+                )
+        entries.append(entry)
         audit["counters"]["entries_emitted"] += 1
 
     for key, localized in records.items():
@@ -176,6 +220,7 @@ def align_record_sections(files, descriptors, schema, *, path, prefix, kind, occ
                         f"{key}/segments:{count}/line:{line}",
                         field,
                         {l: [rows[line]] for l, rows in same.items()},
+                        expected_languages=same,
                     )
     audit["counters"]["ordered_fields_emitted"] += len(entries)
     return entries

@@ -31,6 +31,11 @@ def update_callback_source() -> str:
                 "function prepareTextReset("
             )
         ]
+        + AGENT_SOURCE[
+            AGENT_SOURCE.index("function titleOwnershipChanged(") : AGENT_SOURCE.index(
+                "function readText("
+            )
+        ]
         + AGENT_SOURCE[restore_start:restore_end]
         + "\n"
         + AGENT_SOURCE[start : AGENT_SOURCE.index("\nrpc.exports = {", start)]

@@ -25,7 +25,6 @@ from sora_bilingual.localization.resources import (
     _logical_script_entries,
     _parse_code,
     _string_value,
-    parse_scp,
 )
 
 
@@ -232,20 +231,22 @@ def compile_dynamic_identities(
                     continue
                 data = archive.read(actual)
                 digest = hashlib.sha256(data).hexdigest()
-                script = parse_scp(data)
+                from sora_bilingual.localization.language_cache import notification_metadata
+
+                metadata = notification_metadata(data, language)
                 helper_cache = {}
                 code_cache: dict[str, tuple[list[int], list[tuple[Any, ...]]]] = {}
                 for entry in selected:
                     path, function, canonical = _record_key(entry)  # type: ignore[misc]
                     call_id = _source_called(entry, language, canonical)
-                    if call_id is None or function not in script.functions:
+                    if call_id is None or function not in metadata:
                         stats["missing_outer_calls"] += 1
                         continue
-                    outer = script.functions[function]
-                    if call_id >= len(outer.called):
+                    outer = metadata[function]
+                    if call_id >= len(outer.call_targets):
                         stats["missing_outer_calls"] += 1
                         continue
-                    helper = outer.called[call_id].target
+                    helper = outer.call_targets[call_id]
                     if helper not in _ITEM_CALLEES:
                         stats["unsupported_helpers"] += 1
                         continue
@@ -272,7 +273,7 @@ def compile_dynamic_identities(
                             positions,
                             code,
                             call_at,
-                            script.functions[helper].arg_types,
+                            metadata[helper].argument_types,
                             program,
                         )
                     except (IndexError, ValueError, FormatError) as exc:
@@ -303,6 +304,10 @@ def compile_dynamic_identities(
                     }
                     candidates[digest, helper, token][str(entry["key"]), call_id] = row
                     stats["resolved_candidates"] += 1
+    except PermissionError:
+        # Cache/archive access denial is a preparation failure, never an
+        # unsupported script. Do not publish an empty notification index.
+        raise
     except OSError, FormatError, KeyError, ValueError:
         stats["invalid_archive"] += 1
 

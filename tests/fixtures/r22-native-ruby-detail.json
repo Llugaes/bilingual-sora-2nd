@@ -1,0 +1,23 @@
+{
+  "source": "<R><c698>CP Regen</C></RCP Regen><c698>CP Regen</C>\n<C0><C9>Skill description",
+  "native_ruby": "<R><c698>CP Regen</C></RCP Regen>",
+  "context": "Skill description",
+  "primary_effect": "<c698>CP逐渐上升</C>",
+  "secondary_effect": "<c698>CP徐々上昇</C>",
+  "model": {
+    "pairs": {}, "plain_pairs": {}, "detail_sources": ["Skill description"],
+    "details": {
+      "pairs": {"Skill description": ["技能说明", "技能説明"]},
+      "plain_pairs": {"Skill description": ["技能说明", "技能説明"]},
+      "detail_join": [", ", "、", "／"],
+      "detail_contexts": {
+        "Skill description": {"<c698>CP Regen</C>": ["<c698>CP逐渐上升</C>", "<c698>CP徐々上昇</C>"]}
+      },
+      "detail_effect_units": [
+        {"source": "HP Regen", "pattern": "HP Regen", "pair": ["HP逐渐上升", "HP徐々回復"], "ids": ["resource/HP"]},
+        {"source": "Blind %d%%", "pattern": "Blind ([+-]?\\d+)%", "pair": ["黑暗%d%%", "暗闇%d%%"], "parameter_kinds": ["d"], "ids": ["resource/blind"]}
+      ]
+    }
+  },
+  "level": "Readable same-contract fixture; real compiled independent fixture is replayed separately. No actual setter claim."
+}

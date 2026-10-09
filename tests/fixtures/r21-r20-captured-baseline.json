@@ -1,0 +1,182 @@
+{
+  "baseline_source": "14f281981f2b12e328077736998dfb832ae1a5ea",
+  "baseline_wire": "47fd59d04ad5eeded481c65ac3302282258e5eb69a3d9c8b4f07113ff96baf74",
+  "baseline_renderer": "e838da236e6f481eb4bb1a169130bc3268825ef89e90fade749908a893fd96ac",
+  "actual_game_inputs": true,
+  "no_key_scope_owner_granted": true,
+  "pixels_verified": false,
+  "cases": [
+    {
+      "name": "actual_Physical_Impede_Back",
+      "source": "<C3></C>[Physical<I278> - <I295><C3>Target - Circle (S)</C>] <c698>Impede</C><c698>, </C><c698>Blind 30%</C><c698>, Back Attack Bonus</C>",
+      "evidence_level": "resident original",
+      "baseline_modes": {
+        "primary": {
+          "text": "<C3></C>【物理攻撃<I278>／<I295><C3>地点･円Ｓ</C>】 <c698>駆動解除</C><c698>／</C><c698>暗闇30％</C><c698>／背面特効</C>",
+          "layers": []
+        },
+        "secondary": {
+          "text": "<C3></C>【物理攻击<I278>／<I295><C3>地点·圆S</C>】 <c698>解除驱动</C><c698>／</C><c698>黑暗30％</C><c698>／背面特效</C>",
+          "layers": []
+        },
+        "annotation": {
+          "text": "<C3></C><R></R_>【物理攻撃<I278>／<I295><C3><R></R_>地点･円Ｓ</C>】 <R></R_><c698>駆動解除</C><c698>／</C><R></R_><c698>暗闇30％</C><c698>／<R></R_>背面特効</C>",
+          "layers": [
+            {
+              "offset": 14,
+              "text": "【物理攻击",
+              "primary": "【物理攻撃",
+              "protected": false,
+              "semantic_ids": [
+                "table/t_itemhelp.tbl/SkillTextArrayData/sha256:4dbde12e365d01d831f202232ff90e6c67986ca177a1321320039c38e9ffef8e/format",
+                "table/t_itemhelp.tbl/SkillTextArrayData/sha256:ce3290b90a885f0b354da48caed10101fa7dd00acaad8420a71ad9f7f4e540ce/format"
+              ],
+              "parameters": []
+            },
+            {
+              "offset": 56,
+              "text": "地点·圆S",
+              "primary": "地点･円Ｓ",
+              "protected": false,
+              "semantic_ids": [
+                "table/t_itemhelp.tbl/SkillRangeHelpData/sha256:2a2c762e0d6517c7db916fe291eb0c21a61dbb9804f6b0c338a115132e4962f9/label/composed/TXT_ITEM_HELP_RANGE_S"
+              ],
+              "parameters": []
+            },
+            {
+              "offset": 87,
+              "text": "<c698>解除驱动</C>",
+              "primary": "<c698>駆動解除</C>",
+              "protected": false,
+              "semantic_ids": [
+                "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:d7051cb1c411f77f709fb4d72ec86ac30dc934c841e1b62f8dab6e656d1beb90/name"
+              ],
+              "parameters": []
+            },
+            {
+              "offset": 130,
+              "text": "<c698>黑暗30％</C>",
+              "primary": "<c698>暗闇30％</C>",
+              "protected": false,
+              "semantic_ids": [
+                "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:a47925fc08e37eaff87bd2c4473c58d54d6309dcdd78981f18f9456ddb46b1c1/name",
+                "table/t_itemhelp.tbl/generated/typed/chance_single/38/9fa4471f6330de12"
+              ],
+              "parameters": [
+                "30"
+              ]
+            },
+            {
+              "offset": 168,
+              "text": "<c698>背面特效</C>",
+              "primary": "背面特効</C>",
+              "protected": false,
+              "semantic_ids": [
+                "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:229a07d0f14a217050055a3c2b79630b96f8642a7822de1ffb0595bf5cf07c21/name",
+                "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:c7246157e3bcb14e4aca965f3149f1d5923e9930d6a3562f54b7247032da09ea/name"
+              ],
+              "parameters": []
+            }
+          ],
+          "kind": "layered"
+        }
+      }
+    },
+    {
+      "name": "observed_Debilitate_Mute200",
+      "source": "<C3></C>[Debilitate - <I298><C3>All</C>] <c698>Impede</C><c698>, </C><c698>Mute 200%</C><c698>, </C><c698>Remove Buffs</C>",
+      "evidence_level": "observed owned buffer; original identity not captured",
+      "baseline_modes": {
+        "primary": {
+          "text": "<C3></C>【妨害／<I298><C3>全体</C>】 <c698>駆動解除</C><c698>／</C><c698>封魔200％</C><c698>／</C><c698>バフ消去</C>",
+          "layers": []
+        },
+        "secondary": {
+          "text": "<C3></C>【妨碍／<I298><C3>全体</C>】 <c698>解除驱动</C><c698>／</C><c698>封魔200％</C><c698>／</C><c698>消除增益</C>",
+          "layers": []
+        },
+        "annotation": {
+          "text": "<C3></C><R></R_>【妨害／<I298><C3><R></R_>全体</C>】 <R></R_><c698>駆動解除</C><c698>／</C><R></R_><c698>封魔200％</C><c698>／</C><R></R_><c698>バフ消去</C>",
+          "layers": [
+            {
+              "offset": 14,
+              "text": "【妨碍／",
+              "primary": "【妨害／",
+              "protected": false,
+              "semantic_ids": [
+                "table/t_itemhelp.tbl/SkillTextArrayData/sha256:6cb7fa968c5814a0d3d7acc72275b9e0d38e3f98d47cfb793eccf8f802152f9a/format",
+                "table/t_itemhelp.tbl/SkillTextArrayData/sha256:ebe9d5861c62b34d9a90b4ccb39b9781fbf1be34a9df31ec99899cacf94227e5/format"
+              ],
+              "parameters": []
+            },
+            {
+              "offset": 44,
+              "text": "全体",
+              "primary": "全体",
+              "protected": false,
+              "semantic_ids": [
+                "table/t_itemhelp.tbl/SkillRangeHelpData/sha256:22552a4138460c885c7ec506261919c495a8abc765ee288359ad7f6dfeadd882/label",
+                "table/t_itemhelp.tbl/SkillRangeHelpData/sha256:32653ef99ca353d32da4f694eb11d5d8f394963e120f004043a8842137cade5c/short_label"
+              ],
+              "parameters": []
+            },
+            {
+              "offset": 66,
+              "text": "<c698>解除驱动</C>",
+              "primary": "<c698>駆動解除</C>",
+              "protected": false,
+              "semantic_ids": [
+                "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:d7051cb1c411f77f709fb4d72ec86ac30dc934c841e1b62f8dab6e656d1beb90/name"
+              ],
+              "parameters": []
+            },
+            {
+              "offset": 109,
+              "text": "<c698>封魔200％</C>",
+              "primary": "<c698>封魔200％</C>",
+              "protected": false,
+              "semantic_ids": [
+                "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:c2237d3b0d66796749c3689475d538ef140c640603dea4e084b7cff3d6b7e4e8/name",
+                "table/t_itemhelp.tbl/generated/typed/chance_single/37/3df637d6e089f51c"
+              ],
+              "parameters": [
+                "200"
+              ]
+            },
+            {
+              "offset": 152,
+              "text": "<c698>消除增益</C>",
+              "primary": "<c698>バフ消去</C>",
+              "protected": false,
+              "semantic_ids": [
+                "table/t_itemhelp.tbl/SkillEffectHelpData/sha256:f239180e56131fe40b04cdd724e0d0d669daec5e6f146d09b95bd4d98211e0c9/name"
+              ],
+              "parameters": []
+            }
+          ],
+          "kind": "layered"
+        }
+      }
+    },
+    {
+      "name": "captured menu/battle Arts original, no granted identity",
+      "source": "<C3></C>[Arts<I277> - <I297><C3>Fan (M)</C>] <c698>Petrify/Confuse 20%</C><c698>, </C><c698>Delay <c698>(M)</C></C>",
+      "evidence_level": "actual-original replay; r20 pixels pending",
+      "baseline_modes": {
+        "primary": {
+          "text": "<C3></C>[アーツ<I277> - <I297><C3>扇Ｍ</C>] <c698>石化･混乱20％</C><c698>, </C><c698>遅延<c698>(M)</C></C>",
+          "layers": []
+        },
+        "secondary": {
+          "text": "<C3></C>[魔法<I277> - <I297><C3>扇形M</C>] <c698>石化･混乱20％</C><c698>, </C><c698>延迟<c698>(M)</C></C>",
+          "layers": []
+        },
+        "annotation": {
+          "text": "<C3></C>[<R>アーツ</R魔法><I277> - <I297><C3><R>扇Ｍ</R扇形M></C>] <c698><R>石化･混乱20％</R石化･混乱20％></C><c698>, </C><c698><R>遅延</R延迟><c698>(M)</C></C>",
+          "layers": [],
+          "kind": "ruby"
+        }
+      }
+    }
+  ]
+}

@@ -17,23 +17,6 @@ from sora_bilingual.game.native_probe import write_telemetry
 
 
 class NativeConfigTests(unittest.TestCase):
-    def test_startup_sync_is_once_per_game_lifetime_and_keeps_manual_edits(self):
-        from sora_bilingual.config.native_config import apply_startup_language
-
-        original = normalize_config({"primary": "fr", "secondary": "de"})
-        session = ["game.exe", 42, 123]
-        synced = apply_startup_language(original, "en", session, previous_primary="fr")
-        self.assertEqual((synced["primary"], synced["secondary"]), ("en", "de"))
-        synced["primary"] = "ja"
-        self.assertIs(apply_startup_language(synced, "en", session, previous_primary="ja"), synced)
-        restarted = apply_startup_language(
-            synced, "zh-Hant", ["game.exe", 42, 456], previous_primary="ja"
-        )
-        self.assertEqual(restarted["primary"], "zh-Hant")
-        during_probe = apply_startup_language(original, "en", session, previous_primary="ja")
-        self.assertEqual(during_probe["primary"], "fr")
-        self.assertEqual(original["primary"], "fr")
-
     def test_recommended_layout_and_color_preserve_explicit_preferences(self):
         defaults = normalize_config({})
         self.assertEqual(
@@ -81,9 +64,18 @@ class NativeConfigTests(unittest.TestCase):
                 self.assertEqual(config["secondary"], "en" if source == "ja" else "ja")
                 for primary in LOCALES:
                     for secondary in LOCALES:
-                        chosen = dict(game_language=source, primary=primary, secondary=secondary)
+                        chosen = dict(
+                            game_language=source,
+                            primary=primary,
+                            secondary=secondary,
+                            experimental_primary=True,
+                        )
                         result = normalize_config(chosen)
-                        self.assertEqual({k: result[k] for k in chosen}, chosen)
+                        self.assertEqual(result["primary"], primary)
+                        self.assertEqual(result["game_language"], source)
+                        self.assertNotEqual(result["primary"], result["secondary"])
+                        if primary != secondary:
+                            self.assertEqual(result["secondary"], secondary)
 
     def test_pending_new_user_defaults_are_consumed_only_after_source_confirmation(self):
         from sora_bilingual.config.native_config import (

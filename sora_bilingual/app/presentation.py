@@ -27,6 +27,29 @@ STATUS_COLORS = {
     "ready": ("#086b68", "#def3ea"),
     "error": ("#a32b22", "#ffebe7"),
 }
+COMPACT_STATUS = {
+    "waiting": ("○", "#dbe6ef", "#2d3b48"),
+    "preparing": ("◌", "#ffe49a", "#493716"),
+    "connecting": ("…", "#b9ddff", "#193957"),
+    "ready": ("●", "#b6e3b4", "#153c35"),
+    "disabled": ("■", "#dbe6ef", "#2d3b48"),
+    "error": ("▲", "#ffb9aa", "#522825"),
+}
+
+
+def compact_status(state):
+    """Use the existing connection truth, including pending work and disablement."""
+    tone = (state.get("activity") or {}).get("tone")
+    if tone not in COMPACT_STATUS or tone == "ready":
+        tone = next(
+            (key for key, colors in STATUS_COLORS.items() if colors[0] == state["color"]),
+            "ready" if state.get("connected") else "waiting",
+        )
+        if state.get("marker") == "■":
+            tone = "disabled"
+    return tone, COMPACT_STATUS[tone]
+
+
 CONNECTION_PHASES = {
     "fonts_preparing": (
         "正在准备多语言字体",

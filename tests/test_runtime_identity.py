@@ -69,6 +69,44 @@ def text_table(rows):
 
 
 class RuntimeIdentityTests(unittest.TestCase):
+    def test_manifest_helper_argument_count_is_not_the_function_flags(self):
+        data, _entries = self.fixture()
+        data = bytearray(data)
+        function_at = struct.unpack_from("<I", data, 4)[0]
+        self.assertEqual(data[function_at + 4], 0)
+        struct.pack_into("<H", data, function_at + 5, 1)
+        FakeArchive.data = bytes(data)
+        with patch("sora_bilingual.localization.runtime_identity.FpacArchive", FakeArchive):
+            result = compile_script_identities("unused", [], "zh-Hans", "ja", "zh-Hans")
+        record = result["manifest"][script_signature(data)][0]
+        self.assertEqual(record["functions"], ["Talk"])
+        self.assertEqual(sorted(record["callSites"]["Talk"]), ["196", "200"])
+
+    def test_invalid_manifest_keeps_reason_and_never_enters_source_resolver(self):
+        data, entries = self.fixture()
+        with (
+            patch("sora_bilingual.localization.runtime_identity.FpacArchive", FakeArchive),
+            patch(
+                "sora_bilingual.localization.runtime_identity._script_manifest_entry",
+                side_effect=ValueError("bad declaration"),
+            ),
+        ):
+            result = compile_script_identities("unused", entries, "zh-Hans", "ja", "zh-Hans")
+        self.assertFalse(result["scripts"])
+        self.assertEqual(result["stats"]["manifest_invalid_scripts"], 1)
+        self.assertEqual(
+            result["manifest_rejections"],
+            [
+                {
+                    "path": "script/scena/test.dat",
+                    "language": "zh-Hans",
+                    "sha256": hashlib.sha256(data).hexdigest(),
+                    "reason": "invalid_script_manifest",
+                    "detail": "bad declaration",
+                }
+            ],
+        )
+
     def test_active_speaker_setter_requires_branch_free_provenance(self):
         setter = ("女子的声音", ("Woman's Voice", "女性の声"))
         dialogue = Called(
@@ -336,14 +374,16 @@ process.stdout.write(JSON.stringify(out));
                     "display_role": "dialogue",
                 }
             )
-        script = SimpleNamespace(functions={"Talk": SimpleNamespace(called=(static, dynamic))})
+        script = SimpleNamespace(
+            functions={"Talk": SimpleNamespace(called=(static, dynamic), code_shape=())}
+        )
         with (
             patch("sora_bilingual.localization.runtime_identity.FpacArchive", FakeArchive),
             patch(
                 "sora_bilingual.localization.runtime_identity._logical_script_entries",
                 return_value={"script/scena/test.dat": "unused"},
             ),
-            patch("sora_bilingual.localization.runtime_identity.parse_scp", return_value=script),
+            patch("sora_bilingual.localization.language_cache.parse_scp", return_value=script),
             patch(
                 "sora_bilingual.localization.speaker_context.read_speaker_names",
                 return_value={1: "甲"},
@@ -368,8 +408,8 @@ process.stdout.write(JSON.stringify(out));
         }
         script = SimpleNamespace(
             functions={
-                "Talk": SimpleNamespace(called=(call,)),
-                "Unrelated": SimpleNamespace(called=(call,)),
+                "Talk": SimpleNamespace(called=(call,), code_shape=()),
+                "Unrelated": SimpleNamespace(called=(call,), code_shape=()),
             }
         )
         FakeArchive.reads = []
@@ -382,7 +422,7 @@ process.stdout.write(JSON.stringify(out));
                     "script/scena/unreachable.dat": "unwanted",
                 },
             ),
-            patch("sora_bilingual.localization.runtime_identity.parse_scp", return_value=script),
+            patch("sora_bilingual.localization.language_cache.parse_scp", return_value=script),
             patch(
                 "sora_bilingual.localization.speaker_context.read_speaker_names",
                 return_value={1: "甲"},

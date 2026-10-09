@@ -138,6 +138,10 @@ def wire_ready(model_path):
             == {"schema": SCHEMA, "size": source.stat().st_size, "mtime": source.stat().st_mtime_ns}
             and target.stat().st_size == saved["size"]
         )
+    except PermissionError:
+        # Inaccessible transport artifacts are not a missing cache. Report the
+        # original error instead of scheduling preparation against denied data.
+        raise
     except OSError, ValueError, KeyError, TypeError:
         return False
 
@@ -159,6 +163,10 @@ def prepare_wire(model_path, model=None, *, schema=SCHEMA):
             with target.open("rb") as stream:
                 if hashlib.file_digest(stream, "sha256").hexdigest() == saved.get("sha256"):
                     return target
+    except PermissionError:
+        # Keep both wire schemas fail-closed: never rebuild/overwrite an
+        # inaccessible stamp or payload, even when a model is already supplied.
+        raise
     except OSError, ValueError, KeyError, TypeError:
         pass
     if model is None:

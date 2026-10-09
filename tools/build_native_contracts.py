@@ -491,6 +491,16 @@ class Image:
                     "sha256": hashlib.sha256(expected).hexdigest(),
                 }
             )
+            child = next(ref["template"] for ref in continuations if ref["name"] == name)
+            child.setdefault("data_refs", []).append(
+                {
+                    "displacement": callee_displacement,
+                    "next": callee_next,
+                    "size": len(expected),
+                    "alignment": 4,
+                    "sha256": hashlib.sha256(expected).hexdigest(),
+                }
+            )
             equal_targets.append(
                 {
                     "left": {"displacement": displacement, "encoding": "rva32"},
@@ -624,9 +634,21 @@ def extend_contract(contract, sample):
 
     resolved = resolve_native_contracts(sample.pe, contract)
     starts = resolved["functions"]
+    # Product modules are independently reviewed and already verified above.
+    # Preserve them verbatim; their extra global aliases must not alter the
+    # original compiler's interpretation of the same baseline instructions.
+    from sora_bilingual.game.shop_contract_data import SHOP_FUNCTIONS, SHOP_GLOBAL_SPECS
+    from sora_bilingual.game.tips_contract_data import TIPS_FUNCTIONS, TIPS_GLOBAL_SPECS
+
+    product_functions = set(SHOP_FUNCTIONS) | set(TIPS_FUNCTIONS)
+    product_globals = set(SHOP_GLOBAL_SPECS) | set(TIPS_GLOBAL_SPECS)
+    compiler_globals = {
+        name: target for name, target in resolved["globals"].items() if name not in product_globals
+    }
     spans = {
         name: (start, sample.entries[start][0]) if start in sample.entries else sample.leaf(start)
         for name, start in starts.items()
+        if name not in product_functions
     }
     bases = set()
     for name, row in contract["functions"].items():
@@ -648,23 +670,35 @@ def extend_contract(contract, sample):
         sample.continuations = font_continuations(bases.pop())
     sample.image_relative = True
     for name, row in contract["functions"].items():
+        if name in product_functions:
+            continue
         points = {point for variant in row["variants"] for point in variant["points"]}
         template = sample.template(
             spans[name],
             {point: resolved["points"][point] for point in points},
             spans,
-            resolved["globals"],
+            compiler_globals,
         )
         assert template in row["variants"], ("unreviewed template requires explicit audit", name)
     return []
 
 
-def write_contract(path, contract):
+def write_contract(path, contract, *, include_product_contracts=False):
     path.write_text(
         '"""Reviewed native-function contracts; metadata identifies evidence, not allowed EXEs."""\n\n'
         + "CONTRACT = "
         + pprint.pformat(contract, width=100, sort_dicts=False)
-        + "\n",
+        + "\n"
+        + (
+            "\nfrom sora_bilingual.game.shop_contract_data import SHOP_FUNCTIONS, SHOP_GLOBAL_SPECS\n"
+            'CONTRACT["functions"].update(SHOP_FUNCTIONS)\n'
+            'CONTRACT["global_specs"].update(SHOP_GLOBAL_SPECS)\n'
+            "\nfrom sora_bilingual.game.tips_contract_data import TIPS_FUNCTIONS, TIPS_GLOBAL_SPECS\n"
+            'CONTRACT["functions"].update(TIPS_FUNCTIONS)\n'
+            'CONTRACT["global_specs"].update(TIPS_GLOBAL_SPECS)\n'
+            if include_product_contracts
+            else ""
+        ),
         "utf-8",
     )
 
@@ -695,7 +729,7 @@ def main():
                 added[sample.digest] = extend_contract(result, sample)
             finally:
                 sample.pe.close()
-        write_contract(args.output, result)
+        write_contract(args.output, result, include_product_contracts=True)
         print(json.dumps({"added_variants": added, "output": str(args.output)}))
         return
     if not (args.baseline and args.variant and args.mapping):
@@ -703,7 +737,7 @@ def main():
     baseline, variant = Image(args.baseline), Image(args.variant)
     try:
         result = compile_contract(baseline, variant, json.loads(args.mapping.read_text("utf-8")))
-        write_contract(args.output, result)
+        write_contract(args.output, result, include_product_contracts=True)
         print(
             json.dumps(
                 {

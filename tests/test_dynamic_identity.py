@@ -1,5 +1,6 @@
 import struct
 import unittest
+from unittest.mock import MagicMock, patch
 
 from sora_bilingual.localization.dynamic_identity import (
     _producer_models,
@@ -9,6 +10,39 @@ from sora_bilingual.localization.dynamic_identity import (
 
 
 class DynamicIdentityTests(unittest.TestCase):
+    def test_cache_permission_error_must_not_become_an_empty_successful_index(self):
+        from sora_bilingual.localization.dynamic_identity import compile_dynamic_identities
+
+        archive = MagicMock()
+        archive.__enter__.return_value = archive
+        archive.read.return_value = b"owned fixture"
+        entry = {
+            "key": "dynamic/script/scena/example.dat/F/called/0/item/220",
+            "texts": {"en": "source", "ja": "primary", "zh-Hans": "secondary"},
+            "producer_origin": {
+                "family": "item_add_message",
+                "signature": {"path": "script/scena/example.dat", "function": "F", "called": 0},
+            },
+        }
+        with (
+            patch("sora_bilingual.localization.dynamic_identity.FpacArchive", return_value=archive),
+            patch(
+                "sora_bilingual.localization.dynamic_identity._logical_script_entries",
+                return_value={"script/scena/example.dat": "owned"},
+            ),
+            patch(
+                "sora_bilingual.localization.dynamic_identity._producer_models",
+                return_value={"en": {"model": {}, "sourcePattern": "^source$"}},
+            ),
+            patch(
+                "sora_bilingual.localization.language_cache.notification_metadata",
+                side_effect=PermissionError("owned denial"),
+            ) as metadata,
+        ):
+            with self.assertRaisesRegex(PermissionError, "owned denial"):
+                compile_dynamic_identities("owned-project-fixture", [entry], "ja", "zh-Hans", "en")
+            self.assertEqual(metadata.call_count, 1)
+
     def test_suffix_only_helper_uses_its_own_argument_count(self):
         values = (0xC0011000, 0x4000017E)
         data = bytearray(30)

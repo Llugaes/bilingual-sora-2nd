@@ -1,0 +1,127 @@
+'use strict';
+const fs=require('fs'),path=require('path'),assert=require('assert');
+const root=process.cwd(),directory=path.join(root,'tests');
+let core=fs.readFileSync(path.join(root,'tests/test_item_help_identity.js'),'utf8');
+core=core.slice(0,core.indexOf('\nlet positive='));
+core=core.replace('new Pointer(0x1000000)','new Pointer(0x10004000)').replace('new Pointer(0x2000000)','new Pointer(0x50000000)')
+    .replace('new Pointer(0x3000000)','new Pointer(0x51000000)').replace('new Pointer(0x4000000)','new Pointer(0x52000000)');
+const fm={exports:{}};new Function('require','module',core+'\nmodule.exports={fixture,Pointer};')(require,fm);
+let currentFixture=null;
+Object.defineProperty(fm.exports.Pointer.prototype,'address',{get(){return Number(this.n);}});
+fm.exports.Pointer.prototype.readByteArray=function(n){return currentFixture.memory.read(this,n);};
+fm.exports.Pointer.prototype.readPointer=function(){return currentFixture.memory.pointer(this);};
+fm.exports.Pointer.prototype.readUtf8String=function(length){
+    const b=Buffer.from(currentFixture.memory.read(this,length||2048));
+    const end=length===undefined?b.indexOf(0):b.length;
+    assert(end>=0);return b.subarray(0,end).toString('utf8');
+};
+const fixtures=JSON.parse(fs.readFileSync('generated/r26-item-help-resource-fixtures.json','utf8'));
+const discovery=JSON.parse(fs.readFileSync('generated/r26-itemhelp-four-pe-capability-discovery.json','utf8'));
+const routes=discovery.samples[0].copy_routes.map(r=>({name:'item_help_copy_'+(r.span[1]-r.span[0])+'_return',
+    rva:r.return_rva,register:r.record_register}));assert.equal(routes.length,4);
+let source=fs.readFileSync(path.join(directory,'test_native_agent.js'),'utf8');source=source.slice(0,source.indexOf('\ntest('));
+source=source.replace('function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = false)',
+    'function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = false, itemFixture = null)');
+source=source.replace('    const context=vm.createContext(sandbox);',`
+    if(itemFixture) {
+        REPORT.shop_text_owner_global=Number(itemFixture.fx.slot.n)-base.address;
+        for(const route of itemFixture.routes)REPORT.native[route.name]={rva:route.rva,bytes:'0'.repeat(32)};
+        Pointer.prototype.compare=function(p){return this.address<p.address?-1:this.address>p.address?1:0;};
+        const oldPointer=Pointer.prototype.readPointer;
+        Pointer.prototype.readPointer=function(){
+            return this.address===Number(itemFixture.fx.slot.n)?itemFixture.fx.memory.pointer(new itemFixture.Pointer(this.address)):oldPointer.call(this);
+        };
+        sandbox.Process.findRangeByAddress=p=>{
+            const region=itemFixture.fx.regions.find(r=>p.address>=Number(r.base.n)&&p.address<Number(r.base.n)+r.bytes.length);
+            return region?{base:region.base,size:region.bytes.length,protection:'rw-'}:null;
+        };
+    }
+    const context=vm.createContext(sandbox);`);
+source=source.replace('        diagnosticStorage(){',`
+        itemSet(label,row,routeIndex=0,wrongRegister=false){
+            const route=itemFixture.routes[routeIndex],fx=itemFixture.fx,buffer=fx.regions[3].base;
+            fx.regions[3].bytes.fill(0);fx.write(buffer,Buffer.from(row.input,'hex'));
+            const args=[label,buffer],call={returnAddress:base.add(route.rva),context:{}};
+            call.context[wrongRegister?(route.register==='rbx'?'rdi':'rbx'):route.register]=fx.regions[1].base.add(row.item.at);
+            const hook=hooks.get(String(base.add(REPORT.native.set_text.rva)));
+            hook.onEnter.call(call,args);copyIntoLabel(label,args[1]);hook.onLeave.call(call);
+            return args[1];
+        },
+        unreadableItem(label,routeIndex=0){
+            const args=[label,new Pointer(0x123)],call={returnAddress:base.add(itemFixture.routes[routeIndex].rva),context:{}};
+            const hook=hooks.get(String(base.add(REPORT.native.set_text.rva)));
+            hook.onEnter.call(call,args);hook.onLeave.call(call);
+        },
+        itemStats(label=null){sandbox.testItemLabel=label;const result=vm.runInContext('({domains:itemHelpDomains.size,leases:labelCallbacks.size,row:testItemLabel?labels.get(String(testItemLabel)):null})',context);delete sandbox.testItemLabel;return result;},
+        diagnosticStorage(){`);
+const nm={exports:{}};new Function('require','__dirname','module',source+'\nmodule.exports={makeRuntime};')(require,directory,nm);
+function runtime(input) {
+    const fx=fm.exports.fixture(input);currentFixture=fx;
+    const r=nm.exports.makeRuntime(null,false,false,{fx,routes,Pointer:fm.exports.Pointer});
+    return {fx,r};
+}
+function model(input,pairs={}) {return {pairs,plain_pairs:{},table_identities:{sources:{},models:{},files:{},item_help:input.model}};}
+let positive=0,strictReject=0,recordPriority=0,unsupported=0,lifecycle=0;
+for(const input of fixtures) {
+    const {fx,r}=runtime(input),bookRows=Object.values(input.model.records).filter(x=>input.book_keys.includes(x.key));
+    const global={};
+    for(const row of bookRows) {
+        const other=bookRows.find(x=>x.source===row.source&&x.key!==row.key);
+        global[row.source]=other?input.model.models[other.key].model.pairs[other.source]:['bad global primary','bad global secondary'];
+    }
+    r.api.load(model(input,global),'primary',true,1);
+    for(const [n,row] of bookRows.entries())for(let route=0;route<4;route++)for(const mode of ['primary','secondary','annotation']) {
+        r.api.select(mode,true);const label=r.label(0xde0000+n*32+route,'');
+        r.itemSet(label,row,route);
+        const pair=input.model.models[row.key].model.pairs[row.source],saved=r.api.snapshot().find(s=>s.original===row.source&&s.item_help_identity?.key===row.key);
+        assert(saved,input.locale+'/'+route+'/'+mode);assert(saved.item_help_domain);
+        if(mode==='annotation') {
+            const lines=pair[0].split('\n');assert.equal(label.text(),'<R></R_>'+lines[0]+'\n<R></R_>'+lines[1]);
+            assert.equal(saved.layers.length,2);
+            assert.equal(r.itemStats(label).row.detailFirstLineEnd,Buffer.byteLength('<R></R_>'+pair[0].split('\n')[0]+'\n'),'admitted mode0 header must use existing first-line geometry');assert.equal(saved.layers[0].offset,6);
+            assert.equal(saved.layers[1].offset,Buffer.byteLength('<R></R_>'+lines[0]+'\n')+6);
+        }else {assert.equal(label.text(),pair[mode==='primary'?0:1]);assert.equal(r.itemStats(label).row.detailFirstLineEnd,null);}
+        positive++;if(input.locale==='en')recordPriority++;
+        r.destroy(label);
+    }
+    const row=bookRows[0],label=r.label(0xdf0100,'');
+    for(let route=0;route<4;route++)for(const mode of ['primary','secondary','annotation']) {
+        r.api.select(mode,true);r.itemSet(label,row,route,true);assert.equal(label.text(),row.source,'wrong record register must hard veto global pair');
+        assert(r.itemStats(label).row.itemHelpDomain);strictReject++;
+    }
+    const field=row.item.strings.find(s=>s.field===232),original=fx.item[field.offset];fx.item[field.offset]^=1;
+    r.itemSet(label,row);assert.equal(label.text(),row.source,'selected body change must hard veto a same-source global pair');strictReject++;
+    fx.item[field.offset]=original;
+    r.itemSet(label,row);r.api.load(model(input,global),'primary',true,1);r.update(label);
+    assert.equal(label.text(),row.source,'model load revokes copied record identity');lifecycle++;
+    r.itemSet(label,row);const clone=r.cloneLabel(label,0xdf0200);assert.equal(clone.text(),row.source,'owned-copy route stays uncovered and source-only');lifecycle++;
+    r.destroy(clone);r.destroy(label);assert.equal(r.itemStats().domains,0);assert.equal(r.itemStats().leases,0);lifecycle++;
+    // Explicit unsupported state: exact current header/domain, but no
+    // compiled record. This is delegated to independent old resolvers.
+    const missing=structuredClone(input);delete missing.model.records[String(row.item.at)];
+    const fallback=runtime(missing);fallback.r.api.load(model(missing,{[row.source]:['old complete primary','old complete secondary']}),'primary',true,1);
+    const old=fallback.r.label(0xdf0300,'');fallback.r.itemSet(old,row);assert.equal(old.text(),'old complete primary');
+    assert.equal(fallback.r.itemStats(old).row.itemHelpDomain,false);unsupported++;
+    // A changed owner/descriptor is an observed rejection, even where a
+    // different complete same-source model is available globally.
+    fallback.fx.help[8+input.model.help_table.section_index*80+76]^=1;
+    fallback.r.itemSet(old,row);assert.equal(old.text(),row.source);assert(fallback.r.itemStats(old).row.itemHelpDomain);strictReject++;
+}
+const input=fixtures.find(f=>f.locale==='en');
+const legacy=runtime(input),legacyRow=Object.values(input.model.records).find(r=>input.book_keys.includes(r.key));
+legacy.r.api.load(model(input),'primary',true,1);const legacyLabel=legacy.r.label(0xef1000,'');legacy.r.itemSet(legacyLabel,legacyRow,0,true);
+legacy.r.api.configure({[legacyRow.source]:'bad legacy fallback'},true);legacy.r.update(legacyLabel);
+assert.equal(legacyLabel.text(),legacyRow.source,'item-help rejection must veto legacy dictionary too');strictReject++;legacy.r.destroy(legacyLabel);
+const limit=runtime(input);
+limit.r.api.load(model(input),'primary',true,1);
+for(let i=0;i<10002;i++)limit.r.unreadableItem(limit.r.label(0xe00000+i*1024,''));
+assert.equal(limit.r.itemStats().domains,10000);assert.equal(limit.r.itemStats().leases,0);
+assert.equal(limit.r.api.status().failed,true);assert.match(limit.r.api.status().failureReason,/tracking limit/);
+for(let i=0;i<10000;i++)limit.r.destroy(limit.r.label(0xe00000+i*1024,''));assert.equal(limit.r.itemStats().domains,0);lifecycle++;
+const reuse=runtime(input);reuse.r.api.load(model(input,{'new valid source':['new translated source','新的有效原串']}),'primary',true,1);
+const reused=reuse.r.label(0xee0000,'');reuse.r.unreadableItem(reused);assert.equal(reuse.r.itemStats().domains,1);
+reuse.r.destroy(reused);reuse.r.externalSet(reused,'new valid source');assert.equal(reused.text(),'new translated source');assert.equal(reuse.r.itemStats().domains,0);lifecycle++;
+const result={created_utc:new Date().toISOString(),four_route_mode_callbacks:positive,english_record_priority_callbacks:recordPriority,
+    strict_rejections:strictReject,unsupported_independent_complete_pairs:unsupported,lifecycle_cases:lifecycle,
+    domain_limit:10000,actual_native_postload_executed:false,actual_ui_setter_captured:false,game_attached:false};
+if(process.argv[2])fs.writeFileSync(process.argv[2],JSON.stringify(result,null,2));console.log(JSON.stringify(result));

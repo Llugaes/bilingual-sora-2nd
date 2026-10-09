@@ -27,7 +27,8 @@ from sora_bilingual.config.native_config import (
     write_config,
     ActionPolicy,
     BackendLock,
-    apply_startup_language,
+    apply_detected_game_language,
+    update_config,
 )
 from sora_bilingual.platform.inputs import InputManager
 from sora_bilingual.game.native_loading import ModelPreparation, ConnectionHeartbeat, prepare_fresh
@@ -43,6 +44,27 @@ def write_telemetry(value, path):
         return True
     except OSError:
         return False
+
+
+def export_input_diagnostics(native, state, path):
+    """Isolate only optional snapshot/serialization failures from the live loop."""
+    stage = "snapshot"
+    try:
+        snapshot = native.snapshot(identity_only=True, state=state)
+        stage = "export"
+        if not write_telemetry(snapshot, path):
+            return {
+                "stage": stage,
+                "error_type": "ExportUnavailable",
+                "message": "Diagnostic export unavailable",
+            }
+        return None
+    except Exception as exc:
+        try:
+            message = str(exc)[:256]
+        except Exception:
+            message = "Diagnostic error message unavailable"
+        return {"stage": stage, "error_type": type(exc).__name__[:64], "message": message}
 
 
 def model_identity(config):
@@ -126,12 +148,13 @@ def run(game=None, duration=0):
             ROOT / "generated" / "native-status.json",
             pid,
         )
-        config = read_config()
-        config.update(stop=False, replay=False)
-        config.pop("capture_controller", None)
-        # Keep this user-owned setting intact.  A verified live value below is
-        # applied only to the resident model configuration.
-        write_config(config)
+
+        def reset_commands(latest):
+            latest.update(stop=False, replay=False)
+            latest.pop("capture_controller", None)
+            return latest
+
+        config = update_config(reset_commands, CONTROL)
         initial_raw = CONTROL.read_text(encoding="utf-8")
         with (ROOT / "generated" / "native-probe.jsonl").open("a", encoding="utf-8") as startup_log:
             startup_log.write(
@@ -185,23 +208,14 @@ def run(game=None, duration=0):
                 )
             heartbeat.loading("waiting_source_language")
             return
-        # Sync only once per OS process lifetime, not on a reconnect or a later
-        # source change. Do not overwrite a manual edit made during detection.
-        initial_primary = config["primary"]
-        config = read_config()
+        # Reread UI edits under the shared lock. In normal mode the confirmed
+        # game source owns primary; an explicit experimental override opts out.
         if process_identity(pid) != created:
             return
-        configured = apply_startup_language(
-            config,
-            detected_game_language,
-            [str(exe.resolve()).casefold(), pid, created],
-            previous_primary=initial_primary,
+        config = update_config(
+            lambda latest: apply_detected_game_language(latest, detected_game_language), CONTROL
         )
-        if configured is not config:
-            write_config(configured)
-            config = configured
-        # Source language is still detected independently of output settings.
-        config = {**config, "game_language": detected_game_language}
+        # Source detection remains independent of output language preferences.
         model_started = time.monotonic()
         heartbeat.loading("preparing")
         model = prepare_fresh(game, config, cache_only="summary", cancel=exit_signal)
@@ -265,6 +279,7 @@ def run(game=None, duration=0):
         last_live = 0
         live_key = None
         stop_requested = False
+        input_diagnostic_error = None
 
         def request_stop(*_):
             nonlocal stop_requested
@@ -358,7 +373,12 @@ def run(game=None, duration=0):
                         if source_result.language is not None:
                             if source_result.language != detected_game_language:
                                 detected_game_language = source_result.language
-                                next_config = {**config, "game_language": detected_game_language}
+                                next_config = update_config(
+                                    lambda latest: apply_detected_game_language(
+                                        latest, detected_game_language
+                                    ),
+                                    CONTROL,
+                                )
                                 log(
                                     {
                                         "type": "source_language_changed",
@@ -393,10 +413,12 @@ def run(game=None, duration=0):
                         text = raw
                     if text != raw:
                         try:
-                            next_config = read_config()
-                            # Display choices stay user-owned; the active game
-                            # table independently chooses the source index.
-                            next_config["game_language"] = detected_game_language
+                            next_config = update_config(
+                                lambda latest: apply_detected_game_language(
+                                    latest, detected_game_language
+                                ),
+                                CONTROL,
+                            )
                             configuration_error = None
                         except (ValueError, OSError) as exc:
                             configuration_error = "配置未应用，继续使用上次有效设置：" + str(exc)
@@ -554,10 +576,13 @@ def run(game=None, duration=0):
                         native.select(mode, render_enabled())
                     binding = controller.poll_capture()
                     if binding and capture_action:
-                        latest = read_config()
-                        latest["switch_binding"]["gamepad"] = binding["gamepad"]
-                        latest.pop("capture_controller", None)
-                        write_config(latest)
+
+                        def save_capture(latest):
+                            latest["switch_binding"]["gamepad"] = binding["gamepad"]
+                            latest.pop("capture_controller", None)
+                            return latest
+
+                        update_config(save_capture, CONTROL)
                     # Lightweight UI telemetry: input edges immediately, heartbeat
                     # four times/second. No extra RPC or native pointer reads.
                     next_live = (
@@ -644,13 +669,25 @@ def run(game=None, duration=0):
                                 "devices": [d.name for d in pad_states],
                                 "binding": config["hotkeys"],
                                 "resident": True,
+                                "input_diagnostic_error": input_diagnostic_error,
                             },
                         )
                         # JS-owned snapshots only; no background pointer reads.
                         if config.get("diagnostics", False):
-                            write_telemetry(
-                                native.snapshot(), ROOT / "generated" / "native-labels.json"
+                            previous_diagnostic_error = input_diagnostic_error
+                            input_diagnostic_error = export_input_diagnostics(
+                                native, state, ROOT / "generated" / "native-input-identities.json"
                             )
+                            if (
+                                input_diagnostic_error
+                                and input_diagnostic_error != previous_diagnostic_error
+                            ):
+                                try:
+                                    log(
+                                        {"type": "input_diagnostic_error", **input_diagnostic_error}
+                                    )
+                                except Exception:
+                                    pass  # Diagnostic error logging cannot stop a healthy backend either.
                         last_status = now
                     time.sleep(0.008)
                 except frida.InvalidOperationError:

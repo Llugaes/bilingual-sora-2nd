@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import time
 from collections import Counter
 from pathlib import Path
 from sora_bilingual.localization.catalog_build import build_all
@@ -12,17 +13,78 @@ from sora_bilingual.localization.cache_io import publish_json, read_model
 from sora_bilingual.paths import ROOT
 
 
+def _resource_snapshot(game):
+    result = []
+    for path in sorted((Path(game) / "pac" / "steam").glob("*.pac")):
+        if not path.name.startswith(("script", "table")):
+            continue
+        try:
+            stat = path.stat()
+        except FileNotFoundError:
+            continue
+        try:
+            with path.open("rb") as stream:
+                digest = hashlib.file_digest(stream, "sha256").hexdigest()
+                after = path.stat()
+        except FileNotFoundError as error:
+            raise ResourceChangedError(
+                [(path.name, stat.st_size, stat.st_mtime_ns)], [], "resource_content_read"
+            ) from error
+        if (stat.st_size, stat.st_mtime_ns) != (after.st_size, after.st_mtime_ns):
+            raise ResourceChangedError(
+                [(path.name, stat.st_size, stat.st_mtime_ns)],
+                [(path.name, after.st_size, after.st_mtime_ns)],
+                "resource_content_read",
+            )
+        result.append((path.name, stat.st_size, stat.st_mtime_ns, digest))
+    return result
+
+
+class ResourceChangedError(ValueError):
+    reason = "resource_changed_during_preparation"
+
+    def __init__(self, expected, actual, phase):
+        self.phase = phase
+        self.expected = [list(row) for row in expected]
+        self.actual = [list(row) for row in actual]
+        before = {row[0]: row[1:] for row in self.expected}
+        after = {row[0]: row[1:] for row in self.actual}
+        self.changed_files = sorted(
+            name for name in before.keys() | after.keys() if before.get(name) != after.get(name)
+        )
+        super().__init__(
+            f"{self.reason}: {phase}: {', '.join(self.changed_files)}; "
+            "准备期间游戏资源发生变化，本次模型未就绪；请在资源稳定后正常重试。"
+        )
+
+
+def _verify_resources(game, expected, phase):
+    actual = _resource_snapshot(game)
+    if [list(row) for row in expected] != [list(row) for row in actual]:
+        raise ResourceChangedError(expected, actual, phase)
+
+
+def _signature_resources(signature, game):
+    # Production signatures contain the complete resource snapshot. Opaque
+    # low-level fixture signatures still receive a before/after snapshot.
+    try:
+        stamp = json.loads(signature)
+    except ValueError, TypeError:
+        stamp = None
+    return (
+        stamp["resources"]
+        if isinstance(stamp, dict) and "resources" in stamp
+        else _resource_snapshot(game)
+    )
+
+
 def fingerprint(game, *, legacy=False):
-    paths = sorted((Path(game) / "pac" / "steam").glob("*.pac"))
-    resources = [
-        (p.name, p.stat().st_size, p.stat().st_mtime_ns)
-        for p in paths
-        if p.name.startswith(("script", "table"))
-    ]
+    resources = _resource_snapshot(game)
     parser_code = b"".join(
         (ROOT / n).read_bytes()
         for n in (
             "sora_bilingual/localization/resources.py",
+            "sora_bilingual/localization/control_dialogue.py",
             "sora_bilingual/localization/tables.py",
             "sora_bilingual/localization/menu_tables.py",
             "sora_bilingual/localization/table_alignment.py",
@@ -43,11 +105,18 @@ def fingerprint(game, *, legacy=False):
             (ROOT / n).read_bytes()
             for n in (
                 "sora_bilingual/localization/menu_text.py",
+                "sora_bilingual/localization/save_summary.py",
+                "sora_bilingual/localization/annotation_breaks.py",
+                "sora_bilingual/localization/annotation_break_data.json",
                 "sora_bilingual/localization/native_catalog.py",
+                "sora_bilingual/localization/language_cache.py",
                 "sora_bilingual/localization/runtime_identity.py",
+                "sora_bilingual/localization/item_help_headers.py",
                 "sora_bilingual/localization/dynamic_identity.py",
                 "sora_bilingual/localization/speaker_context.py",
                 "sora_bilingual/localization/item_help_composition.py",
+                "sora_bilingual/localization/npc_facilities.py",
+                "sora_bilingual/localization/notebook_composition.py",
             )
         )
     ).hexdigest()
@@ -88,9 +157,12 @@ def load_entries(game, output=ROOT / "generated"):
         or not catalog.exists()
     ):
         result = build_all(game, output)
+        _verify_resources(game, stamp["resources"], "catalog_build")
         manifest.write_text(catalog_signature, encoding="utf-8")
         return result["entries"], signature
-    return json.loads(catalog.read_text(encoding="utf-8"))["entries"], signature
+    entries = json.loads(catalog.read_text(encoding="utf-8"))["entries"]
+    _verify_resources(game, stamp["resources"], "catalog_read")
+    return entries, signature
 
 
 def model_path(signature, config, output=ROOT / "generated"):
@@ -112,16 +184,63 @@ def ready_model(game, config, output=ROOT / "generated"):
     path = model_path(signature, config, output)
     cached = read_model(path)
     if cached is not None:
+        _verify_resources(game, _signature_resources(signature, game), "model_read")
         return cached, signature, None
     entries, signature = load_entries(game, output)
     return load_model(entries, signature, config, output, game=game), signature, entries
 
 
 def load_model(entries, signature, config, output=ROOT / "generated", *, game):
+    from sora_bilingual.localization.language_cache import language_facts
+
+    start = time.perf_counter()
+    timings = {}
+    resources = _signature_resources(signature, game)
+    _verify_resources(game, resources, "model_input")
+    try:
+        with language_facts(output) as facts:
+            model = _load_model(
+                entries,
+                signature,
+                config,
+                output,
+                game=game,
+                timings=timings,
+                resource_snapshot=resources,
+            )
+    except ResourceChangedError:
+        raise
+    except Exception:
+        # A resource replacement can first manifest as a strict raw/catalog
+        # mismatch. Keep strict refusal, but report the changed generation.
+        _verify_resources(game, resources, "model_compilation")
+        raise
+    publish_json(
+        Path(output) / "model-preparation.json",
+        {
+            "primary": config["primary"],
+            "secondary": config["secondary"],
+            "game_language": config.get("game_language", DEFAULT_PRIMARY),
+            "seconds": time.perf_counter() - start,
+            "language_facts": facts.stats,
+            "phases_seconds": timings,
+        },
+    )
+    return model
+
+
+def _load_model(
+    entries, signature, config, output=ROOT / "generated", *, game, timings=None, resource_snapshot
+):
+    timings = {} if timings is None else timings
+    start = time.perf_counter()
     path = model_path(signature, config, output)
     cached = read_model(path)
+    timings["model_read"] = time.perf_counter() - start
     if cached is not None:
+        _verify_resources(game, resource_snapshot, "model_read")
         return cached
+    start = time.perf_counter()
     selected = entries
     if config.get("scope") == "menu":
         selected = [e for e in entries if e.get("key", "").startswith("table/")]
@@ -139,13 +258,64 @@ def load_model(entries, signature, config, output=ROOT / "generated", *, game):
         grammar = build_item_help_grammar(
             game, selected, source, languages=(source, config["primary"], config["secondary"])
         )
+    from sora_bilingual.localization.npc_facilities import compile_npc_facilities
+
+    facility_entries = compile_npc_facilities(
+        game,
+        selected,
+        (config.get("game_language", DEFAULT_PRIMARY), config["primary"], config["secondary"]),
+    )
+    from sora_bilingual.localization.item_help_headers import compile_item_help_headers
+
+    item_headers = (
+        compile_item_help_headers(
+            game,
+            selected,
+            config["primary"],
+            config["secondary"],
+            config.get("game_language", DEFAULT_PRIMARY),
+        )
+        if grammar
+        else {}
+    )
+    from sora_bilingual.localization.notebook_composition import (
+        compile_fishing_lists,
+        compile_bracer_history,
+    )
+
+    notebook_entries = (
+        compile_fishing_lists(
+            game,
+            selected,
+            (config.get("game_language", DEFAULT_PRIMARY), config["primary"], config["secondary"]),
+        )
+        if config.get("scope", "all") != "selected"
+        else []
+    )
+    history_entries = (
+        compile_bracer_history(
+            game,
+            selected,
+            (config.get("game_language", DEFAULT_PRIMARY), config["primary"], config["secondary"]),
+            config.get("game_language", DEFAULT_PRIMARY),
+        )
+        if config.get("scope", "all") != "selected"
+        else []
+    )
     translator = MenuTranslator(
-        selected + grammar["status_entries"] + grammar["detail_entries"] if grammar else selected,
+        selected
+        + facility_entries
+        + notebook_entries
+        + history_entries
+        + (grammar["status_entries"] + grammar["detail_entries"] if grammar else []),
         config["primary"],
         config["secondary"],
         config.get("game_language", DEFAULT_PRIMARY),
+        item_help_headers=item_headers,
     )
     model = translator.runtime_model()
+    timings["combination_mapping"] = time.perf_counter() - start
+    start = time.perf_counter()
     source = config.get("game_language", DEFAULT_PRIMARY)
     model["books"] = {
         str(entry["book_id"]): {
@@ -177,6 +347,7 @@ def load_model(entries, signature, config, output=ROOT / "generated", *, game):
         if not missing:
             coverage["complete_pair_records"] += 1
     model["coverage"] = dict(coverage)
+    timings["coverage_books"] = time.perf_counter() - start
     if config.get("scope", "all") != "selected" and not coverage["complete_pair_records"]:
         raise ValueError(
             "本地资源没有所选源语言、主语言和副语言的可用配对；请检查资源与源语言设置。"
@@ -193,14 +364,19 @@ def load_model(entries, signature, config, output=ROOT / "generated", *, game):
         config["secondary"],
         config.get("game_language", DEFAULT_PRIMARY),
     )
+    start = time.perf_counter()
     model["script_identities"] = compile_script_identities(*args, resolved_pairs=translator.pairs)
+    timings["script_identity_history"] = time.perf_counter() - start
+    start = time.perf_counter()
     model["table_identities"] = compile_table_identities(*args, resolved_pairs=translator.pairs)
+    timings["table_identity"] = time.perf_counter() - start
     from sora_bilingual.localization.speaker_context import (
         compile_history_contexts,
         compile_speaker_contexts,
         read_speaker_names,
     )
 
+    start = time.perf_counter()
     names_by_locale = {
         locale: read_speaker_names(game, locale)
         for locale, archive in archive_names("table").items()
@@ -218,7 +394,12 @@ def load_model(entries, signature, config, output=ROOT / "generated", *, game):
     model["history_contexts"] = compile_history_contexts(
         selected, names_by_locale, config["primary"], config["secondary"]
     )
+    timings["speaker_history_mapping"] = time.perf_counter() - start
+    start = time.perf_counter()
+    _verify_resources(game, resource_snapshot, "model_publication")
     publish_json(path, model)
+    _verify_resources(game, resource_snapshot, "model_publication")
+    timings["model_publication"] = time.perf_counter() - start
     return model
 
 

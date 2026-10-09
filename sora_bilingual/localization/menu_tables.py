@@ -190,7 +190,14 @@ def schema_for(path, kind):
     return SCHEMAS[kind]
 
 
-def record_identity(data, at, kind, schema, text_floor):
+def record_identity(data, at, kind, schema, text_floor, *, display_alignment=False):
+    """Keep native metadata; optionally use the audited display identity.
+
+    ActiveVoice +80/+88 owns replay flags, read and set by its manager after
+    the +48/+64 eligibility checks. These localized flags do not select text.
+    Only cross-language display alignment excludes them; the default identity
+    retains them, and both identities validate the original array bounds.
+    """
     row = bytearray(data[at : at + schema.size])
     extra = b""
     if kind in _RESOURCE_IDENTITY_FIELDS:
@@ -240,6 +247,9 @@ def record_identity(data, at, kind, schema, text_floor):
             pointer, count = struct.unpack_from("<QQ", row, offset)
             if count > 4096 or (count and not text_floor <= pointer <= len(data) - count * width):
                 raise FormatError("active voice array outside pool")
+            if display_alignment and offset == 80:
+                row[88:96] = b"\0" * 8
+                continue
             extra += struct.pack("<QQ", offset, count) + data[pointer : pointer + count * width]
         for offset in (24, 40):
             pointer = struct.unpack_from("<Q", row, offset)[0]

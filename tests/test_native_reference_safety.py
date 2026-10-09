@@ -1,5 +1,6 @@
 """Relocation must preserve the data and import dependencies a helper consumes."""
 
+import copy
 import hashlib
 import struct
 import unittest
@@ -8,7 +9,7 @@ import pefile
 
 from sora_bilingual.game.exe_compatibility import ExecutableCompatibilityError
 from sora_bilingual.game.native_contracts import resolve_native_contracts
-from test_native_contracts import _offset, _write_rel32, relinked_helper_fixture
+from test_native_contracts import _masked_hash, _offset, _write_rel32, relinked_helper_fixture
 
 
 class NativeReferenceSafetyTests(unittest.TestCase):
@@ -62,6 +63,28 @@ class NativeReferenceSafetyTests(unittest.TestCase):
         struct.pack_into("<II", raw, 0x98 + 112 + 8, 0x2300, 60)
         with self.assertRaises(ExecutableCompatibilityError):
             self.resolve(raw, contract)
+
+    def test_pinned_and_relocated_iat_forms_keep_one_semantic_contract(self):
+        raw, contract = self.fixture()
+        pinned = copy.deepcopy(contract["functions"]["root"]["variants"][0])
+        helper = pinned["continuations"][0]["template"]
+        helper["masks"] = [mask for mask in helper["masks"] if mask != [19, 4]]
+        helper["sha256"] = _masked_hash(raw, 0x1040, helper["size"], helper["masks"])
+        contract["functions"]["root"]["variants"].append(pinned)
+        self.assertEqual(self.resolve(raw, contract)["functions"], {"root": 0x1000})
+        # A pinned operand cannot revive a changed import name or a callee
+        # reading a different copy of the same CRC/data contents.
+        bad_import = raw.copy()
+        bad_import[_offset(0x23C2)] ^= 1
+        with self.assertRaises(ExecutableCompatibilityError):
+            self.resolve(bad_import, contract)
+        second_table = raw.copy()
+        second_table[_offset(0x2080) : _offset(0x2080) + 32] = raw[
+            _offset(0x2040) : _offset(0x2040) + 32
+        ]
+        _write_rel32(second_table, 0x1083, 0x1087, 0x2080)
+        with self.assertRaises(ExecutableCompatibilityError):
+            self.resolve(second_table, contract)
 
 
 if __name__ == "__main__":

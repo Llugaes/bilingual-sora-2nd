@@ -10,6 +10,48 @@ def record(key, source, japanese, english):
 
 
 class MenuSurfaceTests(unittest.TestCase):
+    def test_registration_parameter_uses_entire_map_spot_family(self):
+        template = record(
+            "table/t_text.tbl/TXT_HUD_ADD_MAPJUMP_SPOT",
+            "移动目标<c984>【%s】</c>已登录完成",
+            "移動先<c984>【%s】</c>が登録された",
+            "Location <c984>[%s]</c> added to map.",
+        )
+        spot = record("table/t_mapjump.tbl/MapJumpSpotData/spot/name", "工房", "工房名", "Factory")
+        unrelated = record("table/t_tips.tbl/tip/title", "【工房】", "【工房名】", "Factory")
+        tr = MenuTranslator([template, spot, unrelated], "zh-Hans", "ja", "en")
+        source = "<s28>Location <c984>[Factory]</c> added to map."
+        self.assertEqual(
+            tr.translate(source, "primary"), "<s28>移动目标<c984>【工房】</c>已登录完成"
+        )
+        self.assertEqual(
+            tr.translate(source, "secondary"), "<s28>移動先<c984>【工房名】</c>が登録された"
+        )
+        self.assertEqual(tr.translate("Factory", "secondary"), "Factory")
+
+    def test_registration_rejects_unknown_partial_and_conflicting_names(self):
+        template = record(
+            "table/t_text.tbl/TXT_HUD_ADD_MAPJUMP_SPOT", "登录【%s】", "登録【%s】", "Added [%s]"
+        )
+        first = record("table/t_mapjump.tbl/MapJumpSpotData/one/name", "地点一", "場所一", "Place")
+        unrelated = record("table/t_name.tbl/actor/name", "演员", "俳優", "Actor")
+        for extra, name in (
+            (unrelated, "Actor"),
+            (
+                {"key": "table/t_mapjump.tbl/MapJumpSpotData/two/name", "texts": {"en": "Place"}},
+                "Place",
+            ),
+            (
+                record("table/t_mapjump.tbl/MapJumpSpotData/two/name", "地点二", "場所二", "Place"),
+                "Place",
+            ),
+        ):
+            with self.subTest(extra=extra):
+                tr = MenuTranslator([template, first, extra], "zh-Hans", "ja", "en")
+                source = f"Added [{name}]"
+                self.assertEqual(tr.translate(source, "primary"), source)
+                self.assertEqual(tr.translate(source, "secondary"), source)
+
     def test_map_confirmation_uses_map_record_not_quest_client_or_partial_code(self):
         records = [
             record(

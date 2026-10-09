@@ -1,0 +1,1041 @@
+{
+  "schema": 1,
+  "input_origin": "Focused original physical PAC ALL/stat/format fields and complete cooking constructor; EN Mom exact captured setter input. Other locale forms are static native-branch fixtures, not new live captures.",
+  "reference_source_snapshot_sha256": "870c94f86cf5f8eda0d8172321fd039e4ddea92c0feb25c1aa2da9cdfe4cdb0c",
+  "source_evidence": {
+    "resources_path": "generated/r32-live008-all-recovery-resource-audit.json",
+    "resources_sha256": "3483c7f17da9505f946354d9e09415d10ee2cffadf8d4eb8a3253f16b113c266",
+    "bounded_native_path": "generated/r32-live008-all-recovery-static-neighborhood.json",
+    "bounded_native_sha256": "3826d46dcad59f451d7a604145c4064e69caa8babdbe5f3ed67ba762890c8359",
+    "ui_constructor_path": "generated/r32-live008-all-recovery-ui-constructor-static.json",
+    "ui_constructor_sha256": "89f343089306aef1c7dab002bec5f05c194629ba4b1e1014e77da056d82cc5b1",
+    "actual_capture_path": "generated/r32-live008-en-recipe-mom-inputs.json",
+    "actual_capture_sha256": "190a83812a830a0d7c71a89d8d035c53980ed993532accd8016cd02f6a71ffa9",
+    "runtime_red_path": "generated/r32-live008-all-recovery-runtime-red.json",
+    "runtime_red_sha256": "36fe51afde5e5929a8396bb35e3d079ac4a8baab1741a91bc2cba4ee4253ac81"
+  },
+  "old_wrong_oracles_preserved": {
+    "r32-recipes-step5-four.json": "428b27cc94127726e464e58ddf1f0b5100fefe150fcba128ec68ed65ab11e689",
+    "r32-recipe-full-body-input.json": "d918c1f6e35f71a2cc199753f5f0271e70945d93996895df853c1206d06ab54c"
+  },
+  "native_units": [
+    {
+      "locale": "ja",
+      "effect_id": 123,
+      "record_identity": "sha256:cc311d9666993ad7471edb97a4292bd44de5cac259718aab39db45a6008a99a8",
+      "record_at": 8120,
+      "connect_kind": 13,
+      "parameter_types_u32": [
+        4
+      ],
+      "slot": [
+        123,
+        100,
+        0,
+        0
+      ],
+      "name_template": "HP%s回復",
+      "stat": "HP",
+      "format_template": "%s回復",
+      "all_word": "全",
+      "native_phrase": "HP全回復",
+      "old_name_phrase": "HP全回復",
+      "bare_icon_unit": "<I351>HP全回復",
+      "compact_icon_unit": "<C9><I351></C>HP全回復",
+      "name_and_native_differ": false
+    },
+    {
+      "locale": "ja",
+      "effect_id": 125,
+      "record_identity": "sha256:9792ad85797c0b1a6ea1d3a7efb83d51b75a2d47d37d762623d852392fa0595e",
+      "record_at": 8296,
+      "connect_kind": 13,
+      "parameter_types_u32": [
+        4
+      ],
+      "slot": [
+        125,
+        100,
+        0,
+        0
+      ],
+      "name_template": "EP%s回復",
+      "stat": "EP",
+      "format_template": "%s回復",
+      "all_word": "全",
+      "native_phrase": "EP全回復",
+      "old_name_phrase": "EP全回復",
+      "bare_icon_unit": "<I352>EP全回復",
+      "compact_icon_unit": "<C9><I352></C>EP全回復",
+      "name_and_native_differ": false
+    },
+    {
+      "locale": "en",
+      "effect_id": 123,
+      "record_identity": "sha256:cc311d9666993ad7471edb97a4292bd44de5cac259718aab39db45a6008a99a8",
+      "record_at": 8120,
+      "connect_kind": 13,
+      "parameter_types_u32": [
+        4
+      ],
+      "slot": [
+        123,
+        100,
+        0,
+        0
+      ],
+      "name_template": "Heal %s HP",
+      "stat": "HP",
+      "format_template": "Recover %s ",
+      "all_word": "All",
+      "native_phrase": "Recover All HP",
+      "old_name_phrase": "Heal All HP",
+      "bare_icon_unit": "<I351>Recover All HP",
+      "compact_icon_unit": "<C9><I351></C>Recover All HP",
+      "name_and_native_differ": true
+    },
+    {
+      "locale": "en",
+      "effect_id": 125,
+      "record_identity": "sha256:9792ad85797c0b1a6ea1d3a7efb83d51b75a2d47d37d762623d852392fa0595e",
+      "record_at": 8296,
+      "connect_kind": 13,
+      "parameter_types_u32": [
+        4
+      ],
+      "slot": [
+        125,
+        100,
+        0,
+        0
+      ],
+      "name_template": "Recover %s EP",
+      "stat": "EP",
+      "format_template": "Recover %s ",
+      "all_word": "All",
+      "native_phrase": "Recover All EP",
+      "old_name_phrase": "Recover All EP",
+      "bare_icon_unit": "<I352>Recover All EP",
+      "compact_icon_unit": "<C9><I352></C>Recover All EP",
+      "name_and_native_differ": false
+    },
+    {
+      "locale": "zh-Hans",
+      "effect_id": 123,
+      "record_identity": "sha256:cc311d9666993ad7471edb97a4292bd44de5cac259718aab39db45a6008a99a8",
+      "record_at": 8120,
+      "connect_kind": 13,
+      "parameter_types_u32": [
+        4
+      ],
+      "slot": [
+        123,
+        100,
+        0,
+        0
+      ],
+      "name_template": "回复HP%s",
+      "stat": "HP",
+      "format_template": "回复%s",
+      "all_word": "全",
+      "native_phrase": "HP回复全",
+      "old_name_phrase": "回复HP全",
+      "bare_icon_unit": "<I351>HP回复全",
+      "compact_icon_unit": "<C9><I351></C>HP回复全",
+      "name_and_native_differ": true
+    },
+    {
+      "locale": "zh-Hans",
+      "effect_id": 125,
+      "record_identity": "sha256:9792ad85797c0b1a6ea1d3a7efb83d51b75a2d47d37d762623d852392fa0595e",
+      "record_at": 8296,
+      "connect_kind": 13,
+      "parameter_types_u32": [
+        4
+      ],
+      "slot": [
+        125,
+        100,
+        0,
+        0
+      ],
+      "name_template": "回复EP%s",
+      "stat": "EP",
+      "format_template": "回复%s",
+      "all_word": "全",
+      "native_phrase": "EP回复全",
+      "old_name_phrase": "回复EP全",
+      "bare_icon_unit": "<I352>EP回复全",
+      "compact_icon_unit": "<C9><I352></C>EP回复全",
+      "name_and_native_differ": true
+    },
+    {
+      "locale": "zh-Hant",
+      "effect_id": 123,
+      "record_identity": "sha256:cc311d9666993ad7471edb97a4292bd44de5cac259718aab39db45a6008a99a8",
+      "record_at": 8120,
+      "connect_kind": 13,
+      "parameter_types_u32": [
+        4
+      ],
+      "slot": [
+        123,
+        100,
+        0,
+        0
+      ],
+      "name_template": "回復HP%s",
+      "stat": "HP",
+      "format_template": "回復%s",
+      "all_word": "全",
+      "native_phrase": "HP回復全",
+      "old_name_phrase": "回復HP全",
+      "bare_icon_unit": "<I351>HP回復全",
+      "compact_icon_unit": "<C9><I351></C>HP回復全",
+      "name_and_native_differ": true
+    },
+    {
+      "locale": "zh-Hant",
+      "effect_id": 125,
+      "record_identity": "sha256:9792ad85797c0b1a6ea1d3a7efb83d51b75a2d47d37d762623d852392fa0595e",
+      "record_at": 8296,
+      "connect_kind": 13,
+      "parameter_types_u32": [
+        4
+      ],
+      "slot": [
+        125,
+        100,
+        0,
+        0
+      ],
+      "name_template": "回復EP%s",
+      "stat": "EP",
+      "format_template": "回復%s",
+      "all_word": "全",
+      "native_phrase": "EP回復全",
+      "old_name_phrase": "回復EP全",
+      "bare_icon_unit": "<I352>EP回復全",
+      "compact_icon_unit": "<C9><I352></C>EP回復全",
+      "name_and_native_differ": true
+    },
+    {
+      "locale": "ko",
+      "effect_id": 123,
+      "record_identity": "sha256:cc311d9666993ad7471edb97a4292bd44de5cac259718aab39db45a6008a99a8",
+      "record_at": 8120,
+      "connect_kind": 13,
+      "parameter_types_u32": [
+        4
+      ],
+      "slot": [
+        123,
+        100,
+        0,
+        0
+      ],
+      "name_template": "HP %s 회복",
+      "stat": "HP",
+      "format_template": "%s 회복",
+      "all_word": "완전",
+      "native_phrase": "HP 완전 회복",
+      "old_name_phrase": "HP 완전 회복",
+      "bare_icon_unit": "<I351>HP 완전 회복",
+      "compact_icon_unit": "<C9><I351></C>HP 완전 회복",
+      "name_and_native_differ": false
+    },
+    {
+      "locale": "ko",
+      "effect_id": 125,
+      "record_identity": "sha256:9792ad85797c0b1a6ea1d3a7efb83d51b75a2d47d37d762623d852392fa0595e",
+      "record_at": 8296,
+      "connect_kind": 13,
+      "parameter_types_u32": [
+        4
+      ],
+      "slot": [
+        125,
+        100,
+        0,
+        0
+      ],
+      "name_template": "EP %s 회복",
+      "stat": "EP",
+      "format_template": "%s 회복",
+      "all_word": "완전",
+      "native_phrase": "EP 완전 회복",
+      "old_name_phrase": "EP 완전 회복",
+      "bare_icon_unit": "<I352>EP 완전 회복",
+      "compact_icon_unit": "<C9><I352></C>EP 완전 회복",
+      "name_and_native_differ": false
+    },
+    {
+      "locale": "fr",
+      "effect_id": 123,
+      "record_identity": "sha256:cc311d9666993ad7471edb97a4292bd44de5cac259718aab39db45a6008a99a8",
+      "record_at": 8120,
+      "connect_kind": 13,
+      "parameter_types_u32": [
+        4
+      ],
+      "slot": [
+        123,
+        100,
+        0,
+        0
+      ],
+      "name_template": "Restaure %s PV",
+      "stat": "PV",
+      "format_template": "Soin %s ",
+      "all_word": "Tous",
+      "native_phrase": "Soin Tous PV",
+      "old_name_phrase": "Restaure Tous PV",
+      "bare_icon_unit": "<I351>Soin Tous PV",
+      "compact_icon_unit": "<C9><I351></C>Soin Tous PV",
+      "name_and_native_differ": true
+    },
+    {
+      "locale": "fr",
+      "effect_id": 125,
+      "record_identity": "sha256:9792ad85797c0b1a6ea1d3a7efb83d51b75a2d47d37d762623d852392fa0595e",
+      "record_at": 8296,
+      "connect_kind": 13,
+      "parameter_types_u32": [
+        4
+      ],
+      "slot": [
+        125,
+        100,
+        0,
+        0
+      ],
+      "name_template": "Restaure %s PE",
+      "stat": "PE",
+      "format_template": "Soin %s ",
+      "all_word": "Tous",
+      "native_phrase": "Soin Tous PE",
+      "old_name_phrase": "Restaure Tous PE",
+      "bare_icon_unit": "<I352>Soin Tous PE",
+      "compact_icon_unit": "<C9><I352></C>Soin Tous PE",
+      "name_and_native_differ": true
+    },
+    {
+      "locale": "de",
+      "effect_id": 123,
+      "record_identity": "sha256:cc311d9666993ad7471edb97a4292bd44de5cac259718aab39db45a6008a99a8",
+      "record_at": 8120,
+      "connect_kind": 13,
+      "parameter_types_u32": [
+        4
+      ],
+      "slot": [
+        123,
+        100,
+        0,
+        0
+      ],
+      "name_template": "Heilt %s LP",
+      "stat": "LP",
+      "format_template": "Regeneriert %s ",
+      "all_word": "Alle",
+      "native_phrase": "Regeneriert Alle LP",
+      "old_name_phrase": "Heilt Alle LP",
+      "bare_icon_unit": "<I351>Regeneriert Alle LP",
+      "compact_icon_unit": "<C9><I351></C>Regeneriert Alle LP",
+      "name_and_native_differ": true
+    },
+    {
+      "locale": "de",
+      "effect_id": 125,
+      "record_identity": "sha256:9792ad85797c0b1a6ea1d3a7efb83d51b75a2d47d37d762623d852392fa0595e",
+      "record_at": 8296,
+      "connect_kind": 13,
+      "parameter_types_u32": [
+        4
+      ],
+      "slot": [
+        125,
+        100,
+        0,
+        0
+      ],
+      "name_template": "Regeneriert %s EP",
+      "stat": "EP",
+      "format_template": "Regeneriert %s ",
+      "all_word": "Alle",
+      "native_phrase": "Regeneriert Alle EP",
+      "old_name_phrase": "Regeneriert Alle EP",
+      "bare_icon_unit": "<I352>Regeneriert Alle EP",
+      "compact_icon_unit": "<C9><I352></C>Regeneriert Alle EP",
+      "name_and_native_differ": false
+    },
+    {
+      "locale": "es",
+      "effect_id": 123,
+      "record_identity": "sha256:cc311d9666993ad7471edb97a4292bd44de5cac259718aab39db45a6008a99a8",
+      "record_at": 8120,
+      "connect_kind": 13,
+      "parameter_types_u32": [
+        4
+      ],
+      "slot": [
+        123,
+        100,
+        0,
+        0
+      ],
+      "name_template": "Curación de %s PV",
+      "stat": "PV",
+      "format_template": "Recuperación %s ",
+      "all_word": "Todo",
+      "native_phrase": "Recuperación Todo PV",
+      "old_name_phrase": "Curación de Todo PV",
+      "bare_icon_unit": "<I351>Recuperación Todo PV",
+      "compact_icon_unit": "<C9><I351></C>Recuperación Todo PV",
+      "name_and_native_differ": true
+    },
+    {
+      "locale": "es",
+      "effect_id": 125,
+      "record_identity": "sha256:9792ad85797c0b1a6ea1d3a7efb83d51b75a2d47d37d762623d852392fa0595e",
+      "record_at": 8296,
+      "connect_kind": 13,
+      "parameter_types_u32": [
+        4
+      ],
+      "slot": [
+        125,
+        100,
+        0,
+        0
+      ],
+      "name_template": "Recuperación de %s PE",
+      "stat": "PE",
+      "format_template": "Recuperación %s ",
+      "all_word": "Todo",
+      "native_phrase": "Recuperación Todo PE",
+      "old_name_phrase": "Recuperación de Todo PE",
+      "bare_icon_unit": "<I352>Recuperación Todo PE",
+      "compact_icon_unit": "<C9><I352></C>Recuperación Todo PE",
+      "name_and_native_differ": true
+    }
+  ],
+  "mom_complete_compact_texts": {
+    " - ": {
+      "ja": "大皿【<C9><I351></C>HP全回復 - <C9><I371></C>強運（150秒）】",
+      "en": "Meals [<C9><I351></C>Recover All HP - <C9><I371></C>Fortune(150 Seconds)]",
+      "zh-Hans": "大份【<C9><I351></C>HP回复全 - <C9><I371></C>强运（150秒）】",
+      "zh-Hant": "大份【<C9><I351></C>HP回復全 - <C9><I371></C>強運（150秒）】",
+      "ko": "파티 요리【<C9><I351></C>HP 완전 회복 - <C9><I371></C>강운(150초)】",
+      "fr": "Plats [<C9><I351></C>Soin Tous PV - <C9><I371></C>Chance(150 secondes)]",
+      "de": "Mahlzeiten [<C9><I351></C>Regeneriert Alle LP - <C9><I371></C>Glück (150 Sekunden)]",
+      "es": "Para tomar [<C9><I351></C>Recuperación Todo PV - <C9><I371></C>Suerte(150 segundos)]"
+    },
+    " ": {
+      "ja": "大皿【<C9><I351></C>HP全回復 <C9><I371></C>強運（150秒）】",
+      "en": "Meals [<C9><I351></C>Recover All HP <C9><I371></C>Fortune(150 Seconds)]",
+      "zh-Hans": "大份【<C9><I351></C>HP回复全 <C9><I371></C>强运（150秒）】",
+      "zh-Hant": "大份【<C9><I351></C>HP回復全 <C9><I371></C>強運（150秒）】",
+      "ko": "파티 요리【<C9><I351></C>HP 완전 회복 <C9><I371></C>강운(150초)】",
+      "fr": "Plats [<C9><I351></C>Soin Tous PV <C9><I371></C>Chance(150 secondes)]",
+      "de": "Mahlzeiten [<C9><I351></C>Regeneriert Alle LP <C9><I371></C>Glück (150 Sekunden)]",
+      "es": "Para tomar [<C9><I351></C>Recuperación Todo PV <C9><I371></C>Suerte(150 segundos)]"
+    }
+  },
+  "mom_complete_with_body_texts": {
+    " - ": {
+      "ja": "大皿【<C9><I351></C>HP全回復 - <C9><I371></C>強運（150秒）】\nエステルがその味を受け継いだ、ふわふわ卵のチキンオムライス。",
+      "en": "Meals [<C9><I351></C>Recover All HP - <C9><I371></C>Fortune(150 Seconds)]\nA fluffy omelet, served over chicken rice. Estelle keeps the recipe alive.",
+      "zh-Hans": "大份【<C9><I351></C>HP回复全 - <C9><I371></C>强运（150秒）】\n由艾丝蒂尔继承了其滋味，蛋皮十分软绵的鸡肉蛋包饭。",
+      "zh-Hant": "大份【<C9><I351></C>HP回復全 - <C9><I371></C>強運（150秒）】\n由艾絲蒂爾繼承了其滋味，蛋皮十分軟綿的雞肉蛋包飯。",
+      "ko": "파티 요리【<C9><I351></C>HP 완전 회복 - <C9><I371></C>강운(150초)】\n에스텔이 레시피를 이어받아 만든 가정식 폭신폭신 계란 오므라이스.",
+      "fr": "Plats [<C9><I351></C>Soin Tous PV - <C9><I371></C>Chance(150 secondes)]\nUne omelette moelleuses servie sur du riz au poulet. Une tradition pour Estelle.",
+      "de": "Mahlzeiten [<C9><I351></C>Regeneriert Alle LP - <C9><I371></C>Glück (150 Sekunden)]\nEin fluffiges Omelett auf Hähnchenreis. Estelle hält das Rezept am Leben.",
+      "es": "Para tomar [<C9><I351></C>Recuperación Todo PV - <C9><I371></C>Suerte(150 segundos)]\nUna tortilla esponjosa con arroz y pollo. Estelle conserva la receta."
+    },
+    " ": {
+      "ja": "大皿【<C9><I351></C>HP全回復 <C9><I371></C>強運（150秒）】\nエステルがその味を受け継いだ、ふわふわ卵のチキンオムライス。",
+      "en": "Meals [<C9><I351></C>Recover All HP <C9><I371></C>Fortune(150 Seconds)]\nA fluffy omelet, served over chicken rice. Estelle keeps the recipe alive.",
+      "zh-Hans": "大份【<C9><I351></C>HP回复全 <C9><I371></C>强运（150秒）】\n由艾丝蒂尔继承了其滋味，蛋皮十分软绵的鸡肉蛋包饭。",
+      "zh-Hant": "大份【<C9><I351></C>HP回復全 <C9><I371></C>強運（150秒）】\n由艾絲蒂爾繼承了其滋味，蛋皮十分軟綿的雞肉蛋包飯。",
+      "ko": "파티 요리【<C9><I351></C>HP 완전 회복 <C9><I371></C>강운(150초)】\n에스텔이 레시피를 이어받아 만든 가정식 폭신폭신 계란 오므라이스.",
+      "fr": "Plats [<C9><I351></C>Soin Tous PV <C9><I371></C>Chance(150 secondes)]\nUne omelette moelleuses servie sur du riz au poulet. Une tradition pour Estelle.",
+      "de": "Mahlzeiten [<C9><I351></C>Regeneriert Alle LP <C9><I371></C>Glück (150 Sekunden)]\nEin fluffiges Omelett auf Hähnchenreis. Estelle hält das Rezept am Leben.",
+      "es": "Para tomar [<C9><I351></C>Recuperación Todo PV <C9><I371></C>Suerte(150 segundos)]\nUna tortilla esponjosa con arroz y pollo. Estelle conserva la receta."
+    }
+  },
+  "actual_complete_setter_row": {
+    "pointer": "0x1fb567009b0",
+    "original": "Meals [<C9><I351></C>Recover All HP - <C9><I371></C>Fortune(150 Seconds)]",
+    "original_truncated": false,
+    "displayed": "Meals [<C9><I351></C>Recover All HP - <C9><I371></C>Fortune(150 Seconds)]",
+    "displayed_truncated": false,
+    "text_key": null,
+    "text_key_reason": "layout_key_missing_or_source_mismatch",
+    "scope": null,
+    "input_identity_diagnostic": {
+      "phase": "setter_input",
+      "input": "0x66c17ed90",
+      "caller": "0x7ff7bac92808",
+      "source": "Meals [<C9><I351></C>Recover All HP - <C9><I371></C>Fortune(150 Seconds)]",
+      "source_code_units": 73,
+      "truncated": false,
+      "table": [
+        {
+          "stage": "no_source_candidates",
+          "stage_truncated": false,
+          "key": null,
+          "key_truncated": false,
+          "file": null,
+          "file_truncated": false,
+          "sha256": null,
+          "sha256_truncated": false,
+          "offset": null,
+          "size": null,
+          "record_at": null,
+          "field_at": null
+        }
+      ],
+      "table_event_limit": 12,
+      "table_events_total": 1,
+      "table_events_dropped": 0,
+      "table_trace_truncated": false,
+      "table_final_stage": "no_source_candidates",
+      "script": [
+        {
+          "stage": "no_source_candidates",
+          "stage_truncated": false,
+          "key": null,
+          "key_truncated": false,
+          "file": null,
+          "file_truncated": false,
+          "sha256": null,
+          "sha256_truncated": false,
+          "offset": null,
+          "size": null,
+          "record_at": null,
+          "field_at": null
+        }
+      ],
+      "script_event_limit": 12,
+      "script_events_total": 1,
+      "script_events_dropped": 0,
+      "script_trace_truncated": false,
+      "script_final_stage": "no_source_candidates",
+      "caller_rva": 4270088,
+      "table_skip": null,
+      "dialogue_frame": false,
+      "output_origin": false,
+      "book_reader_context": false,
+      "paragraph_context": false,
+      "log_kind": null,
+      "script_record": null,
+      "script_rejection": null,
+      "source_locale": null,
+      "script_pointer": null,
+      "node_path": [
+        "text",
+        "success_info",
+        "normal_contents",
+        "note_base",
+        "root"
+      ],
+      "layout_id": 57,
+      "scope": null,
+      "global_pair": false,
+      "table_key": null,
+      "presentation": "plain"
+    },
+    "presentation": "plain",
+    "render_epoch": 4,
+    "source_matches_diagnostic": true
+  },
+  "official_raw_contexts": [
+    {
+      "description_key": "table/t_skill.tbl/sha256:3d8f21a777c4dc0656bc0cccb7a28a0930d9e767f3baf0e5707470b292354d9f/description",
+      "group": [
+        [
+          123,
+          100,
+          0,
+          0
+        ],
+        [
+          132,
+          100,
+          0,
+          0
+        ]
+      ],
+      "all100_slots": [
+        [
+          123,
+          100,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "description_key": "table/t_skill.tbl/sha256:75b6e35b0b80ec2084c81ca3c6403ec34054815a37a300199daee668c6948517/description",
+      "group": [
+        [
+          123,
+          100,
+          0,
+          0
+        ]
+      ],
+      "all100_slots": [
+        [
+          123,
+          100,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "description_key": "table/t_skill.tbl/sha256:774dd1177940f38bd01a4a85391a7ec1e3f70907edaf219f44924094957f693f/description",
+      "group": [
+        [
+          120,
+          100,
+          0,
+          0
+        ]
+      ],
+      "all100_slots": [
+        [
+          120,
+          100,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "description_key": "table/t_skill.tbl/sha256:2d7167cc372986db29b18c54a7d838579249812bee839481001759454198e66e/description",
+      "group": [
+        [
+          120,
+          100,
+          0,
+          0
+        ],
+        [
+          225,
+          2000,
+          0,
+          0
+        ]
+      ],
+      "all100_slots": [
+        [
+          120,
+          100,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "description_key": "table/t_skill.tbl/sha256:577651642cc07ca4b65687026586ab84eaf27fe820542fcede61189a1d01413c/description",
+      "group": [
+        [
+          120,
+          100,
+          0,
+          0
+        ],
+        [
+          225,
+          4000,
+          0,
+          0
+        ]
+      ],
+      "all100_slots": [
+        [
+          120,
+          100,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "description_key": "table/t_item.tbl/sha256:3e51e8b60531a4f1d1aa7748f67b6c1f4375e2a25c6e6304b753649427e946ec/description",
+      "group": [
+        [
+          123,
+          100,
+          0,
+          0
+        ]
+      ],
+      "all100_slots": [
+        [
+          123,
+          100,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "description_key": "table/t_item.tbl/sha256:11be37b085f9eb341c8074a1773a4cfc4fabda47405af82d7952124b24d51e5d/description",
+      "group": [
+        [
+          125,
+          100,
+          0,
+          0
+        ]
+      ],
+      "all100_slots": [
+        [
+          125,
+          100,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "description_key": "table/t_item.tbl/sha256:3f0be5cbbf2ff17fed1f6b518ef4b3b5f92c275375ce9e8fc90fd1ddccfd4427/description",
+      "group": [
+        [
+          120,
+          100,
+          0,
+          0
+        ],
+        [
+          126,
+          100,
+          0,
+          0
+        ]
+      ],
+      "all100_slots": [
+        [
+          120,
+          100,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "description_key": "table/t_item.tbl/sha256:3e46a239706cc9deeb62d88c0b703c96754c8a1a6d4baeaee45cb90481b4e5d8/description",
+      "group": [
+        [
+          120,
+          100,
+          0,
+          0
+        ],
+        [
+          126,
+          200,
+          0,
+          0
+        ]
+      ],
+      "all100_slots": [
+        [
+          120,
+          100,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "description_key": "table/t_item.tbl/sha256:d03d0d8a60cc8d7144b9a534d04a37ad95587f7e741b043e4faa54d3f67a033e/description",
+      "group": [
+        [
+          123,
+          100,
+          0,
+          0
+        ],
+        [
+          1202,
+          1,
+          50,
+          5
+        ],
+        [
+          1206,
+          150,
+          0,
+          0
+        ]
+      ],
+      "all100_slots": [
+        [
+          123,
+          100,
+          0,
+          0
+        ]
+      ]
+    }
+  ],
+  "kind13_contexts": [
+    {
+      "description_key": "table/t_skill.tbl/sha256:3d8f21a777c4dc0656bc0cccb7a28a0930d9e767f3baf0e5707470b292354d9f/description",
+      "group": [
+        [
+          123,
+          100,
+          0,
+          0
+        ],
+        [
+          132,
+          100,
+          0,
+          0
+        ]
+      ],
+      "all100_slots": [
+        [
+          123,
+          100,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "description_key": "table/t_skill.tbl/sha256:75b6e35b0b80ec2084c81ca3c6403ec34054815a37a300199daee668c6948517/description",
+      "group": [
+        [
+          123,
+          100,
+          0,
+          0
+        ]
+      ],
+      "all100_slots": [
+        [
+          123,
+          100,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "description_key": "table/t_item.tbl/sha256:3e51e8b60531a4f1d1aa7748f67b6c1f4375e2a25c6e6304b753649427e946ec/description",
+      "group": [
+        [
+          123,
+          100,
+          0,
+          0
+        ]
+      ],
+      "all100_slots": [
+        [
+          123,
+          100,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "description_key": "table/t_item.tbl/sha256:11be37b085f9eb341c8074a1773a4cfc4fabda47405af82d7952124b24d51e5d/description",
+      "group": [
+        [
+          125,
+          100,
+          0,
+          0
+        ]
+      ],
+      "all100_slots": [
+        [
+          125,
+          100,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "description_key": "table/t_item.tbl/sha256:d03d0d8a60cc8d7144b9a534d04a37ad95587f7e741b043e4faa54d3f67a033e/description",
+      "group": [
+        [
+          123,
+          100,
+          0,
+          0
+        ],
+        [
+          1202,
+          1,
+          50,
+          5
+        ],
+        [
+          1206,
+          150,
+          0,
+          0
+        ]
+      ],
+      "all100_slots": [
+        [
+          123,
+          100,
+          0,
+          0
+        ]
+      ]
+    }
+  ],
+  "kind16_contexts_separate": [
+    {
+      "description_key": "table/t_skill.tbl/sha256:774dd1177940f38bd01a4a85391a7ec1e3f70907edaf219f44924094957f693f/description",
+      "group": [
+        [
+          120,
+          100,
+          0,
+          0
+        ]
+      ],
+      "all100_slots": [
+        [
+          120,
+          100,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "description_key": "table/t_skill.tbl/sha256:2d7167cc372986db29b18c54a7d838579249812bee839481001759454198e66e/description",
+      "group": [
+        [
+          120,
+          100,
+          0,
+          0
+        ],
+        [
+          225,
+          2000,
+          0,
+          0
+        ]
+      ],
+      "all100_slots": [
+        [
+          120,
+          100,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "description_key": "table/t_skill.tbl/sha256:577651642cc07ca4b65687026586ab84eaf27fe820542fcede61189a1d01413c/description",
+      "group": [
+        [
+          120,
+          100,
+          0,
+          0
+        ],
+        [
+          225,
+          4000,
+          0,
+          0
+        ]
+      ],
+      "all100_slots": [
+        [
+          120,
+          100,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "description_key": "table/t_item.tbl/sha256:3f0be5cbbf2ff17fed1f6b518ef4b3b5f92c275375ce9e8fc90fd1ddccfd4427/description",
+      "group": [
+        [
+          120,
+          100,
+          0,
+          0
+        ],
+        [
+          126,
+          100,
+          0,
+          0
+        ]
+      ],
+      "all100_slots": [
+        [
+          120,
+          100,
+          0,
+          0
+        ]
+      ]
+    },
+    {
+      "description_key": "table/t_item.tbl/sha256:3e46a239706cc9deeb62d88c0b703c96754c8a1a6d4baeaee45cb90481b4e5d8/description",
+      "group": [
+        [
+          120,
+          100,
+          0,
+          0
+        ],
+        [
+          126,
+          200,
+          0,
+          0
+        ]
+      ],
+      "all100_slots": [
+        [
+          120,
+          100,
+          0,
+          0
+        ]
+      ]
+    }
+  ],
+  "native_branch_points": {
+    "kind13_compare": "0x34d6e3",
+    "group_order_flag_getter": "0x345ac0 reads manager+0xa11; no live field read in this audit",
+    "format_read": "0x34db97 record+0x28",
+    "all_compare": "0x34dbc1 ==100",
+    "all_resource_lookup": "0x34dbc6 -> TXT_ITEM_HELP_ALL at0xb0a3c0",
+    "stat_append": "0x34dd05 record+0x20",
+    "actual_ui_builder_call": "0x4127f6 ->0x347b70, r9d1",
+    "compact_effect_call": "0x347d83 ->0x34be70, r9d1",
+    "actual_setter_call": "0x412803 ->0x5892c0, return0x412808"
+  },
+  "unknowns": [
+    "This branch did not read manager+0xa11 or acquire any new non-EN live ALL page; non-EN forms use the existing locale-specific branch ordering and focused official fields.",
+    "The five physical kind13 contexts establish available resource producers; only Mom2316 is a new captured UI failure."
+  ],
+  "game_attached": false,
+  "production_written": false,
+  "build_run": false
+}

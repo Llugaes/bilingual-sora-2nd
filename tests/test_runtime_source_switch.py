@@ -204,7 +204,12 @@ class RuntimeSourceSwitchTests(unittest.TestCase):
         ):
             with self.subTest(mode=mode, enabled=enabled):
                 case = BackendFixture(
-                    settings={"interaction": None, "mode": mode, "enabled": enabled}
+                    settings={
+                        "interaction": None,
+                        "mode": mode,
+                        "enabled": enabled,
+                        "experimental_primary": True,
+                    }
                 )
 
                 def step(c):
@@ -253,7 +258,7 @@ class RuntimeSourceSwitchTests(unittest.TestCase):
         self.assertEqual([value for _, value in case.selections], [False, True])
 
     def test_new_source_and_user_pair_supersede_inflight_build(self):
-        case = BackendFixture()
+        case = BackendFixture(settings={"experimental_primary": True})
         building, release = threading.Event(), threading.Event()
 
         def prepare(config):
@@ -376,7 +381,9 @@ class RuntimeSourceSwitchTests(unittest.TestCase):
             root = Path(tmp)
             (root / "generated").mkdir()
             control = root / "control.json"
-            write_config({"primary": "ja", "secondary": "zh-Hans"}, control)
+            write_config(
+                {"primary": "ja", "secondary": "zh-Hans", "experimental_primary": True}, control
+            )
 
             def prepare(_game, config, **kwargs):
                 if kwargs.get("cache_only") == "runtime_fonts":

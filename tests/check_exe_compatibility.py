@@ -11,14 +11,13 @@ import tempfile
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import pefile
-from sora_bilingual.game.exe_compatibility import ExecutableCompatibilityError
-from sora_bilingual.game.native_runtime import native_report
-from sora_bilingual.game import native_contracts
-from sora_bilingual.game.native_contract_data import CONTRACT
-from sora_bilingual.game.native_contracts import resolve_native_contracts
 
 
 def check_image(exe, temporary):
+    from sora_bilingual.game.exe_compatibility import ExecutableCompatibilityError
+    from sora_bilingual.game.native_runtime import native_report
+    from sora_bilingual.game.native_contracts import resolve_native_contracts
+
     raw = exe.read_bytes()
     baseline = native_report(exe)
     allowed, rejected = {}, {}
@@ -98,6 +97,9 @@ def check_image(exe, temporary):
 
 
 def check_reviewed_detours(exe, temporary):
+    from sora_bilingual.game.exe_compatibility import ExecutableCompatibilityError
+    from sora_bilingual.game.native_runtime import native_report
+
     # The public sample is a negative/positive fixture, never an identity gate.
     raw = exe.read_bytes()
     with pefile.PE(data=raw, fast_load=True) as pe:
@@ -158,13 +160,25 @@ def loader_continuations(pe):
     result = {}
     for name in ("font_image_read_call", "font_file_read"):
         matching = [
-            found
+            (variant, found)
             for variant in CONTRACT["functions"][name]["variants"]
             for found in [{}]
             if follow(functions[name], variant, found)
         ]
-        assert len(matching) == 1, name
-        result.update(matching[0])
+        assert matching, name
+        # The retained 1.0 pinned IAT and the relocated 045 form can both
+        # describe the same already-verified code. Keep actual dependency
+        # identity unambiguous instead of counting equivalent templates.
+        assert (
+            len(
+                {
+                    native_contracts._variant_semantics(pe, functions[name], variant)
+                    for variant, _found in matching
+                }
+            )
+            == 1
+        ), name
+        result.update(matching[0][1])
     return functions, result
 
 
@@ -287,7 +301,20 @@ def check_loader_data_and_imports(exe, temporary):
         # bodies and relationship. These altered PEs are static fixtures only.
         rootio = wrapper - 0xF0  # Reviewed fixture layout; section names are irrelevant.
         moved = bytearray(raw)
-        moved_table, moved_routine = rootio + 0x1E00, rootio + 0x1B00
+        moved_routine = rootio + 0x1B00
+        # The retained 1.0 contract requires constant data to be read-only.
+        # The original 045 fixture placed its table in writable loader code;
+        # use mapped zero padding in a read-only data section instead.
+        moved_table = None
+        for section in pe.sections:
+            if section.Characteristics & (0x80000000 | 0x20000000):
+                continue
+            size = min(section.Misc_VirtualSize, section.SizeOfRawData)
+            gap = pe.get_data(section.VirtualAddress, size).find(bytes(1027))
+            if gap >= 0:
+                moved_table = (section.VirtualAddress + gap + 3) & ~3
+                break
+        assert moved_table is not None, "fixture needs mapped read-only CRC padding"
         for target_rva, source_rva, size in (
             (moved_table, table, 1024),
             (moved_routine, routine, routine_template["size"]),
@@ -320,7 +347,27 @@ def main():
     parser.add_argument("--old-exe", type=Path)
     parser.add_argument("--relinked-voice-exe", type=Path)
     parser.add_argument("--output", type=Path)
+    parser.add_argument(
+        "--package", type=Path, help="Use this final candidate's production native resolver"
+    )
     args = parser.parse_args()
+    if args.package:
+        sys.path.insert(0, str(args.package.resolve()))
+    global \
+        ExecutableCompatibilityError, \
+        native_report, \
+        native_contracts, \
+        CONTRACT, \
+        resolve_native_contracts
+    from sora_bilingual.game.exe_compatibility import ExecutableCompatibilityError
+    from sora_bilingual.game.native_runtime import native_report
+    from sora_bilingual.game import native_contracts
+    from sora_bilingual.game.native_contract_data import CONTRACT
+    from sora_bilingual.game.native_contracts import resolve_native_contracts
+    from sora_bilingual.game import native_runtime
+
+    if args.package:
+        assert Path(native_runtime.__file__).resolve().is_relative_to(args.package.resolve())
     with tempfile.TemporaryDirectory(prefix="sora-exe-contract-") as tmp:
         temporary = Path(tmp) / "sora_2nd.exe"
         result = {"baseline": check_image(args.exe, temporary)}
@@ -340,6 +387,7 @@ def main():
             result["issue_voice_data_import_counterexamples"] = check_loader_data_and_imports(
                 args.relinked_voice_exe, temporary
             )
+    result["production_native_runtime"] = str(Path(native_runtime.__file__).resolve())
     encoded = json.dumps(result, ensure_ascii=False, indent=2) + "\n"
     if args.output:
         args.output.write_text(encoded, encoding="utf-8")

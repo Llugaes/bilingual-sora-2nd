@@ -36,6 +36,28 @@ function scriptSha256(input) {
 const expressionPrefix=value=>(value.match(/^(?:<#[^<>]*>)*/)||[''])[0];
 const expressionBody=value=>value.slice(expressionPrefix(value).length);
 
+function identityDiagnosticText(value,limit){return typeof value==='string'?value.slice(0,limit):null;}
+function identityDiagnosticInteger(value){return Number.isSafeInteger(value)&&value>=0?value:null;}
+function identityTraceEvent(candidate,stage){
+    // A typed scalar whitelist: malformed/rejected model metadata is not safe
+    // to spread into telemetry, stringify or coerce through custom methods.
+    const key=candidate?.key,file=candidate?.file,sha256=candidate?.sha256;
+    return {stage:identityDiagnosticText(stage,64),stage_truncated:candidate?.stage_truncated===true||typeof stage==='string'&&stage.length>64,
+        key:identityDiagnosticText(key,512),key_truncated:candidate?.key_truncated===true||typeof key==='string'&&key.length>512,
+        file:identityDiagnosticText(file,256),file_truncated:candidate?.file_truncated===true||typeof file==='string'&&file.length>256,
+        sha256:identityDiagnosticText(sha256,64),sha256_truncated:candidate?.sha256_truncated===true||typeof sha256==='string'&&sha256.length>64,
+        offset:identityDiagnosticInteger(candidate?.offset),size:identityDiagnosticInteger(candidate?.size),
+        record_at:identityDiagnosticInteger(candidate?.record_at),field_at:identityDiagnosticInteger(candidate?.field_at)};
+}
+const noIdentityTrace=()=>{};
+function identityTraceRecorder(trace){
+    if(typeof trace!=='function')return noIdentityTrace;
+    return (candidate,stage)=>{
+        try{trace(identityTraceEvent(candidate,stage));}
+        catch(_){/* Diagnostic metadata/consumer errors never affect identity selection. */}
+    };
+}
+
 class ScriptIdentities {
     constructor(model,hash=scriptSha256) {
         this.hash=hash;
@@ -55,24 +77,28 @@ class ScriptIdentities {
         if(!this.pointerCache.has(key))this.pointerCache.set(key,{key,model:item.model});
         return this.pointerCache.get(key);
     }
-    pointerSelect(pointer,source) {
-        if(!Object.hasOwn(this.pointers,source))return null;
+    pointerSelect(pointer,source,trace=null) {
+        const note=identityTraceRecorder(trace);
+        if(!Object.hasOwn(this.pointers,source)){note(null,'no_source_candidates');return null;}
         const verified=new Map();let result=null,pair=null;
         for(const c of this.pointers[source]) {
             try {
-                if(c.size>16*1024*1024||c.offset>=c.size)continue;
+                if(c.size>16*1024*1024||c.offset>=c.size){note(c,'invalid_candidate');continue;}
                 const base=pointer.add(-c.offset),token=String(base)+'/'+c.sha256;
                 if(!verified.has(token)) {
                     const header=Array.from(new Uint8Array(base.readByteArray(24))).map(v=>v.toString(16).padStart(2,'0')).join('');
-                    verified.set(token,header===c.header&&(this.hash.pointer?this.hash.pointer(base,c.size):this.hash(base.readByteArray(c.size)))===c.sha256);
+                    verified.set(token,header!==c.header?'header_mismatch':
+                        (this.hash.pointer?this.hash.pointer(base,c.size):this.hash(base.readByteArray(c.size)))!==c.sha256?'script_hash_mismatch':'verified');
                 }
-                if(!verified.get(token))continue;
-                const current=this.pointerLookup(c.key,source);if(!current)continue;
+                if(verified.get(token)!=='verified'){note(c,verified.get(token));continue;}
+                const current=this.pointerLookup(c.key,source);if(!current){note(c,'model_source_mismatch');continue;}
                 const expected=JSON.stringify(current.model.pairs[source]);
-                if(result&&expected!==pair)return null;
+                if(result&&expected!==pair){note(c,'ambiguous_translation');return null;}
+                note(c,'candidate_verified');
                 result=current;pair=expected;
-            }catch(e){/* Heap copies and unrelated resources have no script identity. */}
+            }catch(e){note(c,'unreadable_pointer');/* Heap copies and unrelated resources have no script identity. */}
         }
+        if(result)note(result,'selected');
         return result;
     }
     historyMarkerIdentity(marker,speaker,source) {
@@ -166,7 +192,9 @@ class ScriptIdentities {
         return this.cache.get(key);
     }
     lookup(identity,source=identity?.source) {
+        if(identity.rejection)return null;
         if(Object.hasOwn(identity,'source')&&source!==identity.source)return null;
+        if(identity.controlDialogue&&identity.recordKey)return this.recordLookup(identity,identity.recordKey,source);
         if(identity.producer)return this.producerLookup(identity,source);
         const {signature,sha256,functionName,argumentsToken}=identity;
         const scripts=Object.hasOwn(this.scripts,signature)?this.scripts[signature]:[];
@@ -204,13 +232,26 @@ class ScriptIdentities {
         }
         return this.cache.get(id);
     }
-    capturedIdentity(candidate,identity,functionName,source) {
+    capturedIdentity(candidate,identity,functionName,source,site=null) {
         if(source!==null&&source!==undefined) {
             if(typeof source!=='string')return null;
             identity.source=source;
             if(this.sourceLanguage)identity.sourceLocale=this.sourceLanguage;
         }
         if(!Object.hasOwn(identity,'callId'))return identity;
+        const sites=candidate.callSites?.[functionName]||{};
+        if(Object.values(sites).some(row=>row.record===identity.callId&&Array.isArray(row.controlVariants))) {
+            const row=sites[site?.pc],values=identity.argumentsToken.split(',');
+            const token=Number(values[row?.controlSlot]);
+            const proven=row?.record===identity.callId&&row.group===site?.group&&row.command===site?.command&&
+                Number.isInteger(token)&&token>=0&&token<=0xffffffff&&
+                row.controlVariants?.some(v=>v.token===token&&typeof source==='string'&&expressionBody(v.source)===expressionBody(source));
+            if(!proven)return {...identity,rejection:'unproven_control_dialogue_output'};
+            identity.controlDialogue=true;
+            const key=candidate.recordVariants?.[functionName]?.[identity.callId]?.[expressionBody(source)];
+            if(typeof key==='string')identity.recordKey=key;
+            return identity;
+        }
         const record=candidate.recordKeys?.[functionName]?.[identity.callId];
         if(!record)return identity;
         if(typeof source!=='string'||typeof record.source!=='string'||
@@ -268,14 +309,14 @@ class ScriptIdentities {
                         const expected=pattern.slice(prefix.length).split(','),actual=argumentsToken.split(',');
                         if(expected.length===actual.length&&expected.every((v,i)=>v==='?'||v===actual[i]))matches=matches.concat(records);
                     }
-                    if(!matches.length)return this.capturedIdentity(candidate,identity,functionName,source); // Dynamic producers retain their own parameter contracts.
+                    if(!matches.length)return this.capturedIdentity(candidate,identity,functionName,source,site); // Dynamic producers retain their own parameter contracts.
                     if(matches.length>1) {
                         const call=candidate.callSites?.[functionName]?.[site.pc];
                         matches=call&&call.group===site.group&&call.command===site.command&&matches.includes(call.record)?[call.record]:[];
                     }
                     if(matches.length!==1)return null;
                     identity.callId=matches[0];identity.pc=site.pc;
-                    return this.capturedIdentity(candidate,identity,functionName,source);
+                    return this.capturedIdentity(candidate,identity,functionName,source,site);
                 }
                 if(Object.hasOwn(candidate,'callSites')) {
                     const sites=candidate.callSites[functionName];
@@ -285,7 +326,7 @@ class ScriptIdentities {
                             !expected.every((value,i)=>value==='?'||value===actual[i]))return null;
                     identity.callId=call.record;identity.pc=site.pc;
                 }
-                return this.capturedIdentity(candidate,identity,functionName,source);
+                return this.capturedIdentity(candidate,identity,functionName,source,site);
             }catch(e){/* An unrelated or unreadable heap buffer has no provenance. */}
         }
         return null;
@@ -308,40 +349,62 @@ class ScriptIdentities {
     }
 }
 class TableIdentities {
-    constructor(model,hash=scriptSha256) {this.hash=hash;this.model=model||{sources:{},models:{},files:{}};this.cache=new Map();}
+    constructor(model,hash=scriptSha256,verifiedTransforms=[]) {
+        this.hash=hash;this.model=model||{sources:{},models:{},files:{}};this.cache=new Map();
+        this.verifiedTransforms=new Set(verifiedTransforms);
+    }
+    postLoadRecord(candidate) {
+        // The full reviewed Tips loader adds 7400 in AX, then caps at 7799.
+        // +2 is a meaningful flag field: retain its exact transformed value.
+        // No transform is available without the current native capability.
+        if(candidate.record_kind!=='TipsTableData'||
+            candidate.record_transform!=='tips_u16_flag_add7400_cap7799_v1'||
+            !this.verifiedTransforms.has(candidate.record_transform)||
+            ![40,48].includes(candidate.field_at)||
+            JSON.stringify(candidate.pointers)!==JSON.stringify([8,24,40,48])||
+            !/^[0-9a-f]{112}$/.test(candidate.record))return null;
+        const lo=parseInt(candidate.record.slice(4,6),16),hi=parseInt(candidate.record.slice(6,8),16);
+        const value=Math.min(((lo|(hi<<8))+7400)&0xffff,7799);
+        const field=[value&255,value>>>8].map(v=>v.toString(16).padStart(2,'0')).join('');
+        return candidate.record.slice(0,4)+field+candidate.record.slice(8);
+    }
     lookup(key,source) {
         const row=Object.hasOwn(this.model.models,key)?this.model.models[key]:null;
         if(!row||row.source!==source)return null;
         if(!this.cache.has(key))this.cache.set(key,{key,model:row.model});
         return this.cache.get(key);
     }
-    select(pointer,source) {
-        if(!Object.hasOwn(this.model.sources,source))return null;
+    select(pointer,source,trace=null) {
+        const note=identityTraceRecorder(trace);
+        if(!Object.hasOwn(this.model.sources,source)){note(null,'no_source_candidates');return null;}
         const verified=new Map();let found=null,pair=null;
         const hex=data=>Array.from(new Uint8Array(data)).map(v=>v.toString(16).padStart(2,'0')).join('');
         for(const candidate of this.model.sources[source]) {
             try {
                 const file=this.model.files[candidate.file];
-                if(!file||file.size>32*1024*1024||file.floor>file.size||candidate.offset>=file.size)continue;
+                if(!file||file.size>32*1024*1024||file.floor>file.size||candidate.offset>=file.size){note(candidate,'invalid_candidate');continue;}
                 const base=pointer.add(-candidate.offset),token=String(base)+'/'+candidate.file;
                 if(!verified.has(token)) {
                     const header=base.readByteArray(file.header.length/2);
-                    verified.set(token,hex(header)===file.header &&
-                        (this.hash.pointer?this.hash.pointer(base.add(file.floor),file.size-file.floor):this.hash(base.add(file.floor).readByteArray(file.size-file.floor)))===file.pool_sha256);
+                    verified.set(token,hex(header)!==file.header?'header_mismatch':
+                        (this.hash.pointer?this.hash.pointer(base.add(file.floor),file.size-file.floor):this.hash(base.add(file.floor).readByteArray(file.size-file.floor)))!==file.pool_sha256?'pool_hash_mismatch':'verified');
                 }
-                if(!verified.get(token))continue;
+                if(verified.get(token)!=='verified'){note(candidate,verified.get(token));continue;}
                 const record=base.add(candidate.record_at);
-                if(!record.add(candidate.field_at).readPointer().equals(pointer))continue;
+                if(!record.add(candidate.field_at).readPointer().equals(pointer)){note(candidate,'field_pointer_mismatch');continue;}
                 const bytes=new Uint8Array(record.readByteArray(candidate.record.length/2));
                 for(const off of candidate.pointers)bytes.fill(0,off,off+8);
-                if(hex(bytes)!==candidate.record)continue;
+                const actual=hex(bytes);
+                if(actual!==candidate.record&&actual!==this.postLoadRecord(candidate)){note(candidate,'record_mismatch');continue;}
                 const current=this.lookup(candidate.key,source);
-                if(!current)continue;
+                if(!current){note(candidate,'model_source_mismatch');continue;}
                 const value=JSON.stringify(current.model.pairs[source]);
-                if(found&&value!==pair)return null; // shared pool pointer, distinct translations
+                if(found&&value!==pair){note(candidate,'ambiguous_translation');return null;} // shared pool pointer, distinct translations
+                note(candidate,'candidate_verified');
                 found=current;pair=value;
-            }catch(e){/* An ordinary heap copy is not a table pointer. */}
+            }catch(e){note(candidate,'unreadable_pointer');/* An ordinary heap copy is not a table pointer. */}
         }
+        if(found)note(found,'selected');
         return found;
     }
 }

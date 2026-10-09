@@ -1,254 +1,53 @@
-# Bilingual Sora 2nd — 空之轨迹 the 2nd 双语字幕 Mod
+# Sora Bilingual — 空之轨迹 the 2nd 双语 Mod
 
 **简体中文** · [English](README.en.md) · [日本語](README.ja.md)
 
-**Trails in the Sky the 2nd bilingual subtitles & text mod · 空の軌跡 the 2nd 二言語字幕・テキスト表示 Mod**
+在 PC 版游戏中同时显示两种语言，或按住快捷键临时切换。支持简中、繁中、日、英、韩、法、德、西班牙文。
 
-《空之轨迹 the 2nd》PC 双语文本 Mod：对白与菜单可同屏对照，也可按住快捷键临时切换。主、副语言独立选择，支持简中、繁中、日、英、韩、法、德、西班牙文。
+![中日剧情对白](docs/images/dialogue-zh-ja.jpg)
 
-实机验证基线为 Steam build `25386012` / EXE `1.03.2`。0.4.2 按工具实际依赖的原生函数与数据定位，不再因无关 EXE 版本信息、代码或资源变化拒绝连接；可识别函数的地址移动会自动重定位，实际参数或对象结构变化仍需适配。原版与全语音 MOD 1.0.7 附带 EXE 已通过 DEV4 实机验收；后者只替换 EXE，未安装完整语音资源包。稳定版以 Release 为准。工具不改写原始 PAC 和 EXE。完整游戏覆盖、各语言排版与手柄兼容性仍需实机反馈。
+## 安装
 
-**日常游玩推荐：单语言显示＋按住显示副语言。** 平时看主语言，需要对照时按住快捷键，松开恢复。双语同屏仍可使用，但对话日志存在开页停顿和帧率下降的已知限制，详见下方说明。这是使用建议，不会重置已有配置。
+1. 从 [Gitee](https://gitee.com/Llugaes/bilingual-sora-2nd/releases) 或 [GitHub Releases](https://github.com/Llugaes/bilingual-sora-2nd/releases/latest) 下载稳定版 `windows-x64-setup.exe` 并安装。
+2. 打开 **Bilingual Sora 2nd**，首次选择界面语言，再启动游戏。工具自动寻找游戏、检测文字语言并准备字体和映射；首次可能需要数分钟。
+3. 在“语言与显示”选择副语言。主语言默认自动跟随游戏；两者不能相同。游戏切到当前副语言时自动对调，切到其他语言时保留副语言。
 
-## 显示效果
+Windows 10/11 x64，无需管理员权限或另装 Python。安装包支持离线安装，升级保留设置。便携版解压后运行 `BilingualSora2nd.exe`。首次识别游戏语言时设置副语言默认值；之后保留副语言偏好，遇到与游戏语言相同才对调。不修改游戏语言设置、原始 PAC 或 EXE。
 
-游戏实拍：中文正文＋日文副语言。点击图片可查看原尺寸。
+只有打开默认关闭的 **Experimental** 才能手动调整主语言。该功能属于实验性质，可能引入较多不稳定性、不确定性及 bug；如需体验其他主语言，建议直接在游戏内设置语言。关闭后恢复跟随游戏。
 
-![中日对照剧情对白](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/dialogue-zh-ja.jpg)
+## 使用
 
-![双语对话日志](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/dialogue-log-zh-ja.jpg)
+**日常推荐单语言模式 → 按住显示副语言**：按住对照，松开恢复。双语模式可同屏显示；字号、间距、颜色和透明度在“文字排版”调整。
 
-<details>
-<summary>查看道具、装备与场景界面</summary>
-
-![对话中的双语显示](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/dialogue.jpg)
-
-道具名称与底部说明：
-
-![道具界面](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/items.jpg)
-
-装备名称与属性说明：
-
-![装备界面](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/equipment.jpg)
-
-场景交互与提示：
-
-![场景界面](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/field.jpg)
-
-</details>
-
-<details>
-<summary>英文正文＋日文副语言</summary>
-
-![英日对话](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/dialogue-en-ja.jpg)
-
-![英日魔法列表与说明](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/arts-en-ja.jpg)
-
-</details>
-
-## 安装和启动
-
-1. 从 [Gitee 国内下载](https://gitee.com/Llugaes/bilingual-sora-2nd/releases) 或 [GitHub 最新 Release](https://github.com/Llugaes/bilingual-sora-2nd/releases/latest) 的稳定版下载 `bilingual-sora-2nd-版本-windows-x64-setup.exe`，双击完成安装。
-2. 从开始菜单或桌面快捷方式打开 **Bilingual Sora 2nd**，首次选择界面语言；主语言在连接新游戏进程时自动同步，也可随后调整主、副语言。
-3. 工具会自动寻找游戏并准备多语言字体，无需选择目录或游戏文字语言。游戏可以先启动；字体准备完成后自动在游戏内加载。首次语言映射初始化可能需要几分钟，后续复用有效缓存。
-
-适用于 Windows 10/11 x64，无需管理员权限。Python 和运行依赖已内置，下载安装包后可离线安装，无需另外配置环境。界面支持中文、英文、日文，已有设置在升级时保留。
-
-便携版、旧版迁移及排障步骤见下方 [常见问题](#常见问题faq)。
-
-更新器优先使用 Gitee，失败时尝试 GitHub，继续校验大小与 SHA-256并复用未变运行依赖。0.4.4 候选改用公开小型静态索引发现版本，国内更新路径不依赖发行版 API；实际索引尚待审查上线，见 [静态索引说明](docs/UPDATE_INDEX.md)。Gitee 保留最近三个已验证稳定版的安装包与组件，完整便携包与全部历史在 GitHub。0.4.3 及更早版本遇国内 API 限流且 GitHub 不可达时，需从 Gitee 下载新 Setup 手动迁移并保留设置；新增索引不会改变旧客户端。预览版不用于自动更新。
-
-标题栏“···”菜单提供使用说明和发行说明。再次打开程序会显示已有界面，不会重复启动后台。
-
-设置采用游戏原版手册皮肤，左侧分为“语言与显示”“文字排版”“快捷操作”和“工具外观”；标题栏另有独立“更新”入口。主、副语言可在“语言与显示”页自由搭配。“游戏内文字语言”由后端自动检测，只展示状态，不能编辑。主语言只决定 Mod 显示的正文，不会修改游戏设置。连接失败时会自动重试，也可点击页面上方的连接按钮重试。
-
-### 首次运行的默认语言
-
-主语言默认与游戏一致；副语言默认日文，游戏为日文时则默认英文。
-
-每次新启动游戏时，主语言按游戏实际文字语言同步一次；随后可以自行调整，同一次游戏中重新连接不会再次覆盖。副语言及其他偏好在重启和升级时保留。界面支持简体中文、英文、日文，首次启动时选择，也可在“工具外观”的“界面语言”中即时切换或跟随系统。“语言”页顶部为启用开关，主、副语言并排显示。下拉框不会因滚轮经过而改变选择。界面语言与游戏文本配置分别管理。
-
-工具自动发现 Steam 游戏目录。首次进入游戏后自动检测实际文字语言、解析本地资源并建立语言缓存；有效缓存会复用，不会修改游戏语言。后续对白由游戏原生文本控件显示；Qt 界面负责配置和状态。窗口化／无边框下可用，独占全屏不保证能看到设置界面。
-
-### 多语言字库
-
-某些跨语言组合需要补充游戏字库，否则游戏原字体没有的字符可能显示为问号。工具自动从当前本机游戏资源准备外置缓存，连接后在内存中加载完整字库和贴图；启动、退出或重连均不自动写入游戏目录，无需为字体准备重启游戏。界面分别显示准备、校验、加载、就绪或失败状态。游戏字库不随本项目分发；程序另附 OFL 许可的两个补充字形。
-
-## 配置和快捷键
-
-选择显示方式，按需要调整字号和间距。以下为真实设置界面的离线截图，未连接游戏；左图选中推荐的“单语言＋按住显示副语言”。
-
-| 语言与模式 | 文字排版 |
-|---|---|
-| ![语言设置](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/settings-zh-Hans.png) | ![排版设置](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/layout-zh-Hans.png) |
-
-单击小状态条的文字、空白或齿轮可展开／收起设置；按住拖动可一起移动。悬浮条显示语言组合和当前模式。**— 和设置窗口的 × 都隐藏到托盘**，效果继续运行；Esc 只收起设置。需要彻底关闭工具时，右键托盘图标选择“退出工具”；单击托盘或再次运行桌面快捷方式可恢复设置。
-
-![悬浮条：语言组合、状态、设置齿轮与最小化](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/status-bar-zh-Hans.png)
-
-“工具外观”里的 **悬浮条背景不透明度** 默认 100%，完整显示背景；调低数值使背景和边框逐渐变淡，0% 时隐藏背景，仍可点击或拖动。文字、图标以及设置面板保持清晰。不透明度和窗口位置自动保存，旧版设置会换算为对应数值，保持原来的显示效果。
-
-在 **工具外观 → 工具主题** 中，可以即时切换 **空之轨迹（默认）**、**游击士手册** 和 **导力工房**。三套外观采用游戏原版界面资源，覆盖设置面板、悬浮条与更新窗口；选择自动保存，游戏内显示不变。
-
-<details>
-<summary>查看工具主题、界面语言和背景不透明度的设置位置</summary>
-
-![工具主题选择](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/appearance.png)
-
-</details>
-
-| 动作 | 默认快捷键 |
+| 操作 | 默认快捷键 |
 |---|---|
 | 展开／隐藏界面 | Ctrl + Shift + F9 |
 | 当前模式的语言切换 | Ctrl + Shift + F10 |
 
-“快捷操作”中选择要绑定的操作，再录制键盘或 SDL 手柄组合；切换模式后仍使用这组语言切换绑定。已有自定义绑定会保留。默认在游戏前台响应。
+在“快捷操作”选择操作后录制键盘或手柄组合。手柄名称自动识别，也可手选 PlayStation、Xbox 或 Switch；名称选择不改变绑定。
 
-<details>
-<summary>查看快捷键录制和手柄按键名称的设置位置</summary>
+点击小窗口或齿轮打开设置，按住拖动。“—”及设置窗口“×”隐藏到托盘；右键托盘“退出工具”完全退出。小窗口用文字、符号和颜色区分构建、连接、就绪、停用和异常。“工具外观”可切换三种主题、中文／英文／日文界面和背景透明度。
 
-![快捷操作设置](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/shortcuts-zh-Hans.png)
+跨语言字库自动从当前本机资源准备外置缓存，连接后加载到内存；启动、退出、重连均不自动写游戏目录。准备、校验、加载和异常分别显示。历史显式字体安装仍单独管理；默认零写入不等于 DLL-free。
 
-</details>
+## 已知限制与兼容性
 
-手柄绑定自动显示对应键名：PlayStation 的 L1/R1、L2/R2、L3/R3，Xbox 的 LB/RB、LT/RT、LS/RS（按下），以及 Nintendo Switch 的 L/R、ZL/ZR 和摇杆按下。面键、十字键与摇杆方向也按设备映射显示。Steam Input 等转接软件可能让手柄显示为 Xbox，可在“手柄按键名称”中手动选择样式；这只改变名称。新录制的绑定在手柄断开后仍保留键名；旧绑定连接对应手柄即可识别。SDL 没有提供映射的按键保留原始编号。
+- 双语对话日志仍可能出现开页停顿和帧率下降；单语言按住切换可减轻负担。
+- 未确认的配对保留原文；图片、视频内文字不处理。固定文本框可能容不下长文本，可减小字号或改用单语言。
+- 新组合仍需构建映射；有效的单语言解析与身份缓存会复用，不能保证零等待。
+- 0.4.2 实机样本包括原版 Steam build 25386012 / EXE 1.03.2，以及 full-voice MOD 1.0.7 附带 EXE。后者只验收了替换 EXE，未验收完整语音资源包；其他修改版、全游戏及全部语言组合未逐一验证。
 
-- **双语模式**：利用游戏的原生注音布局同时显示两种语言，快捷键开关副语言。
-- **单语言模式**：选择“按一下切换语言”或“按住显示副语言”。按一下切换不会因持续按住而重复触发；按住显示会在松开或失去游戏焦点后恢复主语言。
+## 更新与排障
 
-字号与间距修改后实时生效，切页后保留。副语言颜色按原 RGB 分量相乘，默认 230 / 230 / 230，不透明度 90%；颜色按钮下方的滑块调整不透明度。整体上下偏移仅双语模式生效，正值向下。
+自动检查只提示新版本；下载、安装和回退均需手动确认。更新前退出游戏。国内下载优先 Gitee；GitHub 提供完整便携包与历史版本。回退使用旧版完整包并保留设置，可关闭自动检查。
 
-首次使用或游戏资源变化后，工具会在连接游戏时自动准备语言缓存，可能需要几分钟；有效缓存会直接复用。
+连接失败时查看状态详情并重试；字体异常查看字体状态。窗口化／无边框模式更适合显示工具界面。报告问题请附工具与游戏版本、游戏文字语言、主副语言及精简错误信息，勿上传完整资源、缓存或存档。
 
-## 推荐用法与已知限制
+开发见 [贡献指南](CONTRIBUTING.md)、[架构](docs/ARCHITECTURE.md)、[诊断约定](docs/DEBUGGING.md) 和 [验证记录](docs/verification/README.md)。本地候选须通过用户实机验收才可公开发布。
 
-优先流畅度时，选择 **单语言模式 → 按住显示副语言**，在“快捷操作”页绑定一个方便按住的键盘或手柄组合。平时只显示主语言；需要对照时按住切换，松开恢复。此方式不持续同屏排版两种语言，是目前推荐的日常用法；切换时仍可能有短暂重排，不保证完全没有延迟。
+## 许可与致谢
 
-- **双语对话日志的性能问题尚未消除。** 打开日志可能明显停顿，停留时帧率也可能低于单语言模式；实机反馈中出现过约 **700 ms** 的开页停顿，重复打开也可能发生。实际表现随历史记录量、语言组合和设备而变化。已有缓存与原生优化降低了部分耗时，但不保证消除卡顿，不应视为已经修复。遇到此问题可用上述单语言按住切换方式查看日志。
-- **原因涉及排版和解析，不只是字体绘制。** 双语使用游戏的原生注音布局，日志会集中处理历史文本，并在显示期间反复解析部分控件。改变副语言颜色或透明度不会移除这些工作。
-- **首次语言准备需要时间。** 首次连接、使用尚未缓存的语言组合或游戏资源变更时，需要解析本机资源。初始化会自动进行，完成后显示副语言；这与日志开页卡顿是不同阶段。
-- **覆盖和空间仍有边界。** 无法可靠配对的文本保留原文，图片／影片内的文字不处理。双语不会自动增大游戏的固定文本框，长文本或较大字号仍可能拥挤；可调小字号，或改用单语言模式。完整游戏及所有语言组合尚未全部验证。
-- **正常对白按脚本调用身份区分。** 相同原文可对应不同译文，新对白与日志应保存各自的调用身份。旧日志不一定保留唯一身份；无法恢复时显示稳定选择的官方候选译文，可能与原场景不完全一致，不将候选冒充原对话 ID。项目的资源审计分别报告精确配对、候选兜底和未覆盖项，开发检查入口见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+代码采用 [MIT](LICENSE)，依赖和衍生代码声明见 [THIRD_PARTY.md](THIRD_PARTY.md)。感谢 0xDC00/scripts、Tom、FPACker、Ingert、sora2looseload、Frida、Qt/PySide6、pygame-ce/SDL、pefile、LZ4 和 Inno Setup 及其中文翻译的维护者。
 
-## 更新与回退
-
-标题栏“更新”面板默认 **自动检查新版本**，每 6 小时检查并显示红点，重启保留检查时间及通知；手动检查至少间隔 60 秒，失败时延后重试。不会自动下载安装。点击“下载安装”并确认目标版本才会更新。请先退出游戏；连接未结束时需稍后再次点击，不会排队自动安装。设置、缓存和窗口状态会保留，旧版自动更新设置迁移为只检查。两源检查失败时可用国内下载入口或 GitHub 备用入口手动重新安装。
-
-需要回退时，点击“选择历史稳定版本…”，选择版本后确认。回退会保留配置，并关闭旧版自动更新／自动检查，避免又升回问题版本；之后仍可手动检查。草稿、预发布及已撤回版本不在稳定版列表内。
-
-<details>
-<summary>查看标题栏“更新”打开的独立面板</summary>
-
-![更新面板：自动检查、手动安装与历史回退](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/updates-zh-Hans.png)
-
-</details>
-
-## 常见问题（FAQ）
-
-<details>
-<summary>已经退出工具，安装器为什么仍提示正在运行？</summary>
-
-0.3.15 及更早版本的游戏连接会保留到游戏退出，因此可能仍被安装器检测到。请先保存并退出游戏，再从托盘退出工具后重试。
-
-从 0.3.16 起：从托盘选择“退出工具”会关闭双语效果，并等待界面、后端和准备进程全部结束，完成后托盘图标才消失。游戏继续运行，重开工具可恢复双语；收起或隐藏界面仍保持连接。旧版本已经建立的连接需要先随游戏正常退出一次，才能使用新的退出机制。
-
-</details>
-
-<details>
-<summary>不想安装，怎样使用便携版？Release 里其他文件是什么？</summary>
-
-从 Release 下载不带 `app` 或 `runtime` 后缀的完整 `bilingual-sora-2nd-版本-windows-x64.zip`，解压到有写权限的独立文件夹，双击 **BilingualSora2nd.exe**。保留完整目录，不要单独移动 EXE。
-
-`app`、`runtime` ZIP 和 `bilingual-sora-2nd-update.json` 供工具内更新使用，GitHub 的 Source code 附件供开发者使用。更新器会复用未变化的运行环境，无需逐级升级。
-
-</details>
-
-<details>
-<summary>旧版升级失败，或提示“更新包文件过多”怎么办？</summary>
-
-从 **0.2.x** 升级：旧版更新器无法安装内置运行环境，需要一次手动迁移。退出旧工具，将新包解压到新目录，复制旧目录的 `generated/native-control.json` 和 `generated/overlay-window.ini`（不要复制 `.venv/`、`generated/updates/` 或旧热加载清单），再运行新 EXE。之后便携版的程序和依赖都支持工具内手动更新。开发目录继续保留，不覆盖其源码。
-
-0.2.2 的“更新包文件过多”也是旧更新器限制，请按上述步骤迁移。0.3.0–0.3.3 首次自动升级仍下载完整包，之后使用组件更新。
-
-</details>
-
-<details>
-<summary>如何覆盖安装或卸载？</summary>
-
-覆盖安装或卸载前，从托盘退出工具并结束游戏连接。重新运行最新版安装器即可覆盖安装；也可从 Windows“已安装的应用”中卸载。个人配置保留，安装器不会强行关闭游戏。
-
-</details>
-
-<details>
-<summary>字库自动准备失败，怎样排查？</summary>
-
-通常无需手动操作。仅在自动准备失败时，可用下列命令排查或重试：
-
-```powershell
-$runtime = Get-Content runtime/current.txt
-& ".\runtime\$runtime\python.exe" -m sora_bilingual.fonts.install_font_patch --game "你的游戏安装目录" --install
-```
-
-安装器随程序附带经过审计的 [sora2looseload](https://github.com/lmaple0/sora2looseload) 加载器，SHA-256 为 `e08a18068a482bb5d187a62023759c0e14ab69d76395b773ef0405d35e2ac8c7`。摘要不匹配时不会跳过校验或覆盖其他 Mod 的文件。
-
-</details>
-
-<details>
-<summary>更新失败后怎样恢复？配置保存在什么位置？</summary>
-
-更新失败时，“更新”面板提供下载与日志入口，可下载最新安装 EXE 重新安装。
-
-确认安装后，更新包在后台下载并核验仓库、版本、文件清单及 SHA-256。游戏仍连接时，请退出游戏后再次点击安装，不会自动排队安装；完成后控制界面自动重载，恢复位置和展开／隐藏状态。配置和缓存保留在 `generated/`，内置依赖位于 `runtime/`。安装发生中断时，下次从快捷方式启动会先完成提交或恢复旧文件。备份在 `generated/updates/backup-*`。
-
-工具内安装只适用于带 `installed-manifest.json` 的发行包安装。Git 开发目录及被手工改动的软件文件不会被覆盖。运行环境更新会写入新的版本目录，界面重载后切换；不覆盖正在使用的 Python/DLL。旧运行环境保留供恢复，可能占用额外磁盘空间。预发布、草稿和旧版本不会自动安装。
-
-</details>
-
-## 开发和发布
-
-<details>
-<summary>开发环境、测试与发布命令</summary>
-
-```powershell
-py -3.14 -m venv .venv
-.venv\Scripts\python.exe -m pip install -e ".[dev]"
-.venv\Scripts\python.exe -m tools.dev check
-```
-
-`tests/check_overlay_update.py` 使用独立配置验证真实 Qt 界面重载；不会连接游戏。`tests/check_native_transport.py` 需要本地资源，只附加自己创建的测试进程。它们不属于 CI 的无游戏单元测试。
-
-开发修改通过 `python -m tools.dev publish-local` 语法检查并原子发布本地热加载清单；界面和文本逻辑自动切换，底层驻留钩子更新等待游戏下一次启动。不要在游戏运行时强杀或卸载注入脚本。
-
-工程布局与依赖规则见 [架构说明](https://github.com/Llugaes/bilingual-sora-2nd/blob/main/docs/ARCHITECTURE.md)，日常修改流程见 [贡献指南](https://github.com/Llugaes/bilingual-sora-2nd/blob/main/CONTRIBUTING.md)。
-
-本轮文本覆盖、日志身份和未验证项见 [文本核查报告](docs/verification/README.md)。离线检查、本地候选与实机验收分别记录。
-
-维护者同步修改 distribution.json 和 pyproject.toml 版本后推送 `vX.Y.Z` 标签。GitHub Actions 在 Windows 上验证测试，从明确的文件白名单构建完整 ZIP、更新组件及离线安装器，通过便携版启动和安装器检查后，上传到草稿 Release。维护者核对成品与用户已验收候选一致后才正式公开；客户端自动检查仍只提示，下载安装由用户触发。手动构建：
-
-```powershell
-$distribution = Get-Content distribution.json | ConvertFrom-Json
-.venv\Scripts\python.exe -m tools.build_portable --version $distribution.version --repository $distribution.repository
-```
-
-Gitee 分发复用 GitHub 的同一份正式发布文件；每次 GitHub 发版完成后，由维护者电脑主动执行一次下载、校验及上传，完成即退出，不定时轮询、不另建一套构建。一次性中转、凭据轮换和检查命令见 [本地中转发布](docs/LOCAL_RELEASE_RELAY.md)。
-
-仓库仅在文档中收录精选演示截图；发行包不附带这些图片。发布包和仓库不包含游戏资源包、从游戏生成的字库、完整文本索引、日志或用户配置。报告问题时请附工具版本、游戏版本、语言组合与精简错误信息，避免上传完整游戏数据。
-
-</details>
-
-## 许可
-
-项目代码使用 [MIT](LICENSE)。第三方代码与格式参考见 [THIRD_PARTY.md](THIRD_PARTY.md)。游戏、商标和游戏资源属于其权利人；本项目为非官方工具。
-
-## 致谢
-
-感谢以下开源项目及其维护者，让这个工具得以实现：
-
-- [0xDC00/scripts](https://github.com/0xDC00/scripts)，以及 Tom（tomrock645）：游戏文本钩子的调用点签名参考与衍生代码。
-- [FPACker](https://github.com/coinkillerl/FPACker)、[Ingert](https://github.com/Aureole-Suite/Ingert)：资源容器与脚本格式参考。
-- [sora2looseload](https://github.com/lmaple0/sora2looseload)：随本工具分发的游戏字库加载器。
-- [Frida](https://github.com/frida/frida)：运行时原生文本处理；[Qt for Python / PySide6](https://doc.qt.io/qtforpython-6/)：设置与状态界面。
-- [pygame-ce / SDL](https://github.com/pygame-community/pygame-ce)：手柄输入；[pefile](https://github.com/erocarrera/pefile)：PE 文件读取；[python-lz4 / LZ4](https://github.com/python-lz4/python-lz4)：字库纹理压缩。
-- [Inno Setup](https://jrsoftware.org/) 及 [简体中文翻译](https://github.com/kira-96/Inno-Setup-Chinese-Simplified-Translation)：Windows 安装向导。
-
-依赖按各自许可证提供；引用代码的声明保留在 [THIRD_PARTY.md](THIRD_PARTY.md)。
+这是非官方工具；游戏、商标与美术资源属于其权利人。发行包不含游戏资源包、生成字库、完整文本索引或用户配置。
