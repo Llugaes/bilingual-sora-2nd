@@ -26,3 +26,14 @@
 完整 `python -B -X utf8 -m tools.dev check` 退出码 0：Python 819 项（9 项原有跳过）、Node 225 项、已启用的隐藏原生宿主检查通过；默认 6 项 EXE 专用检查继续明确跳过。发布/上传/连接文本出自隔离测试替身，不代表本轮发生了这些对外操作。日志位于相邻 `detail-inset-evidence/full-check.log`。
 
 隐藏主机证明原点，不克隆完整字体排版或 GPU 绘制。最终上下边界、邻接内容和实际画面仍需新游戏进程加载候选验收；旧游戏里的 r3 保留，未热更。
+
+## r4 本地候选
+
+- 代码冻结：`4729ef417be480eea0d9015ff5bad52613392aeb`，显示版本 `DEV 1.0.1-dev1-r4`。
+- 入口：`dist/detail-inset-r4/DEV/BilingualSora2nd.exe`；ZIP：`dist/detail-inset-r4/packages/bilingual-sora-2nd-1.0.1-dev1-r4-windows-x64.zip`。
+- ZIP 为 109,353,779 字节，SHA-256 `f443acc382438f72e13d6592850fe854bf7ac30c195a59aec4fdc69aa913a223`。
+- 磁盘和 ZIP 的 672 个受管文件逐项核验；相对 r3 仅 `native_agent.js` 改变，552 个启动器/运行环境文件保持一致，文本解析器及语言编译器未变。
+- 使用候选自己的 Python、Frida/V8、包内源码，分别重跑说明原点 3,360 项和小标题全部 19 项合同，通过。测试辅助反汇编依赖只来自外部测试环境，未加入分发包；独立临时目录已删除。
+- 本机 DEV 目录预置与当前代码/真实资源指纹匹配的 catalog、模型和 wire，复制 r3 白名单内的可见设置；更新策略关闭，不复制 agent token 或驻留状态，ZIP 不含游戏资源/用户设置。
+
+证据保存在相邻 `detail-inset-evidence`：`final-package-audit.json`、`packaged-native-audit.json`、`packaged-detail-first-line.json` 和 `title-boundary/packaged-title-layout.json`。未 push、未发布、未启动 r4，当前游戏与 r3 未替换。用户需退出游戏与 r3 后，在新游戏进程验收该候选；重点检查首段无副文、首段有副文、仅正文副文的说明及容器下沿。
