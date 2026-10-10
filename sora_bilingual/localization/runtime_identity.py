@@ -926,6 +926,8 @@ def compile_table_identities(game, entries, primary, secondary, language, *, res
         and complete_pair(e["texts"], primary, secondary)
         and e["texts"][language] not in resolved_pairs
     }
+    # Preserve the exact path + "/" boundary, including nested table paths.
+    needed_paths = {key[:index] for key in needed for index, char in enumerate(key) if char == "/"}
     sources = defaultdict(list)
     models = {}
     files = {}
@@ -933,7 +935,7 @@ def compile_table_identities(game, entries, primary, secondary, language, *, res
     try:
         logical = _logical_tables(archive)
         for path, actual in logical.items():
-            if not any(k.startswith(path + "/") for k in needed):
+            if path not in needed_paths:
                 continue
             data = archive.read(actual)
             headers = sections(data)

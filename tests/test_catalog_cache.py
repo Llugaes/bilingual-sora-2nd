@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -16,6 +17,62 @@ from sora_bilingual.localization.native_catalog import (
 
 
 class CatalogCacheTests(unittest.TestCase):
+    def test_code_fingerprint_does_not_read_game_resources(self):
+        from sora_bilingual.localization import native_catalog
+
+        with patch.object(
+            native_catalog, "_resource_snapshot", side_effect=AssertionError("PAC read")
+        ):
+            current = native_catalog._code_fingerprint()
+            legacy = native_catalog._code_fingerprint(legacy=True)
+        self.assertEqual(set(current), {"catalog_code", "code"})
+        self.assertEqual(set(legacy), {"catalog_code", "code"})
+        self.assertNotEqual(current["catalog_code"], legacy["catalog_code"])
+
+    def test_legacy_migration_hashes_resources_only_at_existing_validation_points(self):
+        from sora_bilingual.localization import native_catalog
+
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            game, _ = self.resource_fixture(root)
+            out = root / "output"
+            out.mkdir()
+            (out / "catalog.json").write_text('{"entries":[]}', "utf-8")
+            legacy = fingerprint(game, legacy=True)
+            (out / "catalog-signature.json").write_text(
+                json.dumps(
+                    {"resources": legacy["resources"], "code": legacy["catalog_code"]},
+                    sort_keys=True,
+                ),
+                "utf-8",
+            )
+            original_read = Path.read_bytes
+            source_reads = []
+
+            def record_source_read(path):
+                source_reads.append(path.name)
+                return original_read(path)
+
+            with (
+                patch.object(
+                    native_catalog, "_resource_snapshot", wraps=native_catalog._resource_snapshot
+                ) as resources,
+                patch.object(Path, "read_bytes", record_source_read),
+                patch("sora_bilingual.localization.catalog_build.build_all") as build,
+            ):
+                entries, signature = load_entries(game, out)
+            self.assertEqual(entries, [])
+            self.assertEqual(
+                resources.call_count, 2, "initial snapshot and catalog_read validation"
+            )
+            self.assertEqual(
+                source_reads.count("menu_text.py"), 1, "migration needs only catalog code"
+            )
+            build.assert_not_called()
+            manifest = json.loads((out / "catalog-signature.json").read_text("utf-8"))
+            self.assertEqual(manifest["resources"], json.loads(signature)["resources"])
+            self.assertEqual(manifest["code"], json.loads(signature)["catalog_code"])
+
     def test_idle_cache_identity_does_not_import_the_compiler(self):
         result = subprocess.run(
             [
@@ -314,18 +371,24 @@ class CatalogCacheTests(unittest.TestCase):
             (out / "catalog.json").write_text('{"entries":[]}', encoding="utf-8")
             manifest = out / "catalog-signature.json"
             manifest.write_text(
-                json.dumps({"resources": [], "code": "old"}, sort_keys=True), encoding="utf-8"
+                json.dumps(
+                    {"resources": [], "code": hashlib.sha256(b"old").hexdigest()}, sort_keys=True
+                ),
+                encoding="utf-8",
             )
 
-            def stamp(_game, legacy=False):
+            def stamp(_game):
                 return {
                     "resources": [],
-                    "catalog_code": "old" if legacy else "new",
+                    "catalog_code": "new",
                     "code": "model",
                 }
 
             with (
                 patch("sora_bilingual.localization.native_catalog.fingerprint", side_effect=stamp),
+                patch(
+                    "sora_bilingual.localization.native_catalog._catalog_code", return_value=b"old"
+                ),
                 patch("sora_bilingual.localization.catalog_build.build_all") as build,
             ):
                 load_entries("unused", out)

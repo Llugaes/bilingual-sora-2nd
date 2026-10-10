@@ -76,8 +76,8 @@ def _signature_resources(signature, game):
     )
 
 
-def fingerprint(game, *, legacy=False):
-    resources = _resource_snapshot(game)
+def _catalog_code(*, legacy=False):
+    """Return parser identity bytes without inspecting game resources."""
     parser_code = b"".join(
         (ROOT / n).read_bytes()
         for n in (
@@ -97,6 +97,11 @@ def fingerprint(game, *, legacy=False):
     ).encode()
     if legacy:
         parser_code = legacy_parser_code
+    return parser_code
+
+
+def _code_fingerprint(*, legacy=False):
+    parser_code = _catalog_code(legacy=legacy)
     code = hashlib.sha256(
         parser_code
         + b"".join(
@@ -119,10 +124,14 @@ def fingerprint(game, *, legacy=False):
         )
     ).hexdigest()
     return {
-        "resources": resources,
         "code": code,
         "catalog_code": hashlib.sha256(parser_code).hexdigest(),
     }
+
+
+def fingerprint(game, *, legacy=False):
+    resources = _resource_snapshot(game)
+    return {"resources": resources, **_code_fingerprint(legacy=legacy)}
 
 
 def load_entries(game, output=ROOT / "generated"):
@@ -143,7 +152,7 @@ def load_entries(game, output=ROOT / "generated"):
         legacy = json.dumps(
             {
                 "resources": stamp["resources"],
-                "code": fingerprint(game, legacy=True)["catalog_code"],
+                "code": hashlib.sha256(_catalog_code(legacy=True)).hexdigest(),
             },
             sort_keys=True,
         )
@@ -381,11 +390,11 @@ def _load_model(
     )
 
     start = time.perf_counter()
+    has_speaker_ids = any(e.get("speaker_ids") for e in selected)
     names_by_locale = {
         locale: read_speaker_names(game, locale)
         for locale, archive in archive_names("table").items()
-        if any(e.get("speaker_ids") for e in selected)
-        and (Path(game) / "pac/steam" / archive).exists()
+        if has_speaker_ids and (Path(game) / "pac/steam" / archive).exists()
     }
     model["speaker_contexts"] = compile_speaker_contexts(
         selected,
