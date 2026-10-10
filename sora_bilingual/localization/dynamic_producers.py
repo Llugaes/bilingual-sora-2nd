@@ -10,6 +10,8 @@ record, and the corresponding raw table row.
 from __future__ import annotations
 
 from collections import Counter, defaultdict
+from contextlib import ExitStack
+from dataclasses import dataclass
 import hashlib
 import json
 from pathlib import Path
@@ -20,6 +22,7 @@ from sora_bilingual.config.locales import LANGUAGES, archive_names
 from sora_bilingual.localization.menu_tables import sections
 from sora_bilingual.localization.resources import (
     FpacArchive,
+    Called,
     FormatError,
     Script,
     PANEL_FLAGS,
@@ -170,33 +173,75 @@ def _audit(reason: str, **detail: object) -> dict[str, object]:
     return {"reason": reason, **detail}
 
 
-def _read_scripts(game: Path, audit: dict[str, object]) -> dict[str, dict[str, Script]]:
-    """Return parsed logical scripts by locale and record every unavailable input."""
-    result: dict[str, dict[str, Script]] = {}
+@dataclass(frozen=True)
+class ProducerFunction:
+    """Complete call metadata after full SCP validation; not a bytecode proof."""
+
+    flags: int
+    arg_types: tuple[int, ...]
+    called: tuple[Called, ...]
+
+
+@dataclass(frozen=True)
+class ProducerScript:
+    functions: dict[str, ProducerFunction]
+
+
+def _producer_script(data: bytes) -> ProducerScript:
+    # All dynamic producers below consume only ordered call metadata, flags
+    # and argument types. Validate the complete program first, then release
+    # unused bytecode/strings before reading the next script. Retaining every
+    # instruction in all eight archives caused multi-GiB startup peaks.
+    script = parse_scp(data)
+    return ProducerScript(
+        {
+            name: ProducerFunction(function.flags, function.arg_types, function.called)
+            for name, function in script.functions.items()
+        }
+    )
+
+
+def _script_batches(game: Path, audit: dict[str, object]):
+    """Yield one logical script across all locales; close every mapped archive."""
     diagnostics = audit["diagnostics"]
     assert isinstance(diagnostics, list)
-    for language, archive_name in archive_names("script").items():
-        path = game / "pac" / "steam" / archive_name
-        if not path.is_file():
-            diagnostics.append(_audit("missing_script_archive", language=language))
-            continue
-        try:
-            with FpacArchive(path) as archive:
-                scripts: dict[str, Script] = {}
-                for logical, actual in _logical_script_entries(archive).items():
-                    if not logical.endswith(".dat"):
-                        continue
-                    try:
-                        scripts[logical] = parse_scp(archive.read(actual))
-                    except FormatError as exc:
-                        diagnostics.append(
-                            _audit(
-                                "invalid_script", language=language, path=logical, detail=str(exc)
-                            )
-                        )
-                result[language] = scripts
-        except FormatError as exc:
-            diagnostics.append(_audit("invalid_script_archive", language=language, detail=str(exc)))
+    with ExitStack() as stack:
+        archives, paths = {}, {}
+        for language, archive_name in archive_names("script").items():
+            path = game / "pac" / "steam" / archive_name
+            if not path.is_file():
+                diagnostics.append(_audit("missing_script_archive", language=language))
+                continue
+            try:
+                archive = stack.enter_context(FpacArchive(path))
+                paths[language] = _logical_script_entries(archive)
+                archives[language] = archive
+            except FormatError as exc:
+                diagnostics.append(
+                    _audit("invalid_script_archive", language=language, detail=str(exc))
+                )
+        for logical in sorted({p for local in paths.values() for p in local if p.endswith(".dat")}):
+            batch = {language: {} for language in paths}
+            for language, local in paths.items():
+                if logical not in local:
+                    continue
+                try:
+                    batch[language][logical] = _producer_script(
+                        archives[language].read(local[logical])
+                    )
+                except FormatError as exc:
+                    diagnostics.append(
+                        _audit("invalid_script", language=language, path=logical, detail=str(exc))
+                    )
+            yield batch
+
+
+def _read_scripts(game: Path, audit: dict[str, object]) -> dict[str, dict[str, ProducerScript]]:
+    """Materialize call metadata only for existing read-only diagnostic callers."""
+    result = {}
+    for batch in _script_batches(game, audit):
+        for language, paths in batch.items():
+            result.setdefault(language, {}).update(paths)
     return result
 
 
@@ -764,8 +809,29 @@ def build_dynamic_entries(
         "counters": Counter(),
         "diagnostics": [],
     }
-    scripts = _read_scripts(Path(game), audit)
-    items = _read_item_rows(Path(game), audit)
+    item_audit = {"counters": Counter(), "diagnostics": []}
+    items = _read_item_rows(Path(game), item_audit)
+    scripts = {}
+    streamed = [([], {"counters": Counter(), "diagnostics": []}) for _ in range(3)]
+    for batch in _script_batches(Path(game), audit):
+        for language, paths in batch.items():
+            if _SYSTEM_PATH in paths:
+                scripts[language] = {_SYSTEM_PATH: paths[_SYSTEM_PATH]}
+        # Each consumer needs only one path's complete locale family. Retain
+        # output records, not all archive parse trees. Family buckets preserve
+        # the historical output/conflict order exactly.
+        for (rows, stats), consume in zip(
+            streamed,
+            (
+                lambda a: _item_entries(batch, items, a),
+                lambda a: _literal_item_panel_entries(batch, items, a),
+                lambda a: _popup_line_entries(batch, a),
+            ),
+            strict=True,
+        ):
+            rows.extend(consume(stats))
+    audit["counters"].update(item_audit["counters"])
+    audit["diagnostics"].extend(item_audit["diagnostics"])
     result: list[dict[str, object]] = []
     result += _emit_numeric(
         scripts,
@@ -807,9 +873,10 @@ def build_dynamic_entries(
         function_name="RegisterBook",
         item_ids_by_locale=_read_book_ids(Path(game), audit),
     )
-    result += _item_entries(scripts, items, audit)
-    result += _literal_item_panel_entries(scripts, items, audit)
-    result += _popup_line_entries(scripts, audit)
+    for rows, stats in streamed:
+        result.extend(rows)
+        audit["counters"].update(stats["counters"])
+        audit["diagnostics"].extend(stats["diagnostics"])
     result = _audit_source_conflicts(result, audit)
     audit["counters"] = dict(sorted(audit["counters"].items()))
     return result, audit

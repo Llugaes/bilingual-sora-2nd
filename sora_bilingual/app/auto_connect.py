@@ -12,6 +12,15 @@ from sora_bilingual.platform.runtime_process import runtime_executable
 from sora_bilingual.paths import ROOT
 
 
+def _resource_change_hint(game):
+    """Cheap prewarm scheduling only; never a cache/connection validity proof."""
+    return tuple(
+        (path.name, (stat := path.stat()).st_size, stat.st_mtime_ns, stat.st_ctime_ns, stat.st_ino)
+        for path in sorted((Path(game) / "pac/steam").glob("*.pac"))
+        if path.name.startswith(("script", "table"))
+    )
+
+
 class ConnectionPolicy:
     def __init__(self):
         self.attempted = set()
@@ -67,6 +76,7 @@ class AutoConnector:
             ModelPreparation,
             prepare_fresh,
             prepare_fonts_fresh,
+            prepare_runtime_fonts_fresh,
         )
         from sora_bilingual.config.locales import LOCALES
         from sora_bilingual.config.native_config import read_config, apply_detected_game_language
@@ -74,7 +84,6 @@ class AutoConnector:
         from sora_bilingual.localization.model_wire import wire_ready
         from sora_bilingual.updates.tool_updates import ReleaseWatch
         from sora_bilingual.fonts.font_delivery import source_fingerprint
-        from sora_bilingual.fonts.runtime_fonts import runtime_manifest
 
         releases = ReleaseWatch()
         device = None
@@ -87,7 +96,7 @@ class AutoConnector:
         )
 
         font_apply = ModelPreparation(
-            lambda c: runtime_manifest(c["game"], c["candidate"]),
+            lambda c: prepare_runtime_fonts_fresh(c["game"], cancel=self.stop),
             lambda c: c,
         )
         self.preparations = [preparation, font_preparation, font_apply]
@@ -101,6 +110,9 @@ class AutoConnector:
         font_fingerprint = None
         next_font_check = 0
         next_discovery = 0
+        next_model_check = 0
+        model_check_identity = None
+        model_resource_hint = None
         source_retry_identity = None
         source_retry_count = 0
         next_source_retry = 0
@@ -171,6 +183,8 @@ class AutoConnector:
                     # One attempt with the new release, never replace a live
                     # or initializing resident backend.
                     self.policy.attempted.difference_update(games)
+                    next_model_check = 0
+                    model_resource_hint = None
                 prepared = preparation.poll()
                 if prepared and prepared[0].get("key") == preparing_key:
                     preparation_error = "预缓存失败：" + str(prepared[2]) if prepared[2] else None
@@ -292,18 +306,35 @@ class AutoConnector:
                             k: config.get(k)
                             for k in ("primary", "secondary", "game_language", "scope", "sources")
                         }
-                        key = (
-                            str(installed_game),
-                            json.dumps(fingerprint(installed_game), sort_keys=True),
-                            json.dumps(identity, sort_keys=True),
-                        )
-                        if key != preparing_key:
-                            if not wire_ready(model_path(key[1], config)):
-                                preparation_error = None
-                                preparation.request(
-                                    {"game": installed_game, "config": config, "key": key}
+                        check_identity = (str(installed_game), json.dumps(identity, sort_keys=True))
+                        now = time.monotonic()
+                        if check_identity != model_check_identity or now >= next_model_check:
+                            # fingerprint verifies the contents of every script/table
+                            # archive. It is no longer a cheap metadata query: do not
+                            # hash hundreds of MiB on each 250 ms process poll.
+                            # Stat is only a prewarm hint. Actual preparation and
+                            # every new connection still verify complete contents,
+                            # including same-size/same-mtime resource changes.
+                            next_model_check = now + 30
+                            hint = _resource_change_hint(installed_game)
+                            if (
+                                check_identity != model_check_identity
+                                or hint != model_resource_hint
+                            ):
+                                key = (
+                                    str(installed_game),
+                                    json.dumps(fingerprint(installed_game), sort_keys=True),
+                                    check_identity[1],
                                 )
-                            preparing_key = key
+                                model_check_identity = check_identity
+                                model_resource_hint = hint
+                                if key != preparing_key:
+                                    if not wire_ready(model_path(key[1], config)):
+                                        preparation_error = None
+                                        preparation.request(
+                                            {"game": installed_game, "config": config, "key": key}
+                                        )
+                                    preparing_key = key
                 # An old-process prewarm is never a reason to delay checking
                 # the new process's current source language.
                 selected = self.policy.choose(games, busy)
@@ -373,7 +404,10 @@ class AutoConnector:
             except Exception as exc:
                 device = None
                 self.message = "自动检测暂不可用：" + str(exc)
-            self.wake.wait(0.25)
+            # Process discovery/status is not the input/render loop. Two checks
+            # per second bound idle enumeration cost; explicit retry/close still
+            # wake immediately through the event.
+            self.wake.wait(0.5)
             self.wake.clear()
 
     def close(self):

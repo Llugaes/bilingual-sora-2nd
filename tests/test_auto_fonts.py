@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 from sora_bilingual.app.auto_connect import AutoConnector
 from sora_bilingual.fonts import font_delivery
+from sora_bilingual.fonts.runtime_fonts import runtime_manifest
 import test_font_delivery as fixtures
 
 
@@ -36,6 +37,13 @@ class AutomaticFontTests(unittest.TestCase):
 
             def prepare(source, *, cancel):
                 return font_delivery.prepare(source, root=state, builder=builder)
+
+            def verify(source, *, cancel):
+                candidate = prepare(source, cancel=cancel)
+                return {
+                    "path": str(candidate),
+                    "runtime_fonts": runtime_manifest(source, candidate),
+                }
 
             def launch(*args, **kwargs):
                 launches.append(args)
@@ -75,6 +83,10 @@ class AutomaticFontTests(unittest.TestCase):
                 patch(
                     "sora_bilingual.game.native_loading.prepare_fonts_fresh", side_effect=prepare
                 ),
+                patch(
+                    "sora_bilingual.game.native_loading.prepare_runtime_fonts_fresh",
+                    side_effect=verify,
+                ),
                 patch("sora_bilingual.fonts.runtime_fonts.FpacArchive") as archives,
                 patch(
                     "sora_bilingual.fonts.font_delivery.ensure",
@@ -95,8 +107,8 @@ class AutomaticFontTests(unittest.TestCase):
                 patch("sora_bilingual.app.auto_connect.subprocess.Popen", side_effect=launch),
                 patch.object(Path, "open", new=checked_open),
             ):
-                # Only the synthetic PAC reader is replaced; candidate generation,
-                # whole-candidate validation and default runtime_manifest are real.
+                # Replace the process boundary and synthetic PAC reader. Candidate
+                # generation, whole-candidate validation and runtime_manifest are real.
                 archives.return_value.read.return_value = fixtures._fnt(0x41)
                 auto = AutoConnector(status)
                 try:
@@ -163,6 +175,10 @@ class AutomaticFontTests(unittest.TestCase):
                 patch("sora_bilingual.game.install.find_game", return_value=game),
                 patch(
                     "sora_bilingual.game.native_loading.prepare_fonts_fresh", side_effect=prepare
+                ),
+                patch(
+                    "sora_bilingual.game.native_loading.prepare_runtime_fonts_fresh",
+                    side_effect=verify,
                 ),
                 patch(
                     "sora_bilingual.fonts.font_delivery.ensure",

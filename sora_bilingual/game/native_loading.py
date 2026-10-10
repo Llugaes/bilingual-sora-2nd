@@ -74,6 +74,11 @@ def prepare_fonts_fresh(game, *, cancel=None):
     return Path(prepare_fresh(game, {}, cache_only="fonts", cancel=cancel))
 
 
+def prepare_runtime_fonts_fresh(game, *, cancel=None):
+    """Validate atlases in the existing disposable worker, not the UI heap."""
+    return prepare_fresh(game, {}, cache_only="runtime_fonts", cancel=cancel)
+
+
 class ModelPreparation:
     """One build at a time. Superseded results never reach the live renderer."""
 

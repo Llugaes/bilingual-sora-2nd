@@ -3,6 +3,8 @@ import os
 from pathlib import Path
 import tempfile
 import unittest
+import subprocess
+import sys
 from unittest.mock import patch
 from sora_bilingual.localization.native_catalog import (
     fingerprint,
@@ -14,6 +16,19 @@ from sora_bilingual.localization.native_catalog import (
 
 
 class CatalogCacheTests(unittest.TestCase):
+    def test_idle_cache_identity_does_not_import_the_compiler(self):
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import sys; from sora_bilingual.localization.native_catalog import fingerprint, model_path; assert 'sora_bilingual.localization.menu_text' not in sys.modules; assert 'sora_bilingual.localization.resources' not in sys.modules; assert 'sora_bilingual.localization.catalog_build' not in sys.modules",
+            ],
+            capture_output=True,
+            text=True,
+            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_resource_drift_during_content_hash_rejects_the_snapshot(self):
         from sora_bilingual.localization import native_catalog
 
@@ -101,7 +116,7 @@ class CatalogCacheTests(unittest.TestCase):
                 pac.write_bytes(b"different resource generation two")
                 return {"entries": []}
 
-            with patch("sora_bilingual.localization.native_catalog.build_all", side_effect=change):
+            with patch("sora_bilingual.localization.catalog_build.build_all", side_effect=change):
                 with self.assertRaisesRegex(
                     ValueError, "resource_changed_during_preparation"
                 ) as error:
@@ -159,7 +174,7 @@ class CatalogCacheTests(unittest.TestCase):
             game, pac = self.resource_fixture(root)
             signature = json.dumps(fingerprint(game), sort_keys=True)
             pac.write_bytes(b"different resource generation two")
-            with patch("sora_bilingual.localization.native_catalog.MenuTranslator") as translator:
+            with patch("sora_bilingual.localization.menu_text.MenuTranslator") as translator:
                 with self.assertRaisesRegex(
                     ValueError, "resource_changed_during_preparation"
                 ) as error:
@@ -311,7 +326,7 @@ class CatalogCacheTests(unittest.TestCase):
 
             with (
                 patch("sora_bilingual.localization.native_catalog.fingerprint", side_effect=stamp),
-                patch("sora_bilingual.localization.native_catalog.build_all") as build,
+                patch("sora_bilingual.localization.catalog_build.build_all") as build,
             ):
                 load_entries("unused", out)
                 build.assert_not_called()
@@ -331,7 +346,7 @@ class CatalogCacheTests(unittest.TestCase):
             ]
             with (
                 patch("sora_bilingual.localization.native_catalog.fingerprint", side_effect=stamps),
-                patch("sora_bilingual.localization.native_catalog.build_all") as build,
+                patch("sora_bilingual.localization.catalog_build.build_all") as build,
             ):
                 a, sa = load_entries("unused", out)
                 b, sb = load_entries("unused", out)
@@ -350,7 +365,7 @@ class CatalogCacheTests(unittest.TestCase):
             game, _pac = self.resource_fixture(out)
             with (
                 patch(
-                    "sora_bilingual.localization.native_catalog.build_all",
+                    "sora_bilingual.localization.catalog_build.build_all",
                     return_value={"entries": []},
                 ) as build,
             ):

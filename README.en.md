@@ -40,6 +40,10 @@ Additional glyphs are prepared from current local resources in an external cache
 
 ## Updates and help
 
+**1.0.1 fixes startup performance issues.** Version 1.0.0 has been withdrawn from stable updates. If opening the tool causes high CPU or memory use, quit and update it. Initial use and resource changes still require cache preparation; the preparation process exits afterwards. While the game is closed, the tool no longer continuously reads all text archives.
+
+The tool was measured against 0.4.5 both with the game closed and in a real game scene; see the [test results and scope](docs/verification/p0-startup-performance.md).
+
 Automatic checks only notify. Download, install and rollback require manual confirmation; exit the game before updating. Gitee is preferred for downloads in China; GitHub retains full portable packages and older releases. Roll back with an older complete package, preserve settings and optionally disable update checks.
 
 For connection failures, read status details and retry; for font failures, check font status. Windowed/borderless mode works best for the tool interface. Report tool/game versions, game text language, primary/secondary languages and a short error excerpt. Do not upload complete game resources, caches or saves.

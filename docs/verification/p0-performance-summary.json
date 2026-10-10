@@ -1,0 +1,144 @@
+{
+  "logical_processors": 16,
+  "cpu_method": "Cumulative per-process seconds / wall seconds / 16 * 100; 100% means all logical processors.",
+  "memory_method": "Private bytes and working set, MiB; steady median. Full owned tool process tree included.",
+  "045": {
+    "cold": {
+      "measured_seconds": 275.7246396,
+      "preparation_seconds": 145.89522110000001,
+      "peak_private_mib": 8235.93359375,
+      "peak_rss_mib": 8326.96484375,
+      "peak_cpu_percent": 26.960301604454102
+    },
+    "idle": {
+      "seconds": 119.536091,
+      "samples": 234,
+      "tool_cpu_percent": 0.2859361320423302,
+      "tool_private_mib": 222.02734375,
+      "tool_private_range_mib": [
+        222.0,
+        222.0546875
+      ],
+      "tool_rss_mib": 231.27734375,
+      "tool_rss_range_mib": [
+        231.0390625,
+        255.26953125
+      ]
+    },
+    "warm_idle": {
+      "seconds": 119.1366599,
+      "samples": 233,
+      "tool_cpu_percent": 0.2524674187210447,
+      "tool_private_mib": 219.76953125,
+      "tool_private_range_mib": [
+        219.66015625,
+        220.375
+      ],
+      "tool_rss_mib": 258.01171875,
+      "tool_rss_range_mib": [
+        257.27734375,
+        258.18359375
+      ]
+    },
+    "game_field": {
+      "seconds": 119.3346525,
+      "samples": 233,
+      "tool_cpu_percent": 0.4443583036369088,
+      "tool_private_mib": 308.76171875,
+      "tool_private_range_mib": [
+        308.50390625,
+        308.859375
+      ],
+      "tool_rss_mib": 335.84375,
+      "tool_rss_range_mib": [
+        335.7421875,
+        336.140625
+      ],
+      "game_cpu_percent": 6.606454116502329,
+      "game_private_mib": 9440.53125,
+      "game_private_range_mib": [
+        9407.61328125,
+        9474.67578125
+      ],
+      "game_rss_mib": 8069.04296875,
+      "game_rss_range_mib": [
+        8035.6171875,
+        8096.33203125
+      ]
+    }
+  },
+  "101-r4": {
+    "cold": {
+      "measured_seconds": 329.5243419,
+      "preparation_seconds": 183.0556095,
+      "peak_private_mib": 2633.09375,
+      "peak_rss_mib": 2394.28125,
+      "peak_cpu_percent": 26.532887641438897
+    },
+    "idle": {
+      "seconds": 119.66606200000001,
+      "samples": 234,
+      "tool_cpu_percent": 0.19422538948428,
+      "tool_private_mib": 184.296875,
+      "tool_private_range_mib": [
+        184.265625,
+        184.3671875
+      ],
+      "tool_rss_mib": 228.4296875,
+      "tool_rss_range_mib": [
+        228.35546875,
+        228.7421875
+      ]
+    },
+    "game_field": {
+      "seconds": 119.27268620000001,
+      "samples": 233,
+      "tool_cpu_percent": 0.41429487399270126,
+      "tool_private_mib": 274.4765625,
+      "tool_private_range_mib": [
+        274.4453125,
+        274.71484375
+      ],
+      "tool_rss_mib": 333.90625,
+      "tool_rss_range_mib": [
+        320.06640625,
+        351.62109375
+      ],
+      "game_cpu_percent": 9.694991310173073,
+      "game_private_mib": 9458.9765625,
+      "game_private_range_mib": [
+        9423.58203125,
+        9491.05078125
+      ],
+      "game_rss_mib": 8104.43359375,
+      "game_rss_range_mib": [
+        8068.5703125,
+        8136.40625
+      ]
+    }
+  },
+  "checks": {
+    "idle": {
+      "tool_cpu_percent": true,
+      "tool_private_mib": true,
+      "tool_rss_mib": true
+    },
+    "game_field": {
+      "tool_cpu_percent": true,
+      "tool_private_mib": true,
+      "tool_rss_mib": true
+    },
+    "post_cold_private_and_cpu": {
+      "tool_cpu_percent": true,
+      "tool_private_mib": true
+    },
+    "cold": {
+      "peak_cpu_percent": true,
+      "peak_private_mib": true,
+      "peak_rss_mib": true
+    }
+  },
+  "passed": true,
+  "sample_csv_sha256": "2f1186c9478007a216d88be6c3c12ef82a32e3961eee126a4cb10a413ed101b4",
+  "tested_portable_sha256": "8e153c7b151508adbd7e51942e2225a58aa6bfbf3dbb672a04064bab6d3a020c"
+}

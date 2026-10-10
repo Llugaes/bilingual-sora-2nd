@@ -8,6 +8,98 @@ from sora_bilingual.app.auto_connect import ConnectionPolicy
 
 
 class AutoConnectTests(unittest.TestCase):
+    def test_idle_ticks_do_not_rehash_entire_game_archives(self):
+        from sora_bilingual.app.auto_connect import AutoConnector
+
+        ticks = []
+        clock = [100.0]
+        config = {"primary": "zh-Hans", "secondary": "ja", "scope": "all", "sources": []}
+        hint = ["resources-v1"]
+
+        def enumerate_processes():
+            ticks.append(1)
+            return []
+
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch("sora_bilingual.app.auto_connect.ROOT", Path(tmp)),
+            patch(
+                "sora_bilingual.app.auto_connect._resource_change_hint",
+                side_effect=lambda _: hint[0],
+            ),
+            patch(
+                "sora_bilingual.app.auto_connect.time",
+                SimpleNamespace(time=time.time, monotonic=lambda: clock[0]),
+            ),
+            patch(
+                "sora_bilingual.config.native_config.read_config", side_effect=lambda: dict(config)
+            ),
+            patch(
+                "sora_bilingual.app.auto_connect.frida.get_local_device",
+                return_value=SimpleNamespace(enumerate_processes=enumerate_processes),
+            ),
+            patch("sora_bilingual.game.install.find_game", return_value=Path(tmp)),
+            patch("sora_bilingual.fonts.font_delivery.source_fingerprint", return_value="fonts"),
+            patch(
+                "sora_bilingual.game.native_loading.prepare_fonts_fresh",
+                return_value=Path(tmp) / "fonts",
+            ),
+            patch(
+                "sora_bilingual.game.native_loading.prepare_runtime_fonts_fresh", return_value={}
+            ),
+            patch(
+                "sora_bilingual.localization.native_catalog.fingerprint", return_value={}
+            ) as fingerprint,
+            patch("sora_bilingual.localization.model_wire.wire_ready", return_value=True),
+            patch("sora_bilingual.game.native_loading.prepare_fresh") as prepare,
+            patch("sora_bilingual.updates.tool_updates.ReleaseWatch.poll", return_value=set()),
+            patch("sora_bilingual.app.auto_connect.subprocess.Popen") as launch,
+        ):
+            status = Path(tmp) / "status.json"
+            status.write_text(
+                json.dumps(
+                    {
+                        "running": False,
+                        "source_language_status": "game_not_running",
+                        "last_detected_game_language": "zh-Hans",
+                    }
+                ),
+                "utf-8",
+            )
+            auto = AutoConnector(status)
+            try:
+                deadline = time.monotonic() + 3
+                while len(ticks) < 8 and time.monotonic() < deadline:
+                    auto.wake.set()
+                    time.sleep(0.01)
+                self.assertEqual(fingerprint.call_count, 1)
+                # Unchanged prewarm hints never authorize use of a cached model;
+                # the separate preparation/connection tests verify full contents.
+                for expected, action in (
+                    (1, lambda: clock.__setitem__(0, 131.0)),
+                    (2, lambda: (hint.__setitem__(0, "resources-v2"), clock.__setitem__(0, 162.0))),
+                    (3, lambda: config.update(secondary="en")),
+                ):
+                    previous_ticks = len(ticks)
+                    action()
+                    deadline = time.monotonic() + 2
+                    while (
+                        fingerprint.call_count < expected or len(ticks) < previous_ticks + 2
+                    ) and time.monotonic() < deadline:
+                        auto.wake.set()
+                        time.sleep(0.01)
+                    self.assertEqual(fingerprint.call_count, expected)
+            finally:
+                auto.close()
+            self.assertGreaterEqual(len(ticks), 8)
+            self.assertEqual(
+                fingerprint.call_count,
+                3,
+                "Idle polling must not continuously hash all PAC contents",
+            )
+            prepare.assert_not_called()
+            launch.assert_not_called()
+
     def test_first_start_prepares_external_fonts_without_installing_or_mapping_build(self):
         from sora_bilingual.app.auto_connect import AutoConnector
 
@@ -25,7 +117,8 @@ class AutoConnectTests(unittest.TestCase):
                 return_value=Path(tmp) / "fonts",
             ) as fonts,
             patch(
-                "sora_bilingual.fonts.runtime_fonts.runtime_manifest", return_value={"faces": []}
+                "sora_bilingual.game.native_loading.prepare_runtime_fonts_fresh",
+                return_value={"faces": []},
             ) as verify,
             patch(
                 "sora_bilingual.fonts.font_delivery.ensure",
@@ -50,7 +143,7 @@ class AutoConnectTests(unittest.TestCase):
                 self.assertEqual(auto.font_status["state"], "runtime-required")
                 self.assertEqual(auto.message, "字体已准备，连接后将在游戏内加载，无需重启")
                 fonts.assert_called_once_with(Path(tmp), cancel=auto.stop)
-                verify.assert_called_once_with(Path(tmp), Path(tmp) / "fonts")
+                verify.assert_called_once_with(Path(tmp), cancel=auto.stop)
                 install.assert_not_called()
                 mappings.assert_not_called()
                 launch.assert_not_called()
@@ -250,7 +343,8 @@ class AutoConnectTests(unittest.TestCase):
                 return_value=Path(tmp) / "fonts",
             ),
             patch(
-                "sora_bilingual.fonts.runtime_fonts.runtime_manifest", return_value={"faces": []}
+                "sora_bilingual.game.native_loading.prepare_runtime_fonts_fresh",
+                return_value={"faces": []},
             ),
             patch(
                 "sora_bilingual.app.auto_connect.subprocess.Popen",

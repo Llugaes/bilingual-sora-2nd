@@ -260,7 +260,7 @@ def _update_control_locked(patch: dict[str, Any], path: Path) -> dict[str, Any]:
 
 
 def load_cjk_font(app: QApplication) -> None:
-    """Load system CJK fonts explicitly; unavailable candidates are harmless."""
+    """Load the first usable UI font; do not retain unused fallback collections."""
     from PySide6.QtGui import QFontDatabase
 
     families: list[str] = []
@@ -273,6 +273,11 @@ def load_cjk_font(app: QApplication) -> None:
             font_id = QFontDatabase.addApplicationFont(str(font_path))
             if font_id >= 0:
                 families.extend(QFontDatabase.applicationFontFamilies(font_id))
+                if families:
+                    # Only families[0] is selected below. Registering every
+                    # fallback eagerly keeps tens of MiB of unused TTC data
+                    # resident even while the interface is hidden in-game.
+                    break
     app.setFont(QFont(families[0] if families else "Microsoft YaHei UI", 10))
 
 

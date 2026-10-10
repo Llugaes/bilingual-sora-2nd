@@ -1,4 +1,6 @@
 import unittest
+import weakref
+from collections import Counter
 from pathlib import Path
 from unittest.mock import patch
 
@@ -8,6 +10,70 @@ from sora_bilingual.localization.resources import Called, Function, Script
 
 
 class ProducerPermissionTests(unittest.TestCase):
+    def test_compiler_consumes_each_script_batch_before_reading_the_next(self):
+        from sora_bilingual.localization import dynamic_producers as producers
+
+        batch_alive = []
+
+        def batches(*_):
+            for number in range(4):
+                # One yielded family may still be referenced by the caller
+                # during generator advancement; earlier families must be free.
+                self.assertLessEqual(sum(ref() is not None for ref in batch_alive), 1)
+                script = Script({})
+                batch_alive.append(weakref.ref(script))
+                yield {"en": {f"script/{number}.dat": script}}
+
+        with (
+            patch.object(producers, "_script_batches", side_effect=batches),
+            patch.object(producers, "_read_item_rows", return_value={}),
+            patch.object(producers, "_read_book_ids", return_value={}),
+        ):
+            entries, _ = build_dynamic_entries("fixture", [])
+        self.assertEqual(entries, [])
+        self.assertTrue(all(ref() is None for ref in batch_alive))
+
+    def test_reader_releases_validated_bytecode_but_keeps_complete_call_contracts(self):
+        from sora_bilingual.localization.dynamic_producers import _read_scripts
+
+        class BytecodePayload:
+            pass
+
+        payloads = []
+        calls = (Called("helper", 0, (("int", 7),)), _panel("item", 17, "tail"))
+
+        def parse(_):
+            payload = BytecodePayload()
+            payloads.append(weakref.ref(payload))
+            return Script({"f": Function("f", 9, (1,), calls, ((payload,),), ("unused",))})
+
+        with (
+            patch(
+                "sora_bilingual.localization.dynamic_producers.archive_names",
+                return_value={"en": "test.pac"},
+            ),
+            patch.object(Path, "is_file", return_value=True),
+            patch("sora_bilingual.localization.dynamic_producers.FpacArchive") as archive,
+            patch(
+                "sora_bilingual.localization.dynamic_producers._logical_script_entries",
+                return_value={"a.dat": "a", "b.dat": "b"},
+            ),
+            patch(
+                "sora_bilingual.localization.dynamic_producers.parse_scp", side_effect=parse
+            ) as parser,
+        ):
+            scripts = _read_scripts(Path("fixture"), {"diagnostics": [], "counters": Counter()})
+        self.assertEqual(parser.call_count, 2, "Every complete script must still be validated")
+        self.assertTrue(
+            all(ref() is None for ref in payloads),
+            "Unconsumed bytecode must not accumulate across archives",
+        )
+        for script in scripts["en"].values():
+            function = script.functions["f"]
+            self.assertEqual(
+                (function.flags, function.arg_types, function.called), (9, (1,), calls)
+            )
+
     def test_book_domain_permission_is_not_a_missing_locale(self):
         from sora_bilingual.localization.dynamic_producers import _read_book_ids
 
@@ -91,7 +157,10 @@ def _items():
 
 def _build(scripts, items, books=None):
     with (
-        patch("sora_bilingual.localization.dynamic_producers._read_scripts", return_value=scripts),
+        patch(
+            "sora_bilingual.localization.dynamic_producers._script_batches",
+            side_effect=lambda *_: iter([scripts]),
+        ),
         patch("sora_bilingual.localization.dynamic_producers._read_item_rows", return_value=items),
         patch(
             "sora_bilingual.localization.dynamic_producers._read_book_ids", return_value=books or {}
@@ -334,8 +403,8 @@ class DynamicProducerTests(unittest.TestCase):
         }
         with (
             patch(
-                "sora_bilingual.localization.dynamic_producers._read_scripts",
-                return_value=_scripts(),
+                "sora_bilingual.localization.dynamic_producers._script_batches",
+                side_effect=lambda *_: iter([_scripts()]),
             ),
             patch(
                 "sora_bilingual.localization.dynamic_producers._read_item_rows",

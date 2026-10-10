@@ -5,8 +5,6 @@ import json
 import time
 from collections import Counter
 from pathlib import Path
-from sora_bilingual.localization.catalog_build import build_all
-from sora_bilingual.localization.menu_text import MenuTranslator
 from sora_bilingual.config.locales import DEFAULT_PRIMARY, archive_names
 from sora_bilingual.localization.cache_io import publish_json, read_model
 
@@ -156,6 +154,10 @@ def load_entries(game, output=ROOT / "generated"):
         or manifest.read_text(encoding="utf-8") != catalog_signature
         or not catalog.exists()
     ):
+        # The UI uses fingerprint/model_path to schedule preparation. Keep the
+        # compiler and script parser out of that long-lived polling process.
+        from sora_bilingual.localization.catalog_build import build_all
+
         result = build_all(game, output)
         _verify_resources(game, stamp["resources"], "catalog_build")
         manifest.write_text(catalog_signature, encoding="utf-8")
@@ -240,6 +242,8 @@ def _load_model(
     if cached is not None:
         _verify_resources(game, resource_snapshot, "model_read")
         return cached
+    from sora_bilingual.localization.menu_text import MenuTranslator
+
     start = time.perf_counter()
     selected = entries
     if config.get("scope") == "menu":

@@ -9,6 +9,31 @@ from sora_bilingual.game.native_loading import ConnectionHeartbeat, ModelPrepara
 
 
 class LoadingTests(unittest.TestCase):
+    def test_ui_font_validation_uses_cancellable_worker_without_loading_model(self):
+        import json
+        from sora_bilingual.game.native_loading import prepare_runtime_fonts_fresh
+
+        cancel = threading.Event()
+
+        def worker(command, **kwargs):
+            request = json.loads(Path(command[command.index("--request") + 1]).read_text("utf-8"))
+            self.assertTrue(request["runtime_fonts"])
+            self.assertFalse(request["fonts_only"])
+            self.assertIs(kwargs["cancel"], cancel)
+            result = Path(command[command.index("--result") + 1])
+            result.write_text('{"path":"fonts","runtime_fonts":{"faces":[]}}', "utf-8")
+            return SimpleNamespace(returncode=0, stderr=b"")
+
+        with (
+            patch("sora_bilingual.platform.worker_process.run_worker", side_effect=worker),
+            patch("sora_bilingual.localization.cache_io.read_model", side_effect=AssertionError),
+            patch(
+                "sora_bilingual.fonts.runtime_fonts.runtime_manifest", side_effect=AssertionError
+            ),
+        ):
+            result = prepare_runtime_fonts_fresh("game", cancel=cancel)
+        self.assertEqual(result, {"path": "fonts", "runtime_fonts": {"faces": []}})
+
     def test_failed_attach_and_destroyed_cleanup_always_clear_connecting_heartbeat(self):
         from unittest.mock import Mock
         from sora_bilingual.game import native_probe as probe
