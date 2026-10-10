@@ -5,6 +5,7 @@ an entire indexed string or an unambiguous numeric printf instance. Native
 icons, colours and separators are copied literally around translated runs.
 """
 
+from dataclasses import dataclass
 import json
 from pathlib import Path
 import re
@@ -26,6 +27,21 @@ LINE_BREAK = re.compile(r"\r\n|\n|\\n")
 EFFECT_REFUSAL_POLICY = json.loads(
     Path(__file__).with_name("effect_refusal_policy.json").read_text("utf-8")
 )
+
+
+@dataclass(frozen=True, slots=True)
+class EffectMemberResult:
+    """This member's decision, plus the separate compatibility history after it.
+
+    Match and NoMatch retain earlier reasons. Outer resolvers still consume
+    that ordered history; a member decision does not authorize global fallback.
+    """
+
+    status: str
+    unit: dict | None
+    reason: str | None
+    compat_failure_after: str | None
+    scope: str = "effect_member"
 
 
 def _format_remainder(value):
@@ -1985,18 +2001,27 @@ class MenuTranslator:
             )
 
     def _effect_unit(self, source, _coalesced=False):
+        """Compatibility interface for callers that consume only the unit."""
+        return self._effect_unit_result(source, _coalesced).unit
+
+    def _effect_member_result(self, source, status, unit=None, reason=None):
+        return EffectMemberResult(status, unit, reason, self.effect_unit_failures.get(source))
+
+    def _effect_unit_result(self, source, _coalesced=False):
         if not _coalesced:
             # Adjacent native runs in the same color are one presentation
             # span. Coalesce only identical close/open colors: never strip
             # size commands, readings, icons or different-color boundaries.
             joined = re.sub(r"(<([Cc][0-9a-fA-F]+)>[^<>]*)</[Cc]><\2>", r"\1", source)
             while joined != source:
-                unit = self._effect_unit(joined, True)
+                decision = self._effect_unit_result(joined, True)
+                unit = decision.unit
                 if unit:
-                    return {**unit, "source": source}
-                if self._effect_rejected(joined):
-                    self.effect_unit_failures[source] = self.effect_unit_failures[joined]
-                    return None
+                    return self._effect_member_result(source, "Match", {**unit, "source": source})
+                reason = decision.compat_failure_after
+                if reason is not None and EFFECT_REFUSAL_POLICY.get(reason, "hard") == "hard":
+                    self.effect_unit_failures[source] = reason
+                    return self._effect_member_result(source, "Reject", reason=reason)
                 further = re.sub(r"(<([Cc][0-9a-fA-F]+)>[^<>]*)</[Cc]><\2>", r"\1", joined)
                 if further == joined:
                     break
@@ -2004,10 +2029,13 @@ class MenuTranslator:
         stripped = re.sub(r"</?[Cc][0-9a-fA-F]*>|<[sS]\d+>", "", source)
         if stripped != source and self.frame_owner is not None:
             frame = self.frame_owner.raw_pair(source)
-            role = self._effect_unit(stripped, True)
-            if self.effect_unit_failures.get(stripped) == "unproven_direction_parameter":
+            decision = self._effect_unit_result(stripped, True)
+            role = decision.unit
+            if decision.compat_failure_after == "unproven_direction_parameter":
                 self.effect_unit_failures[source] = "unproven_direction_parameter"
-                return None
+                return self._effect_member_result(
+                    source, "Reject", reason="unproven_direction_parameter"
+                )
             if (
                 frame
                 and role
@@ -2015,12 +2043,14 @@ class MenuTranslator:
                 and tuple(re.sub(r"</?[Cc][0-9a-fA-F]*>|<[sS]\d+>", "", t) for t in frame)
                 == role["pair"]
             ):
-                return {**role, "source": source, "pair": frame}
+                return self._effect_member_result(
+                    source, "Match", {**role, "source": source, "pair": frame}
+                )
         if stripped != source and re.search(r"<I\d+>", source):
             # A proven native constructor owns the exact icon sequence. Apply
             # edge styles inside each icon-delimited field, never match an
             # arbitrary stripped word or move an internal colour boundary.
-            role = self._effect_unit(stripped, True)
+            role = self._effect_unit_result(stripped, True).unit
             if role and set(role.get("semantic_ids", ())) & self.detail_effect_constructor_ids:
                 parts = re.split(r"(<I\d+>)", source)
                 pair = []
@@ -2050,10 +2080,12 @@ class MenuTranslator:
                         continue
                     break
                 if len(pair) == 2:
-                    return {**role, "source": source, "pair": tuple(pair)}
+                    return self._effect_member_result(
+                        source, "Match", {**role, "source": source, "pair": tuple(pair)}
+                    )
         condition = self.condition_list_unit(source)
         if condition is not None:
-            return condition
+            return self._effect_member_result(source, "Match", condition)
         # Peel presentation at the edges only; internal controls, native ruby
         # and dynamic substitutions are not normalized into a matching label.
         edge = re.fullmatch(
@@ -2061,7 +2093,7 @@ class MenuTranslator:
             source,
         )
         if not edge:
-            return None
+            return self._effect_member_result(source, "NoMatch")
         prefix, core, suffix, trailing = edge.groups()
         leading = core[: len(core) - len(core.lstrip())]
         # Resource-owned whitespace belongs to its locale's literal field.
@@ -2077,7 +2109,9 @@ class MenuTranslator:
                 pattern.fullmatch(candidate) for pattern in self.detail_effect_blocked_numeric
             ):
                 self.effect_unit_failures[source] = "conflicting_effect_member"
-                return None
+                return self._effect_member_result(
+                    source, "Reject", reason="conflicting_effect_member"
+                )
             matches = []
             for row, pattern in self._effect_rules:
                 if match := pattern.fullmatch(candidate):
@@ -2097,7 +2131,9 @@ class MenuTranslator:
                         )
                     ):
                         self.effect_unit_failures[source] = "invalid_effect_parameter"
-                        return None
+                        return self._effect_member_result(
+                            source, "Reject", reason="invalid_effect_parameter"
+                        )
                     pair = tuple(_render_format(t, iter(values)) for t in row["pair"])
                     matches.append(
                         (
@@ -2112,8 +2148,10 @@ class MenuTranslator:
                 continue
             if len({pair for pair, *_ in matches}) != 1:
                 self.effect_unit_failures[source] = "conflicting_effect_member"
-                return None
-            return {
+                return self._effect_member_result(
+                    source, "Reject", reason="conflicting_effect_member"
+                )
+            unit = {
                 "source": source,
                 "pair": tuple(
                     prefix + padding_left + text + suffix + padding_right for text in matches[0][0]
@@ -2123,6 +2161,7 @@ class MenuTranslator:
                 **({"atomic": True} if any(m[3] for m in matches) else {}),
                 **({"member_sequence": True} if any(m[4] for m in matches) else {}),
             }
+            return self._effect_member_result(source, "Match", unit)
         for candidate in dict.fromkeys(
             (core + trailing, core, core[len(leading) :] + trailing, core[len(leading) :])
         ):
@@ -2143,7 +2182,9 @@ class MenuTranslator:
                 ):
                     continue
                 self.effect_unit_failures[source] = "unproven_direction_parameter"
-                return None
+                return self._effect_member_result(
+                    source, "Reject", reason="unproven_direction_parameter"
+                )
         # Recognize a complete admitted constructor whose integer slots failed
         # syntax, before any legacy string formatter can reinterpret them.
         # Captures cannot absorb native joins or equipment fences: an unknown
@@ -2168,8 +2209,10 @@ class MenuTranslator:
                     for kind, value in zip(row["parameter_kinds"], values)
                 ):
                     self.effect_unit_failures[source] = "unproven_effect_parameter"
-                    return None
-        return None
+                    return self._effect_member_result(
+                        source, "Reject", reason="unproven_effect_parameter"
+                    )
+        return self._effect_member_result(source, "NoMatch")
 
     def effect_line_units(self, source, allow_opaque=False, description=""):
         ranges = _ruby_ranges(source)
@@ -2182,10 +2225,12 @@ class MenuTranslator:
             # decorations around the same bounded role parser. Only a known
             # description/skill header may authorize this outer grammar.
             if allow_opaque and ("[" in source or " - " in source):
-                whole = self._effect_unit(source)
+                decision = self._effect_unit_result(source)
+                whole = decision.unit
                 if whole:
                     return [whole]
-                if self._effect_rejected(source):
+                reason = decision.compat_failure_after
+                if reason is not None and EFFECT_REFUSAL_POLICY.get(reason, "hard") == "hard":
                     return None
                 original = self.effect_units(source, True, description)
                 if original is None and self._effect_rejected(source):
@@ -2267,9 +2312,12 @@ class MenuTranslator:
         # but do not let a rejected internal partition veto a wider role.
         self.effect_unit_failures.pop(source, None)
         resolve = lambda value: (
-            owned_units[value] if owned_units and value in owned_units else self._effect_unit(value)
+            self._effect_member_result(value, "Match", owned_units[value])
+            if owned_units and value in owned_units
+            else self._effect_unit_result(value)
         )
-        whole = resolve(source)
+        whole_decision = resolve(source)
+        whole = whole_decision.unit
         if (
             whole
             and not whole.get("member_sequence")
@@ -2280,7 +2328,7 @@ class MenuTranslator:
         # The dynamic program prefers its identical, already successful
         # segmented targets; the full constructor still covers a refused
         # internal homograph without borrowing that homograph as a role.
-        if self.effect_unit_failures.get(source) in {
+        if whole_decision.compat_failure_after in {
             "conflicting_effect_member",
             "unproven_direction_parameter",
         }:
@@ -2326,9 +2374,10 @@ class MenuTranslator:
                     part + (links[start + i]["source"] if start + i < end - 1 else "")
                     for i, part in enumerate(parts[start:end])
                 )
-                unit = resolve(member)
+                decision = resolve(member)
+                unit = decision.unit
                 if not unit:
-                    failure = self.effect_unit_failures.get(member)
+                    failure = decision.compat_failure_after
                     if failure in {
                         "invalid_effect_parameter",
                         "unproven_effect_parameter",
@@ -2379,8 +2428,13 @@ class MenuTranslator:
                 # removing internal controls to invent a constructor.
                 fragments = []
                 for index, part in enumerate(re.split(r"(</?[Cc][0-9a-fA-F]*>|<[sS]\d+>)", member)):
-                    known = None if index % 2 else self._effect_unit(part)
-                    failure = self.effect_unit_failures.get(part)
+                    decision = None if index % 2 else self._effect_unit_result(part)
+                    known = decision.unit if decision else None
+                    failure = (
+                        decision.compat_failure_after
+                        if decision
+                        else self.effect_unit_failures.get(part)
+                    )
                     if failure in {
                         "invalid_effect_parameter",
                         "unproven_effect_parameter",
@@ -2421,7 +2475,7 @@ class MenuTranslator:
                     )
             states[start] = alternatives
         if not states[0]:
-            partial = any(self._effect_unit(part) for part in parts)
+            partial = any(self._effect_unit_result(part).unit for part in parts)
             rejected = next(
                 (
                     self.effect_unit_failures[part]
@@ -2865,12 +2919,13 @@ class MenuTranslator:
             # frame. Keep the existing role/parameter identity on that field.
             frame = self.raw_pair(line)
             stripped_line = strip_styles(line)
-            role = self.details._effect_unit(stripped_line)
+            role_decision = self.details._effect_unit_result(stripped_line)
+            role = role_decision.unit
             if empty_body and role and role.get("member_sequence"):
                 # Without a resource body, internal labels cannot borrow
                 # standalone authority. This complete raw slot constructor
                 # itself owns the empty-body field and its parameters.
-                complete = self.details._effect_unit(line)
+                complete = self.details._effect_unit_result(line).unit
                 if complete:
                     units = [complete]
             if (

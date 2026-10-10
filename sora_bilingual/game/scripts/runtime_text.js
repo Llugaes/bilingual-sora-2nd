@@ -465,31 +465,44 @@ class RuntimeText {
         return this.detailHeader(source)!==null||this.skillHeader(source)?[this.details,'']:null;
     }
     effectUnit(source,coalesced=false) {
+        // Compatibility interface; the algorithm returns a scoped decision.
+        return this.effectUnitResult(source,coalesced).unit;
+    }
+    effectMemberResult(source,status,unit=null,reason=null) {
+        // Match/NoMatch preserve prior reasons. Outer resolvers still use that
+        // ordered history; this decision never grants global fallback authority.
+        return {scope:'effect_member',status,unit,reason,compatFailureAfter:this.effectUnitFailures.get(source)};
+    }
+    effectUnitResult(source,coalesced=false) {
         if(!coalesced) {
             let joined=source.replace(/(<([Cc][0-9a-fA-F]+)>[^<>]*)<\/[Cc]><\2>/g,'$1');
             while(joined!==source) {
-                const unit=this.effectUnit(joined,true);
-                if(unit)return {...unit,source};
-                if(this.effectRejected(joined)){this.effectUnitFailures.set(source,this.effectUnitFailures.get(joined));return null;}
+                const decision=this.effectUnitResult(joined,true),unit=decision.unit;
+                if(unit)return this.effectMemberResult(source,'Match',{...unit,source});
+                const reason=decision.compatFailureAfter;
+                if(reason!==undefined&&RuntimeText.effectRefusalPolicy[reason]!=='unproved') {
+                    this.effectUnitFailures.set(source,reason);return this.effectMemberResult(source,'Reject',null,reason);
+                }
                 const further=joined.replace(/(<([Cc][0-9a-fA-F]+)>[^<>]*)<\/[Cc]><\2>/g,'$1');
                 if(further===joined)break;joined=further;
             }
         }
         const stripped=source.replace(/<\/?[Cc][0-9a-fA-F]*>|<[sS]\d+>/g,'');
         if(stripped!==source&&this.frameOwner) {
-            const frame=this.frameOwner.rawPair(source),role=this.effectUnit(stripped,true);
-            if(this.effectUnitFailures.get(stripped)==='unproven_direction_parameter') {
-                this.effectUnitFailures.set(source,'unproven_direction_parameter');return null;
+            const frame=this.frameOwner.rawPair(source),decision=this.effectUnitResult(stripped,true),role=decision.unit;
+            if(decision.compatFailureAfter==='unproven_direction_parameter') {
+                this.effectUnitFailures.set(source,'unproven_direction_parameter');
+                return this.effectMemberResult(source,'Reject',null,'unproven_direction_parameter');
             }
             if(frame&&role?.semantic_ids?.some(id=>this.detailEffectConstructorIds.has(id))&&
                 frame.every((target,side)=>target.replace(/<\/?[Cc][0-9a-fA-F]*>|<[sS]\d+>/g,'')===role.pair[side]))
-                return {...role,source,pair:frame};
+                return this.effectMemberResult(source,'Match',{...role,source,pair:frame});
         }
         if(stripped!==source&&/<I\d+>/.test(source)) {
             // Only a complete proven constructor can own these exact icons.
             // Preserve edge styles within each field; internal boundaries
             // and unknown controls never become stripped-word matches.
-            const role=this.effectUnit(stripped,true);
+            const role=this.effectUnitResult(stripped,true).unit;
             if(role?.semantic_ids?.some(id=>this.detailEffectConstructorIds.has(id))) {
                 const parts=source.split(/(<I\d+>)/),pair=[];
                 for(const target of role.pair) {
@@ -508,18 +521,19 @@ class RuntimeText {
                     }
                     if(!valid)break;pair.push(decorated.join(''));
                 }
-                if(pair.length===2)return {...role,source,pair};
+                if(pair.length===2)return this.effectMemberResult(source,'Match',{...role,source,pair});
             }
         }
         const condition=this.conditionListUnit(source);
-        if(condition)return condition;
+        if(condition)return this.effectMemberResult(source,'Match',condition);
         const edge=/^((?:<\/?[Cc][0-9a-fA-F]*>|<[sS]\d+>)*)(.*?)((?:<\/[Cc]>)*)(\s*)$/.exec(source);
-        if(!edge)return null;
+        if(!edge)return this.effectMemberResult(source,'NoMatch');
         let [,prefix,core,suffix,trailing]=edge;
         const leading=/^\s*/.exec(core)[0];
         for(const [candidate,left,right] of [[core+trailing,'',''],[core,'',trailing],[core.slice(leading.length)+trailing,leading,''],[core.slice(leading.length),leading,trailing]]) {
             if(this.detailEffectBlockedLiterals.has(candidate)||this.detailEffectBlockedNumeric.some(p=>p.test(candidate))) {
-                this.effectUnitFailures.set(source,'conflicting_effect_member');return null;
+                this.effectUnitFailures.set(source,'conflicting_effect_member');
+                return this.effectMemberResult(source,'Reject',null,'conflicting_effect_member');
             }
             const matches=[];
             for(const [row,pattern] of RuntimeText.numericCandidates(candidate,this.detailEffectUnitIndex,this.detailEffectUnitCandidateCache)) {
@@ -530,18 +544,21 @@ class RuntimeText {
                     const number=Number(values[i]);
                     return !/^[+-]?[0-9]+$/.test(values[i])||!Number.isSafeInteger(number)||
                         number<(kind==='u'?0:-2147483648)||number>(kind==='u'?4294967295:2147483647);
-                }))) {this.effectUnitFailures.set(source,'invalid_effect_parameter');return null;}
+                }))) {this.effectUnitFailures.set(source,'invalid_effect_parameter');
+                    return this.effectMemberResult(source,'Reject',null,'invalid_effect_parameter');}
                 const pair=row.pair.map(t=>{let at=0;return RuntimeText.renderFormat(t,()=>values[at++]);});
                 matches.push({pair,ids:row.ids,values,atomic:row.atomic===true,memberSequence:row.member_sequence===true});
             }
             if(!matches.length)continue;
             if(new Set(matches.map(m=>JSON.stringify(m.pair))).size!==1) {
-                this.effectUnitFailures.set(source,'conflicting_effect_member');return null;
+                this.effectUnitFailures.set(source,'conflicting_effect_member');
+                return this.effectMemberResult(source,'Reject',null,'conflicting_effect_member');
             }
-            return {source,pair:matches[0].pair.map(t=>prefix+left+t+suffix+right),
+            const unit={source,pair:matches[0].pair.map(t=>prefix+left+t+suffix+right),
                 semantic_ids:[...new Set(matches.flatMap(m=>m.ids))].sort(),parameters:matches[0].values,
                 ...(matches.some(m=>m.atomic)?{atomic:true}:{}),
                 ...(matches.some(m=>m.memberSequence)?{member_sequence:true}:{})};
+            return this.effectMemberResult(source,'Match',unit);
         }
         for(const candidate of new Set([core+trailing,core,core.slice(leading.length)+trailing,core.slice(leading.length)])) {
             for(const pattern of this.detailEffectDirectionGuards) {
@@ -550,7 +567,8 @@ class RuntimeText {
                     COMPONENT_LINKS.test(value)||/[/\[\]()|]| - /.test(value)))continue;
                 // Signed stat values belong to the separate native numeric syntax.
                 if(match.slice(1).some(value=>/^[+-][0-9]+$/.test(value))&&match.slice(1).every(value=>/^[+-]?[0-9]+$/.test(value)))continue;
-                this.effectUnitFailures.set(source,'unproven_direction_parameter');return null;
+                this.effectUnitFailures.set(source,'unproven_direction_parameter');
+                return this.effectMemberResult(source,'Reject',null,'unproven_direction_parameter');
             }
         }
         // Guard the same admitted integer constructors after strict matching.
@@ -562,19 +580,20 @@ class RuntimeText {
                 const values=match.slice(1);
                 if(values.some(value=>(this.detailJoin&&value.includes(this.detailJoin[0]))||COMPONENT_LINKS.test(value)||/[/\[\]()|]| - /.test(value)))continue;
                 if(row.parameter_kinds.some((kind,i)=>['d','i','u'].includes(kind)&&!/^[+-]?[0-9]+$/.test(values[i]))) {
-                    this.effectUnitFailures.set(source,'unproven_effect_parameter');return null;
+                    this.effectUnitFailures.set(source,'unproven_effect_parameter');
+                    return this.effectMemberResult(source,'Reject',null,'unproven_effect_parameter');
                 }
             }
         }
-        return null;
+        return this.effectMemberResult(source,'NoMatch');
     }
     effectLineUnits(source,allowOpaque=false,description='') {
         const ranges=RuntimeText.rubyRanges(source);
         if(ranges===null){this.effectUnitFailures.set(source,'hard_line_or_native_ruby');return null;}
         if(!ranges.length) {
             if(allowOpaque&&(source.includes('[')||source.includes(' - '))) {
-                const whole=this.effectUnit(source);if(whole)return [whole];
-                if(this.effectRejected(source))return null;
+                const decision=this.effectUnitResult(source),whole=decision.unit;if(whole)return [whole];
+                if(decision.compatFailureAfter!==undefined&&RuntimeText.effectRefusalPolicy[decision.compatFailureAfter]!=='unproved')return null;
                 const original=this.effectUnits(source,true,description);
                 if(!original&&this.effectRejected(source))return null;
                 const units=[];
@@ -620,12 +639,13 @@ class RuntimeText {
         // rejected internal partition cannot veto a wider complete role;
         // an explicit veto of the whole source still wins before partitioning.
         this.effectUnitFailures.delete(source);
-        const resolve=value=>ownedUnits&&Object.hasOwn(ownedUnits,value)?ownedUnits[value]:this.effectUnit(value);
-        const whole=resolve(source);if(whole&&!whole.member_sequence&&
+        const resolve=value=>ownedUnits&&Object.hasOwn(ownedUnits,value)?
+            this.effectMemberResult(value,'Match',ownedUnits[value]):this.effectUnitResult(value);
+        const wholeDecision=resolve(source),whole=wholeDecision.unit;if(whole&&!whole.member_sequence&&
             (whole.atomic||!source.includes(join[0])))return [whole];
         // Mixed groups supplement identical successful member partitions;
         // their complete role remains available for an internal homograph.
-        if(['conflicting_effect_member','unproven_direction_parameter'].includes(this.effectUnitFailures.get(source)))return null;
+        if(['conflicting_effect_member','unproven_direction_parameter'].includes(wholeDecision.compatFailureAfter))return null;
         const [separator,...targets]=join,parts=[],links=[];
         const escape=s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
         // SetText decorates FORMAT8 separately from the adjacent effects.
@@ -652,9 +672,9 @@ class RuntimeText {
             const alternatives=new Map();
             for(let end=start+1;end<=parts.length;end++) {
                 const member=parts.slice(start,end).map((part,i)=>part+(start+i<end-1?links[start+i].source:'')).join('');
-                let unit=resolve(member);
+                const decision=resolve(member);let unit=decision.unit;
                 if(!unit) {
-                    const reason=this.effectUnitFailures.get(member);
+                    const reason=decision.compatFailureAfter;
                     if(['invalid_effect_parameter','unproven_effect_parameter','unproven_direction_parameter','conflicting_effect_member'].includes(reason))continue;
                     const pair=this.detailContexts[description]?.[member];
                     if(!pair)continue;
@@ -684,7 +704,8 @@ class RuntimeText {
                 // making the member opaque; never strip controls or borrow the
                 // global dictionary to manufacture a constructor.
                 member.split(/(<\/?[Cc][0-9a-fA-F]*>|<[sS]\d+>)/).forEach((part,index)=>{
-                    const known=index%2?null:this.effectUnit(part),reason=this.effectUnitFailures.get(part);
+                    const decision=index%2?null:this.effectUnitResult(part),known=decision?.unit,
+                        reason=decision?decision.compatFailureAfter:this.effectUnitFailures.get(part);
                     if(['invalid_effect_parameter','unproven_effect_parameter','unproven_direction_parameter','conflicting_effect_member'].includes(reason))fragmentFailure=reason;
                     fragments.push(known||{source:part,pair:[part,part],opaque:true});
                 });
@@ -700,7 +721,7 @@ class RuntimeText {
             states[start]=alternatives;
         }
         if(!states[0].size) {
-            const partial=parts.some(part=>this.effectUnit(part));
+            const partial=parts.some(part=>this.effectUnitResult(part).unit);
             const rejected=parts.map(part=>this.effectUnitFailures.get(part)).find(reason=>
                 ['invalid_effect_parameter','unproven_effect_parameter','unproven_direction_parameter','conflicting_effect_member'].includes(reason));
             return refuse(rejected||(partial?'partial_effect_members':'unassociated_effect_unit'));
@@ -909,11 +930,11 @@ class RuntimeText {
             if(this.details.detailEffectBlockedLiterals.has(candidate)||this.details.detailEffectBlockedNumeric.some(pattern=>pattern.test(candidate)))wholeVeto=true;
             let units=this.details.effectLineUnits(line,Boolean(header||boundary),boundary?.context||'');
             // Only an exact global native frame may authorize internal styles.
-            const frame=this.rawPair(line),strippedLine=stripStyles(line),role=this.details.effectUnit(strippedLine);
+            const frame=this.rawPair(line),strippedLine=stripStyles(line),roleDecision=this.details.effectUnitResult(strippedLine),role=roleDecision.unit;
             if(emptyBody&&role?.member_sequence) {
                 // The raw slot constructor owns this empty-body field;
                 // internal labels gain no separate standalone authority.
-                const complete=this.details.effectUnit(line);if(complete)units=[complete];
+                const complete=this.details.effectUnitResult(line).unit;if(complete)units=[complete];
             }
             if(this.details.effectUnitFailures.get(strippedLine)==='unproven_direction_parameter') {
                 hardFailure='unproven_direction_parameter';return;

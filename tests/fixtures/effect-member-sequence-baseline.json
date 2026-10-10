@@ -1,0 +1,2403 @@
+{
+  "reference_commit": "70e00b4",
+  "python": [
+    {
+      "name": "cold_and_hot",
+      "events": [
+        {
+          "value": {
+            "source": "HP Regen",
+            "pair": [
+              "HP徐々回復",
+              "逐渐回复HP"
+            ],
+            "semantic_ids": [
+              "table/t_itemhelp.tbl/SkillEffectHelpData/hp/name"
+            ],
+            "parameters": []
+          },
+          "failures": {
+            "count": 0,
+            "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "edges": []
+          },
+          "calls": [
+            [
+              "HP Regen",
+              false
+            ]
+          ]
+        },
+        {
+          "value": null,
+          "failures": {
+            "count": 0,
+            "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "edges": []
+          },
+          "calls": [
+            [
+              "Unknown",
+              false
+            ]
+          ]
+        },
+        {
+          "value": null,
+          "failures": {
+            "count": 1,
+            "sha256": "f2d60fa7272279cf096f3e36b51576e7abc7ea3d5af9d7bffe79eb750b367ca4",
+            "edges": [
+              [
+                "Blind 2147483648%",
+                "invalid_effect_parameter"
+              ]
+            ]
+          },
+          "calls": [
+            [
+              "Blind 2147483648%",
+              false
+            ]
+          ]
+        },
+        {
+          "value": null,
+          "failures": {
+            "count": 2,
+            "sha256": "976fe889eb1fec4c0f370857b225765c97a6ba66c27ed45fdc841e713f458d21",
+            "edges": [
+              [
+                "Blind 2147483648%",
+                "invalid_effect_parameter"
+              ],
+              [
+                "Blind nope%",
+                "unproven_effect_parameter"
+              ]
+            ]
+          },
+          "calls": [
+            [
+              "Blind nope%",
+              false
+            ]
+          ]
+        },
+        {
+          "value": null,
+          "failures": {
+            "count": 2,
+            "sha256": "976fe889eb1fec4c0f370857b225765c97a6ba66c27ed45fdc841e713f458d21",
+            "edges": [
+              [
+                "Blind 2147483648%",
+                "invalid_effect_parameter"
+              ],
+              [
+                "Blind nope%",
+                "unproven_effect_parameter"
+              ]
+            ]
+          },
+          "calls": [
+            [
+              "Blind 2147483648%",
+              false
+            ]
+          ]
+        },
+        {
+          "value": {
+            "source": "HP Regen",
+            "pair": [
+              "HP徐々回復",
+              "逐渐回复HP"
+            ],
+            "semantic_ids": [
+              "table/t_itemhelp.tbl/SkillEffectHelpData/hp/name"
+            ],
+            "parameters": []
+          },
+          "failures": {
+            "count": 2,
+            "sha256": "976fe889eb1fec4c0f370857b225765c97a6ba66c27ed45fdc841e713f458d21",
+            "edges": [
+              [
+                "Blind 2147483648%",
+                "invalid_effect_parameter"
+              ],
+              [
+                "Blind nope%",
+                "unproven_effect_parameter"
+              ]
+            ]
+          },
+          "calls": [
+            [
+              "HP Regen",
+              false
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "reject_then_match",
+      "events": [
+        {
+          "value": null,
+          "failures": {
+            "count": 1,
+            "sha256": "9e81266152253fefb54c5d5ec7369b165daf2fc1b38ca3e48bb3a4974f5fb0f0",
+            "edges": [
+              [
+                "A, B, C",
+                "different_partition_targets"
+              ]
+            ]
+          },
+          "calls": [
+            [
+              "A, B, C",
+              false
+            ],
+            [
+              "C",
+              false
+            ],
+            [
+              "B",
+              false
+            ],
+            [
+              "B, C",
+              false
+            ],
+            [
+              "A",
+              false
+            ],
+            [
+              "A, B",
+              false
+            ],
+            [
+              "A, B, C",
+              false
+            ]
+          ]
+        },
+        {
+          "value": {
+            "source": "A, B, C",
+            "pair": [
+              "JABC",
+              "ZABC"
+            ],
+            "semantic_ids": [
+              "table/t_itemhelp.tbl/SkillEffectHelpData/abc/name"
+            ],
+            "parameters": []
+          },
+          "failures": {
+            "count": 1,
+            "sha256": "9e81266152253fefb54c5d5ec7369b165daf2fc1b38ca3e48bb3a4974f5fb0f0",
+            "edges": [
+              [
+                "A, B, C",
+                "different_partition_targets"
+              ]
+            ]
+          },
+          "calls": [
+            [
+              "A, B, C",
+              false
+            ]
+          ]
+        },
+        {
+          "value": true,
+          "failures": {
+            "count": 1,
+            "sha256": "9e81266152253fefb54c5d5ec7369b165daf2fc1b38ca3e48bb3a4974f5fb0f0",
+            "edges": [
+              [
+                "A, B, C",
+                "different_partition_targets"
+              ]
+            ]
+          },
+          "calls": []
+        },
+        {
+          "value": "JABC",
+          "failures": {
+            "count": 1,
+            "sha256": "9e81266152253fefb54c5d5ec7369b165daf2fc1b38ca3e48bb3a4974f5fb0f0",
+            "edges": [
+              [
+                "A, B, C",
+                "different_partition_targets"
+              ]
+            ]
+          },
+          "calls": [
+            [
+              "A, B, C",
+              false
+            ],
+            [
+              "C",
+              false
+            ],
+            [
+              "B",
+              false
+            ],
+            [
+              "B, C",
+              false
+            ],
+            [
+              "A",
+              false
+            ],
+            [
+              "A, B",
+              false
+            ],
+            [
+              "A, B, C",
+              false
+            ],
+            [
+              "A, B, C",
+              false
+            ]
+          ]
+        },
+        {
+          "value": {
+            "text": "<R>JABC</RZABC>",
+            "layers": [],
+            "kind": "ruby"
+          },
+          "failures": {
+            "count": 1,
+            "sha256": "9e81266152253fefb54c5d5ec7369b165daf2fc1b38ca3e48bb3a4974f5fb0f0",
+            "edges": [
+              [
+                "A, B, C",
+                "different_partition_targets"
+              ]
+            ]
+          },
+          "calls": [
+            [
+              "A, B, C",
+              false
+            ],
+            [
+              "C",
+              false
+            ],
+            [
+              "B",
+              false
+            ],
+            [
+              "B, C",
+              false
+            ],
+            [
+              "A",
+              false
+            ],
+            [
+              "A, B",
+              false
+            ],
+            [
+              "A, B, C",
+              false
+            ],
+            [
+              "A, B, C",
+              false
+            ],
+            [
+              "A, B, C",
+              false
+            ],
+            [
+              "C",
+              false
+            ],
+            [
+              "B",
+              false
+            ],
+            [
+              "B, C",
+              false
+            ],
+            [
+              "A",
+              false
+            ],
+            [
+              "A, B",
+              false
+            ],
+            [
+              "A, B, C",
+              false
+            ],
+            [
+              "A, B, C",
+              false
+            ],
+            [
+              "A, B, C",
+              false
+            ],
+            [
+              "C",
+              false
+            ],
+            [
+              "B",
+              false
+            ],
+            [
+              "B, C",
+              false
+            ],
+            [
+              "A",
+              false
+            ],
+            [
+              "A, B",
+              false
+            ],
+            [
+              "A, B, C",
+              false
+            ],
+            [
+              "A, B, C",
+              false
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "coalesced_success",
+      "events": [
+        {
+          "value": {
+            "source": "<c698>HP </C><c698>Regen</C>",
+            "pair": [
+              "<c698>HP徐々回復</C>",
+              "<c698>逐渐回复HP</C>"
+            ],
+            "semantic_ids": [
+              "table/t_itemhelp.tbl/SkillEffectHelpData/hp/name"
+            ],
+            "parameters": []
+          },
+          "failures": {
+            "count": 1,
+            "sha256": "02caac9bc400768ac68b3957ab00e81473a14657517dc6ec6ca82ab6858030be",
+            "edges": [
+              [
+                "<c698>HP Regen</C>",
+                "conflicting_effect_member"
+              ]
+            ]
+          },
+          "calls": [
+            [
+              "<c698>HP </C><c698>Regen</C>",
+              false
+            ],
+            [
+              "<c698>HP Regen</C>",
+              true
+            ],
+            [
+              "HP Regen",
+              true
+            ]
+          ]
+        },
+        {
+          "value": null,
+          "failures": {
+            "count": 1,
+            "sha256": "02caac9bc400768ac68b3957ab00e81473a14657517dc6ec6ca82ab6858030be",
+            "edges": [
+              [
+                "<c698>HP Regen</C>",
+                "conflicting_effect_member"
+              ]
+            ]
+          },
+          "calls": [
+            [
+              "Unknown",
+              false
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "frame_direction_history",
+      "events": [
+        {
+          "value": null,
+          "failures": {
+            "count": 2,
+            "sha256": "97d198ba2906dade2b7168264b60409c465214b5a9d40f1af3e1933d4d7073df",
+            "edges": [
+              [
+                "Blind 30%",
+                "unproven_direction_parameter"
+              ],
+              [
+                "<C2>Blind 30%</C>",
+                "unproven_direction_parameter"
+              ]
+            ]
+          },
+          "calls": [
+            [
+              "<C2>Blind 30%</C>",
+              false
+            ],
+            [
+              "Blind 30%",
+              true
+            ]
+          ]
+        },
+        {
+          "value": {
+            "text": "<C2>Blind 30%</C>\n<R>技能説明</R技能说明>",
+            "layers": [],
+            "kind": "ruby"
+          },
+          "failures": {
+            "count": 2,
+            "sha256": "97d198ba2906dade2b7168264b60409c465214b5a9d40f1af3e1933d4d7073df",
+            "edges": [
+              [
+                "Blind 30%",
+                "unproven_direction_parameter"
+              ],
+              [
+                "<C2>Blind 30%</C>",
+                "unproven_direction_parameter"
+              ]
+            ]
+          },
+          "calls": [
+            [
+              "<C2>Blind 30%</C>",
+              false
+            ],
+            [
+              "Blind 30%",
+              true
+            ],
+            [
+              "Blind 30%",
+              false
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "opaque_cold",
+      "events": [
+        {
+          "value": [
+            {
+              "source": "HP Regen",
+              "pair": [
+                "HP徐々回復",
+                "逐渐回复HP"
+              ],
+              "semantic_ids": [
+                "table/t_itemhelp.tbl/SkillEffectHelpData/hp/name"
+              ],
+              "parameters": []
+            },
+            {
+              "source": ", ",
+              "pair": [
+                "／",
+                "／"
+              ],
+              "separator": true
+            },
+            {
+              "source": "Unknown",
+              "pair": [
+                "Unknown",
+                "Unknown"
+              ],
+              "opaque": true
+            }
+          ],
+          "failures": {
+            "count": 0,
+            "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "edges": []
+          },
+          "calls": [
+            [
+              "HP Regen, Unknown",
+              false
+            ],
+            [
+              "Unknown",
+              false
+            ],
+            [
+              "Unknown",
+              false
+            ],
+            [
+              "HP Regen",
+              false
+            ],
+            [
+              "HP Regen, Unknown",
+              false
+            ]
+          ]
+        },
+        {
+          "value": {
+            "text": "HP Regen, Unknown\n<R>技能説明</R技能说明>",
+            "layers": [],
+            "kind": "ruby"
+          },
+          "failures": {
+            "count": 0,
+            "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "edges": []
+          },
+          "calls": [
+            [
+              "HP Regen, Unknown",
+              false
+            ],
+            [
+              "Unknown",
+              false
+            ],
+            [
+              "Unknown",
+              false
+            ],
+            [
+              "HP Regen",
+              false
+            ],
+            [
+              "HP Regen, Unknown",
+              false
+            ],
+            [
+              "HP Regen, Unknown",
+              false
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "opaque_history",
+      "events": [
+        {
+          "value": null,
+          "failures": {
+            "count": 1,
+            "sha256": "62c3ac90a368ce1d77a6c5028ab4a5666e701c57ebad8dd5adcf5a588c23cda3",
+            "edges": [
+              [
+                "Unknown",
+                "invalid_effect_parameter"
+              ]
+            ]
+          },
+          "calls": [
+            [
+              "Unknown",
+              false
+            ]
+          ]
+        },
+        {
+          "value": null,
+          "failures": {
+            "count": 2,
+            "sha256": "8d740f709ed0d9c6a86cbe71ccedbfca2200f055400ba0634c2ebf11f1832dab",
+            "edges": [
+              [
+                "Unknown",
+                "invalid_effect_parameter"
+              ],
+              [
+                "HP Regen, Unknown",
+                "invalid_effect_parameter"
+              ]
+            ]
+          },
+          "calls": [
+            [
+              "HP Regen, Unknown",
+              false
+            ],
+            [
+              "Unknown",
+              false
+            ],
+            [
+              "HP Regen",
+              false
+            ],
+            [
+              "HP Regen, Unknown",
+              false
+            ],
+            [
+              "HP Regen",
+              false
+            ],
+            [
+              "HP Regen",
+              false
+            ]
+          ]
+        },
+        {
+          "value": {
+            "text": "HP Regen, Unknown\n<R>技能説明</R技能说明>",
+            "layers": [],
+            "kind": "ruby"
+          },
+          "failures": {
+            "count": 2,
+            "sha256": "8d740f709ed0d9c6a86cbe71ccedbfca2200f055400ba0634c2ebf11f1832dab",
+            "edges": [
+              [
+                "Unknown",
+                "invalid_effect_parameter"
+              ],
+              [
+                "HP Regen, Unknown",
+                "invalid_effect_parameter"
+              ]
+            ]
+          },
+          "calls": [
+            [
+              "HP Regen, Unknown",
+              false
+            ],
+            [
+              "Unknown",
+              false
+            ],
+            [
+              "HP Regen",
+              false
+            ],
+            [
+              "HP Regen, Unknown",
+              false
+            ],
+            [
+              "HP Regen",
+              false
+            ],
+            [
+              "HP Regen",
+              false
+            ],
+            [
+              "HP Regen, Unknown",
+              false
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "short_circuit",
+      "events": [
+        {
+          "value": null,
+          "failures": {
+            "count": 2,
+            "sha256": "feb66aa7fa0001dcf2069afd5a7644ab0a8d7be7d0cbdc351ad21ec38adbbccb",
+            "edges": [
+              [
+                "Blind 2147483648%",
+                "invalid_effect_parameter"
+              ],
+              [
+                "HP Regen, Blind 2147483648%, Unknown",
+                "invalid_effect_parameter"
+              ]
+            ]
+          },
+          "calls": [
+            [
+              "HP Regen, Blind 2147483648%, Unknown",
+              false
+            ],
+            [
+              "Unknown",
+              false
+            ],
+            [
+              "Blind 2147483648%",
+              false
+            ],
+            [
+              "Blind 2147483648%, Unknown",
+              false
+            ],
+            [
+              "HP Regen",
+              false
+            ],
+            [
+              "HP Regen, Blind 2147483648%",
+              false
+            ],
+            [
+              "HP Regen, Blind 2147483648%, Unknown",
+              false
+            ],
+            [
+              "HP Regen",
+              false
+            ]
+          ]
+        },
+        {
+          "value": null,
+          "failures": {
+            "count": 4,
+            "sha256": "a60a85d1411870b95f6da10531f89d5f2669d93c6cadf214dbd8925ab0ee0969",
+            "edges": [
+              [
+                "Blind 2147483648%",
+                "invalid_effect_parameter"
+              ],
+              [
+                "HP Regen, Blind 2147483648%, Unknown",
+                "invalid_effect_parameter"
+              ],
+              [
+                "Blind nope%",
+                "unproven_effect_parameter"
+              ],
+              [
+                "Unknown, Blind nope%, HP Regen",
+                "unproven_effect_parameter"
+              ]
+            ]
+          },
+          "calls": [
+            [
+              "Unknown, Blind nope%, HP Regen",
+              false
+            ],
+            [
+              "HP Regen",
+              false
+            ],
+            [
+              "Blind nope%",
+              false
+            ],
+            [
+              "Blind nope%, HP Regen",
+              false
+            ],
+            [
+              "Unknown",
+              false
+            ],
+            [
+              "Unknown, Blind nope%",
+              false
+            ],
+            [
+              "Unknown, Blind nope%, HP Regen",
+              false
+            ],
+            [
+              "Unknown",
+              false
+            ],
+            [
+              "Blind nope%",
+              false
+            ],
+            [
+              "HP Regen",
+              false
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "fragment_traversal",
+      "events": [
+        {
+          "value": null,
+          "failures": {
+            "count": 3,
+            "sha256": "652b64d63dae6ccc926530b63ac12556b67f42369f9722dfd6b55b3eb056eba7",
+            "edges": [
+              [
+                "Blind nope%",
+                "unproven_effect_parameter"
+              ],
+              [
+                "Unknown<C2>Blind nope%</C>Blind 2147483648%",
+                "unproven_effect_parameter"
+              ],
+              [
+                "HP Regen, Unknown<C2>Blind nope%</C>Blind 2147483648%",
+                "unproven_effect_parameter"
+              ]
+            ]
+          },
+          "calls": [
+            [
+              "HP Regen, Unknown<C2>Blind nope%</C>Blind 2147483648%",
+              false
+            ],
+            [
+              "HP Regen, UnknownBlind nope%Blind 2147483648%",
+              true
+            ],
+            [
+              "Unknown<C2>Blind nope%</C>Blind 2147483648%",
+              false
+            ],
+            [
+              "UnknownBlind nope%Blind 2147483648%",
+              true
+            ],
+            [
+              "Unknown",
+              false
+            ],
+            [
+              "Blind nope%",
+              false
+            ],
+            [
+              "HP Regen",
+              false
+            ],
+            [
+              "HP Regen, Unknown<C2>Blind nope%</C>Blind 2147483648%",
+              false
+            ],
+            [
+              "HP Regen, UnknownBlind nope%Blind 2147483648%",
+              true
+            ],
+            [
+              "HP Regen",
+              false
+            ],
+            [
+              "HP Regen",
+              false
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "capacity_19999",
+      "events": [
+        {
+          "value": null,
+          "failures": {
+            "count": 20000,
+            "sha256": "b1fb9887a510b9a3b27715c2e7f7266d8b057125a3a370485b947f013d6b187e",
+            "edges": [
+              [
+                "seed/0",
+                "unassociated_effect_unit"
+              ],
+              [
+                "seed/1",
+                "unassociated_effect_unit"
+              ],
+              [
+                "seed/2",
+                "unassociated_effect_unit"
+              ],
+              [
+                "seed/19997",
+                "unassociated_effect_unit"
+              ],
+              [
+                "seed/19998",
+                "unassociated_effect_unit"
+              ],
+              [
+                "Blind 2147483648%",
+                "invalid_effect_parameter"
+              ]
+            ]
+          },
+          "calls": [
+            [
+              "Blind 2147483648%",
+              false
+            ]
+          ]
+        },
+        {
+          "value": null,
+          "failures": {
+            "count": 1,
+            "sha256": "a7b988f88f7e3c4afb52323ead19db7fe6d02371d281f977303f108834f60e6d",
+            "edges": [
+              [
+                "Bad\nLine",
+                "hard_line_or_native_ruby"
+              ]
+            ]
+          },
+          "calls": []
+        }
+      ]
+    },
+    {
+      "name": "capacity_20000",
+      "events": [
+        {
+          "value": {
+            "source": "HP Regen",
+            "pair": [
+              "HP徐々回復",
+              "逐渐回复HP"
+            ],
+            "semantic_ids": [
+              "table/t_itemhelp.tbl/SkillEffectHelpData/hp/name"
+            ],
+            "parameters": []
+          },
+          "failures": {
+            "count": 20000,
+            "sha256": "e8435d7c6f33ed2aaa7c7231e70c8515dc8e8aaf91e1c9a096ddc24e313cca5f",
+            "edges": [
+              [
+                "seed/0",
+                "unassociated_effect_unit"
+              ],
+              [
+                "seed/1",
+                "unassociated_effect_unit"
+              ],
+              [
+                "seed/2",
+                "unassociated_effect_unit"
+              ],
+              [
+                "seed/19997",
+                "unassociated_effect_unit"
+              ],
+              [
+                "seed/19998",
+                "unassociated_effect_unit"
+              ],
+              [
+                "seed/19999",
+                "unassociated_effect_unit"
+              ]
+            ]
+          },
+          "calls": [
+            [
+              "HP Regen",
+              false
+            ]
+          ]
+        },
+        {
+          "value": null,
+          "failures": {
+            "count": 20000,
+            "sha256": "e8435d7c6f33ed2aaa7c7231e70c8515dc8e8aaf91e1c9a096ddc24e313cca5f",
+            "edges": [
+              [
+                "seed/0",
+                "unassociated_effect_unit"
+              ],
+              [
+                "seed/1",
+                "unassociated_effect_unit"
+              ],
+              [
+                "seed/2",
+                "unassociated_effect_unit"
+              ],
+              [
+                "seed/19997",
+                "unassociated_effect_unit"
+              ],
+              [
+                "seed/19998",
+                "unassociated_effect_unit"
+              ],
+              [
+                "seed/19999",
+                "unassociated_effect_unit"
+              ]
+            ]
+          },
+          "calls": [
+            [
+              "Unknown",
+              false
+            ]
+          ]
+        },
+        {
+          "value": [
+            {
+              "source": "HP Regen",
+              "pair": [
+                "HP徐々回復",
+                "逐渐回复HP"
+              ],
+              "semantic_ids": [
+                "table/t_itemhelp.tbl/SkillEffectHelpData/hp/name"
+              ],
+              "parameters": []
+            }
+          ],
+          "failures": {
+            "count": 20000,
+            "sha256": "e8435d7c6f33ed2aaa7c7231e70c8515dc8e8aaf91e1c9a096ddc24e313cca5f",
+            "edges": [
+              [
+                "seed/0",
+                "unassociated_effect_unit"
+              ],
+              [
+                "seed/1",
+                "unassociated_effect_unit"
+              ],
+              [
+                "seed/2",
+                "unassociated_effect_unit"
+              ],
+              [
+                "seed/19997",
+                "unassociated_effect_unit"
+              ],
+              [
+                "seed/19998",
+                "unassociated_effect_unit"
+              ],
+              [
+                "seed/19999",
+                "unassociated_effect_unit"
+              ]
+            ]
+          },
+          "calls": [
+            [
+              "HP Regen",
+              false
+            ]
+          ]
+        },
+        {
+          "value": null,
+          "failures": {
+            "count": 1,
+            "sha256": "a7b988f88f7e3c4afb52323ead19db7fe6d02371d281f977303f108834f60e6d",
+            "edges": [
+              [
+                "Bad\nLine",
+                "hard_line_or_native_ruby"
+              ]
+            ]
+          },
+          "calls": []
+        }
+      ]
+    },
+    {
+      "name": "capacity_update_existing",
+      "events": [
+        {
+          "value": null,
+          "failures": {
+            "count": 20000,
+            "sha256": "51228185201cb4b4923d8cfdec8422d75a6d25787840b26372a1bcd6b671f3ec",
+            "edges": [
+              [
+                "Blind 2147483648%",
+                "invalid_effect_parameter"
+              ],
+              [
+                "seed/0",
+                "unassociated_effect_unit"
+              ],
+              [
+                "seed/1",
+                "unassociated_effect_unit"
+              ],
+              [
+                "seed/19996",
+                "unassociated_effect_unit"
+              ],
+              [
+                "seed/19997",
+                "unassociated_effect_unit"
+              ],
+              [
+                "seed/19998",
+                "unassociated_effect_unit"
+              ]
+            ]
+          },
+          "calls": [
+            [
+              "Blind 2147483648%",
+              false
+            ]
+          ]
+        },
+        {
+          "value": null,
+          "failures": {
+            "count": 1,
+            "sha256": "a7b988f88f7e3c4afb52323ead19db7fe6d02371d281f977303f108834f60e6d",
+            "edges": [
+              [
+                "Bad\nLine",
+                "hard_line_or_native_ruby"
+              ]
+            ]
+          },
+          "calls": []
+        }
+      ]
+    }
+  ],
+  "javascript": [
+    {
+      "name": "cold_and_hot",
+      "events": [
+        {
+          "value": {
+            "source": "HP Regen",
+            "pair": [
+              "HP徐々回復",
+              "逐渐回复HP"
+            ],
+            "semantic_ids": [
+              "table/t_itemhelp.tbl/SkillEffectHelpData/hp/name"
+            ],
+            "parameters": []
+          },
+          "failures": {
+            "count": 0,
+            "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "edges": []
+          },
+          "calls": [
+            [
+              "HP Regen",
+              false
+            ]
+          ]
+        },
+        {
+          "value": null,
+          "failures": {
+            "count": 0,
+            "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "edges": []
+          },
+          "calls": [
+            [
+              "Unknown",
+              false
+            ]
+          ]
+        },
+        {
+          "value": null,
+          "failures": {
+            "count": 1,
+            "sha256": "f2d60fa7272279cf096f3e36b51576e7abc7ea3d5af9d7bffe79eb750b367ca4",
+            "edges": [
+              [
+                "Blind 2147483648%",
+                "invalid_effect_parameter"
+              ]
+            ]
+          },
+          "calls": [
+            [
+              "Blind 2147483648%",
+              false
+            ]
+          ]
+        },
+        {
+          "value": null,
+          "failures": {
+            "count": 2,
+            "sha256": "976fe889eb1fec4c0f370857b225765c97a6ba66c27ed45fdc841e713f458d21",
+            "edges": [
+              [
+                "Blind 2147483648%",
+                "invalid_effect_parameter"
+              ],
+              [
+                "Blind nope%",
+                "unproven_effect_parameter"
+              ]
+            ]
+          },
+          "calls": [
+            [
+              "Blind nope%",
+              false
+            ]
+          ]
+        },
+        {
+          "value": null,
+          "failures": {
+            "count": 2,
+            "sha256": "976fe889eb1fec4c0f370857b225765c97a6ba66c27ed45fdc841e713f458d21",
+            "edges": [
+              [
+                "Blind 2147483648%",
+                "invalid_effect_parameter"
+              ],
+              [
+                "Blind nope%",
+                "unproven_effect_parameter"
+              ]
+            ]
+          },
+          "calls": [
+            [
+              "Blind 2147483648%",
+              false
+            ]
+          ]
+        },
+        {
+          "value": {
+            "source": "HP Regen",
+            "pair": [
+              "HP徐々回復",
+              "逐渐回复HP"
+            ],
+            "semantic_ids": [
+              "table/t_itemhelp.tbl/SkillEffectHelpData/hp/name"
+            ],
+            "parameters": []
+          },
+          "failures": {
+            "count": 2,
+            "sha256": "976fe889eb1fec4c0f370857b225765c97a6ba66c27ed45fdc841e713f458d21",
+            "edges": [
+              [
+                "Blind 2147483648%",
+                "invalid_effect_parameter"
+              ],
+              [
+                "Blind nope%",
+                "unproven_effect_parameter"
+              ]
+            ]
+          },
+          "calls": [
+            [
+              "HP Regen",
+              false
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "reject_then_match",
+      "events": [
+        {
+          "value": null,
+          "failures": {
+            "count": 1,
+            "sha256": "9e81266152253fefb54c5d5ec7369b165daf2fc1b38ca3e48bb3a4974f5fb0f0",
+            "edges": [
+              [
+                "A, B, C",
+                "different_partition_targets"
+              ]
+            ]
+          },
+          "calls": [
+            [
+              "A, B, C",
+              false
+            ],
+            [
+              "C",
+              false
+            ],
+            [
+              "B",
+              false
+            ],
+            [
+              "B, C",
+              false
+            ],
+            [
+              "A",
+              false
+            ],
+            [
+              "A, B",
+              false
+            ],
+            [
+              "A, B, C",
+              false
+            ]
+          ]
+        },
+        {
+          "value": {
+            "source": "A, B, C",
+            "pair": [
+              "JABC",
+              "ZABC"
+            ],
+            "semantic_ids": [
+              "table/t_itemhelp.tbl/SkillEffectHelpData/abc/name"
+            ],
+            "parameters": []
+          },
+          "failures": {
+            "count": 1,
+            "sha256": "9e81266152253fefb54c5d5ec7369b165daf2fc1b38ca3e48bb3a4974f5fb0f0",
+            "edges": [
+              [
+                "A, B, C",
+                "different_partition_targets"
+              ]
+            ]
+          },
+          "calls": [
+            [
+              "A, B, C",
+              false
+            ]
+          ]
+        },
+        {
+          "value": true,
+          "failures": {
+            "count": 1,
+            "sha256": "9e81266152253fefb54c5d5ec7369b165daf2fc1b38ca3e48bb3a4974f5fb0f0",
+            "edges": [
+              [
+                "A, B, C",
+                "different_partition_targets"
+              ]
+            ]
+          },
+          "calls": []
+        },
+        {
+          "value": "JABC",
+          "failures": {
+            "count": 1,
+            "sha256": "9e81266152253fefb54c5d5ec7369b165daf2fc1b38ca3e48bb3a4974f5fb0f0",
+            "edges": [
+              [
+                "A, B, C",
+                "different_partition_targets"
+              ]
+            ]
+          },
+          "calls": [
+            [
+              "A, B, C",
+              false
+            ],
+            [
+              "C",
+              false
+            ],
+            [
+              "B",
+              false
+            ],
+            [
+              "B, C",
+              false
+            ],
+            [
+              "A",
+              false
+            ],
+            [
+              "A, B",
+              false
+            ],
+            [
+              "A, B, C",
+              false
+            ],
+            [
+              "A, B, C",
+              false
+            ]
+          ]
+        },
+        {
+          "value": {
+            "text": "<R>JABC</RZABC>",
+            "layers": [],
+            "kind": "ruby"
+          },
+          "failures": {
+            "count": 1,
+            "sha256": "9e81266152253fefb54c5d5ec7369b165daf2fc1b38ca3e48bb3a4974f5fb0f0",
+            "edges": [
+              [
+                "A, B, C",
+                "different_partition_targets"
+              ]
+            ]
+          },
+          "calls": [
+            [
+              "A, B, C",
+              false
+            ],
+            [
+              "C",
+              false
+            ],
+            [
+              "B",
+              false
+            ],
+            [
+              "B, C",
+              false
+            ],
+            [
+              "A",
+              false
+            ],
+            [
+              "A, B",
+              false
+            ],
+            [
+              "A, B, C",
+              false
+            ],
+            [
+              "A, B, C",
+              false
+            ],
+            [
+              "A, B, C",
+              false
+            ],
+            [
+              "C",
+              false
+            ],
+            [
+              "B",
+              false
+            ],
+            [
+              "B, C",
+              false
+            ],
+            [
+              "A",
+              false
+            ],
+            [
+              "A, B",
+              false
+            ],
+            [
+              "A, B, C",
+              false
+            ],
+            [
+              "A, B, C",
+              false
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "coalesced_success",
+      "events": [
+        {
+          "value": {
+            "source": "<c698>HP </C><c698>Regen</C>",
+            "pair": [
+              "<c698>HP徐々回復</C>",
+              "<c698>逐渐回复HP</C>"
+            ],
+            "semantic_ids": [
+              "table/t_itemhelp.tbl/SkillEffectHelpData/hp/name"
+            ],
+            "parameters": []
+          },
+          "failures": {
+            "count": 1,
+            "sha256": "02caac9bc400768ac68b3957ab00e81473a14657517dc6ec6ca82ab6858030be",
+            "edges": [
+              [
+                "<c698>HP Regen</C>",
+                "conflicting_effect_member"
+              ]
+            ]
+          },
+          "calls": [
+            [
+              "<c698>HP </C><c698>Regen</C>",
+              false
+            ],
+            [
+              "<c698>HP Regen</C>",
+              true
+            ],
+            [
+              "HP Regen",
+              true
+            ]
+          ]
+        },
+        {
+          "value": null,
+          "failures": {
+            "count": 1,
+            "sha256": "02caac9bc400768ac68b3957ab00e81473a14657517dc6ec6ca82ab6858030be",
+            "edges": [
+              [
+                "<c698>HP Regen</C>",
+                "conflicting_effect_member"
+              ]
+            ]
+          },
+          "calls": [
+            [
+              "Unknown",
+              false
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "frame_direction_history",
+      "events": [
+        {
+          "value": null,
+          "failures": {
+            "count": 2,
+            "sha256": "97d198ba2906dade2b7168264b60409c465214b5a9d40f1af3e1933d4d7073df",
+            "edges": [
+              [
+                "Blind 30%",
+                "unproven_direction_parameter"
+              ],
+              [
+                "<C2>Blind 30%</C>",
+                "unproven_direction_parameter"
+              ]
+            ]
+          },
+          "calls": [
+            [
+              "<C2>Blind 30%</C>",
+              false
+            ],
+            [
+              "Blind 30%",
+              true
+            ]
+          ]
+        },
+        {
+          "value": {
+            "text": "<C2>Blind 30%</C>\n<R>技能説明</R技能说明>",
+            "layers": [],
+            "kind": "ruby"
+          },
+          "failures": {
+            "count": 2,
+            "sha256": "97d198ba2906dade2b7168264b60409c465214b5a9d40f1af3e1933d4d7073df",
+            "edges": [
+              [
+                "Blind 30%",
+                "unproven_direction_parameter"
+              ],
+              [
+                "<C2>Blind 30%</C>",
+                "unproven_direction_parameter"
+              ]
+            ]
+          },
+          "calls": [
+            [
+              "<C2>Blind 30%</C>",
+              false
+            ],
+            [
+              "Blind 30%",
+              true
+            ],
+            [
+              "Blind 30%",
+              false
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "opaque_cold",
+      "events": [
+        {
+          "value": [
+            {
+              "source": "HP Regen",
+              "pair": [
+                "HP徐々回復",
+                "逐渐回复HP"
+              ],
+              "semantic_ids": [
+                "table/t_itemhelp.tbl/SkillEffectHelpData/hp/name"
+              ],
+              "parameters": []
+            },
+            {
+              "source": ", ",
+              "pair": [
+                "／",
+                "／"
+              ],
+              "separator": true
+            },
+            {
+              "source": "Unknown",
+              "pair": [
+                "Unknown",
+                "Unknown"
+              ],
+              "opaque": true
+            }
+          ],
+          "failures": {
+            "count": 0,
+            "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "edges": []
+          },
+          "calls": [
+            [
+              "HP Regen, Unknown",
+              false
+            ],
+            [
+              "Unknown",
+              false
+            ],
+            [
+              "Unknown",
+              false
+            ],
+            [
+              "HP Regen",
+              false
+            ],
+            [
+              "HP Regen, Unknown",
+              false
+            ]
+          ]
+        },
+        {
+          "value": {
+            "text": "HP Regen, Unknown\n<R>技能説明</R技能说明>",
+            "layers": [],
+            "kind": "ruby"
+          },
+          "failures": {
+            "count": 0,
+            "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+            "edges": []
+          },
+          "calls": [
+            [
+              "HP Regen, Unknown",
+              false
+            ],
+            [
+              "Unknown",
+              false
+            ],
+            [
+              "Unknown",
+              false
+            ],
+            [
+              "HP Regen",
+              false
+            ],
+            [
+              "HP Regen, Unknown",
+              false
+            ],
+            [
+              "HP Regen, Unknown",
+              false
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "opaque_history",
+      "events": [
+        {
+          "value": null,
+          "failures": {
+            "count": 1,
+            "sha256": "62c3ac90a368ce1d77a6c5028ab4a5666e701c57ebad8dd5adcf5a588c23cda3",
+            "edges": [
+              [
+                "Unknown",
+                "invalid_effect_parameter"
+              ]
+            ]
+          },
+          "calls": [
+            [
+              "Unknown",
+              false
+            ]
+          ]
+        },
+        {
+          "value": null,
+          "failures": {
+            "count": 2,
+            "sha256": "8d740f709ed0d9c6a86cbe71ccedbfca2200f055400ba0634c2ebf11f1832dab",
+            "edges": [
+              [
+                "Unknown",
+                "invalid_effect_parameter"
+              ],
+              [
+                "HP Regen, Unknown",
+                "invalid_effect_parameter"
+              ]
+            ]
+          },
+          "calls": [
+            [
+              "HP Regen, Unknown",
+              false
+            ],
+            [
+              "Unknown",
+              false
+            ],
+            [
+              "HP Regen",
+              false
+            ],
+            [
+              "HP Regen, Unknown",
+              false
+            ],
+            [
+              "HP Regen",
+              false
+            ],
+            [
+              "HP Regen",
+              false
+            ]
+          ]
+        },
+        {
+          "value": {
+            "text": "HP Regen, Unknown\n<R>技能説明</R技能说明>",
+            "layers": [],
+            "kind": "ruby"
+          },
+          "failures": {
+            "count": 2,
+            "sha256": "8d740f709ed0d9c6a86cbe71ccedbfca2200f055400ba0634c2ebf11f1832dab",
+            "edges": [
+              [
+                "Unknown",
+                "invalid_effect_parameter"
+              ],
+              [
+                "HP Regen, Unknown",
+                "invalid_effect_parameter"
+              ]
+            ]
+          },
+          "calls": [
+            [
+              "HP Regen, Unknown",
+              false
+            ],
+            [
+              "Unknown",
+              false
+            ],
+            [
+              "HP Regen",
+              false
+            ],
+            [
+              "HP Regen, Unknown",
+              false
+            ],
+            [
+              "HP Regen",
+              false
+            ],
+            [
+              "HP Regen",
+              false
+            ],
+            [
+              "HP Regen, Unknown",
+              false
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "short_circuit",
+      "events": [
+        {
+          "value": null,
+          "failures": {
+            "count": 2,
+            "sha256": "feb66aa7fa0001dcf2069afd5a7644ab0a8d7be7d0cbdc351ad21ec38adbbccb",
+            "edges": [
+              [
+                "Blind 2147483648%",
+                "invalid_effect_parameter"
+              ],
+              [
+                "HP Regen, Blind 2147483648%, Unknown",
+                "invalid_effect_parameter"
+              ]
+            ]
+          },
+          "calls": [
+            [
+              "HP Regen, Blind 2147483648%, Unknown",
+              false
+            ],
+            [
+              "Unknown",
+              false
+            ],
+            [
+              "Blind 2147483648%",
+              false
+            ],
+            [
+              "Blind 2147483648%, Unknown",
+              false
+            ],
+            [
+              "HP Regen",
+              false
+            ],
+            [
+              "HP Regen, Blind 2147483648%",
+              false
+            ],
+            [
+              "HP Regen, Blind 2147483648%, Unknown",
+              false
+            ],
+            [
+              "HP Regen",
+              false
+            ]
+          ]
+        },
+        {
+          "value": null,
+          "failures": {
+            "count": 4,
+            "sha256": "a60a85d1411870b95f6da10531f89d5f2669d93c6cadf214dbd8925ab0ee0969",
+            "edges": [
+              [
+                "Blind 2147483648%",
+                "invalid_effect_parameter"
+              ],
+              [
+                "HP Regen, Blind 2147483648%, Unknown",
+                "invalid_effect_parameter"
+              ],
+              [
+                "Blind nope%",
+                "unproven_effect_parameter"
+              ],
+              [
+                "Unknown, Blind nope%, HP Regen",
+                "unproven_effect_parameter"
+              ]
+            ]
+          },
+          "calls": [
+            [
+              "Unknown, Blind nope%, HP Regen",
+              false
+            ],
+            [
+              "HP Regen",
+              false
+            ],
+            [
+              "Blind nope%",
+              false
+            ],
+            [
+              "Blind nope%, HP Regen",
+              false
+            ],
+            [
+              "Unknown",
+              false
+            ],
+            [
+              "Unknown, Blind nope%",
+              false
+            ],
+            [
+              "Unknown, Blind nope%, HP Regen",
+              false
+            ],
+            [
+              "Unknown",
+              false
+            ],
+            [
+              "Blind nope%",
+              false
+            ],
+            [
+              "HP Regen",
+              false
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "fragment_traversal",
+      "events": [
+        {
+          "value": null,
+          "failures": {
+            "count": 4,
+            "sha256": "6c36d7ce1660eb7b43456a741f1de3537ceaee61b6cab80112f76a5c02f134da",
+            "edges": [
+              [
+                "Blind nope%",
+                "unproven_effect_parameter"
+              ],
+              [
+                "Blind 2147483648%",
+                "invalid_effect_parameter"
+              ],
+              [
+                "Unknown<C2>Blind nope%</C>Blind 2147483648%",
+                "invalid_effect_parameter"
+              ],
+              [
+                "HP Regen, Unknown<C2>Blind nope%</C>Blind 2147483648%",
+                "invalid_effect_parameter"
+              ]
+            ]
+          },
+          "calls": [
+            [
+              "HP Regen, Unknown<C2>Blind nope%</C>Blind 2147483648%",
+              false
+            ],
+            [
+              "HP Regen, UnknownBlind nope%Blind 2147483648%",
+              true
+            ],
+            [
+              "Unknown<C2>Blind nope%</C>Blind 2147483648%",
+              false
+            ],
+            [
+              "UnknownBlind nope%Blind 2147483648%",
+              true
+            ],
+            [
+              "Unknown",
+              false
+            ],
+            [
+              "Blind nope%",
+              false
+            ],
+            [
+              "Blind 2147483648%",
+              false
+            ],
+            [
+              "HP Regen",
+              false
+            ],
+            [
+              "HP Regen, Unknown<C2>Blind nope%</C>Blind 2147483648%",
+              false
+            ],
+            [
+              "HP Regen, UnknownBlind nope%Blind 2147483648%",
+              true
+            ],
+            [
+              "HP Regen",
+              false
+            ],
+            [
+              "HP Regen",
+              false
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "capacity_19999",
+      "events": [
+        {
+          "value": null,
+          "failures": {
+            "count": 20000,
+            "sha256": "b1fb9887a510b9a3b27715c2e7f7266d8b057125a3a370485b947f013d6b187e",
+            "edges": [
+              [
+                "seed/0",
+                "unassociated_effect_unit"
+              ],
+              [
+                "seed/1",
+                "unassociated_effect_unit"
+              ],
+              [
+                "seed/2",
+                "unassociated_effect_unit"
+              ],
+              [
+                "seed/19997",
+                "unassociated_effect_unit"
+              ],
+              [
+                "seed/19998",
+                "unassociated_effect_unit"
+              ],
+              [
+                "Blind 2147483648%",
+                "invalid_effect_parameter"
+              ]
+            ]
+          },
+          "calls": [
+            [
+              "Blind 2147483648%",
+              false
+            ]
+          ]
+        },
+        {
+          "value": null,
+          "failures": {
+            "count": 1,
+            "sha256": "a7b988f88f7e3c4afb52323ead19db7fe6d02371d281f977303f108834f60e6d",
+            "edges": [
+              [
+                "Bad\nLine",
+                "hard_line_or_native_ruby"
+              ]
+            ]
+          },
+          "calls": []
+        }
+      ]
+    },
+    {
+      "name": "capacity_20000",
+      "events": [
+        {
+          "value": {
+            "source": "HP Regen",
+            "pair": [
+              "HP徐々回復",
+              "逐渐回复HP"
+            ],
+            "semantic_ids": [
+              "table/t_itemhelp.tbl/SkillEffectHelpData/hp/name"
+            ],
+            "parameters": []
+          },
+          "failures": {
+            "count": 20000,
+            "sha256": "e8435d7c6f33ed2aaa7c7231e70c8515dc8e8aaf91e1c9a096ddc24e313cca5f",
+            "edges": [
+              [
+                "seed/0",
+                "unassociated_effect_unit"
+              ],
+              [
+                "seed/1",
+                "unassociated_effect_unit"
+              ],
+              [
+                "seed/2",
+                "unassociated_effect_unit"
+              ],
+              [
+                "seed/19997",
+                "unassociated_effect_unit"
+              ],
+              [
+                "seed/19998",
+                "unassociated_effect_unit"
+              ],
+              [
+                "seed/19999",
+                "unassociated_effect_unit"
+              ]
+            ]
+          },
+          "calls": [
+            [
+              "HP Regen",
+              false
+            ]
+          ]
+        },
+        {
+          "value": null,
+          "failures": {
+            "count": 20000,
+            "sha256": "e8435d7c6f33ed2aaa7c7231e70c8515dc8e8aaf91e1c9a096ddc24e313cca5f",
+            "edges": [
+              [
+                "seed/0",
+                "unassociated_effect_unit"
+              ],
+              [
+                "seed/1",
+                "unassociated_effect_unit"
+              ],
+              [
+                "seed/2",
+                "unassociated_effect_unit"
+              ],
+              [
+                "seed/19997",
+                "unassociated_effect_unit"
+              ],
+              [
+                "seed/19998",
+                "unassociated_effect_unit"
+              ],
+              [
+                "seed/19999",
+                "unassociated_effect_unit"
+              ]
+            ]
+          },
+          "calls": [
+            [
+              "Unknown",
+              false
+            ]
+          ]
+        },
+        {
+          "value": [
+            {
+              "source": "HP Regen",
+              "pair": [
+                "HP徐々回復",
+                "逐渐回复HP"
+              ],
+              "semantic_ids": [
+                "table/t_itemhelp.tbl/SkillEffectHelpData/hp/name"
+              ],
+              "parameters": []
+            }
+          ],
+          "failures": {
+            "count": 20000,
+            "sha256": "e8435d7c6f33ed2aaa7c7231e70c8515dc8e8aaf91e1c9a096ddc24e313cca5f",
+            "edges": [
+              [
+                "seed/0",
+                "unassociated_effect_unit"
+              ],
+              [
+                "seed/1",
+                "unassociated_effect_unit"
+              ],
+              [
+                "seed/2",
+                "unassociated_effect_unit"
+              ],
+              [
+                "seed/19997",
+                "unassociated_effect_unit"
+              ],
+              [
+                "seed/19998",
+                "unassociated_effect_unit"
+              ],
+              [
+                "seed/19999",
+                "unassociated_effect_unit"
+              ]
+            ]
+          },
+          "calls": [
+            [
+              "HP Regen",
+              false
+            ]
+          ]
+        },
+        {
+          "value": null,
+          "failures": {
+            "count": 1,
+            "sha256": "a7b988f88f7e3c4afb52323ead19db7fe6d02371d281f977303f108834f60e6d",
+            "edges": [
+              [
+                "Bad\nLine",
+                "hard_line_or_native_ruby"
+              ]
+            ]
+          },
+          "calls": []
+        }
+      ]
+    },
+    {
+      "name": "capacity_update_existing",
+      "events": [
+        {
+          "value": null,
+          "failures": {
+            "count": 20000,
+            "sha256": "51228185201cb4b4923d8cfdec8422d75a6d25787840b26372a1bcd6b671f3ec",
+            "edges": [
+              [
+                "Blind 2147483648%",
+                "invalid_effect_parameter"
+              ],
+              [
+                "seed/0",
+                "unassociated_effect_unit"
+              ],
+              [
+                "seed/1",
+                "unassociated_effect_unit"
+              ],
+              [
+                "seed/19996",
+                "unassociated_effect_unit"
+              ],
+              [
+                "seed/19997",
+                "unassociated_effect_unit"
+              ],
+              [
+                "seed/19998",
+                "unassociated_effect_unit"
+              ]
+            ]
+          },
+          "calls": [
+            [
+              "Blind 2147483648%",
+              false
+            ]
+          ]
+        },
+        {
+          "value": null,
+          "failures": {
+            "count": 1,
+            "sha256": "a7b988f88f7e3c4afb52323ead19db7fe6d02371d281f977303f108834f60e6d",
+            "edges": [
+              [
+                "Bad\nLine",
+                "hard_line_or_native_ruby"
+              ]
+            ]
+          },
+          "calls": []
+        }
+      ]
+    }
+  ]
+}

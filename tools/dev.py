@@ -31,6 +31,8 @@ def main():
             "tests/test_native_agent.js",
             "tests/test_runtime_identity.js",
             "tests/test_runtime_text.js",
+            "tests/test_runtime_text_authority.js",
+            "tests/test_effect_member_results.js",
             "tests/test_runtime_paragraph.js",
             "tests/test_runtime_books.js",
             "tests/test_runtime_fonts.js",
