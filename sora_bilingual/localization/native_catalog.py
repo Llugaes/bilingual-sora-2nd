@@ -111,6 +111,7 @@ def _code_fingerprint(*, legacy=False):
                 "sora_bilingual/localization/save_summary.py",
                 "sora_bilingual/localization/annotation_breaks.py",
                 "sora_bilingual/localization/annotation_break_data.json",
+                "sora_bilingual/localization/effect_refusal_policy.json",
                 "sora_bilingual/localization/native_catalog.py",
                 "sora_bilingual/localization/language_cache.py",
                 "sora_bilingual/localization/runtime_identity.py",

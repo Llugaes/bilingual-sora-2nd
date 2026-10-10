@@ -27,7 +27,7 @@ include = ["sora_bilingual*"]
 
 [tool.setuptools.package-data]
 "sora_bilingual.game" = ["scripts/*.js"]
-"sora_bilingual.localization" = ["annotation_break_data.json"]
+"sora_bilingual.localization" = ["annotation_break_data.json", "effect_refusal_policy.json"]
 
 [tool.ruff]
 target-version = "py314"

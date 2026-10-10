@@ -20,6 +20,7 @@ def main():
     if command == "format":
         run(sys.executable, "-m", "ruff", "format", ".")
     elif command in {"check", "test"}:
+        run(sys.executable, "-m", "tools.generate_effect_refusal_policy", "--check")
         if command == "check":
             run(sys.executable, "-m", "ruff", "check", ".")
             run(sys.executable, "-m", "ruff", "format", "--check", ".")

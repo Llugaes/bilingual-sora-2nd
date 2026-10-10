@@ -5,6 +5,8 @@ an entire indexed string or an unambiguous numeric printf instance. Native
 icons, colours and separators are copied literally around translated runs.
 """
 
+import json
+from pathlib import Path
 import re
 from sora_bilingual.config.locales import DEFAULT_PRIMARY
 from sora_bilingual.localization.annotation_breaks import annotation_break_allowed
@@ -20,25 +22,10 @@ LINE_BREAK = re.compile(r"\r\n|\n|\\n")
 
 # Recorded syntax/contract failures are hard by default. Only lack of role
 # association permits an ordinary independently admitted resource fallback.
-# Keep the complete enumeration aligned with RuntimeText.effectRefusalPolicy.
-EFFECT_REFUSAL_POLICY = {
-    "missing_native_join_contract": "unproved",
-    "unassociated_effect_unit": "unproved",
-    "partial_effect_members": "unproved",
-    "hard_line_or_native_ruby": "hard",
-    "invalid_separator_style": "hard",
-    "member_budget": "hard",
-    "empty_effect_member": "hard",
-    "partition_budget": "hard",
-    "different_partition_targets": "hard",
-    "invalid_effect_parameter": "hard",
-    "unproven_effect_parameter": "hard",
-    "unproven_standalone_constructor": "hard",
-    "unproven_direction_parameter": "hard",
-    "conflicting_effect_member": "hard",
-    "unsupported_effect_controls": "hard",
-    "item_help_header_missing_record_body": "hard",
-}
+# JS embeds this same data through tools.generate_effect_refusal_policy.
+EFFECT_REFUSAL_POLICY = json.loads(
+    Path(__file__).with_name("effect_refusal_policy.json").read_text("utf-8")
+)
 
 
 def _format_remainder(value):
