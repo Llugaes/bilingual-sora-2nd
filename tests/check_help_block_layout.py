@@ -63,10 +63,10 @@ function center(state,native){
     point.writeFloat(anchor.add(0x30).readFloat()+state.label.add(0x2d8).readFloat()/2);
     point.add(4).writeFloat(anchor.add(0x34).readFloat()+mid);point.add(12).writeFloat(1);
     const actual=project(state.label,point,native);
-    native.anchor(anchor,state.frame.add(0x2e0).readU32(),state.frame.add(0x2d8));
-    point.writeFloat(anchor.add(0x30).readFloat()+state.frame.add(0x2d8).readFloat()/2);
-    point.add(4).writeFloat(anchor.add(0x34).readFloat()+state.frame.add(0x2dc).readFloat()/2);
-    const target=project(state.frame,point,native);
+    native.anchor(anchor,state.label.add(0x2e0).readU32(),state.label.add(0x2d8));
+    point.writeFloat(anchor.add(0x30).readFloat()+state.label.add(0x2d8).readFloat()/2);
+    point.add(4).writeFloat(anchor.add(0x34).readFloat()+state.label.add(0x2dc).readFloat()/2);
+    const target=project(state.label,point,native);
     return {actual:actual[1],target:target[1]+bilingualOffsetY*state.label.add(0x1c).readFloat()};
 }
 rpc.exports.run=()=>{
@@ -95,14 +95,12 @@ rpc.exports.run=()=>{
         results.push({case:sample.case,anchor,scale,offset,ys:[center(state,native).actual],expected:before.target});
         restoreTextProjection(state.lease);
     }
-    for(const sample of INPUT.cases)for(const invalid of ['missing-frame','no-lanes','stale-epoch','singular','invalid-anchor','invalid-size','failed','nested']){
+    for(const sample of INPUT.cases)for(const invalid of ['missing-frame','no-lanes','stale-epoch','invalid-size','failed','nested']){
         const state=setup(sample);enabled=true;renderMode='annotation';bilingualOffsetY=0;failed=false;
         if(invalid==='missing-frame')state.row.helpFrame=null;
         if(invalid==='no-lanes')state.row.glyphLanes=[];
         if(invalid==='stale-epoch')state.row.epoch--;
-        if(invalid==='singular')state.label.add(8).writeFloat(0);
-        if(invalid==='invalid-anchor')state.frame.add(0x2e0).writeU32(9);
-        if(invalid==='invalid-size')state.frame.add(0x2dc).writeFloat(0);
+                if(invalid==='invalid-size')state.label.add(0x2dc).writeFloat(0);
         if(invalid==='failed')failed=true;
         if(invalid==='nested')state.lease.depth=2;
         const before=center(state,native).actual;offsetTextProjection(state.label);

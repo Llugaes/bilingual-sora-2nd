@@ -3489,7 +3489,7 @@ test('shared help control centers both layout paths independent of locale and re
         };
         parse();
         assert.equal(r.helpState(p).surface,'help');
-        const checkCenter=(target=982)=>{
+        const checkCenter=(target=978)=>{
             const projected=r.projectedUpdate(p),g=r.glyphGeometry(p);
             const top=Math.min(...g.map(q=>q[1]-q[3]/2)),bottom=Math.max(...g.map(q=>q[1]+q[3]/2));
             assert.ok(Math.abs(projected-65+(top+bottom)/2-target)<.001,JSON.stringify({source,formatted,projected,top,bottom}));
@@ -3498,11 +3498,11 @@ test('shared help control centers both layout paths independent of locale and re
         checkCenter();const cached=r.helpState(p).bounds;checkCenter();
         assert.equal(r.helpState(p).bounds,cached,'unchanged frame reuses scalar bounds');
         parse(140);checkCenter();assert.notEqual(r.helpState(p).bounds,cached,'same glyph count with a fresh parse retires old bounds');
-        panel.frame.add(0x3c).writeFloat(951);checkCenter(1007);
+        panel.frame.add(0x3c).writeFloat(951);checkCenter();
         for(const mode of ['primary','secondary']) {
             r.api.select(mode,true);assert.equal(r.projectedUpdate(p),978,mode);
         }
-        r.api.select('annotation',true);r.update(p);parse();checkCenter(1007);
+        r.api.select('annotation',true);r.update(p);parse();checkCenter();
         r.api.disable();assert.equal(r.projectedUpdate(p),978,'disabled');
         assert.equal(r.api.status().failed,false,r.api.status().failureReason);
     }

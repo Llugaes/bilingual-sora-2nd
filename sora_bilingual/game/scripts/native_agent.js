@@ -1267,26 +1267,17 @@ function helpGlyphBounds(row) {
 }
 function centerHelpProjection(row) {
     if(!row.helpFrame||!row.glyphLanes?.length)return;
-    const p=row.pointer,frame=row.helpFrame.pointer,bounds=helpGlyphBounds(row);
+    const p=row.pointer,bounds=helpGlyphBounds(row);
     if(!bounds)return;
-    // Native rectangle anchors (0x5899b0 in CAB62). Both controls have their
-    // own size, anchor and world matrix; the text box is not the background.
-    const xs=[0,-1,0,-1,0,-1,-.5,-.5,-.5],ys=[0,0,-1,-1,-.5,-.5,0,-1,-.5];
-    const anchor=p.add(0x2e0).readU32(),frameAnchor=frame.add(0x2e0).readU32();
-    if(anchor>=ys.length||frameAnchor>=ys.length)return;
-    const width=frame.add(0x2d8).readFloat(),height=frame.add(0x2dc).readFloat(),labelHeight=p.add(0x2dc).readFloat();
-    if(![width,height,labelHeight].every(v=>Number.isFinite(v)&&v>0&&v<=65536))return;
-    const matrix=q=>[8,0xc,0x18,0x1c,0x38,0x3c].map(o=>q.add(o).readFloat());
-    const a=matrix(p),b=matrix(frame);
-    if(![...a,...b].every(Number.isFinite))return;
-    const determinant=a[0]*a[3]-a[1]*a[2];
-    if(Math.abs(determinant)<1e-8)return;
-    const x=width*(xs[frameAnchor]+.5),y=height*(ys[frameAnchor]+.5);
-    const worldX=b[4]+b[0]*x+b[2]*y-a[4],worldY=b[5]+b[1]*x+b[3]*y-a[5];
-    const localY=(a[0]*worldY-a[1]*worldX)/determinant-labelHeight*ys[anchor];
-    // Honor the explicit user offset after centering. Geometry already
-    // includes that offset, so do not add it a second time to the glyphs.
-    const delta=localY-(bounds.top+bounds.bottom)/2+bilingualOffsetY;
+    // The authored text rectangle is the layout area. Background sprites
+    // include transparent edges and a drop shadow, so their quad centers
+    // are not the visible panel center. Use one native text box for every
+    // item/locale and both ruby paths, without per-resource padding guesses.
+    const height=p.add(0x2dc).readFloat();
+    if(!(Number.isFinite(height)&&height>0&&height<=65536))return;
+    // Geometry already includes the explicit user offset. Center first,
+    // then honor that setting once; do not change the glyphs themselves.
+    const delta=height/2-(bounds.top+bounds.bottom)/2+bilingualOffsetY;
     if(Number.isFinite(delta))projectTextInset(p,p,delta);
 }
 function offsetTextProjection(p) {
