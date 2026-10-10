@@ -275,6 +275,7 @@ function wantedText(row,allocateLayers=true,sourceOnly=false) {
     row.animated=!!(p.add(0x2e8).readU32()&4);
     row.plan={text:wanted,layers:[],kind:'plain'};
     row.detailFirstLineEnd=null;
+    row.detailBilingual=false;
     if(!sourceOnly&&enabled&&!failed&&(!runtimeFonts||runtimeFonts.isReady())) {
         if(resolver) {
             const mode=renderMode==='bilingual'?'annotation':renderMode;
@@ -296,11 +297,15 @@ function wantedText(row,allocateLayers=true,sourceOnly=false) {
             const paragraphResolver=row.paragraph?.scope==='fc_quest_notes'?fcParagraphs:paragraphs;
             const paragraph=row.paragraph&&paragraphResolver?paragraphResolver.lookup(row.paragraph.source,row.paragraph.index,row.original,mode):null;
             row.plan=paragraph||translator.render(row.original,mode,row.textKey||'',row.scope||'');
-            // Only an admitted layered detail with an exact resource body
-            // owns this correction. Save/dialogue/unknown labels never do.
-            const detailBoundary=mode==='annotation'&&row.plan.kind==='layered'&&translator.detailBodyBoundary?.(row.original);
+            // Detail spacing is owned by the admitted resource body, not by
+            // whichever fragment happens to have the first annotation. Only
+            // layered details also need the existing header/body clearance.
+            const detailBoundary=mode==='annotation'&&['ruby','layered'].includes(row.plan.kind)&&translator.detailBodyBoundary?.(row.original);
+            row.detailBilingual=Boolean(mode==='annotation'&&['ruby','layered'].includes(row.plan.kind)&&
+                !strictDialogue&&!row.logKind&&!row.book&&!row.dialogueSpeaker&&row.scope!=='save_summary'&&
+                (detailBoundary||translator.detailSources?.has(row.original)));
             const firstBreak=/\r\n|\n|\\n/.exec(row.plan.text);
-            if(detailBoundary&&firstBreak&&/\r\n|\n|\\n/.exec(row.original)?.index===detailBoundary.start)
+            if(row.plan.kind==='layered'&&detailBoundary&&firstBreak&&/\r\n|\n|\\n/.exec(row.original)?.index===detailBoundary.start)
                 row.detailFirstLineEnd=RuntimeText.byteLength(row.plan.text.slice(0,firstBreak.index+firstBreak[0].length));
             // Inline native ruby is only emitted when its closing tag is
             // parsed. Animated lines need the same independent prefix lane
@@ -1036,6 +1041,20 @@ if(REPORT.native.line_ruby_origin) Interceptor.attach(base.add(REPORT.native.lin
         this.parser=null;
         try {
             const row=ownedRow(args[0]),parser=args[1];
+            // A detail is one paragraph even when its first stats/icons have
+            // no secondary. Give every owned bilingual detail the same native
+            // first-line margin, without depending on the first ruby anchor.
+            // Replace that origin once; do not add to an already reserved one.
+            // Measurement and later-line leading retain their native contracts.
+            if(row?.detailBilingual&&parser.add(0x16c).readU32()===0&&
+                    !parser.add(0x1ab).readU8()&&!parser.add(0x1a5).readU8()&&
+                    !auxiliaryContexts.has(String(parser))&&!(args[0].add(0x2e8).readU32()&0x108)) {
+                const localMargin=args[0].add(0x2fc).readFloat();
+                const margin=localMargin||base.add(REPORT.text_table_global).readPointer().add(0x6a4).readFloat();
+                this.y=parser.add(4).readFloat()-margin;this.parser=parser;
+                if(!Number.isFinite(this.y))throw Error('Invalid detail line origin');
+                return;
+            }
             // Keep the speaker/mixed-layout rule, and preserve the incoming
             // first-line origin for ordinary small owned runs. Normal labels
             // and later lines retain their native ruby reserve/leading.
