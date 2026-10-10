@@ -36,7 +36,7 @@ def pack_model(model):
     return {"schema": 1, "root": root, "nodes": nodes}
 
 
-def indexed_model(model):
+def _indexed_parts(model):
     """Keep the complete DAG outside V8's traced heap; decode only used nodes.
 
     Objects carry an insertion-order entry table and a collision-checked hash
@@ -104,16 +104,23 @@ def indexed_model(model):
         data_offset,
         data_offset + len(data),
     )
+    return header, table, data
+
+
+def indexed_model(model):
+    """Compatibility byte-buffer entry point for the complete indexed file."""
+    header, table, data = _indexed_parts(model)
     return header + table + data
 
 
 def publish_indexed(path, model):
-    content = indexed_model(model)
+    parts = _indexed_parts(model)
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile("wb", dir=path.parent, suffix=".tmp", delete=False) as out:
         temporary = Path(out.name)
         try:
-            out.write(content)
+            for part in parts:
+                out.write(part)
         except Exception:
             out.close()
             temporary.unlink(missing_ok=True)
@@ -180,6 +187,7 @@ def prepare_wire(model_path, model=None, *, schema=SCHEMA):
     else:
         # Old game-owned scripts keep their connection until the next launch.
         publish_json(target, pack_model(model))
-    digest = hashlib.sha256(target.read_bytes()).hexdigest()
+    with target.open("rb") as stream:
+        digest = hashlib.file_digest(stream, "sha256").hexdigest()
     publish_json(stamp, {"source": identity, "size": target.stat().st_size, "sha256": digest})
     return target

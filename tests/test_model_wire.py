@@ -1,19 +1,195 @@
 import json
 import base64
+import hashlib
 from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+import zlib
 from unittest.mock import patch
 from sora_bilingual.localization.model_wire import (
     indexed_model,
     pack_model,
     prepare_wire,
+    publish_indexed,
     wire_ready,
 )
 
 
+# Frozen from model_wire.py at 70e00b4cdb74ad8295d4215641b3d2c85c6125fd,
+# before splitting the indexed encoder. zlib only keeps the literal fixture small.
+_EMPTY_WIRE = {
+    1: "eJyrVipOzkjNTVSyMtRRKsrPL1GyMtJRystPSS1WsopWKkjMLCpW0ok2jNWJNtQx0DGMja0FAJ3sD3o=",
+    2: "eJwL9g9y9PV3MWJiYGBgYWBgYGZgYFBgYGBIYGBg2ADlszJAABcSmwdKg+QFoXwlqDzILAOoOQUMiQyZDEUMxVB2EUMiQzqYLGDIYIhnKGbIZyhlKGJIZkgFqwEBRqgZIDrt/qxEkNgU1U17QHwAzCIR4Q==",
+}
+_COMPLETE_WIRE = {
+    1: (
+        "eJx1ULFu2zAU/Jc3XwLykbIl/0QCZJQEgZCZWqhCKiQFxwg6d8mcqUO9FB2CLh36R4az5RMKOmmADlkeDu8d7t3dPcV+Y28MrSQo"
+        "eJ9opQuQ82sbaVXTZIYQCfT84/G4f2hC4w5P++P+gUDXQ4ipaZyzd4lQC0hw+85859UCDN2CDo9fD9+eXr7/+tPMQghBoOjn0FsC"
+        "HX/+PjGXKFvUEhIKjAILVC1oGs3gun9WTAhmR3DzOCKF2ULi2ozRQuBMnAuI87IAvTpSkBqygFxALiFLyAr84b4Ffba7/EMRFIgJ"
+        "DJIEyma7bgo++a57lc6Reu9iCnOffCDQ2iRDoI2JF1t3GfxkQ9oRyG8dgZK/SmFwnzI8NUa9j8mEt13vx3GIg3dn3uVGxuF2Htb/"
+        "HdLWUy6HFViDC/ACvMwxuMwxuIISUBKKoRSUhiqgFlBLqBKqgs4J7c2UXdUZx40Jdn0SFZACUp4mgyWYoSU0Qytojaptv/wFTBan"
+        "Uw=="
+    ),
+    2: (
+        "eJyNlEloVEEQhr83kzGjjvsW933fTdQIihrmIBIZUQ8e1DAkYzIkzjzfTNDgQT2IIScPIhoQPQiKC4IIelDxEEEhgmiEHARFPCiCiCcFD1Ld1b6XwYMNb6n+q/7urvq79mb2bN+VSa+LAeuBOmAO4MehphriQAI7RmDtYUBKH7FHAjXAZKAKEK41QJIwvl7jHZ6uwBsr+PdH+D2gReNcfJvGJ9TH1zXdfq7qfhz/Q+V3o0+/nj7OjkXwpGIy+ivwfsWdPVBhv4ucT8Yn/brzfIqcZzzwGdihuMyt8cJ48a/3rL/j31yBpyvwHRX4bsWdvS9iD5d8e3YfVYp3ePbf5dP3wnzKfHeEfzRwzoMZastz27N1lH/xu+/B2Eh8XyRe6tLvwUS1RwEfPJgW0cNvL9SD4MmYxRMavyBma+7q3RcL9SbjlSbG8Ynt+MZJvWIwT23jGrexLh9Vajv+ZDzkF3yi4gmNr4nbeyR2tdQvbjXqkyVPQAm4cKmxexQjmNve2H1YZ8scoECBHMcpK3dMfa1nqJuzuRWtDYMP3st2SxTpJKCZHLU9dk2nX3emhJ5d6t3wpSQl58Rr/4JgXV8yb4THp8PssEDTkL1mCQjI0vX3Bn3fytBxqtaMr1sZtDUSXYzB1l1yLPqaILkCJvF/Pu3k6KJE7d9lktvWhWtuW6v3vsnsN6BImaKxLHczRQomrwGdNBs0MP0kS5ksbWQpkeEYBXabeJ8cAWW6KJpZTMxewyB5aaWs1RFuYba5sZjMddBBnhJ5s/ZK887JnSLPUTrJ0/JPvzLHKGovnYrV93TsvZIczdQczQJma5+ei9XtfLkDwEJgEbAYWAIsBZ5tejpZ9DDjeqpOan33Rmq9aKLhZmqDJPHtrdRG0cLzFxc3iz4u39x1SLQjX9HK4/ajZ0RvmSsHf4iGchzBNxkS3UkGA3K0GL2IRlrN26eNpiG6dJqXtUK9W22u1jpKPaW+2wdPSwvjZO9B1zrNfZNeJF+5u9KPpgDLgOXACmCl6nsVGM18e3K9RvZ++H1vVjgW3dnfI+sNpH9ek7OcX3jvkZx5S/rjW1nvZXLnL+nZfwDoZrAT"
+    ),
+}
+
+
+def wire_fixture(schema):
+    pairs = {
+        "首行\r\n次行": ["首行\r\n次行", "first\\nnext"],
+        "first\\nnext": ["first\\nnext", "首行\n次行"],
+        "文本𠮷\x00": ["source", "訳"],
+    }
+    values = [None, True, 1, False, 0, -0.0, 0.85, ""]
+    if schema == 2:
+        values.append("\ud800")
+    return {
+        "pairs": pairs,
+        "plain_pairs": pairs,
+        "array": values * 2,
+        "keys": {
+            **{str(i): i for i in reversed(range(4))},
+            "__proto__": [True],
+            "constructor": "data",
+            "hasOwnProperty": "own",
+            "toString": "text",
+            "costarring": "collision-one",
+            "liquid": "collision-two",
+        },
+        "empty": [],
+        "shared": ("source", "訳"),
+    }
+
+
 class WireTests(unittest.TestCase):
+    def test_wire_bytes_match_frozen_baseline_for_both_schemas(self):
+        for schema in (1, 2):
+            for model, frozen in (
+                ({"pairs": {}}, _EMPTY_WIRE),
+                (wire_fixture(schema), _COMPLETE_WIRE),
+            ):
+                with (
+                    self.subTest(schema=schema, empty=model == {"pairs": {}}),
+                    tempfile.TemporaryDirectory() as tmp,
+                ):
+                    expected = zlib.decompress(base64.b64decode(frozen[schema]))
+                    source = Path(tmp) / "model.json"
+                    source.write_text("{}", "utf-8")
+                    target = prepare_wire(source, model, schema=schema)
+                    self.assertEqual(target.read_bytes(), expected)
+                    if schema == 2:
+                        self.assertEqual(indexed_model(model), expected)
+                    else:
+                        self.assertEqual(pack_model(model), json.loads(expected))
+
+    def test_production_indexed_publication_avoids_compatibility_byte_copy(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "model.wire.bin"
+            with patch(
+                "sora_bilingual.localization.model_wire.indexed_model",
+                side_effect=AssertionError("materialized compatibility bytes"),
+            ):
+                publish_indexed(target, {"pairs": {}})
+            self.assertEqual(target.read_bytes(), zlib.decompress(base64.b64decode(_EMPTY_WIRE[2])))
+
+    def test_published_wire_digest_streams_the_actual_file(self):
+        for schema in (1, 2):
+            with self.subTest(schema=schema), tempfile.TemporaryDirectory() as tmp:
+                source = Path(tmp) / "model.json"
+                source.write_text("{}", "utf-8")
+                with (
+                    patch.object(Path, "read_bytes", side_effect=AssertionError("whole-file copy")),
+                    patch(
+                        "sora_bilingual.localization.model_wire.hashlib.file_digest",
+                        wraps=hashlib.file_digest,
+                    ) as digest,
+                ):
+                    target = prepare_wire(source, {"pairs": {}}, schema=schema)
+                digest.assert_called_once()
+                self.assertEqual(Path(digest.call_args.args[0].name), target)
+                self.assertEqual(digest.call_args.args[1], "sha256")
+                stamp = (
+                    target.with_name(target.name + ".stamp.json")
+                    if schema == 2
+                    else target.with_suffix(".stamp.json")
+                )
+                self.assertEqual(
+                    json.loads(stamp.read_text("utf-8"))["sha256"],
+                    hashlib.sha256(target.read_bytes()).hexdigest(),
+                )
+
+    def test_post_publication_payload_denial_never_writes_a_stamp(self):
+        for schema in (1, 2):
+            with self.subTest(schema=schema), tempfile.TemporaryDirectory() as tmp:
+                source = Path(tmp) / "model.json"
+                source.write_text("{}", "utf-8")
+                original = Path.open
+
+                def denied_payload(path, mode="r", *args, **kwargs):
+                    if path.name.endswith((".wire.bin", ".wire.json")) and mode == "rb":
+                        raise PermissionError("published payload denied")
+                    return original(path, mode, *args, **kwargs)
+
+                with patch.object(Path, "open", denied_payload):
+                    with self.assertRaisesRegex(PermissionError, "published payload denied"):
+                        prepare_wire(source, {"pairs": {}}, schema=schema)
+                self.assertEqual(list(Path(tmp).glob("*.stamp.json")), [])
+                self.assertEqual(list(Path(tmp).glob("*.tmp")), [])
+                self.assertEqual(len(list(Path(tmp).glob("*.wire.*"))), 1)
+
+    def test_failed_indexed_writes_preserve_previous_payload_and_stamp(self):
+        from sora_bilingual.localization import model_wire
+
+        for stage in (1, 2, 3, "replace"):
+            with self.subTest(stage=stage), tempfile.TemporaryDirectory() as tmp:
+                source = Path(tmp) / "model.json"
+                source.write_text("{}", "utf-8")
+                target = prepare_wire(source, {"pairs": {}})
+                stamp = target.with_name(target.name + ".stamp.json")
+                previous, previous_stamp = target.read_bytes(), stamp.read_bytes()
+                source.write_text('{"changed":true}', "utf-8")
+                original = model_wire.tempfile.NamedTemporaryFile
+
+                class FailingWriter:
+                    def __init__(self, *args, **kwargs):
+                        self.stream = original(*args, **kwargs)
+                        self.writes = 0
+
+                    def __enter__(self):
+                        self.stream.__enter__()
+                        return self
+
+                    def __exit__(self, *args):
+                        return self.stream.__exit__(*args)
+
+                    def __getattr__(self, name):
+                        return getattr(self.stream, name)
+
+                    def write(self, content):
+                        self.writes += 1
+                        if self.writes == stage:
+                            self.stream.write(content[:1])
+                            raise OSError("interrupted indexed write")
+                        return self.stream.write(content)
+
+                with (
+                    patch.object(model_wire.tempfile, "NamedTemporaryFile", FailingWriter),
+                    patch.object(model_wire, "replace_file", side_effect=OSError("replace denied"))
+                    if stage == "replace"
+                    else patch.object(model_wire, "replace_file", wraps=model_wire.replace_file),
+                ):
+                    with self.assertRaisesRegex(
+                        OSError,
+                        "replace denied" if stage == "replace" else "interrupted indexed write",
+                    ):
+                        prepare_wire(source, {"pairs": {"new": ["new", "訳"]}})
+                self.assertEqual(target.read_bytes(), previous)
+                self.assertEqual(stamp.read_bytes(), previous_stamp)
+                self.assertEqual(list(Path(tmp).glob("*.tmp")), [])
+
     def test_wire_ready_permission_is_not_a_cache_miss(self):
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / "model.json"
