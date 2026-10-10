@@ -266,6 +266,8 @@ function wantedText(row,allocateLayers=true,sourceOnly=false) {
     const started=Date.now();
     const p=row.pointer,key=translationKey(row);
     row.renderSize=p.add(0x304).readU32();
+    row.rubySizing=null;
+    row.rubySizingInputs=null;
     let wanted=row.original;
     row.glyphLanes=[];row.laneCount=-1;row.laneUnits=-1;row.lanesDirty=false;
     row.offsetPositions=null;
@@ -375,6 +377,7 @@ function wantedText(row,allocateLayers=true,sourceOnly=false) {
     row.layerBuffers=allocateLayers?(row.plan.layers||[]).map(layer=>({layer:{...layer,offset:layer.offset+prefixLength},buffer:Memory.allocUtf8String(layer.text),primaryBuffer:Memory.allocUtf8String(layer.primary||row.original)})):[];
     if(row.detailFirstLineEnd!==null)row.detailFirstLineEnd+=prefixLength;
     if(wanted.length>32768)throw Error('Rendered text exceeds limit');
+    row.rubySizing=rubyContextCallbacks.sizing(row);
     recordTiming('resolve',started);
     return wanted;
 }
@@ -384,8 +387,11 @@ function captureMetadata(row) {
     row.metadata={size:p.add(0x304).readU32(),flags:p.add(0x2e8).readU32()};
 }
 function textLayoutChanged(row,p) {
+    const inputs=row.rubySizingInputs;
     return row.renderSize!==p.add(0x304).readU32()||
-        (row.metadata?.flags&0x0c)!==(p.add(0x2e8).readU32()&0x0c);
+        (row.metadata?.flags&0x0c)!==(p.add(0x2e8).readU32()&0x0c)||
+        (!!inputs&&(inputs.fontIndex!==p.add(0x300).readU32()||
+            inputs.rubyPixels!==base.add(REPORT.text_table_global).readPointer().add(0x6a8).readU32()));
 }
 function prepareTextReset(p) {
     // Update already owns its nested setter/reset and preserves reveal state.
@@ -659,7 +665,7 @@ if(REPORT.native.measure_text) Interceptor.attach(base.add(REPORT.native.measure
                     !frame.measuringLabels?.some(label=>label.equals(p)))return;
             const row=ownedRow(p);
             if(row?.plan.kind==='ruby'&&row.reserveRubyHeight&&!row.preservePrimaryLayout&&
-                    !row.animated&&!row.plan.layers?.length) {
+                    !row.animated&&!row.plan.layers?.length&&!row.rubySizing) {
                 this.measureThread=Process.getCurrentThreadId();
                 this.measureToken=nativeMeasure.push(this.measureThread,p,p.add(0x318).readPointer(),rubyScale);
             }
@@ -744,6 +750,39 @@ function inheritAuxiliaryIcons(child,parent,label) {
     child.add(0x240).writePointer(copy);
 }
 const rubyContextCallbacks={
+    sizing(row) {
+        // Ordinary owned runs have an integer native size command. Use that
+        // requested size, rather than a float32 parser round trip, to keep
+        // adjacent size settings stable. Mixed text, readings and explicit
+        // emphasis retain their existing native layout/size contracts.
+        if(row.plan.kind!=='ruby'||row.preservePrimaryLayout||
+                /<[sS]\d+>|<R>/.test(row.original)||/<[sS]\d+>/.test(row.plan.text)||
+                !REPORT.text_table_global||!REPORT.font_manager_global)return null;
+        const size=row.renderSize;
+        if(!(size>=12&&size<=256))return null;
+        const primaryPixels=annotationScale<1?Math.max(12,Math.round(size*annotationScale)):size;
+        const limit=primaryPixels-1;
+        const table=base.add(REPORT.text_table_global).readPointer();
+        const manager=base.add(REPORT.font_manager_global).readPointer();
+        const index=row.pointer.add(0x300).readU32(),count=manager.add(0x10).readU32();
+        if(index>=count||count>1024)throw Error('Invalid annotation font index');
+        const fonts=manager.add(8).readPointer();
+        const fontSize=fonts.add(index*8).readPointer().add(0x28).readU32();
+        const rubyFontSize=fonts.readPointer().add(0x28).readU32();
+        const rubyPixels=table.add(0x6a8).readU32();
+        if(!(fontSize>0&&fontSize<=4096&&rubyFontSize>0&&rubyFontSize<=4096&&rubyPixels>0&&rubyPixels<=4096))
+            throw Error('Invalid annotation font metrics');
+        // Retain the exact inputs used here, including normal runs that may
+        // become small after a constructor changes its index. Font faces are
+        // refreshed by the existing font epoch; these two native inputs also
+        // change independently of that epoch. Check them without a font walk.
+        row.rubySizingInputs={fontIndex:index,rubyPixels};
+        const nativePixels=rubyPixels*fontSize/rubyFontSize;
+        // Scope remains small even when the user's multiplier already puts
+        // the secondary below the limit. Changing that multiplier must not
+        // switch the main run's first-line origin back to native ruby reserve.
+        return nativePixels>limit?{primaryPixels,nativePixels,limit}:null;
+    },
     absoluteFactor(row,factor) {
         if(!row||!REPORT.font_manager_global)return factor;
         // S/s replaces the scale with requested pixels / this label's font
@@ -828,7 +867,9 @@ const rubyContextCallbacks={
             // size (0x586f57..0x586f92), not the parent's current size. C/c/B
             // commands do not create contexts. Scale an actual nested reading
             // relative to its parent's annotation multiplier.
-            const scaleFactor=this.inherited?this.inherited.factor:rubyScale;
+            const sizing=this.owner?.rubySizing;
+            const scaleFactor=this.inherited?this.inherited.factor:
+                sizing?Math.min(rubyScale,sizing.limit/sizing.nativePixels):rubyScale;
             for(const offset of [0x158,0x15c]) {
                 const field=this.target.add(offset),scale=field.readFloat();
                 if(!Number.isFinite(scale)||scale<=0||scale>8)throw Error('Unvalidated ruby scale');
@@ -995,11 +1036,12 @@ if(REPORT.native.line_ruby_origin) Interceptor.attach(base.add(REPORT.native.lin
         this.parser=null;
         try {
             const row=ownedRow(args[0]),parser=args[1];
-            // Keep the specific speaker/mixed-layout correction. Ordinary
-            // labels retain their native origin; whole-group offset is an
-            // explicit user setting, not an automatic global compensation.
+            // Keep the speaker/mixed-layout rule, and preserve the incoming
+            // first-line origin for ordinary small owned runs. Normal labels
+            // and later lines retain their native ruby reserve/leading.
             if(row?.plan.kind==='ruby'&&
-                    (row.dialogueSpeaker||row.preservePrimaryLayout)&&
+                    (row.dialogueSpeaker||row.preservePrimaryLayout||
+                        (row.rubySizing&&parser.add(0x16c).readU32()===0))&&
                     !row.original.includes('<R>')&&!parser.add(0x1ab).readU8()) {
                 this.y=parser.add(4).readFloat();this.parser=parser;
                 if(!Number.isFinite(this.y))throw Error('Invalid native line origin');
