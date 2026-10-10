@@ -16,6 +16,8 @@
 
 `MenuTranslator` 在已证明的完整详情上下文内建立 `detail_effect_units`，角色来自原 name/stat、typed 原生构造合同和已证 flag，不从任意片段或参数标签推导成员。完整语句用于安全准入，独立语义效果用于副文排版；每层携带稳定资源身份、参数及 UTF-8 锚点。共享参数的原生组合构造器保持原子性，相邻独立效果分别对齐；分隔符不拥有副文。缺语言、角色冲突、未知参数和不支持的原控制继续拒绝并列出理由，保留硬换行及原生注音。完整包回放与未测边界见 [dev4 验证](verification/dev4-correctness.md)。
 
+装备限定标题由 `item_help_headers.py` 从 kind 6 的物理资格、角色名字链和 FORMAT2/4 编译进既有 `compact_rows`；各语言词序、括号和空格均为模型数据。compact 与普通标题将 `owned_effect_units` 交给同一属性解析函数，只有经过原表证明的完整字段获得局部权限；当前角色限定装备的正 HP 使用原生 format，不能用通用 name/value 拼接替代。去重合并同标题的合法物理值并拒绝同源冲突，不加入全局关键词。来源与验证范围见 [装备限定修复](verification/equipment-qualification.md)。
+
 这个仓库只负责《空之轨迹 the 2nd》。其他游戏可以建立同命名系列仓库；在第二个真实接入需求出现之前，不引入通用游戏插件框架或工厂层。
 
 ## 模块职责

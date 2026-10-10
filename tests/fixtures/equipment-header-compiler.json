@@ -1,0 +1,181 @@
+{
+  "scope": "Official eight-language constants and audited role names; unit tables are constructed semantic fixtures, not copied native tables or an engine execution proof.",
+  "exe_sha256": "cab62e5872222efb2aaf272be47f14263db4e7132ad7df5255db8efbee9959ea",
+  "semantic_hp_format_key": "table/t_itemhelp.tbl/SkillItemStatusData/sha256:17b0761f87b081d5cf10757ccc89f12be355c70e2e29df288b65b30710dcbcd1/format",
+  "hp_status_fields": {
+    "ja": {"format": "最大HP+%d", "name": "最大HP", "value": "+%d", "colour": "<c698>", "1500": "<c698>最大HP+1500</C>", "3000": "<c698>最大HP+3000</C>"},
+    "en": {"format": "MAX HP+%d", "name": "MAX HP", "value": "+%d", "colour": "<c698>", "1500": "<c698>MAX HP+1500</C>", "3000": "<c698>MAX HP+3000</C>"},
+    "zh-Hans": {"format": "HP上限+%d", "name": "HP上限", "value": "+%d", "colour": "<c698>", "1500": "<c698>HP上限+1500</C>", "3000": "<c698>HP上限+3000</C>"},
+    "zh-Hant": {"format": "HP上限+%d", "name": "HP上限", "value": "+%d", "colour": "<c698>", "1500": "<c698>HP上限+1500</C>", "3000": "<c698>HP上限+3000</C>"},
+    "ko": {"format": "최대 HP +%d", "name": "최대 HP", "value": "+%d", "colour": "<c698>", "1500": "<c698>최대 HP +1500</C>", "3000": "<c698>최대 HP +3000</C>"},
+    "fr": {"format": "PV MAX +%d", "name": "PV MAX", "value": "+%d", "colour": "<c698>", "1500": "<c698>PV MAX +1500</C>", "3000": "<c698>PV MAX +3000</C>"},
+    "de": {"format": "MAX LP +%d", "name": "MAX LP", "value": "+%d", "colour": "<c698>", "1500": "<c698>MAX LP +1500</C>", "3000": "<c698>MAX LP +3000</C>"},
+    "es": {"format": "PV MÁX +%d", "name": "PV MÁX", "value": "+%d", "colour": "<c698>", "1500": "<c698>PV MÁX +1500</C>", "3000": "<c698>PV MÁX +3000</C>"}
+  },
+  "constants": {
+    "ja": {
+      "FORMAT1": "【<I%03d>%s：",
+      "FORMAT2": "【 %s",
+      "FORMAT4": "%s 】\n%s",
+      "FORMAT5": "【",
+      "FORMAT6": "】",
+      "FORMAT7": "%s%s%s】\n%s",
+      "ALL": "全",
+      "MAIL_ONLY": "男性専用",
+      "FEMAIL_ONLY": "女性専用",
+      "ONLY": "%s専用",
+      "HOLLOWCORE": "%s専用"
+    },
+    "en": {
+      "FORMAT1": "[<I%03d>%s - ",
+      "FORMAT2": "[%s",
+      "FORMAT4": "%s] \n%s",
+      "FORMAT5": "[",
+      "FORMAT6": "]",
+      "FORMAT7": "%s%s%s] \n%s",
+      "ALL": "All",
+      "MAIL_ONLY": "Male Only ",
+      "FEMAIL_ONLY": "Female Only ",
+      "ONLY": "%s Exclusive",
+      "HOLLOWCORE": "%s Exclusive"
+    },
+    "zh-Hans": {
+      "FORMAT1": "【<I%03d>%s：",
+      "FORMAT2": "【 %s",
+      "FORMAT4": "%s 】\n%s",
+      "FORMAT5": "【",
+      "FORMAT6": "】",
+      "FORMAT7": "%s%s%s】\n%s",
+      "ALL": "全",
+      "MAIL_ONLY": "男性专用",
+      "FEMAIL_ONLY": "女性专用",
+      "ONLY": "%s专用",
+      "HOLLOWCORE": "%s专用"
+    },
+    "zh-Hant": {
+      "FORMAT1": "【<I%03d>%s：",
+      "FORMAT2": "【 %s",
+      "FORMAT4": "%s 】\n%s",
+      "FORMAT5": "【",
+      "FORMAT6": "】",
+      "FORMAT7": "%s%s%s】\n%s",
+      "ALL": "全",
+      "MAIL_ONLY": "男性專用",
+      "FEMAIL_ONLY": "女性專用",
+      "ONLY": "%s專用",
+      "HOLLOWCORE": "%s專用"
+    },
+    "ko": {
+      "FORMAT1": "【<I%03d>%s: ",
+      "FORMAT2": "【 %s",
+      "FORMAT4": "%s 】 \n%s",
+      "FORMAT5": "【",
+      "FORMAT6": "】",
+      "FORMAT7": "%s%s%s】\n%s",
+      "ALL": "완전",
+      "MAIL_ONLY": "남성 전용",
+      "FEMAIL_ONLY": "여성 전용",
+      "ONLY": "%s 전용",
+      "HOLLOWCORE": "%s 전용"
+    },
+    "fr": {
+      "FORMAT1": "[<I%03d>%s - ",
+      "FORMAT2": "[%s",
+      "FORMAT4": "%s] \n%s",
+      "FORMAT5": "[",
+      "FORMAT6": "]",
+      "FORMAT7": "%s%s%s] \n%s",
+      "ALL": "Tous",
+      "MAIL_ONLY": "Homme uniquement  ",
+      "FEMAIL_ONLY": "Femme uniquement  ",
+      "ONLY": "Pour %s",
+      "HOLLOWCORE": "Pour %s"
+    },
+    "de": {
+      "FORMAT1": "[<I%03d>%s - ",
+      "FORMAT2": "[%s",
+      "FORMAT4": "%s] \n%s",
+      "FORMAT5": "[",
+      "FORMAT6": "]",
+      "FORMAT7": "%s%s%s] \n%s",
+      "ALL": "Alle",
+      "MAIL_ONLY": "Nur männlich  ",
+      "FEMAIL_ONLY": "Nur weiblich ",
+      "ONLY": "Ausschließlich %s",
+      "HOLLOWCORE": "%s Ausschließlich"
+    },
+    "es": {
+      "FORMAT1": "[<I%03d>%s - ",
+      "FORMAT2": "[%s",
+      "FORMAT4": "%s] \n%s",
+      "FORMAT5": "[",
+      "FORMAT6": "]",
+      "FORMAT7": "%s%s%s] \n%s",
+      "ALL": "Todo",
+      "MAIL_ONLY": "Solo chicos  ",
+      "FEMAIL_ONLY": "Solo chicas  ",
+      "ONLY": "Exclusivo de %s",
+      "HOLLOWCORE": "Exclusivo de %s"
+    }
+  },
+  "role_names": {
+    "ja": "ティータ",
+    "en": "Tita",
+    "zh-Hans": "缇妲",
+    "zh-Hant": "緹妲",
+    "ko": "티타",
+    "fr": "Tita",
+    "de": "Tita",
+    "es": "Tita"
+  },
+  "expected": {
+    "ja": {
+      "male": "男性専用【 ",
+      "female": "女性専用【 ",
+      "role": "ティータ専用【 ",
+      "close": " 】"
+    },
+    "en": {
+      "male": "Male Only [",
+      "female": "Female Only [",
+      "role": "Tita Exclusive[",
+      "close": "] "
+    },
+    "zh-Hans": {
+      "male": "男性专用【 ",
+      "female": "女性专用【 ",
+      "role": "缇妲专用【 ",
+      "close": " 】"
+    },
+    "zh-Hant": {
+      "male": "男性專用【 ",
+      "female": "女性專用【 ",
+      "role": "緹妲專用【 ",
+      "close": " 】"
+    },
+    "ko": {
+      "male": "남성 전용【 ",
+      "female": "여성 전용【 ",
+      "role": "티타 전용【 ",
+      "close": " 】 "
+    },
+    "fr": {
+      "male": "Homme uniquement  [",
+      "female": "Femme uniquement  [",
+      "role": "Pour Tita[",
+      "close": "] "
+    },
+    "de": {
+      "male": "Nur männlich  [",
+      "female": "Nur weiblich [",
+      "role": "Ausschließlich Tita[",
+      "close": "] "
+    },
+    "es": {
+      "male": "Solo chicos  [",
+      "female": "Solo chicas  [",
+      "role": "Exclusivo de Tita[",
+      "close": "] "
+    }
+  }
+}

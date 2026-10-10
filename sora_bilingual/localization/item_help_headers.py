@@ -1,4 +1,4 @@
-"""Compile complete Tools headers from the reviewed kind-three constructor.
+"""Compile complete item headers from reviewed native constructors.
 
 A category/range prefix only owns its selected physical record's body. Effects
 remain subject to the existing typed parser; no category or range word becomes
@@ -47,7 +47,12 @@ def compile_item_help_headers(game, entries, primary, secondary, language):
     catalogue = defaultdict(list)
     for entry in entries:
         if entry.get("key", "").startswith(
-            ("table/t_item.tbl/", "table/t_itemhelp.tbl/", "table/t_text.tbl/TXT_ITEM_HELP_")
+            (
+                "table/t_item.tbl/",
+                "table/t_itemhelp.tbl/",
+                "table/t_status.tbl/",
+                "table/t_text.tbl/TXT_ITEM_HELP_",
+            )
         ):
             catalogue[entry["key"]].append(entry.get("texts", {}))
     locales = (language, primary, secondary)
@@ -58,6 +63,8 @@ def compile_item_help_headers(game, entries, primary, secondary, language):
         item = archive.read(logical["table/t_item.tbl"])
         help_data = archive.read(logical["table/t_itemhelp.tbl"])
         skill_data = archive.read(logical["table/t_skill.tbl"])
+        name_data = archive.read(logical["table/t_name.tbl"])
+        status_data = archive.read(logical["table/t_status.tbl"])
     finally:
         archive.close()
 
@@ -74,6 +81,8 @@ def compile_item_help_headers(game, entries, primary, secondary, language):
     rt, rsc, _ = table(help_data, "table/t_itemhelp.tbl", "SkillRangeHelpData")
     st, ssc, _ = table(help_data, "table/t_itemhelp.tbl", "SkillTextArrayData")
     pt, _psc, _ = table(skill_data, "table/t_skill.tbl", "SkillPowerIcon")
+    nt, _nsc, n_floor = table(name_data, "table/t_name.tbl", "NameTableData")
+    vt, vsc, _ = table(help_data, "table/t_itemhelp.tbl", "SkillItemStatusData")
 
     def string(data, at, floor):
         pointer = struct.unpack_from("<Q", data, at)[0]
@@ -124,6 +133,137 @@ def compile_item_help_headers(game, entries, primary, secondary, language):
     selectors = [struct.unpack_from("<HHI", help_data, ht[0] + j * ht[1]) for j in range(ht[2])]
     ranges = [struct.unpack_from("<H", help_data, rt[0] + j * rt[1])[0] for j in range(rt[2])]
 
+    # Equipment kind 6 uses FORMAT2/4, not the Tools FORMAT1/7 framing.
+    # Compile its finite prefixes into the existing compact-header contract;
+    # Python and the resident parser consume exactly the same rows.
+    f2_key, f2 = constant("FORMAT2", ["%s"])
+    f4_key, f4 = constant("FORMAT4", ["%s", "%s"])
+    equipment_open = [value.split("%s") for value in f2]
+    equipment_end = [value.split("%s") for value in f4]
+    if any(not v[0] or v[1] or "\n" in v[0] for v in equipment_open) or any(
+        v[0] or not v[1].endswith("\n") or v[2] or "\n" in v[1][:-1] for v in equipment_end
+    ):
+        raise ValueError("equipment header argument order changed")
+    equipment_close = [v[1][:-1] for v in equipment_end]
+    if any(not value for value in equipment_close):
+        raise ValueError("equipment header close is empty")
+    name_rows = defaultdict(list)
+    for j in range(nt[2]):
+        at = nt[0] + j * nt[1]
+        name_rows[struct.unpack_from("<H", name_data, at)[0]].append(at)
+    status_rows = defaultdict(list)
+    status_sections = sections(status_data)
+    status_floor = max(at + stride * n for _, at, stride, n in status_sections)
+    status_schema = schema_for("table/t_status.tbl", "StatusParam")
+    occurrence = 0
+    for index, (kind, at, stride, count) in enumerate(status_sections):
+        if kind != "StatusParam":
+            continue
+        if stride != status_schema.size:
+            raise ValueError("equipment status record size changed")
+        path = "table/t_status.tbl" if index == 0 else "table/t_status.tbl/StatusParam"
+        if occurrence:
+            path += "/" + str(occurrence)
+        occurrence += 1
+        for j in range(count):
+            row = at + stride * j
+            identity = record_identity(status_data, row, kind, status_schema, status_floor)
+            status_rows[string(status_data, row, status_floor)].append(
+                (path + "/" + identity + "/name", string(status_data, row + 408, status_floor))
+            )
+
+    def equipment_parts(at):
+        # CAB62 3491e8..349320: native flags M/F (raw string at +32),
+        # then independently append ONLY for one non-sentinel character ID.
+        parts = []
+        flags = string(item, at + 32, it_floor)
+        gender = "MAIL_ONLY" if "M" in flags else "FEMAIL_ONLY" if "F" in flags else None
+        if gender:
+            key, values = constant(gender, [])
+            if any(not value.strip() for value in values):
+                raise ValueError("equipment gender translation is missing")
+            parts.append(
+                {"source": values[0], "pair": values[1:], "semantic_ids": [key], "parameters": []}
+            )
+        count = struct.unpack_from("<I", item, at + 16)[0]
+        if count != 1:
+            return [parts]
+        pointer = struct.unpack_from("<Q", item, at + 8)[0]
+        if not it_floor <= pointer <= len(item) - 4:
+            raise ValueError("equipment character array outside pool")
+        character = struct.unpack_from("<I", item, pointer)[0]
+        if character == 0xFFFF:
+            return [parts]
+        selected = name_rows.get(character, [])
+        if len(selected) != 1:
+            raise ValueError("equipment character name selector is ambiguous")
+        name_at = selected[0]
+        keys = {string(name_data, name_at + 64, n_floor)}
+        if 0 < struct.unpack_from("<H", name_data, name_at + 72)[0] < 0x8000:
+            alternate = string(name_data, name_at + 80, n_floor)
+            if alternate:
+                keys.add(alternate)
+        format_key, templates = constant("ONLY", ["%s"])
+        variants = []
+        for key in sorted(keys):
+            records = status_rows.get(key, [])
+            names = {tuple(field(identity, source)) for identity, source in records}
+            if len(names) != 1:
+                raise ValueError("equipment status name is missing or ambiguous")
+            values = [t.replace("%s", name) for t, name in zip(templates, next(iter(names)))]
+            variants.append(
+                parts
+                + [
+                    {
+                        "source": values[0],
+                        "pair": values[1:],
+                        "semantic_ids": [
+                            format_key,
+                            *sorted({identity for identity, _ in records}),
+                        ],
+                        "parameters": [str(character)],
+                    }
+                ]
+            )
+        return variants
+
+    def equipment_effect_units(at):
+        # CAB62 350cc8..350e9e: positive HP uses status id 0's *format*,
+        # not name+value. Their spaces differ in several shipped locales.
+        # Own only values present in these physical equipment records, and
+        # keep this authority inside the complete equipment header.
+        amount = struct.unpack_from("<i", item, at + 0x94)[0]
+        if amount <= 0:
+            return {}
+        selected = [
+            vt[0] + j * vt[1]
+            for j in range(vt[2])
+            if struct.unpack_from("<I", help_data, vt[0] + j * vt[1])[0] == 0
+        ]
+        if len(selected) != 1:
+            raise ValueError("equipment HP formatter is ambiguous")
+        row = selected[0]
+        key = (
+            "table/t_itemhelp.tbl/SkillItemStatusData/"
+            + record_identity(help_data, row, "SkillItemStatusData", vsc, h_floor)
+            + "/format"
+        )
+        formats = field(key, string(help_data, row + 8, h_floor))
+        if any(value.count("%d") != 1 or "%" in value.replace("%d", "") for value in formats):
+            raise ValueError("equipment HP formatter arguments changed")
+        colour = string(help_data, row + 40, h_floor)
+        if not re.fullmatch(r"<[Cc][0-9a-fA-F]+>", colour):
+            raise ValueError("equipment HP colour changed")
+        values = [colour + value.replace("%d", str(amount)) + "</C>" for value in formats]
+        return {
+            values[0]: {
+                "source": values[0],
+                "pair": values[1:],
+                "semantic_ids": [key],
+                "parameters": [str(amount)],
+            }
+        }
+
     def skill_format(mode, kind):
         selected = [
             st[0] + j * st[1]
@@ -156,7 +296,39 @@ def compile_item_help_headers(game, entries, primary, secondary, language):
             audit["no_selector"] += 1
             continue
         ha = ht[0] + selected * ht[1]
-        if struct.unpack_from("<I", help_data, ha + 16)[0] != 3:
+        help_kind = struct.unpack_from("<I", help_data, ha + 16)[0]
+        if help_kind == 6:
+            audit["equipment_items"] += 1
+            try:
+                variants = equipment_parts(at)
+                for parts in variants:
+                    if not parts:
+                        continue  # Unqualified equipment keeps its existing plan.
+                    owned = equipment_effect_units(at)
+                    parts = parts + [
+                        {
+                            "source": equipment_open[0][0],
+                            "pair": [v[0] for v in equipment_open[1:]],
+                            "opaque": True,
+                        }
+                    ]
+                    compact_rows.append(
+                        {
+                            "physical": physical,
+                            "item_id": struct.unpack_from("<I", item, at)[0],
+                            "help_row": selected,
+                            "prefix": "".join(p["source"] for p in parts),
+                            "parts": parts,
+                            "close": equipment_close,
+                            "format_keys": [f2_key, f4_key],
+                            "family": "equipment_qualification",
+                            **({"owned_effect_units": owned} if owned else {}),
+                        }
+                    )
+                    audit["equipment_qualified"] += 1
+            except ValueError as error:
+                audit["equipment_rejected: " + str(error)] += 1
+        if help_kind != 3:
             audit["other_kind"] += 1
             continue
         audit["kind3_items"] += 1
@@ -491,6 +663,11 @@ def compile_item_help_headers(game, entries, primary, secondary, language):
             signature = json.dumps([row["prefix"], row["parts"], row.get("close")], sort_keys=True)
             if signature not in result:
                 result[signature] = {**row, "item_ids": [], "physical_items": []}
+            for source, unit in row.get("owned_effect_units", {}).items():
+                owned = result[signature].setdefault("owned_effect_units", {})
+                if source in owned and owned[source] != unit:
+                    raise ValueError("conflicting physical equipment field")
+                owned[source] = unit
             result[signature]["item_ids"].append(row["item_id"])
             result[signature]["physical_items"].append(row["physical"])
         return list(result.values())

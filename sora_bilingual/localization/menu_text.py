@@ -2525,7 +2525,9 @@ class MenuTranslator:
                     len(row["prefix"]) : len(framed) - len(close[0]) if close else len(framed)
                 ]
                 for join in ([" - "] * 3, [" "] * 3):
-                    units = self.details.effect_units(inner, False, "", join)
+                    units = self.details.effect_units(
+                        inner, False, "", join, row.get("owned_effect_units")
+                    )
                     if not units or any(
                         unit.get("opaque") and unit["source"].strip() for unit in units
                     ):

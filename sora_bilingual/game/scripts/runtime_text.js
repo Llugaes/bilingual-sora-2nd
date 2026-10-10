@@ -768,7 +768,7 @@ class RuntimeText {
                 if(!framed.startsWith(row.prefix)||(row.close&&!framed.endsWith(row.close[0])))continue;
                 const inner=framed.slice(row.prefix.length,row.close?-row.close[0].length:undefined);
                 for(const join of [[' - ',' - ',' - '],[' ',' ',' ']]) {
-                    const units=this.details.effectUnits(inner,false,'',join);
+                    const units=this.details.effectUnits(inner,false,'',join,row.owned_effect_units);
                     if(!units||units.some(unit=>unit.opaque&&unit.source.trim()))continue;
                     const opaque=text=>({source:text,pair:[text,text],opaque:true});
                     compact.push({parts:[opaque(edge),...row.parts,...units,
