@@ -45,6 +45,13 @@ def staged_update(package, output):
         runtime_id = manifest["runtime_id"]
         with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED, compresslevel=1) as target:
             for entry in original.infolist():
+                # A local DEV ZIP may carry unowned identity/preferences sidecars.
+                # Simulated updates contain managed files, just like release assets.
+                if (
+                    entry.filename != "installed-manifest.json"
+                    and entry.filename not in manifest["files"]
+                ):
+                    continue
                 if entry.filename.startswith(f"runtime/{runtime_id}/"):
                     continue
                 target.writestr(

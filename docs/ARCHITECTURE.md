@@ -1,5 +1,15 @@
 # 工程结构与契约
 
+## 第一轮等价重构（本地候选）
+
+效果拒绝策略由 `localization/effect_refusal_policy.py` 唯一维护。Python 直接导入，`python -m tools.generate_effect_refusal_policy` 将同份数据嵌入 JS；`tools.dev check` 拒绝过期生成物。策略模块纳入发行白名单、热更新分组和模型代码指纹，使用旧版更新器已支持的 Python 文件格式。
+
+原子效果解析的 `_effect_unit_result`／`effectUnitResult` 返回作用域为 `effect_member` 的 `Match`、`NoMatch` 或 `Reject`。本次拒绝原因与调用结束时的 `compat_failure_after`／`compatFailureAfter` 分开；旧入口只解包 unit。组合器直接消费结果，但仍在原位置维护和查询历史失败表，成功不新增清理、短路和容量清理时点不变。此阶段尚未将组合解析器改成纯函数，也未合并两端算法；冻结序列验证返回、调用顺序及完整有序历史状态。
+
+准备阶段的代码摘要与资源快照分开，旧 catalog 迁移复用代码摘要，仍执行初始与读取后资源校验；普通冷构建检查点保持不变。脚本路径筛选预建斜杠边界前缀集合，说话人检查移出语言循环。wire 生产发布按 header/table/data 分段写入临时文件后原子替换，再流式读取已发布文件计算摘要；兼容的 `indexed_model()` 仍返回相同完整字节，格式和读取端不变。
+
+本轮不改变 UI、设置、几何排版、字体、原生钩子和驻留生命周期；本地离线等价证据与用户实机验收分别记录。
+
 ## 有限控制对白与效果注音单元（dev4 候选）
 
 `control_dialogue.py` 对原 SCP 局部控制值做有界 CFG／栈证明，只有所有到达路径均为有限字面控制才生成变体。跨调用保留局部值，helper 参数须同时满足原生产者和正式参数声明；未知操作、地址传递、外部入口、回边、可见动态输出不猜测。重复元数据只有完整 leaf producer 序列一致时才能用原 PC 区分。跨语对齐保留原函数、called ID、actor、参数槽与控制值；`runtime_identity` 在真实 PC／token／原输出吻合后才给予稳定记录键，重载复用键而不按短句猜译。
