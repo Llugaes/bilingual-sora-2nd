@@ -1,0 +1,28 @@
+{
+  "version": "1.0.1",
+  "runtime_id": "bac6e42e94e62356",
+  "managed_files": 671,
+  "all_other_program_and_runtime_bytes_match_tested_package": true,
+  "launcher_build_metadata_proof": {
+    "only_pe_timestamp_and_dotnet_mvid_differ": true,
+    "different_bytes": 18,
+    "pe_timestamp_offset": 136,
+    "dotnet_mvid_offset": 4004,
+    "canonical_launcher_sha256": "e1d9ee80213be4e05a37cb0eac405b53c9973ec286bca692a14ea7e6e50b3b19",
+    "csharp_source_unchanged": true,
+    "ci_packaged_exe_smoke_passed": true
+  },
+  "different_documentation": [
+    "README.md",
+    "README.en.md",
+    "README.ja.md"
+  ],
+  "ci_application_sha256": "6149daadbd261ac3d460bedb0f42c164860de5bd125398cf136bf5b47f37ee4a",
+  "tested_portable_sha256": "8e153c7b151508adbd7e51942e2225a58aa6bfbf3dbb672a04064bab6d3a020c",
+  "source_commit": "ddff7a87fa87095f88d8bccea9b5c077b25a6f5b",
+  "ci_run": "https://github.com/Llugaes/bilingual-sora-2nd/actions/runs/38024237350",
+  "python_tests": 795,
+  "python_skipped": 9,
+  "node_tests": 211,
+  "ci_validation_and_release_success": true
+}
