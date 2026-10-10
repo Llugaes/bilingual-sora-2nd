@@ -69,7 +69,7 @@
   "sora_bilingual/localization/cache_io.py",
   "sora_bilingual/localization/annotation_breaks.py",
   "sora_bilingual/localization/annotation_break_data.json",
-  "sora_bilingual/localization/effect_refusal_policy.json",
+  "sora_bilingual/localization/effect_refusal_policy.py",
   "sora_bilingual/localization/control_dialogue.py",
   "sora_bilingual/localization/catalog_build.py",
   "sora_bilingual/localization/menu_tables.py",

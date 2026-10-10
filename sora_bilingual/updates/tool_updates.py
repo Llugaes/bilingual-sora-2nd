@@ -97,7 +97,7 @@ GROUPS = {
         "sora_bilingual/localization/save_summary.py",
         "sora_bilingual/localization/annotation_breaks.py",
         "sora_bilingual/localization/annotation_break_data.json",
-        "sora_bilingual/localization/effect_refusal_policy.json",
+        "sora_bilingual/localization/effect_refusal_policy.py",
         "sora_bilingual/localization/dynamic_producers.py",
         "sora_bilingual/localization/dynamic_identity.py",
         "sora_bilingual/localization/item_help_composition.py",

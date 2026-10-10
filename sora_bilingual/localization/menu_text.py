@@ -6,11 +6,10 @@ icons, colours and separators are copied literally around translated runs.
 """
 
 from dataclasses import dataclass
-import json
-from pathlib import Path
 import re
 from sora_bilingual.config.locales import DEFAULT_PRIMARY
 from sora_bilingual.localization.annotation_breaks import annotation_break_allowed
+from sora_bilingual.localization.effect_refusal_policy import EFFECT_REFUSAL_POLICY
 from sora_bilingual.localization.save_summary import save_display_constructors
 
 TOKEN = re.compile(r"(<[^<>]*>|\r\n|\n|\\n)")
@@ -20,13 +19,6 @@ FORMAT_TOKEN = re.compile(r"%%|" + FORMAT.pattern)
 SEPARATORS = re.compile(r"(\r\n|\n|\\n|[【】「」：:／/\[\]()]| - |[ \u3000]{2,})")
 COMPONENT_LINKS = re.compile(r"([·・･])")
 LINE_BREAK = re.compile(r"\r\n|\n|\\n")
-
-# Recorded syntax/contract failures are hard by default. Only lack of role
-# association permits an ordinary independently admitted resource fallback.
-# JS embeds this same data through tools.generate_effect_refusal_policy.
-EFFECT_REFUSAL_POLICY = json.loads(
-    Path(__file__).with_name("effect_refusal_policy.json").read_text("utf-8")
-)
 
 
 @dataclass(frozen=True, slots=True)

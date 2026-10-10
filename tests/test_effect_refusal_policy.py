@@ -9,6 +9,9 @@ import unittest
 from unittest.mock import patch
 
 from sora_bilingual.localization.menu_text import EFFECT_REFUSAL_POLICY, MenuTranslator
+from sora_bilingual.localization.effect_refusal_policy import (
+    EFFECT_REFUSAL_POLICY as CANONICAL_POLICY,
+)
 from sora_bilingual.localization import native_catalog
 from sora_bilingual.updates.tool_updates import GROUPS
 from sora_bilingual.updates.update_installer import relative_file
@@ -18,10 +21,45 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class EffectRefusalPolicyTests(unittest.TestCase):
+    def test_policy_uses_the_legacy_updater_nested_source_contract(self):
+        # 1.0.1 accepts nested Python source files, while its JSON exceptions
+        # are fixed. This regression must run without a checkout or Git tags.
+        name = POLICY.relative_to(ROOT).as_posix()
+        self.assertEqual(POLICY.suffix, ".py")
+        self.assertTrue(relative_file(name))
+        for rejected in (
+            "sora_bilingual/localization/effect_refusal_policy.json",
+            "sora_bilingual/localization/other.json",
+            "sora_bilingual/game/effect_refusal_policy.json",
+        ):
+            self.assertFalse(relative_file(rejected), rejected)
+
+    def test_policy_preserves_the_recorded_rule_order_and_values(self):
+        reasons = (
+            "missing_native_join_contract",
+            "unassociated_effect_unit",
+            "partial_effect_members",
+            "hard_line_or_native_ruby",
+            "invalid_separator_style",
+            "member_budget",
+            "empty_effect_member",
+            "partition_budget",
+            "different_partition_targets",
+            "invalid_effect_parameter",
+            "unproven_effect_parameter",
+            "unproven_standalone_constructor",
+            "unproven_direction_parameter",
+            "conflicting_effect_member",
+            "unsupported_effect_controls",
+            "item_help_header_missing_record_body",
+        )
+        self.assertEqual(tuple(EFFECT_REFUSAL_POLICY), reasons)
+        self.assertEqual(tuple(EFFECT_REFUSAL_POLICY.values()), ("unproved",) * 3 + ("hard",) * 13)
+
     def test_generated_policy_and_unknown_reason_default(self):
         self.assertTrue(generate(check=True))
-        canonical = json.loads(POLICY.read_text("utf-8"))
-        self.assertEqual(EFFECT_REFUSAL_POLICY, canonical)
+        canonical = CANONICAL_POLICY
+        self.assertIs(EFFECT_REFUSAL_POLICY, canonical)
         tr = MenuTranslator([], "ja", "zh-Hans", "en")
         tr.effect_unit_failures["unknown"] = "future_reason"
         self.assertTrue(tr._effect_rejected("unknown"))
@@ -62,8 +100,8 @@ process.stdout.write(JSON.stringify({policy:RuntimeText.effectRefusalPolicy,hard
         ):
             self.assertFalse(relative_file(rejected), rejected)
         project = tomllib.loads((ROOT / "pyproject.toml").read_text("utf-8"))
-        self.assertIn(
-            POLICY.name,
+        self.assertNotIn(
+            "effect_refusal_policy.json",
             project["tool"]["setuptools"]["package-data"]["sora_bilingual.localization"],
         )
         original = Path.read_bytes
