@@ -36,4 +36,20 @@
 
 ## 验证与交付
 
-完整八语矩阵、编译器正反例、既有完整 plan 差分、候选包验证及交付记录在完成后补齐。只读现场、原始八语分母与反汇编证据保存在工作树旁 `equipment-restriction-evidence/`。实机画面验收与离线回放分别记录。
+源码冻结为 `94cdbc01bbfb36022c6c1f126bede4bf621c611b`。6 个新增编译器测试方法在旧版取得 RED、当前 GREEN；另外单独证明性别缺译／空白字段在缺少拒绝检查时失败。夹具使用小型语义表，不冒充原生执行。
+
+`python -B -X utf8 -m tools.dev check` 退出 0：Python 819 项（9 项跳过），Node 225 项通过，默认运行的隐藏原生宿主检查通过。需要显式 EXE 参数的六项检查仍按默认入口跳过；本次没有改动原生代码，不把这些跳过项写成新实机证据。
+
+八种来源语言 × 八种目标语言的 64 个完整 table 模型检查通过：1,728 个正向主／副／双语输出，2,304 个负例与旧标题数据的结果一致；Python 与正式 JavaScript 的冷／热完整 plan 和 translate 分别对照 8,064 次。样本覆盖三类限定、原生 HP format、普通属性 name/value、完整说明、S/s 外层样式，以及未知角色、无效数字和未知说明。66 件物品的标题成员集合逐一与原始资源核对；并未宣称每件物品的全部效果串均已实机遍历。
+
+交付包内另执行编译器测试，并对八种 source／primary／secondary 的全部 512 个组合、1,024 个精确 HP 成员配对作独立资源核对。最终重建的完整模型与追加性别缺译拒绝前的合法资源模型逐字节相同；缺译负例由冻结源码和包内测试单独覆盖。
+
+包内 Frida V8 加载正式 indexed wire：7,008 条既有完整 plan 回放零差异；新增样本和现场完整多属性字段共 132 次冷／热回放通过。后者包含资源重建后与 r2 现场输出吻合的完整输入，不能与新候选实机画面混称。
+
+本地候选：`dist/equipment-r3/DEV/BilingualSora2nd.exe`，显示版本 **DEV 1.0.1-dev1-r3**。分发包：`dist/equipment-r3/packages/bilingual-sora-2nd-1.0.1-dev1-r3-windows-x64.zip`，109,353,485 bytes，SHA-256 `cbb598c467218dfe57e1f140837e5ffe4101f1cbb4b18587cdf581b62beb0433`。
+
+672 个受管文件与 ZIP 逐一校验；相对 r2 只改变 `item_help_headers.py`、`menu_text.py`、`runtime_text.js`，552 个 runtime／launcher 文件未变。`native_agent.js` SHA-256 仍为 `5ab52bf5c3adc36e891425537f71a08417bf64d9abcced50665b22238a4cb83c`。wire SHA-256 为 `37ecc657d26181f3587386a78b1f8b8e8dde610a854dc0c5721175d2a28917c3`，完整模型 SHA-256 为 `9806d844fac5c559e18c8d3800f917820e59f3902ea2847107a450eb58a3d557`。
+
+仅私有本地目录预置匹配当前源码／资源的 catalog、模型和 wire，并复制白名单显示设置；ZIP 不含游戏资源、用户配置或 agent token。没有覆盖 r2，没有启动新工具、连接或重启游戏，没有 push／发布。当前游戏仍由 r2 服务；**r3 实机验收待用户进行**。
+
+只读现场、八语原始分母、反汇编、矩阵脚本、RED/GREEN 收据、完整回归、包内回放及交付审计均位于工作树旁 `equipment-restriction-evidence/`。第二轮方案已补上“按资源构造一次编译、所有语言验证”的验收要求；目录序列化／整体内存峰值优化仍未实施。
