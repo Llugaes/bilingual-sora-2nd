@@ -138,8 +138,8 @@ function scanLayouts() {
 }
 function translationKey(row) {
     scanLayouts();
-    const watchTitleOwner=!!row.titleOwnership;
-    row.titleOwnership=null;row.scope=null;
+    const watchLayoutOwner=!!row.layoutOwnership;
+    row.layoutOwnership=null;row.scope=null;row.helpFrame=null;
     // A reviewed native copy commit carries the actual dynamic resource key.
     // Never let the widget's unchanged initial layout key override that owner.
     const nativeKey=row.nativeKeySource===row.original?row.nativeTextKey:null;
@@ -154,7 +154,6 @@ function translationKey(row) {
         row.nativeKeyDomain?'native_resource_rejected_or_revoked':
         keySource===row.original?'exact_key_source':keyMatch?.reason||'layout_key_missing_or_source_mismatch';
     const keyed=row.textKey ? '\x01'+row.textKey+'\x00'+row.original : '';
-    if(keyed && Object.hasOwn(dictionary,keyed))return keyed;
     row.surface='standard';row.surfaceRoot=null;
     row.dialogueSpeaker=false;
     if(REPORT.node_names) {
@@ -176,6 +175,10 @@ function translationKey(row) {
         if(REPORT.diagnostics){const d=inputIdentityDiagnostics.get(String(row.pointer));if(d&&d.source===row.original.slice(0,2048)){d.node_path=names;d.layout_id=layoutId;}}
         if(subtitle&&names[0]==='text')row.surface='subtitle';
         const insetSurface=insetRoots.get(insetRoot);
+        // camp_common, shop and other shared help panels use the same text /
+        // base siblings. Their geometry never depends on an item or locale.
+        const help=names[0]==='text'&&names[1]==='help';
+        if(help){row.surface='help';row.helpFrame=helpTextFrame(row.pointer);}
         if(names[0]==='text'&&((insetSurface==='active_voice'&&names[1]==='item'&&names[2]==='items')||
                 (insetSurface==='small_dialogue'&&names[1]==='root'))) {
             row.surface=insetSurface;row.surfaceRoot=insetRoot;
@@ -209,21 +212,29 @@ function translationKey(row) {
         if(layoutId===59&&names[0]==='text'&&names[1]==='item_template'&&
                 names.includes('list_root')&&!names.includes('tab_root'))row.scope='note_help_title';
         if(layoutId===89&&names[0]==='title'&&names[1]==='tips_contents')row.scope='tips_title';
-        if(watchTitleOwner||layoutId===59||layoutId===89)row.titleOwnership={
+        if(row.helpFrame)ownership.push(row.helpFrame.owner);
+        if(watchLayoutOwner||help||layoutId===59||layoutId===89)row.layoutOwnership={
             nodes:ownership,root:layoutRoot,layoutId};
         if(names[0]==='name' && names.includes('skill_template')) {
             if(names.includes('ability_list')||names.includes('temp_ability_list'))row.scope='support';
             if(names.includes('overdrive_list')||names.includes('temp_overdrive_list'))row.scope='overdrive';
         }
     }
+    if(keyed && Object.hasOwn(dictionary,keyed))return keyed;
     const scoped=row.scope ? '\x02'+row.scope+'\x00'+row.original : '';
     return scoped && Object.hasOwn(dictionary,scoped) ? scoped : row.original;
 }
 function isLabel(p) { return p.readPointer().equals(base.add(REPORT.vtable)); }
-function titleOwnershipChanged(row) {
-    const owner=row.titleOwnership;
+function layoutOwnershipChanged(row) {
+    const owner=row.layoutOwnership;
     if(!owner)return false;
     try {
+        if(row.surface==='help') {
+            const frame=row.helpFrame;
+            if(!frame||frame.parent.add(0x230).readU32()!==frame.count||
+                    !frame.parent.add(0x228).readPointer().equals(frame.children)||
+                    !frame.children.add(frame.index*8).readPointer().equals(frame.pointer))return true;
+        }
         return owner.nodes.some(({node,parent,namePointer,layoutId})=>
             (layoutKinds.get(String(node))??null)!==layoutId||
             !node.add(0x80).readPointer().equals(parent)||!node.add(0x88).readPointer().equals(namePointer));
@@ -271,11 +282,11 @@ function wantedText(row,allocateLayers=true,sourceOnly=false) {
     let wanted=row.original;
     row.glyphLanes=[];row.laneCount=-1;row.laneUnits=-1;row.lanesDirty=false;
     row.offsetPositions=null;
+    row.helpBounds=null;
     row.nativeRanges=null;
     row.animated=!!(p.add(0x2e8).readU32()&4);
     row.plan={text:wanted,layers:[],kind:'plain'};
     row.detailFirstLineEnd=null;
-    row.detailBilingual=false;
     if(!sourceOnly&&enabled&&!failed&&(!runtimeFonts||runtimeFonts.isReady())) {
         if(resolver) {
             const mode=renderMode==='bilingual'?'annotation':renderMode;
@@ -297,13 +308,9 @@ function wantedText(row,allocateLayers=true,sourceOnly=false) {
             const paragraphResolver=row.paragraph?.scope==='fc_quest_notes'?fcParagraphs:paragraphs;
             const paragraph=row.paragraph&&paragraphResolver?paragraphResolver.lookup(row.paragraph.source,row.paragraph.index,row.original,mode):null;
             row.plan=paragraph||translator.render(row.original,mode,row.textKey||'',row.scope||'');
-            // Detail spacing is owned by the admitted resource body, not by
-            // whichever fragment happens to have the first annotation. Only
-            // layered details also need the existing header/body clearance.
+            // Keep the existing layered header/body clearance. Whole-panel
+            // placement is resolved after all glyph layout, from its frame.
             const detailBoundary=mode==='annotation'&&['ruby','layered'].includes(row.plan.kind)&&translator.detailBodyBoundary?.(row.original);
-            row.detailBilingual=Boolean(mode==='annotation'&&['ruby','layered'].includes(row.plan.kind)&&
-                !strictDialogue&&!row.logKind&&!row.book&&!row.dialogueSpeaker&&row.scope!=='save_summary'&&
-                (detailBoundary||translator.detailSources?.has(row.original)));
             const firstBreak=/\r\n|\n|\\n/.exec(row.plan.text);
             if(row.plan.kind==='layered'&&detailBoundary&&firstBreak&&/\r\n|\n|\\n/.exec(row.original)?.index===detailBoundary.start)
                 row.detailFirstLineEnd=RuntimeText.byteLength(row.plan.text.slice(0,firstBreak.index+firstBreak[0].length));
@@ -464,6 +471,7 @@ function finishAnnotationLanes(row) {
     if(row.laneCount===count&&row.laneUnits===revealUnits&&!row.lanesDirty)return;
     const started=Date.now();
     row.laneCount=count;row.laneUnits=revealUnits;row.lanesDirty=false;
+    row.helpBounds=null;
     if(count>32768)throw Error('Invalid native glyph count');
     const array=p.add(0x680).readPointer().add(0x20).readPointer();
     // Static runs arrive here only after fresh native parsing. Keep flag-0x40
@@ -696,13 +704,14 @@ function beginAnnotationLane(p,parser,phase,row=ownedRow(p)) {
         if(previous&&count<=previous.primaryStart) {
             row.glyphLanes=[];row.laneCount=-1;row.laneUnits=-1;
             row.offsetPositions=null;
+            row.helpBounds=null;
         }
     }
     if(phase==='open'||phase==='primary') {
         // Plain ruby draws its base before the closing-tag measurement.
         // Empty layered anchors have no base; their primary run comes later.
         if(phase==='primary'&&!layer)return;
-        if(!row.glyphLanes||count===0){row.glyphLanes=[];row.offsetPositions=null;}
+        if(!row.glyphLanes||count===0){row.glyphLanes=[];row.offsetPositions=null;row.helpBounds=null;}
         row.glyphLanes.push({primaryStart:count,parser:key,layer:!!layer,
             ...(layer?{layerOffset:layer.layer.offset}:{}),unitStart:parser.add(0x1c).readU32()});
     } else {
@@ -1041,20 +1050,6 @@ if(REPORT.native.line_ruby_origin) Interceptor.attach(base.add(REPORT.native.lin
         this.parser=null;
         try {
             const row=ownedRow(args[0]),parser=args[1];
-            // A detail is one paragraph even when its first stats/icons have
-            // no secondary. Give every owned bilingual detail the same native
-            // first-line margin, without depending on the first ruby anchor.
-            // Replace that origin once; do not add to an already reserved one.
-            // Measurement and later-line leading retain their native contracts.
-            if(row?.detailBilingual&&parser.add(0x16c).readU32()===0&&
-                    !parser.add(0x1ab).readU8()&&!parser.add(0x1a5).readU8()&&
-                    !auxiliaryContexts.has(String(parser))&&!(args[0].add(0x2e8).readU32()&0x108)) {
-                const localMargin=args[0].add(0x2fc).readFloat();
-                const margin=localMargin||base.add(REPORT.text_table_global).readPointer().add(0x6a4).readFloat();
-                this.y=parser.add(4).readFloat()-margin;this.parser=parser;
-                if(!Number.isFinite(this.y))throw Error('Invalid detail line origin');
-                return;
-            }
             // Keep the speaker/mixed-layout rule, and preserve the incoming
             // first-line origin for ordinary small owned runs. Normal labels
             // and later lines retain their native ruby reserve/leading.
@@ -1235,8 +1230,72 @@ function rememberLogTextGroup(controller) {
     const group={name,body,parent,room,retired:false};
     logTextGroups.set(String(name),group);logTextGroups.set(String(body),group);
 }
+function helpTextFrame(p) {
+    const parent=p.add(0x80).readPointer();
+    if(parent.isNull())return null;
+    const count=parent.add(0x230).readU32(),children=parent.add(0x228).readPointer();
+    if(count>512||children.isNull())return null;
+    let frame=null;
+    for(let index=0;index<count;index++) {
+        const node=children.add(index*8).readPointer();
+        if(node.isNull()||node.equals(p)||!node.add(0x80).readPointer().equals(parent))continue;
+        const namePointer=node.add(0x88).readPointer();
+        if(namePointer.isNull()||namePointer.readUtf8String()!=='base')continue;
+        if(frame)return null;
+        frame={pointer:node,parent,children,count,index,
+            owner:{node,parent,namePointer,layoutId:layoutKinds.get(String(node))??null}};
+    }
+    return frame;
+}
+function helpGlyphBounds(row) {
+    const p=row.pointer,count=p.add(0x330).readU32();
+    if(!count||count>32768)return null;
+    if(row.helpBounds?.count===count)return row.helpBounds;
+    const manager=p.add(0x680).readPointer();
+    if(manager.isNull())return null;
+    const array=manager.add(0x20).readPointer();
+    if(array.isNull())return null;
+    let top=Infinity,bottom=-Infinity;
+    for(let i=0;i<count;i++) {
+        const glyph=array.add(i*8).readPointer();
+        if(glyph.isNull())return null;
+        const y=glyph.add(0x3c).readFloat(),height=Math.abs(glyph.add(0x1c).readFloat());
+        if(!Number.isFinite(y)||!Number.isFinite(height))return null;
+        top=Math.min(top,y-height/2);bottom=Math.max(bottom,y+height/2);
+    }
+    return row.helpBounds={count,top,bottom};
+}
+function centerHelpProjection(row) {
+    if(!row.helpFrame||!row.glyphLanes?.length)return;
+    const p=row.pointer,frame=row.helpFrame.pointer,bounds=helpGlyphBounds(row);
+    if(!bounds)return;
+    // Native rectangle anchors (0x5899b0 in CAB62). Both controls have their
+    // own size, anchor and world matrix; the text box is not the background.
+    const xs=[0,-1,0,-1,0,-1,-.5,-.5,-.5],ys=[0,0,-1,-1,-.5,-.5,0,-1,-.5];
+    const anchor=p.add(0x2e0).readU32(),frameAnchor=frame.add(0x2e0).readU32();
+    if(anchor>=ys.length||frameAnchor>=ys.length)return;
+    const width=frame.add(0x2d8).readFloat(),height=frame.add(0x2dc).readFloat(),labelHeight=p.add(0x2dc).readFloat();
+    if(![width,height,labelHeight].every(v=>Number.isFinite(v)&&v>0&&v<=65536))return;
+    const matrix=q=>[8,0xc,0x18,0x1c,0x38,0x3c].map(o=>q.add(o).readFloat());
+    const a=matrix(p),b=matrix(frame);
+    if(![...a,...b].every(Number.isFinite))return;
+    const determinant=a[0]*a[3]-a[1]*a[2];
+    if(Math.abs(determinant)<1e-8)return;
+    const x=width*(xs[frameAnchor]+.5),y=height*(ys[frameAnchor]+.5);
+    const worldX=b[4]+b[0]*x+b[2]*y-a[4],worldY=b[5]+b[1]*x+b[3]*y-a[5];
+    const localY=(a[0]*worldY-a[1]*worldX)/determinant-labelHeight*ys[anchor];
+    // Honor the explicit user offset after centering. Geometry already
+    // includes that offset, so do not add it a second time to the glyphs.
+    const delta=localY-(bounds.top+bounds.bottom)/2+bilingualOffsetY;
+    if(Number.isFinite(delta))projectTextInset(p,p,delta);
+}
 function offsetTextProjection(p) {
     const row=labels.get(String(p));
+    if(row?.surface==='help'&&row.epoch===epoch&&['ruby','layered'].includes(row.plan?.kind)&&
+            enabled&&!failed&&['annotation','bilingual'].includes(renderMode)) {
+        centerHelpProjection(row);
+        return;
+    }
     if(row&&insetRoots.get(row.surfaceRoot)===row.surface&&row.epoch===epoch&&['ruby','layered'].includes(row.plan?.kind)) {
         projectTextInset(p,p.add(0x80).readPointer(),8);
         return;
@@ -1901,7 +1960,7 @@ labelHooks.attach(base.add(REPORT.native.update.rva), {onEnter(args) {
         // Exclude pause (0x10): pausing must never restart the reveal lifecycle.
         let current;
         if (row.epoch === epoch&&(!runtimeFonts||row.fontGeneration===fontGeneration)&&
-                !textLayoutChanged(row,p)&&!titleOwnershipChanged(row)) {
+                !textLayoutChanged(row,p)&&!layoutOwnershipChanged(row)) {
             // An inline/otherwise unobserved owned write can set +0x688.
             // An equal epoch cannot authorize a stale source/identity.
             // Keep clean-frame reads scalar; decode owned UTF-8 only if dirty.

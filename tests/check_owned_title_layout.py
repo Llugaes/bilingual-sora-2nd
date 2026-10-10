@@ -88,7 +88,7 @@ function readText(p){return p.add(0x318).readPointer().readUtf8String();}
 function enterLabel(p){return {pointer:p};}
 function leaveLabel(){}
 function restoreTextProjection(){}
-function titleOwnershipChanged(){return false;}
+function layoutOwnershipChanged(){return false;}
 function copyOwnedText(){throw Error('Unexpected changed text during equal-text invalidation');}
 """,
         section("function wantedText(", "\nfunction captureMetadata("),

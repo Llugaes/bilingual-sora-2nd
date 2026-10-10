@@ -55,6 +55,7 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
             return data;
         }
         readPointer() {
+            if(this.offset===0x228)return this.label.children||nullPointer;
             if(this.offset===0x680)return this.label.glyphManager;
             if(this.offset===0x88){
                 if(this.label.name!==this.label.cachedName){this.label.cachedName=this.label.name;this.label.namePointer=this.label.name?allocate(this.label.name):nullPointer;}
@@ -65,6 +66,8 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
             return this.label.owned ? new TextPointer(this.label) : nullPointer;
         }
         readU32() {
+            if(this.offset===0x230)return this.label.childCount||0;
+            if(this.offset===0x2e0)return this.label.anchor||0;
             if (this.offset === 0x2f4) return this.label.nativeLineGap??0;
             if (this.offset === 0x300) return this.label.fontIndex||0;
             if (this.offset === 0x2e8) return this.label.flags;
@@ -98,7 +101,7 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
             this.glyphs = glyphs;
             this.fontSize = fontSize;
             this.flags = 1;
-            this.matrix=new Map([[0x18,0],[0x1c,1],[0x20,0],[0x38,0],[0x3c,0],[0x40,0],[0xf4,0]]);
+            this.matrix=new Map([[8,1],[0xc,0],[0x18,0],[0x1c,1],[0x20,0],[0x38,0],[0x3c,0],[0x40,0],[0xf4,0],[0x2d8,1300],[0x2dc,130]]);
             this.copyCount = 0;
             this.dirty={};
             this.reflows=0;
@@ -150,6 +153,7 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
     const base = new Pointer(0x10000000);
     const nullPointer = {
         isNull() { return true; },
+        equals(other) { return other.isNull(); },
         toString() { return '0x0'; },
     };
     const REPORT = {
@@ -694,6 +698,18 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
         },
         finishLayout(label) {
             hooks.get(String(base.add(REPORT.native.layout_ready.rva))).onEnter.call({context:{rsi:label}});
+        },
+        helpPanel(label) {
+            const parent=new LabelPointer(label.address+0x10000,'');parent.name='help';
+            const frame=new LabelPointer(label.address+0x20000,'');frame.name='base';frame.parent=parent;
+            frame.matrix.set(0x2dc,112);frame.matrix.set(0x3c,926);
+            const children=new ScratchPointer(label.address+0x30000);children.writePointer(frame);children.add(8).writePointer(label);
+            parent.children=children;parent.childCount=2;label.parent=parent;label.name='text';
+            label.anchor=8;label.matrix.set(0x3c,978);
+            return {parent,frame,children};
+        },
+        helpState(label) {
+            return vm.runInContext(`(()=>{const row=labels.get('${label}');return {surface:row.surface,bounds:row.helpBounds,frame:String(row.helpFrame?.pointer)};})()`,context);
         },
         glyphGeometry(label) {
             const a=label.glyphManager.add(0x20).readPointer();
@@ -3456,4 +3472,58 @@ test('small dialogue body uses the shared inset without moving its speaker name'
     const unknown=r.label(0xeb040,'unmapped text');unknown.name='text';unknown.parent=root;
     unknown.add(0x3c).writeFloat(400);
     assert.equal(r.projectedUpdate(unknown),400,'bilingual mode without secondary text retains native position');
+});
+
+test('shared help control centers both layout paths independent of locale and resource metadata',()=>{
+    const sources=['回复药','回復薬','Medicine','回復藥','회복약','Médicament','Medizin','Medicina'];
+    for(const source of sources)for(const formatted of [false,true]) {
+        const r=makeRuntime(),text=formatted?'<c698>'+source+'</C>':source;
+        const other=formatted?'<c698>Another language</C>':'Another language';
+        const pairs={[text]:[text,other]};r.api.load({pairs,plain_pairs:pairs},'annotation',true,.85);
+        const p=r.label(0xf100,text),panel=r.helpPanel(p);r.update(p);
+        const parse=(y=90)=>{
+            const quads=formatted?[[10,y-15,12,12],[10,y,27,27]]:[[10,y,27,27],[10,y-15,12,12]];
+            if(formatted){p.glyphs=0;r.auxiliary(p,0,{glyphQuads:quads,secondaryCount:1});}
+            else r.capturedRuby(p,quads,1);
+            r.finishLayout(p);
+        };
+        parse();
+        assert.equal(r.helpState(p).surface,'help');
+        const checkCenter=(target=982)=>{
+            const projected=r.projectedUpdate(p),g=r.glyphGeometry(p);
+            const top=Math.min(...g.map(q=>q[1]-q[3]/2)),bottom=Math.max(...g.map(q=>q[1]+q[3]/2));
+            assert.ok(Math.abs(projected-65+(top+bottom)/2-target)<.001,JSON.stringify({source,formatted,projected,top,bottom}));
+            assert.equal(p.add(0x3c).readFloat(),978,'native matrix restored');
+        };
+        checkCenter();const cached=r.helpState(p).bounds;checkCenter();
+        assert.equal(r.helpState(p).bounds,cached,'unchanged frame reuses scalar bounds');
+        parse(140);checkCenter();assert.notEqual(r.helpState(p).bounds,cached,'same glyph count with a fresh parse retires old bounds');
+        panel.frame.add(0x3c).writeFloat(951);checkCenter(1007);
+        for(const mode of ['primary','secondary']) {
+            r.api.select(mode,true);assert.equal(r.projectedUpdate(p),978,mode);
+        }
+        r.api.select('annotation',true);r.update(p);parse();checkCenter(1007);
+        r.api.disable();assert.equal(r.projectedUpdate(p),978,'disabled');
+        assert.equal(r.api.status().failed,false,r.api.status().failureReason);
+    }
+});
+
+test('help ownership retires on reuse and rebinds replaced backgrounds without a text change',()=>{
+    const r=makeRuntime(),source='Description',pairs={[source]:[source,'说明']};
+    r.api.load({pairs:{},plain_pairs:{},keyed:{help_key:{source,model:{pairs,plain_pairs:pairs}}}},'annotation',true,.85);
+    const p=r.label(0xf200,source),panel=r.helpPanel(p);
+    // Keyed translations must still discover their display container.
+    r.keyTable(17,'help_key',source);p.textKeyHash=17;
+    r.update(p);assert.ok(p.text().includes('说明'),'keyed model resolved');
+    assert.equal(r.helpState(p).frame,String(panel.frame));
+    const next=r.label(0xf900,'');next.name='base';next.parent=panel.parent;
+    panel.children.writePointer(next);r.update(p);
+    assert.equal(r.helpState(p).frame,String(next),'same vector/count, replaced child');
+    next.name='decoration';r.update(p);assert.equal(r.helpState(p).frame,'undefined');
+    next.name='base';r.update(p);assert.equal(r.helpState(p).frame,String(next),'late native sibling creation');
+    panel.parent.name='other_panel';r.update(p);
+    assert.equal(r.helpState(p).surface,'standard');assert.equal(r.helpState(p).frame,'undefined');
+    panel.parent.name='help';r.update(p);assert.equal(r.helpState(p).surface,'help');
+    p.name='title';r.update(p);assert.equal(r.helpState(p).surface,'standard');
+    assert.equal(r.api.status().failed,false,r.api.status().failureReason);
 });

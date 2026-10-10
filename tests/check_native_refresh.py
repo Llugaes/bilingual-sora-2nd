@@ -32,7 +32,7 @@ def update_callback_source() -> str:
             )
         ]
         + AGENT_SOURCE[
-            AGENT_SOURCE.index("function titleOwnershipChanged(") : AGENT_SOURCE.index(
+            AGENT_SOURCE.index("function layoutOwnershipChanged(") : AGENT_SOURCE.index(
                 "function readText("
             )
         ]
