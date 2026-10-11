@@ -6,7 +6,7 @@ import tempfile
 from sora_bilingual.config.native_config import replace_file
 
 
-def publish_json(path, value):
+def _publish(path, write):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(
@@ -14,8 +14,7 @@ def publish_json(path, value):
     ) as out:
         temporary = Path(out.name)
         try:
-            # dumps uses the C encoder; dump walks millions of fragments in Python.
-            out.write(json.dumps(value, ensure_ascii=False, separators=(",", ":")))
+            write(out)
         except Exception:
             out.close()
             temporary.unlink(missing_ok=True)
@@ -24,6 +23,39 @@ def publish_json(path, value):
         replace_file(temporary, path)
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def publish_json(path, value):
+    # dumps uses the C encoder; dump walks millions of fragments in Python.
+    _publish(
+        path, lambda out: out.write(json.dumps(value, ensure_ascii=False, separators=(",", ":")))
+    )
+
+
+def publish_catalog(path, catalog):
+    """Preserve compact JSON bytes while encoding at most 128 records at once."""
+
+    def encode(value):
+        return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+    def write(out):
+        out.write("{")
+        for index, (key, value) in enumerate(catalog.items()):
+            if index:
+                out.write(",")
+            out.write(encode(key) + ":")
+            if key != "entries":
+                out.write(encode(value))
+                continue
+            out.write("[")
+            for start in range(0, len(value), 128):
+                if start:
+                    out.write(",")
+                out.write(encode(value[start : start + 128])[1:-1])
+            out.write("]")
+        out.write("}")
+
+    _publish(path, write)
 
 
 def read_model(path):

@@ -1482,9 +1482,9 @@ def build_catalog(
         _add_counter(audit, "entries_emitted", len(entries))
         catalog = {"version": 1, "languages": list(LANGUAGES), "entries": entries}
         output.mkdir(parents=True, exist_ok=True)
-        (output / "catalog.json").write_text(
-            json.dumps(catalog, ensure_ascii=False, separators=(",", ":")), encoding="utf-8"
-        )
+        from sora_bilingual.localization.cache_io import publish_catalog
+
+        publish_catalog(output / "catalog.json", catalog)
         audit["counters"] = dict(sorted(audit["counters"].items()))  # type: ignore[index]
         (output / "audit.json").write_text(
             json.dumps(audit, ensure_ascii=False, indent=2), encoding="utf-8"
