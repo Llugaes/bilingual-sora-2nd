@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from sora_bilingual.localization.cache_io import publish_catalog
+from sora_bilingual.localization.cache_io import publish_json
 
 
 class CatalogPublicationTests(unittest.TestCase):
@@ -25,7 +25,7 @@ class CatalogPublicationTests(unittest.TestCase):
                     "after_entries": {"preserved": True},
                 }
                 with self.subTest(count=count):
-                    publish_catalog(path, catalog)
+                    publish_json(path, catalog)
                     self.assertEqual(
                         path.read_bytes(),
                         json.dumps(catalog, ensure_ascii=False, separators=(",", ":")).encode(),
@@ -39,12 +39,27 @@ class CatalogPublicationTests(unittest.TestCase):
             catalog = {"entries": [{"value": n} for n in range(129)]}
             catalog["entries"][-1]["value"] = object()
             with self.assertRaises(TypeError):
-                publish_catalog(path, catalog)
+                publish_json(path, catalog)
             self.assertEqual(path.read_bytes(), b"previous")
             with patch(
                 "sora_bilingual.localization.cache_io.replace_file", side_effect=OSError("denied")
             ):
                 with self.assertRaisesRegex(OSError, "denied"):
-                    publish_catalog(path, {"entries": []})
+                    publish_json(path, {"entries": []})
             self.assertEqual(path.read_bytes(), b"previous")
             self.assertEqual(list(path.parent.glob("*.tmp")), [])
+
+    def test_nested_model_sections_and_json_key_coercion_are_byte_identical(self):
+        model = {
+            "pairs": {f"源{n}": ("primary", "𠮷\u0000") for n in range(300)},
+            "scoped": {"detail": {"pairs": {str(n): [n, None, False] for n in range(129)}}},
+            "keys": {1: "integer", None: "null", 2.5: "float"},
+            "numeric": [[1, 2.5, True, None]] * 129,
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "model.json"
+            publish_json(path, model)
+            self.assertEqual(
+                path.read_bytes(),
+                json.dumps(model, ensure_ascii=False, separators=(",", ":")).encode(),
+            )

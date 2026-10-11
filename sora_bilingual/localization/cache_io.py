@@ -1,6 +1,7 @@
 """Compact, atomic cache publication with a private temporary file per writer."""
 
 import json
+from itertools import batched
 from pathlib import Path
 import tempfile
 from sora_bilingual.config.native_config import replace_file
@@ -26,36 +27,39 @@ def _publish(path, write):
 
 
 def publish_json(path, value):
-    # dumps uses the C encoder; dump walks millions of fragments in Python.
-    _publish(
-        path, lambda out: out.write(json.dumps(value, ensure_ascii=False, separators=(",", ":")))
-    )
+    """Write nested cache sections in C-encoded batches, preserving JSON bytes."""
 
+    def encode(item):
+        return json.dumps(item, ensure_ascii=False, separators=(",", ":"))
 
-def publish_catalog(path, catalog):
-    """Preserve compact JSON bytes while encoding at most 128 records at once."""
-
-    def encode(value):
-        return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
-
-    def write(out):
-        out.write("{")
-        for index, (key, value) in enumerate(catalog.items()):
-            if index:
-                out.write(",")
-            out.write(encode(key) + ":")
-            if key != "entries":
-                out.write(encode(value))
-                continue
-            out.write("[")
-            for start in range(0, len(value), 128):
-                if start:
+    def write(out, item):
+        if isinstance(item, dict):
+            opening, closing = "{", "}"
+        elif isinstance(item, (list, tuple)):
+            opening, closing = "[", "]"
+        else:
+            out.write(encode(item))
+            return
+        out.write(opening)
+        if len(item) > 128:
+            values = item.items() if isinstance(item, dict) else item
+            for index, batch in enumerate(batched(values, 128)):
+                if index:
                     out.write(",")
-                out.write(encode(value[start : start + 128])[1:-1])
-            out.write("]")
-        out.write("}")
+                out.write(encode(dict(batch) if isinstance(item, dict) else batch)[1:-1])
+        else:
+            values = item.items() if isinstance(item, dict) else enumerate(item)
+            for index, (key, child) in enumerate(values):
+                if index:
+                    out.write(",")
+                if isinstance(item, dict):
+                    # Let the C encoder retain JSON's key coercion/escaping;
+                    # remove only the braces and the literal null value.
+                    out.write(encode({key: None})[1:-5])
+                write(out, child)
+        out.write(closing)
 
-    _publish(path, write)
+    _publish(path, lambda out: write(out, value))
 
 
 def read_model(path):

@@ -3,7 +3,12 @@
 import argparse
 import json
 from pathlib import Path
-from sora_bilingual.localization.native_catalog import load_entries, ready_model, model_path
+from sora_bilingual.localization.native_catalog import (
+    load_entries,
+    ready_model,
+    ready_transport,
+    model_path,
+)
 from sora_bilingual.localization.model_wire import prepare_wire
 from sora_bilingual.config.native_config import normalize_config, write_config
 from sora_bilingual.platform.file_lock import preparation_lock
@@ -18,7 +23,11 @@ def prepare_request(request, output=STATE):
             entries, _ = load_entries(game, output)
             return {"stage": "catalog", "records": len(entries)}
         config = normalize_config(request["config"])
-        model, signature, _ = ready_model(game, config, output)
+        prepared = ready_transport(game, config, output)
+        if prepared is not None:
+            return prepared
+        model, signature, entries = ready_model(game, config, output)
+        del entries
         path = model_path(signature, config, output)
         prepare_wire(path, model)
         return {

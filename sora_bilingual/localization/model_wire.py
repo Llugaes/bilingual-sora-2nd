@@ -153,6 +153,48 @@ def wire_ready(model_path):
         return False
 
 
+def _digest(path):
+    with path.open("rb") as stream:
+        return hashlib.file_digest(stream, "sha256").hexdigest()
+
+
+def prepared_summary(model_path):
+    """Return only metadata from a verified preparation; never trust stat alone."""
+    source = Path(model_path)
+    target = wire_path(source)
+    try:
+        saved = json.loads(target.with_name(target.name + ".stamp.json").read_text("utf-8"))
+        summary = saved["summary"]
+        if (
+            not isinstance(summary, dict)
+            or set(summary) != {"coverage", "pair_count"}
+            or not isinstance(summary["coverage"], dict)
+            or type(summary["pair_count"]) is not int
+            or summary["pair_count"] < 0
+            or any(type(n) is not int or n < 0 for n in summary["coverage"].values())
+        ):
+            return None
+        before = source.stat(), target.stat()
+        if (
+            saved["source"]
+            != {"schema": SCHEMA, "size": before[0].st_size, "mtime": before[0].st_mtime_ns}
+            or before[1].st_size != saved["size"]
+            or _digest(source) != saved["source_sha256"]
+            or _digest(target) != saved["sha256"]
+        ):
+            return None
+        after = source.stat(), target.stat()
+        if any(
+            (a.st_size, a.st_mtime_ns) != (b.st_size, b.st_mtime_ns) for a, b in zip(before, after)
+        ):
+            return None
+        return summary
+    except PermissionError:
+        raise
+    except OSError, ValueError, KeyError, TypeError:
+        return None
+
+
 def prepare_wire(model_path, model=None, *, schema=SCHEMA):
     if schema not in (1, SCHEMA):
         raise ValueError("Unsupported model wire schema")
@@ -164,9 +206,14 @@ def prepare_wire(model_path, model=None, *, schema=SCHEMA):
         else target.with_suffix(".stamp.json")
     )
     identity = {"schema": schema, "size": source.stat().st_size, "mtime": source.stat().st_mtime_ns}
+    source_digest = _digest(source)
     try:
         saved = json.loads(stamp.read_text("utf-8"))
-        if saved["source"] == identity and target.stat().st_size == saved["size"]:
+        if (
+            saved["source"] == identity
+            and saved.get("source_sha256") == source_digest
+            and target.stat().st_size == saved["size"]
+        ):
             with target.open("rb") as stream:
                 if hashlib.file_digest(stream, "sha256").hexdigest() == saved.get("sha256"):
                     return target
@@ -187,7 +234,19 @@ def prepare_wire(model_path, model=None, *, schema=SCHEMA):
     else:
         # Old game-owned scripts keep their connection until the next launch.
         publish_json(target, pack_model(model))
-    with target.open("rb") as stream:
-        digest = hashlib.file_digest(stream, "sha256").hexdigest()
-    publish_json(stamp, {"source": identity, "size": target.stat().st_size, "sha256": digest})
+    digest = _digest(target)
+    if source_digest != _digest(source):
+        raise ValueError("Source model changed during transport preparation")
+    metadata = {
+        "source": identity,
+        "source_sha256": source_digest,
+        "size": target.stat().st_size,
+        "sha256": digest,
+    }
+    if schema == SCHEMA:
+        metadata["summary"] = {
+            "coverage": model.get("coverage", {}),
+            "pair_count": len(model.get("pairs", {})),
+        }
+    publish_json(stamp, metadata)
     return target

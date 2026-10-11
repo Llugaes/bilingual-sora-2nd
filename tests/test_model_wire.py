@@ -108,9 +108,11 @@ class WireTests(unittest.TestCase):
                     ) as digest,
                 ):
                     target = prepare_wire(source, {"pairs": {}}, schema=schema)
-                digest.assert_called_once()
-                self.assertEqual(Path(digest.call_args.args[0].name), target)
-                self.assertEqual(digest.call_args.args[1], "sha256")
+                self.assertEqual(
+                    [Path(call.args[0].name) for call in digest.call_args_list],
+                    [source, target, source],
+                )
+                self.assertTrue(all(call.args[1] == "sha256" for call in digest.call_args_list))
                 stamp = (
                     target.with_name(target.name + ".stamp.json")
                     if schema == 2
@@ -119,6 +121,10 @@ class WireTests(unittest.TestCase):
                 self.assertEqual(
                     json.loads(stamp.read_text("utf-8"))["sha256"],
                     hashlib.sha256(target.read_bytes()).hexdigest(),
+                )
+                self.assertEqual(
+                    json.loads(stamp.read_text("utf-8"))["source_sha256"],
+                    hashlib.sha256(source.read_bytes()).hexdigest(),
                 )
 
     def test_post_publication_payload_denial_never_writes_a_stamp(self):

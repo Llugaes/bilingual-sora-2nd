@@ -203,6 +203,19 @@ def ready_model(game, config, output=ROOT / "generated"):
     return load_model(entries, signature, config, output, game=game), signature, entries
 
 
+def ready_transport(game, config, output=ROOT / "generated"):
+    """Reuse a fully hashed prepared model without expanding its JSON object graph."""
+    from sora_bilingual.localization.model_wire import prepared_summary
+
+    signature = json.dumps(fingerprint(game), sort_keys=True)
+    path = model_path(signature, config, output)
+    summary = prepared_summary(path)
+    if summary is None:
+        return None
+    _verify_resources(game, _signature_resources(signature, game), "prepared_model_read")
+    return {"path": str(path), **summary}
+
+
 def load_model(entries, signature, config, output=ROOT / "generated", *, game):
     from sora_bilingual.localization.language_cache import language_facts
 
@@ -329,6 +342,11 @@ def _load_model(
         item_help_headers=item_headers,
     )
     model = translator.runtime_model()
+    # This compiler instance has finished. Its detail back-reference is the
+    # only ownership cycle; exported dictionaries remain owned by the model.
+    if translator.details is not None:
+        translator.details.frame_owner = None
+    del translator
     timings["combination_mapping"] = time.perf_counter() - start
     start = time.perf_counter()
     source = config.get("game_language", DEFAULT_PRIMARY)
@@ -380,10 +398,10 @@ def _load_model(
         config.get("game_language", DEFAULT_PRIMARY),
     )
     start = time.perf_counter()
-    model["script_identities"] = compile_script_identities(*args, resolved_pairs=translator.pairs)
+    model["script_identities"] = compile_script_identities(*args, resolved_pairs=model["pairs"])
     timings["script_identity_history"] = time.perf_counter() - start
     start = time.perf_counter()
-    model["table_identities"] = compile_table_identities(*args, resolved_pairs=translator.pairs)
+    model["table_identities"] = compile_table_identities(*args, resolved_pairs=model["pairs"])
     timings["table_identity"] = time.perf_counter() - start
     from sora_bilingual.localization.speaker_context import (
         compile_history_contexts,
@@ -404,7 +422,7 @@ def _load_model(
         config["primary"],
         config["secondary"],
         source,
-        translator.pairs,
+        model["pairs"],
     )
     model["history_contexts"] = compile_history_contexts(
         selected, names_by_locale, config["primary"], config["secondary"]

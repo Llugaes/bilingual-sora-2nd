@@ -2,7 +2,7 @@
 
 import json
 from pathlib import Path
-from sora_bilingual.localization.cache_io import publish_catalog
+from sora_bilingual.localization.cache_io import publish_json
 from sora_bilingual.localization.resources import build_catalog
 from sora_bilingual.localization.tables import build_table_entries
 from sora_bilingual.localization.dynamic_producers import build_dynamic_entries
@@ -19,7 +19,7 @@ def build_all(game_dir, output_dir):
         "entries": script["entries"] + tables + dynamic,
     }
     # Publish the combined catalogue only after both builders finish.
-    publish_catalog(output / "catalog.json", result)
+    publish_json(output / "catalog.json", result)
     (output / "table-audit.json").write_text(
         json.dumps(audit, ensure_ascii=False, indent=2), encoding="utf-8"
     )

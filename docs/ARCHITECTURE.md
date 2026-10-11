@@ -1,5 +1,13 @@
 # 工程结构与契约
 
+## r7 后续内存优化（本地候选）
+
+游戏驻留增长定位到 Frida 17.18.0 的 NativeCallback 弱句柄提前释放。依赖固定为本地源码构建的 `17.18.0+sora.1`，补丁、源码提交、构建配方和泄漏检查见 [依赖来源](../vendor/frida/README.md)。不以周期性 GC 或业务回调替代方案掩盖泄漏，不热替换运行中游戏的驻留依赖。
+
+目录与模型共用 `cache_io.publish_json`：小的嵌套节继续拆解，大的记录容器每 128 条使用 C JSON encoder 编码，保留 UTF-8 字节和插入顺序，再原子替换。额外编码副本受一个记录批次约束，而非整份目录／模型；单条超大记录仍按原内容保留。模型导出后释放临时 translator 的父子引用环，wire 准备前释放原始八语目录；这些释放不修改导出的模型。
+
+准备 worker 首先尝试 `ready_transport`。快速复用要求完整资源指纹、模型及 wire 的流式 SHA-256、文件读取前后大小／修改时间和有效覆盖摘要全部吻合，之后再次验证游戏资源。缺失、旧 stamp、损坏一律回到原模型验证与构建；访问拒绝保留原错误。`wire_ready` 仅作调度提示，不能替代准备阶段的完整验证。JSON 和 wire schema／消费者保持兼容，验证记录见 [内存优化](verification/memory-r8.md)。
+
 ## 第一轮等价重构（本地候选）
 
 效果拒绝策略由 `localization/effect_refusal_policy.py` 唯一维护。Python 直接导入，`python -m tools.generate_effect_refusal_policy` 将同份数据嵌入 JS；`tools.dev check` 拒绝过期生成物。策略模块纳入发行白名单、热更新分组和模型代码指纹，使用旧版更新器已支持的 Python 文件格式。
