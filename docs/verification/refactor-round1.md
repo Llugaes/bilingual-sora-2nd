@@ -19,7 +19,7 @@ UI、设置、字体、几何排版、原生钩子、原生传输读取端及驻
 
 ## 本地交付
 
-- 解压目录：`E:/_Proj/Self/sora-bilingual-validation/2026-10-10/refactor-round1/dist/refactor-round1/DEV`
+- 解压目录：首轮工作树内的 `dist/refactor-round1/DEV`
 - 启动文件：上述目录中的 `BilingualSora2nd.exe`。
 - ZIP：`dist/refactor-round1/packages/bilingual-sora-2nd-1.0.1-dev1-r1-windows-x64.zip`
 - ZIP 大小：109,351,196 字节。
@@ -33,7 +33,7 @@ ZIP 不包含游戏资源或用户配置。仅本机解压目录预置本轮重�
 
 ## 验证证据
 
-完整本地证据位于：`E:/_Proj/Self/sora-bilingual-validation/2026-10-10/refactor-round1-evidence`。
+完整本地证据位于首轮工作树旁的 `refactor-round1-evidence`。
 
 | 检查 | 结果 | 证据 |
 |---|---|---|

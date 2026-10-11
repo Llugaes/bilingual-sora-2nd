@@ -46,7 +46,7 @@ python -B -X utf8 tests/check_owned_title_layout.py
 - 禁用、两种单语、首次进入、切回双语及重复排版分别验证。已正常的 24 号及更大控件作为保护对照。
 - C 与 JS 快慢路径必须遵循同一度量决定；纯文本模型回放不能代替原生字形验证。
 
-本地原始证据保存在 `E:/_Proj/Self/sora-bilingual-validation/2026-10-10/cooking-layout-fix-evidence`：`cooking-before.json`、`cooking-primary.json`、`cooking-restored.json`、`cold-hot-comparison.json`、`primary-comparison.json`、`font-metrics-before.json`、`owned-title-layout-root-red.json`。测试夹具保留了来源摘要。
+本地原始证据保存在检出目录旁的 `cooking-layout-fix-evidence`：`cooking-before.json`、`cooking-primary.json`、`cooking-restored.json`、`cold-hot-comparison.json`、`primary-comparison.json`、`font-metrics-before.json`、`owned-title-layout-root-red.json`。测试夹具保留了来源摘要。
 
 ## 实施结果
 
@@ -75,7 +75,7 @@ python -B -X utf8 tests/check_owned_title_layout.py
 ## 本地候选与包内验证
 
 - 候选：`1.0.1-dev1-r2`；源码 `468dc696f46f804b9462b91a2b9885964721a183`，基线 `df59cc5f9a5bb96b9d8a20f8326fea9ed0b0dfe9`。随后补入的本记录不改变包内源码。
-- 目录：`E:/_Proj/Self/sora-bilingual-validation/2026-10-10/cooking-layout-fix/dist/title-layout-r2/DEV`，入口 `BilingualSora2nd.exe`。
+- 目录：`dist/title-layout-r2/DEV`，入口 `BilingualSora2nd.exe`。
 - ZIP：同级 `packages/bilingual-sora-2nd-1.0.1-dev1-r2-windows-x64.zip`，109,351,759 字节，SHA-256 `1e187a28998c6895a45ab798b32f0613d0c4c9cdaea91b676a2209b2f7011f8d`。
 - 672 个受管文件摘要重新校验。相对 r1，`native_agent.js` 为本次逻辑修改；`runtime_text.js` 仅 1,544 处 CRLF 变为 LF，规范化后字节完全相同。552 个启动器/运行环境文件不变，运行环境 ID `bac6e42e94e62356`。
 
