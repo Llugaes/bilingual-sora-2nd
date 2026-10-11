@@ -24,4 +24,13 @@
 - r6 先前的稳定画面验证遗漏了“菜单刚进入后保持选中项不动”的重复 setter 序列；不能用那次验收替代 r7 的新候选实机验证。
 - 当前游戏操作期间检测到用户输入，已停止 UI 输入，未写测试存档、未退出游戏或 r6。r7 包内检查与候选实机结果后续单独登记；未完成部分不计为通过。
 
+## 本地候选交付
+
+- `1.0.1-dev1-r7`，代码提交 `be43772562e41bd38eeee59be7a6cab9003edd7a`。
+- 启动文件：`dist/help-entry-r7/DEV/BilingualSora2nd.exe`；ZIP：`dist/help-entry-r7/packages/bilingual-sora-2nd-1.0.1-dev1-r7-windows-x64.zip`。
+- ZIP SHA-256：`fd6a7c6c3ad4788616e535429680922fa7c735e0a30c5128b61681971510fb14`。
+- 672 个受管文件验证通过，与 r6 相比仅 `native_agent.js` 不同。原配置及热缓存仅预置在本地运行目录，不进入 ZIP；没有复制进程身份、控制令牌或运行状态。
+- 包内实际脚本运行 Node 153 项通过；内嵌 Python／Frida V8 运行 152 项几何检查和 2 个实际原生 setter 同文返回检查通过。记录为 `packaged-native-audit.json`、`packaged-agent-node.log` 和 `handoff.json`。
+- 尚未启动 r7，尚未完成 r7 的新游戏进程实机复验或用户验收。没有发布或推送。
+
 带图标副文相对基线略高的问题不在本次修改范围内。
