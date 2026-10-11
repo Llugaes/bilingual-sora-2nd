@@ -4,7 +4,30 @@
 
 Display two languages together in the PC game, or hold a shortcut to switch temporarily. Supports Japanese, English, Simplified and Traditional Chinese, Korean, French, German and Spanish.
 
-![English–Japanese dialogue](docs/images/dialogue-en-ja.jpg)
+**[Download · GitHub](https://github.com/Llugaes/bilingual-sora-2nd/releases/latest) · [Gitee mirror](https://gitee.com/Llugaes/bilingual-sora-2nd/releases) · [Release notes](RELEASE_NOTES.md)**
+
+![English–Japanese dialogue](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/dialogue-en-ja.jpg)
+
+## See it in game
+
+Compare dialogue, menus and item descriptions side by side, or hold a shortcut when you need a second language. These are gameplay examples from previous project versions; size and spacing depend on the version and your settings. They are not a screen-by-screen validation of 1.0.2.
+
+| Item names and descriptions | Equipment and stats |
+|---|---|
+| ![Items](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/items.jpg) | ![Equipment](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/equipment.jpg) |
+
+<details>
+<summary>More examples: dialogue logs, field prompts and other language pairs</summary>
+
+![Bilingual dialogue log](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/dialogue-log-zh-ja.jpg)
+
+![Field interactions](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/field.jpg)
+
+![Chinese–Japanese dialogue](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/dialogue-zh-ja.jpg)
+
+![English–Japanese arts and descriptions](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/arts-en-ja.jpg)
+
+</details>
 
 ## Install
 
@@ -20,6 +43,18 @@ Enable **Experimental**, off by default, to choose a primary manually. This expe
 
 **Recommended: single-language mode → hold for secondary.** Hold to compare, release to return. Bilingual mode shows both together. Adjust size, spacing, color and opacity under **Text layout**.
 
+| Mode | Normally shows | Language shortcut |
+|---|---|---|
+| Single language · hold | Primary language | Hold for secondary; release to return |
+| Single language · toggle | One selected language | Switch between primary and secondary |
+| Bilingual | Both languages | Show or hide secondary |
+
+These screenshots were generated offline from the **actual 1.0.2 settings UI**, without a game connection. Choose the mode and secondary language on the left; adjust text size, spacing and color on the right. Changes save automatically.
+
+| Language & display | Text layout |
+|---|---|
+| ![1.0.2 language settings](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/settings-en.png) | ![1.0.2 text layout](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/layout-en.png) |
+
 | Action | Default shortcut |
 |---|---|
 | Show / hide interface | Ctrl + Shift + F9 |
@@ -27,24 +62,54 @@ Enable **Experimental**, off by default, to choose a primary manually. This expe
 
 Under **Quick actions**, select an action and record a keyboard or controller combination. Controller names are detected automatically or selected as PlayStation, Xbox or Switch; changing names preserves the binding.
 
+<details>
+<summary>Where to record keyboard and controller shortcuts</summary>
+
+![Quick actions](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/shortcuts-en.png)
+
+</details>
+
 Click the compact window or gear to open settings; hold and drag to move it. **—** and the settings **×** hide to tray; right-click the tray to exit completely. Text, symbols and color distinguish building, connecting, ready, disabled and error states. **Appearance** provides three themes, Chinese/English/Japanese interface languages and background opacity.
 
-Additional glyphs are prepared from current local resources in an external cache and loaded into memory on connection. Startup, game exit and reconnection never automatically write to the game directory. Preparation, verification, loading and errors are reported separately. Historical explicit font installations remain separate; this default does not imply DLL-free operation.
+![Compact window: languages, connection status and settings](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/status-bar-en.png)
+
+<details>
+<summary>Three themes, interface languages and background opacity</summary>
+
+![Appearance settings](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/appearance-en.png)
+
+</details>
+
+Additional fonts are prepared automatically from your local game resources and loaded on connection. The UI reports progress and errors. Manual font installation is normally unnecessary; allow time for the first preparation.
 
 ## Limits and compatibility
 
 - Bilingual dialogue logs can still hitch when opened and reduce frame rate. Single-language hold mode can reduce the burden.
 - Uncertain matches retain original text. Text in images or videos is excluded. Fixed game text boxes may crowd long text; reduce size or use single-language mode.
 - New combinations still require mapping work. Valid language-local parsing and identity caches are reused; zero waiting is not guaranteed.
+- This release was tested on Steam PC 1.04. The tool is for **Trails in the Sky the 2nd**; it does not support **Trails in the Sky the 1st**.
 - Accepted 0.4.2 samples include original Steam build 25386012 / EXE 1.03.2 and the EXE bundled with full-voice MOD 1.0.7. The latter tested only the replacement EXE, not the complete voice resources. Other modified EXEs, the full game and all language combinations have not been individually tested.
 
 ## Updates and help
 
-**1.0.1 fixes startup performance issues.** Version 1.0.0 has been withdrawn from stable updates. If opening the tool causes high CPU or memory use, quit and update it. Initial use and resource changes still require cache preparation; the preparation process exits afterwards. While the game is closed, the tool no longer continuously reads all text archives.
+**1.0.2 fixes continuous memory growth with bilingual display enabled and reduces model preparation peaks.** It also adds equipment restriction labels, unifies small-title and item-description layouts, and fixes text shifting on menu entry. See the [memory verification report](docs/verification/memory-r8.md) for methods, comparisons against the r7 candidate and coverage limits. Memory improvements are not a claim of higher frame rates throughout the game.
 
-The tool was measured against 0.4.5 both with the game closed and in a real game scene; see the [test results and scope](docs/verification/p0-startup-performance.md).
+The startup fixes from 1.0.1 remain included. First use and changed game resources still require preparation; 1.0.0 remains withdrawn from stable updates.
 
 Automatic checks only notify. Download, install and rollback require manual confirmation; exit the game before updating. Gitee is preferred for downloads in China; GitHub retains full portable packages and older releases. Roll back with an older complete package, preserve settings and optionally disable update checks.
+
+<details>
+<summary>Where to update or choose a previous version</summary>
+
+![1.0.2 update panel](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/updates-en.png)
+
+</details>
+
+| Download | Purpose |
+|---|---|
+| `windows-x64-setup.exe` | Recommended: install or upgrade |
+| `windows-x64.zip` without `app` / `runtime` | Complete portable edition; extract and run |
+| `app` / `runtime` ZIPs and `update.json` | In-app update components; no separate manual installation needed |
 
 For connection failures, read status details and retry; for font failures, check font status. Windowed/borderless mode works best for the tool interface. Report tool/game versions, game text language, primary/secondary languages and a short error excerpt. Do not upload complete game resources, caches or saves.
 

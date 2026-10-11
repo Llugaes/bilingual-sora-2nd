@@ -4,7 +4,30 @@
 
 在 PC 版游戏中同时显示两种语言，或按住快捷键临时切换。支持简中、繁中、日、英、韩、法、德、西班牙文。
 
-![中日剧情对白](docs/images/dialogue-zh-ja.jpg)
+**[国内下载 · Gitee](https://gitee.com/Llugaes/bilingual-sora-2nd/releases) · [GitHub 下载](https://github.com/Llugaes/bilingual-sora-2nd/releases/latest) · [版本日志](RELEASE_NOTES.md)**
+
+![中日剧情对白](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/dialogue-zh-ja.jpg)
+
+## 显示效果
+
+对白、菜单和道具说明可以同屏对照，也可以只在需要时按住快捷键切换。以下是项目历次实机演示；具体字号和间距取决于版本及个人设置，图片不是 1.0.2 的逐页验收记录。
+
+| 道具名称与说明 | 装备与属性 |
+|---|---|
+| ![道具界面](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/items.jpg) | ![装备界面](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/equipment.jpg) |
+
+<details>
+<summary>查看更多：双语日志、场景提示和英日对照</summary>
+
+![双语对话日志](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/dialogue-log-zh-ja.jpg)
+
+![场景交互与提示](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/field.jpg)
+
+![英日剧情对白](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/dialogue-en-ja.jpg)
+
+![英日魔法列表与说明](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/arts-en-ja.jpg)
+
+</details>
 
 ## 安装
 
@@ -20,6 +43,18 @@ Windows 10/11 x64，无需管理员权限或另装 Python。安装包支持离�
 
 **日常推荐单语言模式 → 按住显示副语言**：按住对照，松开恢复。双语模式可同屏显示；字号、间距、颜色和透明度在“文字排版”调整。
 
+| 显示方式 | 平时 | 操作语言切换键后 |
+|---|---|---|
+| 单语言 · 按住显示副语言 | 主语言 | 按住显示副语言，松开恢复 |
+| 单语言 · 按一下切换语言 | 当前选中的一种语言 | 主、副语言互换 |
+| 双语同屏 | 主语言与副语言 | 开关副语言显示 |
+
+下图由 **1.0.2 的真实设置界面离线生成**，未连接游戏。左侧选模式与副语言，右侧调字号、间距和颜色；修改自动保存。
+
+| 语言与显示 | 文字排版 |
+|---|---|
+| ![1.0.2 语言与显示](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/settings-zh-Hans.png) | ![1.0.2 文字排版](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/layout-zh-Hans.png) |
+
 | 操作 | 默认快捷键 |
 |---|---|
 | 展开／隐藏界面 | Ctrl + Shift + F9 |
@@ -27,24 +62,54 @@ Windows 10/11 x64，无需管理员权限或另装 Python。安装包支持离�
 
 在“快捷操作”选择操作后录制键盘或手柄组合。手柄名称自动识别，也可手选 PlayStation、Xbox 或 Switch；名称选择不改变绑定。
 
+<details>
+<summary>查看快捷键与手柄绑定的位置</summary>
+
+![快捷操作设置](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/shortcuts-zh-Hans.png)
+
+</details>
+
 点击小窗口或齿轮打开设置，按住拖动。“—”及设置窗口“×”隐藏到托盘；右键托盘“退出工具”完全退出。小窗口用文字、符号和颜色区分构建、连接、就绪、停用和异常。“工具外观”可切换三种主题、中文／英文／日文界面和背景透明度。
 
-跨语言字库自动从当前本机资源准备外置缓存，连接后加载到内存；启动、退出、重连均不自动写游戏目录。准备、校验、加载和异常分别显示。历史显式字体安装仍单独管理；默认零写入不等于 DLL-free。
+![小窗口：语言组合、连接状态与设置入口](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/status-bar-zh-Hans.png)
+
+<details>
+<summary>查看三种工具主题、界面语言与背景透明度</summary>
+
+![工具外观设置](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/appearance.png)
+
+</details>
+
+跨语言字库自动从本机游戏资源准备，连接后加载；界面会显示准备进度与异常。通常无需手动安装字体，首次准备请耐心等待。
 
 ## 已知限制与兼容性
 
 - 双语对话日志仍可能出现开页停顿和帧率下降；单语言按住切换可减轻负担。
 - 未确认的配对保留原文；图片、视频内文字不处理。固定文本框可能容不下长文本，可减小字号或改用单语言。
 - 新组合仍需构建映射；有效的单语言解析与身份缓存会复用，不能保证零等待。
+- 本轮已在 Steam PC 1.04 上验证。工具仅适用于《空之轨迹 the 2nd》，不兼容《空之轨迹 the 1st》。
 - 0.4.2 实机样本包括原版 Steam build 25386012 / EXE 1.03.2，以及 full-voice MOD 1.0.7 附带 EXE。后者只验收了替换 EXE，未验收完整语音资源包；其他修改版、全游戏及全部语言组合未逐一验证。
 
 ## 更新与排障
 
-**1.0.1 修复启动性能问题。** 1.0.0 已撤出稳定更新；如果打开工具后 CPU 或内存明显升高，请退出工具并更新。修复后仍需在首次使用或资源更新后准备缓存，完成后会释放准备进程；未启动游戏时不再持续读取全部文本资源。
+**1.0.2 修复双语开启后的持续内存增长，并降低模型准备峰值。** 同时补齐装备专用文本，统一小标题和道具说明的排版，修复首次进入菜单的位置跳动。测量方法、与 r7 候选的对照及覆盖边界见 [内存验证记录](docs/verification/memory-r8.md)；不把内存改善当作全游戏帧率提升。
 
-本次已完成与 0.4.5 的工具待机及真实游戏场景对照，条件、数值和覆盖边界见 [性能验证记录](docs/verification/p0-startup-performance.md)。
+1.0.1 的启动性能修复继续保留。首次使用或游戏资源变化后仍需准备缓存；1.0.0 已撤出稳定更新。
 
 自动检查只提示新版本；下载、安装和回退均需手动确认。更新前退出游戏。国内下载优先 Gitee；GitHub 提供完整便携包与历史版本。回退使用旧版完整包并保留设置，可关闭自动检查。
+
+<details>
+<summary>查看更新与历史版本入口</summary>
+
+![1.0.2 更新面板](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/updates-zh-Hans.png)
+
+</details>
+
+| 下载文件 | 用途 |
+|---|---|
+| `windows-x64-setup.exe` | 推荐：安装或覆盖升级 |
+| `windows-x64.zip`（不带 `app` / `runtime`） | 完整便携版，解压后运行 |
+| `app` / `runtime` ZIP、`update.json` | 工具内更新使用，无需手动逐个安装 |
 
 连接失败时查看状态详情并重试；字体异常查看字体状态。窗口化／无边框模式更适合显示工具界面。报告问题请附工具与游戏版本、游戏文字语言、主副语言及精简错误信息，勿上传完整资源、缓存或存档。
 
