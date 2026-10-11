@@ -4,9 +4,12 @@
 
 ~~~powershell
 py -3.14 -m venv .venv
-.venv\Scripts\python.exe -m pip install -e ".[dev]"
+.venv\Scripts\python.exe -m tools.build_frida_runtime
+.venv\Scripts\python.exe -m pip install --find-links build/frida -e ".[dev]"
 .venv\Scripts\python.exe -m tools.dev check
 ~~~
+
+首次开发构建需要 Visual Studio Build Tools 和 Windows SDK。Frida 使用修复原生回调泄漏的固定本地 wheel，构建及来源见 [依赖说明](vendor/frida/README.md)；不要用未修补的 PyPI 版本替代。玩家便携包已包含运行时，无需本机编译。
 
 常用入口：
 

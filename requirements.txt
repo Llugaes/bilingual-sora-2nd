@@ -1,5 +1,5 @@
 PySide6-Essentials==6.11.2
-frida==17.18.0
+frida==17.18.0+sora.1
 pefile==2024.8.26
 pygame-ce==2.5.8
 lz4==4.4.5

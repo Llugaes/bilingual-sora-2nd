@@ -46,6 +46,7 @@ def main():
             run(sys.executable, "-X", "utf8", "tests/check_native_fonts.py")
             run(sys.executable, "-X", "utf8", "tests/check_native_font_materials.py")
             run(sys.executable, "-X", "utf8", "tests/check_native_geometry.py")
+            run(sys.executable, "-X", "utf8", "tests/check_native_callback.py")
             run(sys.executable, "-X", "utf8", "tests/check_native_parser.py")
             run(sys.executable, "-X", "utf8", "tests/check_native_size_hook.py")
             run(sys.executable, "-X", "utf8", "tests/check_native_size_metrics.py")

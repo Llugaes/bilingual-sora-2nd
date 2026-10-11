@@ -20,7 +20,8 @@ jobs:
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '22'
-      - run: python -m pip install -e ".[dev]"
+      - run: python -m tools.build_frida_runtime
+      - run: python -m pip install --find-links build/frida -e ".[dev]"
       - run: python -m tools.dev check
         env:
           QT_QPA_PLATFORM: offscreen
@@ -36,13 +37,18 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.14.7'
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
       - name: Validate version and build allowlisted package
         shell: pwsh
         run: |
           $config = Get-Content distribution.json | ConvertFrom-Json
           if ("v$($config.version)" -ne $env:GITHUB_REF_NAME) { throw 'Tag and distribution version differ' }
           if ($config.repository -ne $env:GITHUB_REPOSITORY) { throw 'Release source differs from distribution repository' }
-          python -m pip install -r requirements.txt
+          python -m tools.build_frida_runtime
+          if ($LASTEXITCODE -ne 0) { throw 'Frida runtime build failed' }
+          python -m pip install --find-links build/frida -r requirements.txt
           if ($LASTEXITCODE -ne 0) { throw 'Build dependencies failed' }
           python -m tools.build_portable --version $config.version --repository $env:GITHUB_REPOSITORY
           if ($LASTEXITCODE -ne 0) { throw 'Build failed' }

@@ -1,0 +1,12 @@
+diff --git a/bindings/gumjs/gumv8core.cpp b/bindings/gumjs/gumv8core.cpp
+index 006d342..a8b7cf3 100644
+--- a/bindings/gumjs/gumv8core.cpp
++++ b/bindings/gumjs/gumv8core.cpp
+@@ -4064,7 +4064,6 @@ gum_v8_native_callback_invoke (ffi_cif * cif,
+   if (jcc != NULL)
+   {
+     _gum_v8_cpu_context_free_later (jcc->cpu_context, self->core);
+-    delete jcc->cpu_context;
+     gum_v8_callback_context_free (jcc);
+   }
+ 

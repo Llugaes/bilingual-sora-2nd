@@ -14,6 +14,7 @@ import urllib.request
 import zipfile
 
 from sora_bilingual.paths import ROOT
+from tools.build_frida_runtime import build as build_frida_runtime
 from tools.build_release import build
 from tools.runtime_branding import branded_hosts
 
@@ -129,10 +130,12 @@ def canonical_records(files):
 def runtime_files(cache):
     cache = Path(cache)
     cache.mkdir(parents=True, exist_ok=True)
+    frida_wheel = build_frida_runtime()
     cache_key = hashlib.sha256(
         Path(__file__).read_bytes()
         + (ROOT / "tools/runtime_branding.py").read_bytes()
         + (ROOT / "requirements.txt").read_bytes()
+        + hashlib.sha256(frida_wheel.read_bytes()).digest()
     ).hexdigest()[:16]
     cached_runtime = cache / ("runtime-" + cache_key + ".zip")
     if cached_runtime.exists():
@@ -159,6 +162,8 @@ def runtime_files(cache):
                 "--disable-pip-version-check",
                 "--only-binary=:all:",
                 "--no-compile",
+                "--find-links",
+                str(frida_wheel.parent),
                 "--target",
                 str(stage / "Lib/site-packages"),
                 "-r",
