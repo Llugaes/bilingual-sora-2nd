@@ -1848,8 +1848,24 @@ if(REPORT.native.log_measure_row_end) Interceptor.attach(base.add(REPORT.native.
         }catch(_){logMeasureStats.fallbacks++;}
     }
 });
+// SetText returns without reparsing when its resulting UTF-8 equals the
+// owned buffer. Resolve the new provenance as usual, but keep the geometry
+// belonging to those unchanged native glyphs when its full layout agrees.
+const annotationStateFields=['glyphLanes','laneCount','laneUnits','lanesDirty',
+    'offsetPositions','helpBounds','nativeRanges','layerBuffers'];
+function annotationLayoutKey(row) {
+    return JSON.stringify([row.plan,row.renderSize,row.animated,row.reserveRubyHeight,
+        row.preservePrimaryLayout,row.extendLineSpacing,row.detailFirstLineEnd,row.rubySizing,
+        row.rubySizingInputs,row.dialogueSpeaker,row.metadata?.flags&0x0c]);
+}
+function captureSetterLayout(row) {
+    if(!row?.glyphLanes?.length)return null;
+    return {text:row.displayed,epoch:row.epoch,fontGeneration:row.fontGeneration,
+        layout:annotationLayoutKey(row),state:annotationStateFields.map(key=>row[key])};
+}
 labelHooks.attach(base.add(REPORT.native.set_text.rva), {onEnter(args) {
     this.row=null;this.lease=null;
+    this.refreshLayout=false;
     if (activeRewrite(args[0])) return;
     try {
         if (isLabel(args[0])) {
@@ -1857,6 +1873,7 @@ labelHooks.attach(base.add(REPORT.native.set_text.rva), {onEnter(args) {
             this.started=Date.now();
             const incoming=args[1].isNull() ? '' : args[1].readUtf8String();
             let row=labels.get(String(args[0]));
+            const previous=captureSetterLayout(row);
             if(incoming.length>16384 && (!row || incoming!==row.displayed))throw Error('Source label text exceeds limit');
             // Some widgets re-submit their existing owned text while changing
             // layout. Do not turn our own rendered string into the raw source.
@@ -1876,6 +1893,16 @@ labelHooks.attach(base.add(REPORT.native.set_text.rva), {onEnter(args) {
             // At these two proven callers, leave the native copied bytes raw.
             // The post-copy callback binds their real key before next Update.
             const wanted=wantedText(row,true,shopCopy);
+            captureMetadata(row);
+            const unchanged=wanted===readText(row.pointer);
+            if(unchanged&&previous?.text===wanted&&previous.epoch===epoch&&
+                    previous.fontGeneration===fontGeneration&&previous.layout===annotationLayoutKey(row)) {
+                annotationStateFields.forEach((key,i)=>row[key]=previous.state[i]);
+            } else if(unchanged&&(previous||['ruby','layered'].includes(row.plan.kind))) {
+                // Equal native bytes do not imply equal secondary layers or
+                // settings. Rebuild once at Update, before the next projection.
+                this.refreshLayout=true;
+            }
             if(REPORT.diagnostics){
                 const diagnostic=inputIdentityDiagnostics.get(String(row.pointer));
                 if(diagnostic)Object.assign(diagnostic,{scope:row.scope,
@@ -1896,6 +1923,7 @@ labelHooks.attach(base.add(REPORT.native.set_text.rva), {onEnter(args) {
         if(!this.row || labels.get(String(this.row.pointer))!==this.row)return;
         if(readText(this.row.pointer)!==this.wanted)throw Error('SetText did not copy immediate text');
         this.row.displayed=this.wanted;this.row.epoch=this.renderEpoch;captureMetadata(this.row);
+        if(this.refreshLayout){this.row.pointer.add(0x689).writeU8(1);this.row.pointer.add(0x688).writeU8(1);}
     }catch(e){fail(e);}finally{recordTiming('setter',this.started);leaveLabel(this.lease);}
 }});
 // The complete reviewed shop function selects the resource hash, formats it

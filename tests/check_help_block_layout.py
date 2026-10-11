@@ -71,6 +71,25 @@ function center(state,native){
 }
 rpc.exports.run=()=>{
     const native=nativeFunctions(),results=[];
+    // Execute CAB62's actual equal-text early return, not a setter model
+    // that always copies and redraws (which hid the menu-entry regression).
+    const setterCode=Memory.alloc(0x1000);
+    setterCode.writeByteArray(INPUT.native.setter_noop.bytes);Memory.protect(setterCode,0x1000,'r-x');
+    const unchangedSetter=new NativeFunction(setterCode,'void',['pointer','pointer']);
+    const setterNoop=[];
+    for(const samePointer of [true,false]) {
+        const p=Memory.alloc(0x700),text=Memory.allocUtf8String('<R>说明</R説明>');
+        const incoming=samePointer?text:Memory.allocUtf8String(text.readUtf8String());
+        p.add(0x318).writePointer(text);p.add(0x330).writeU32(7);
+        // Unequal strings would call unrelocated external routines: never
+        // enter those paths in this exact-byte equal-text fixture.
+        check(incoming.readUtf8String()===text.readUtf8String(),'setter fixture requires equal bytes');
+        const before=Array.from(new Uint8Array(p.readByteArray(0x700)));
+        unchangedSetter(p,incoming);
+        const unchanged=JSON.stringify(before)===JSON.stringify(Array.from(new Uint8Array(p.readByteArray(0x700))));
+        check(unchanged,'native equal-text setter modified label or dirtied draw');
+        setterNoop.push({samePointer,all_label_bytes_unchanged:unchanged});
+    }
     for(const sample of INPUT.cases)for(const mode of ['annotation','bilingual','primary','secondary'])
     for(const active of [true,false])for(const kind of [sample.kind,'plain']){
         const state=setup({...sample,kind});renderMode=mode;enabled=active;bilingualOffsetY=0;
@@ -108,7 +127,7 @@ rpc.exports.run=()=>{
         check(!state.lease.projection,'invalid geometry/ownership wrote matrix');
     }
     failed=false;
-    return {results,game_attached:false,host:'self-created-hidden-python',
+    return {results,setter_noop:setterNoop,game_attached:false,host:'self-created-hidden-python',
         contract:'actual native anchor and matrix projection; complete live font parse and GPU pending'};
 };
 """

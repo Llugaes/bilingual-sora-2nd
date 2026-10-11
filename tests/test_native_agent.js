@@ -803,6 +803,14 @@ function makeRuntime(rubyCase = null, diagnostics = false, measureBackend = fals
             leave();
             return buffer;
         },
+        unchangedSet(label,text) {
+            const args=[label,allocate(text)],before=label.text();
+            const leave=invoke(base.add(REPORT.native.set_text.rva),args);
+            // CAB62 0x5892dd / 0x589315: identical pointer OR UTF-8 bytes
+            // returns at 0x5893a4 without measure/draw or dirty flag writes.
+            assert.equal(args[1].readUtf8String(),before,'exercise native equal-text return');
+            leave();
+        },
         externalReset(label) {
             const refresh=prepareReset?.(label)||0;
             if(refresh){invoke(base.add(0x190),[label])();label.reflows++;}
@@ -3504,6 +3512,46 @@ test('shared help control centers both layout paths independent of locale and re
         }
         r.api.select('annotation',true);r.update(p);parse();checkCenter();
         r.api.disable();assert.equal(r.projectedUpdate(p),978,'disabled');
+        assert.equal(r.api.status().failed,false,r.api.status().failureReason);
+    }
+});
+
+test('same-text native setter keeps help centered on the very next frame without item switching',()=>{
+    for(const layered of [false,true])for(const resubmitOwned of [false,true]) {
+        const r=makeRuntime(),source=layered?'<c698>回复HP3000</C>':'说明正文';
+        const target=layered?'<c698>HP3000回復</C>':'説明本文',pairs={[source]:[source,target]};
+        r.api.load({pairs,plain_pairs:pairs},'annotation',true,.85);
+        const p=r.label(0xf500,source);r.helpPanel(p);r.update(p);
+        const parse=()=>{
+            const quads=layered?[[10,75,12,12],[10,90,27,27]]:[[10,90,27,27],[10,75,12,12]];
+            if(layered){p.glyphs=0;r.auxiliary(p,0,{glyphQuads:quads,secondaryCount:1});}
+            else r.capturedRuby(p,quads,1);
+            r.finishLayout(p);p.dirty[0x688]=0;p.dirty[0x689]=0;
+        };
+        parse();
+        const project=()=>{
+            // Update's real 0x585557..0x58556f branch draws only when dirty.
+            const end=r.beginUpdate(p);
+            if(p.dirty[0x688])parse();
+            r.finishLayout(p);
+            const g=r.glyphGeometry(p),top=Math.min(...g.map(q=>q[1]-q[3]/2)),bottom=Math.max(...g.map(q=>q[1]+q[3]/2));
+            const y=p.add(0x3c).readFloat()-65+(top+bottom)/2;end();return y;
+        };
+        assert.ok(Math.abs(project()-978)<.001);
+        for(let repeat=0;repeat<3;repeat++) {
+            r.unchangedSet(p,resubmitOwned?p.text():source);
+            assert.equal(p.dirty[0x688],0,'equal text must not add native parse work');
+            assert.equal(p.dirty[0x689],0,'equal text must not add native measurement work');
+            assert.ok(Math.abs(project()-978)<.001,JSON.stringify({layered,resubmitOwned,repeat}));
+            assert.ok(Math.abs(project()-978)<.001,'following clean frame stays centered');
+        }
+        // Display-only configuration can keep native UTF-8 identical while
+        // changing geometry. It must not reuse the previous generation.
+        r.api.style(.85,{ruby_gap:7});
+        r.unchangedSet(p,resubmitOwned?p.text():source);
+        assert.equal(p.dirty[0x688],1,'new generation rebuilds equal native text');
+        assert.equal(p.dirty[0x689],1,'new generation remeasures equal native text');
+        assert.ok(Math.abs(project()-978)<.001,'new generation centers on its first projection');
         assert.equal(r.api.status().failed,false,r.api.status().failureReason);
     }
 });
