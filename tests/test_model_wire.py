@@ -65,6 +65,28 @@ def wire_fixture(schema):
 
 
 class WireTests(unittest.TestCase):
+    def test_completed_packers_do_not_retain_inputs_until_cyclic_gc(self):
+        import gc
+        import weakref
+
+        class Text(str):
+            pass
+
+        enabled = gc.isenabled()
+        gc.disable()
+        try:
+            for packer in (pack_model, indexed_model):
+                with self.subTest(packer=packer.__name__):
+                    source = Text("Unique owned source")
+                    reference = weakref.ref(source)
+                    model = {"pairs": {source: ["primary", "secondary"]}}
+                    packed = packer(model)
+                    del packed, model, source
+                    self.assertIsNone(reference(), "completed packer retained its input graph")
+        finally:
+            if enabled:
+                gc.enable()
+
     def test_wire_bytes_match_frozen_baseline_for_both_schemas(self):
         for schema in (1, 2):
             for model, frozen in (

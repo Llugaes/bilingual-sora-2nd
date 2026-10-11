@@ -32,7 +32,11 @@ def pack_model(model):
             nodes.append(node)
         return seen[identity]
 
-    root = intern(model)
+    try:
+        root = intern(model)
+    finally:
+        # Recursive closures otherwise retain the whole intern table until GC.
+        intern = None
     return {"schema": 1, "root": root, "nodes": nodes}
 
 
@@ -52,57 +56,81 @@ def _indexed_parts(model):
         parts = re.split(r"\r\n|\n|\\n", source, maxsplit=1)
         if len(parts) > 1:
             paragraphs.setdefault(parts[0], []).append(source)
-    packed = pack_model({**model, "paragraph_sources": paragraphs})
-    nodes = packed["nodes"]
-    table = bytearray(len(nodes) * 16)
-    data = bytearray()
+    table, data = bytearray(), bytearray()
+    # Keep one deduplication key per value, not a second full node graph.
+    # Separate types retain pack_model's bool/int/float and object/array rules.
+    seen = {kind: {} for kind in ("object", "array", str, bool, int, float, type(None))}
     hashes = {}
+    node_count = 0
 
-    def key_hash(node_id):
+    def key_hash(node_id, key):
         if node_id not in hashes:
             value = 2166136261
-            for (unit,) in struct.iter_unpack(
-                "<H", nodes[node_id].encode("utf-16-le", "surrogatepass")
-            ):
+            for (unit,) in struct.iter_unpack("<H", key.encode("utf-16-le", "surrogatepass")):
                 value = ((value ^ unit) * 16777619) & 0xFFFFFFFF
             hashes[node_id] = value
         return hashes[node_id]
 
-    for index, node in enumerate(nodes):
+    def intern(value):
+        nonlocal node_count
+        if isinstance(value, dict):
+            refs = tuple(ref for key, item in value.items() for ref in (intern(key), intern(item)))
+            cache, identity, kind = seen["object"], refs, 5
+        elif isinstance(value, (tuple, list)):
+            refs = tuple(map(intern, value))
+            cache, identity, kind = seen["array"], refs, 4
+        elif value is None or isinstance(value, (str, bool, int, float)):
+            cache = seen.get(type(value))
+            if cache is None:
+                cache = seen[type(value)] = {}
+            identity = value
+            kind = (
+                0
+                if value is None
+                else 1
+                if isinstance(value, bool)
+                else 3
+                if isinstance(value, str)
+                else 2
+            )
+        else:
+            raise TypeError("Unsupported transport value")
+        if identity in cache:
+            return cache[identity]
+        index = node_count
+        node_count += 1
+        cache[identity] = index
         while len(data) % 4:
             data.append(0)
         offset, count = len(data), 0
-        if node is None:
-            kind = 0
-        elif isinstance(node, bool):
-            kind, count = 1, int(node)
-        elif isinstance(node, (int, float)):
-            kind = 2
-            data.extend(struct.pack("<d", node))
-        elif isinstance(node, str):
-            kind = 3
-            encoded = node.encode("utf-16-le", "surrogatepass")
+        if kind == 1:
+            count = int(value)
+        elif kind == 2:
+            data.extend(struct.pack("<d", value))
+        elif kind == 3:
+            encoded = value.encode("utf-16-le", "surrogatepass")
             count = len(encoded) // 2
             data.extend(encoded)
-        elif node[0] == 0:
-            kind, count = 4, len(node) - 1
-            data.extend(struct.pack(f"<{count}I", *node[1:]))
-        else:
-            kind, count = 5, (len(node) - 1) // 2
-            data.extend(struct.pack(f"<{count * 2}I", *node[1:]))
-            order = sorted((key_hash(node[1 + entry * 2]), entry) for entry in range(count))
+        elif kind == 4:
+            count = len(refs)
+            data.extend(struct.pack(f"<{count}I", *refs))
+        elif kind == 5:
+            count = len(refs) // 2
+            data.extend(struct.pack(f"<{count * 2}I", *refs))
+            order = sorted(
+                (key_hash(refs[entry * 2], key), entry) for entry, key in enumerate(value)
+            )
             data.extend(struct.pack(f"<{count * 2}I", *(item for pair in order for item in pair)))
-        struct.pack_into("<4I", table, index * 16, kind, count, offset, len(data) - offset)
+        table.extend(struct.pack("<4I", kind, count, offset, len(data) - offset))
+        return index
+
+    try:
+        root = intern({**model, "paragraph_sources": paragraphs})
+    finally:
+        intern = None
     data_offset = 32 + len(table)
     header = struct.pack(
-        "<8s6I",
-        b"SORAMOD2",
-        SCHEMA,
-        len(nodes),
-        packed["root"],
-        32,
-        data_offset,
-        data_offset + len(data),
+        "<8s6I", b"SORAMOD2", SCHEMA, node_count, root, 32, data_offset, data_offset + len(data)
     )
     return header, table, data
 
