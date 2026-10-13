@@ -2,9 +2,13 @@
 
 **简体中文** · [English](README.en.md) · [日本語](README.ja.md)
 
-在 PC 版游戏中同时显示两种语言，或按住快捷键临时切换。支持简中、繁中、日、英、韩、法、德、西班牙文。
+**中文** — 《空之轨迹 the 2nd》Steam PC 版的非官方双语 Mod。对白、菜单和道具说明可同时显示两种语言，也可按住快捷键临时切换。支持简中、繁中、日、英、韩、法、德、西班牙文。
 
-**[国内下载 · Gitee](https://gitee.com/Llugaes/bilingual-sora-2nd/releases) · [GitHub 下载](https://github.com/Llugaes/bilingual-sora-2nd/releases/latest) · [版本日志](RELEASE_NOTES.md)**
+**English** — An unofficial bilingual mod for the Steam PC version of **Trails in the Sky the 2nd**. Display dialogue, menus and item descriptions in two languages together, or hold a shortcut to switch temporarily. Supports Japanese, English, Simplified and Traditional Chinese, Korean, French, German and Spanish. [Full English guide](README.en.md).
+
+**日本語** — Steam PC 版『**空の軌跡 the 2nd**』用の非公式二言語 Mod。会話・メニュー・アイテム説明を二言語で同時表示し、ショートカットを押している間だけ切り替えることもできます。日本語・英語・簡体字・繁体字・韓国語・フランス語・ドイツ語・スペイン語に対応。[日本語ガイド](README.ja.md)。
+
+**[国内下载 · Gitee](https://gitee.com/Llugaes/bilingual-sora-2nd/releases) · [GitHub Releases](https://github.com/Llugaes/bilingual-sora-2nd/releases/latest) · [版本日志 / Release notes / 更新履歴](RELEASE_NOTES.md)**
 
 ![中日剧情对白](https://raw.githubusercontent.com/Llugaes/bilingual-sora-2nd/main/docs/images/dialogue-zh-ja.jpg)
 
