@@ -6,6 +6,21 @@ const {scriptSha256,ScriptIdentities,TableIdentities,LogIdentities}=require('../
 const {RuntimeText}=require('../sora_bilingual/game/scripts/runtime_text.js');
 const model=(a,b)=>({pairs:{[a]:[a,b]},plain_pairs:{[a]:[a,b]},numeric:[]});
 
+test('literal item calls select the complete producer before function fragments',()=>{
+    const bytes=Buffer.alloc(64,19),hash=scriptSha256(bytes),key='literal-items';
+    const source='Received <I5>Key.',token='1,1073741841,1073742044,3221225500';
+    const local={pairs:{},plain_pairs:{},numeric:[],producer_numeric:[['Received <I([0-9]+)>Key\\.',['Received <I%d>Key.','<I%d>鍵を受け取った。'],[['ascii'],['ascii']]]]};
+    const ids=new ScriptIdentities({source_language:'en',manifest:{h:[{size:64,sha256:hash,functions:['Talk'],callRecords:{}}]},
+        scripts:{h:[{sha256:hash,functions:{Talk:{calls:{},model:model('Received ','受け取った')}}}]},
+        dynamic_producers:{literal_sites:{[hash]:{Talk:{36:{recordKey:key,callId:7,command:6,token,sourcePattern:'Received <I([0-9]+)>Key\\.'}}}},records:{[key]:{en:local}}}});
+    const site={pc:36,group:5,command:6};
+    const identity=ids.capture('h',()=>bytes,'Talk',token,site,source);
+    assert.equal(identity.producer,true);assert.equal(identity.callId,7);
+    assert.equal(new RuntimeText(ids.lookup(identity).model).translate(source,'secondary'),'<I5>鍵を受け取った。');
+    for(const [args,loc,text] of [[token,{...site,command:8},source],['other',site,source],[token,site,source+' extra']])
+        assert.equal(ids.capture('h',()=>bytes,'Talk',args,loc,text),null);
+});
+
 test('finite control dialogue requires its actual PC, control token and complete source',()=>{
     const bytes=Buffer.alloc(64,19),hash=scriptSha256(bytes),key='script/a.dat/Talk/called/501/control_variant:k3/assembled_dialogue';
     const source='<#E_9><K3>Body',token='1,3221225500,3221225510,3221225520';
@@ -30,6 +45,26 @@ test('finite control dialogue requires its actual PC, control token and complete
         assert.equal(rejected.callId,501,'retain proved record identity to block generic fallback');
         assert.equal(ids.lookup(rejected),null);
     }
+});
+
+test('expression-only variants retain their original control token identity',()=>{
+    const bytes=Buffer.alloc(64,19),hash=scriptSha256(bytes);
+    const sources=['<#E_0>Body','<#E_1>Body'],keys=['expression-0','expression-1'];
+    const row={record:7,group:5,command:0,token:'1,?,3221225520',controlSlot:1,
+        controlVariants:sources.map((source,i)=>({token:3221225510+i,source}))};
+    const variants={Body:null,...Object.fromEntries(sources.map((source,i)=>[source,keys[i]]))};
+    const candidate={size:64,sha256:hash,functions:['Talk'],callSites:{Talk:{36:row}},
+        callRecords:{Talk:{['5:0:'+row.token]:[7]}},recordVariants:{Talk:{7:variants}}};
+    const ids=new ScriptIdentities({source_language:'en',manifest:{h:[candidate]}});
+    for(let i=0;i<2;i++) {
+        const identity=ids.capture('h',()=>bytes,'Talk',`1,${3221225510+i},3221225520`,
+            {pc:36,group:5,command:0},'<#E_9>Body');
+        assert.equal(identity.recordKey,keys[i],'the observed literal token chooses the original variant');
+    }
+    row.controlVariants.push({token:3221225510,source:sources[1]});
+    const conflict=ids.capture('h',()=>bytes,'Talk','1,3221225510,3221225520',
+        {pc:36,group:5,command:0},'<#E_9>Body');
+    assert.equal(conflict.rejection,'ambiguous_control_dialogue_identity');
 });
 
 test('dynamic item identity preserves distinct outer calls through history and locale reload',()=>{

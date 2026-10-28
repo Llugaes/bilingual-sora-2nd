@@ -245,10 +245,15 @@ class ScriptIdentities {
             const token=Number(values[row?.controlSlot]);
             const proven=row?.record===identity.callId&&row.group===site?.group&&row.command===site?.command&&
                 Number.isInteger(token)&&token>=0&&token<=0xffffffff&&
-                row.controlVariants?.some(v=>v.token===token&&typeof source==='string'&&expressionBody(v.source)===expressionBody(source));
-            if(!proven)return {...identity,rejection:'unproven_control_dialogue_output'};
+                typeof source==='string'&&Array.isArray(row.controlVariants);
+            const body=typeof source==='string'?expressionBody(source):null;
+            const matches=proven?row.controlVariants.filter(v=>v.token===token&&expressionBody(v.source)===body):[];
+            if(!matches.length)return {...identity,rejection:'unproven_control_dialogue_output'};
+            const variants=candidate.recordVariants?.[functionName]?.[identity.callId]||{};
+            const keys=new Set(matches.map(v=>Object.hasOwn(variants,v.source)?variants[v.source]:variants[body]));
+            if(keys.size>1)return {...identity,rejection:'ambiguous_control_dialogue_identity'};
             identity.controlDialogue=true;
-            const key=candidate.recordVariants?.[functionName]?.[identity.callId]?.[expressionBody(source)];
+            const key=keys.values().next().value;
             if(typeof key==='string')identity.recordKey=key;
             return identity;
         }
@@ -289,6 +294,15 @@ class ScriptIdentities {
                 }
                 if(hashes.get(candidate.size)!==candidate.sha256)continue;
                 const identity={signature,sha256:candidate.sha256,functionName,argumentsToken};
+                const literal=this.dynamicProducers.literal_sites?.[candidate.sha256]?.[functionName]?.[site?.pc];
+                if(literal) {
+                    if(site.group!==5||site.command!==literal.command||!Number.isInteger(site.pc)||
+                            site.pc<4||site.pc>candidate.size||literal.token!==argumentsToken||
+                            !Number.isInteger(literal.callId)||literal.callId<0||typeof literal.recordKey!=='string'||
+                            !this.producerSourceMatches(literal.sourcePattern,source))return null;
+                    return {...identity,producer:true,callId:literal.callId,recordKey:literal.recordKey,
+                        source,sourceLocale:this.sourceLanguage,pc:site.pc};
+                }
                 const producer=this.dynamicProducers.scripts?.[candidate.sha256]?.[functionName]?.[argumentsToken];
                 if(producer&&site?.group===5&&site.command===8) {
                     if(!Number.isInteger(site.pc)||site.pc<4||site.pc>candidate.size||site.pc!==producer.pc||

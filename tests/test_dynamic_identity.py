@@ -6,10 +6,52 @@ from sora_bilingual.localization.dynamic_identity import (
     _producer_models,
     _resolved_tokens,
     _SUFFIX_HELPER_SHAPE,
+    _literal_sites,
 )
 
 
 class DynamicIdentityTests(unittest.TestCase):
+    def test_literal_sites_require_metadata_tokens_complete_stack_and_entry(self):
+        # One real-layout called descriptor and its reverse literal pushes.
+        tokens = [0x4000FFFF, 0xC00000C8, 0x40000011, 0x400000DC, 0xC00000D0]
+        for command in (0, 6, 8):
+            data = bytearray(512)
+            struct.pack_into("<4sIIIII", data, 0, b"#scp", 24, 1, 56, 0, 0)
+            struct.pack_into("<II", data, 40, 1, 56)
+            struct.pack_into("<I", data, 52, 0xC00000B4)
+            data[180:185] = b"Talk\0"
+            data[200:204] = b"Get\0"
+            data[208:210] = b".\0"
+            raw = [0x40000005, 0x40000000 | command, *tokens]
+            struct.pack_into("<IHHI", data, 56, 0, 3, len(raw), 68)
+            for i, value in enumerate(raw):
+                struct.pack_into("<II", data, 68 + i * 8, value, 0)
+            positions = [256 + i * 6 for i in range(len(tokens) + 2)]
+            code = []
+            for position, value in zip(positions, reversed(tokens)):
+                data[position : position + 2] = b"\0\4"
+                struct.pack_into("<I", data, position + 2, value)
+                code.append(
+                    ("push", "string") if value >> 30 == 3 else ("push", "int", value & 0x1FFFFFFF)
+                )
+            code += [("system-call", 5, command, len(tokens)), ("pop", len(tokens))]
+            result = (command, tokens, [positions[-2] + 4])
+            self.assertEqual(_literal_sites(bytes(data), "Talk", 0, positions, code), result)
+            for invalid in (
+                [*code[:-1], ("pop", 1)],
+                [*code, ("branch", 11, 2)],
+                [("slot", 2, 1), *code[1:]],
+            ):
+                with self.assertRaises(ValueError):
+                    _literal_sites(bytes(data), "Talk", 0, positions, invalid)
+            changed = bytearray(data)
+            struct.pack_into("<I", changed, positions[0] + 2, 0xC00000C8)
+            with self.assertRaises(ValueError):
+                _literal_sites(bytes(changed), "Talk", 0, positions, code)
+            struct.pack_into("<I", data, 68 + 4 * 8 + 4, 1)
+            with self.assertRaisesRegex(ValueError, "dynamic"):
+                _literal_sites(bytes(data), "Talk", 0, positions, code)
+
     def test_cache_permission_error_must_not_become_an_empty_successful_index(self):
         from sora_bilingual.localization.dynamic_identity import compile_dynamic_identities
 

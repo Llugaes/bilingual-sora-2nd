@@ -116,8 +116,23 @@ def raw_dialogue(data, function, called, control_slot, control_value):
     assert kind == 3 and args[0] == (0x40000005, 0)
     assert args[control_slot] == (0, 2)
     parts, physical = [], []
+    first_text = next(
+        i
+        for i, (value, tag) in enumerate(args[3:], 3)
+        if i == control_slot or tag == 0 and value >> 30 == 3
+    )
+    # Cinematic command 6 can put a message marker before its first string.
+    # Each opcode consumes an integer operand; it is never literal content.
+    prefix = 3
+    while prefix < first_text:
+        assert args[prefix] in ((0x4000000B, 0), (0x4000000C, 0))
+        assert prefix + 1 < first_text and args[prefix + 1][1] == 0
+        assert args[prefix + 1][0] >> 30 == 1
+        prefix += 2
     for index, (value, tag) in enumerate(args[3:], 3):
         physical.append({"slot": index, "at": args_at + index * 8, "value": value, "tag": tag})
+        if index < first_text:
+            continue
         if index == control_slot:
             parts.append(control_value)
         elif tag == 0 and value >> 30 == 3:

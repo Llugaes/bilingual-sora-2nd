@@ -97,11 +97,14 @@ def _base(entry: dict) -> str:
     return entry["key"].split("/alignment/", 1)[0]
 
 
-def _dialogue_groups(entries: list[dict]) -> dict[str, list[dict]]:
+def _dialogue_groups(entries: list[dict], *, include_aliases=False) -> dict[str, list[dict]]:
     rows: dict[str, list[dict]] = defaultdict(list)
     for entry in entries:
         key = _base(entry)
-        if entry.get("display_role") == "dialogue" and key.endswith("/assembled_dialogue"):
+        if entry.get("display_role") == "dialogue" and (
+            key.endswith("/assembled_dialogue")
+            or (include_aliases and key.endswith("/control_dialogue_display"))
+        ):
             rows[key].append(entry)
     return rows
 
@@ -133,7 +136,10 @@ def _history_candidates(
     """Return raw old-log lookup candidates, keeping physical calls separate."""
     candidates: dict[tuple[str, str, str], set[tuple[str, str]]] = defaultdict(set)
     calls: dict[tuple[str, str, str], set[str]] = defaultdict(set)
-    for key, rows in _dialogue_groups(entries).items():
+    # The game may have consumed a proved control prefix before logging. Its
+    # complete display alias remains an official candidate, just as it does in
+    # compile_history_contexts; omitting it falsely reports unofficial output.
+    for key, rows in _dialogue_groups(entries, include_aliases=True).items():
         for entry in rows:
             raw_pair = complete_pair(entry.get("texts", {}), primary, secondary)
             if raw_pair is None:

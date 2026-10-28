@@ -517,7 +517,12 @@ def _item_template_entries(
 
 
 def _item_call_parts(call: object) -> tuple[int, str, str, tuple[int, ...]] | None:
-    """Accept only the two documented item-message arities and static tail modes."""
+    """Accept the two item-message arities and an optional static work index.
+
+    The last helper argument selects global_work/set_global_work gating, not
+    one of four text modes. Keep its full nonnegative SCP integer domain; it
+    never contributes characters to prefix + item + suffix.
+    """
     if getattr(call, "kind", None) != 0 or getattr(call, "target", None) not in _ITEM_CALLEES:
         return None
     args = getattr(call, "args", ())
@@ -527,14 +532,14 @@ def _item_call_parts(call: object) -> tuple[int, str, str, tuple[int, ...]] | No
         if len(args) not in (2, 3) or args[1][0] != "string":
             return None
         if len(args) == 3 and (
-            args[2][0] != "int" or not isinstance(args[2][1], int) or not 0 <= args[2][1] <= 3
+            args[2][0] != "int" or not isinstance(args[2][1], int) or not 0 <= args[2][1] < 1 << 29
         ):
             return None
         return int(args[0][1]), "", str(args[1][1]), (() if len(args) == 2 else (int(args[2][1]),))
     if len(args) not in (3, 4) or args[1][0] != "string" or args[2][0] != "string":
         return None
     if len(args) == 4 and (
-        args[3][0] != "int" or not isinstance(args[3][1], int) or not 0 <= args[3][1] <= 3
+        args[3][0] != "int" or not isinstance(args[3][1], int) or not 0 <= args[3][1] < 1 << 29
     ):
         return None
     return (
@@ -731,7 +736,7 @@ def _literal_item_panel_entries(scripts, item_rows, audit):
                     "called": called,
                     "reference_language": reference_language,
                     "kind": 3,
-                    "command": 8,
+                    "command": reference.called[called].args[1][1],
                 }
                 if missing:
                     audit["diagnostics"].append(

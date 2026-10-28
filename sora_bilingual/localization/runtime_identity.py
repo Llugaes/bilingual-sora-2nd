@@ -757,12 +757,15 @@ def compile_script_identities(game, entries, primary, secondary, language, *, re
                         )
                         for entry in controls:
                             source = entry["texts"][language]
-                            body = display_text(source)
                             key = _stable_dialogue_record(entry)
-                            if body in variants and variants[body] != key:
-                                variants[body] = None
-                            else:
-                                variants[body] = key
+                            # The observed literal token identifies the original
+                            # expression even when the engine rewrites its head.
+                            # Keep the body alias only when it is unambiguous.
+                            for value in dict.fromkeys((source, display_text(source))):
+                                if value in variants and variants[value] != key:
+                                    variants[value] = None
+                                else:
+                                    variants[value] = key
                         # Literal argument fragments are not whole outputs of
                         # a dynamic builder. Keep only its proved variants in
                         # the strict per-call resolver.

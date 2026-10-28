@@ -3017,6 +3017,33 @@ test('identity-free old history uses an official candidate without leaking into 
     assert.equal(r.api.status().failed,false);
 });
 
+test('restored incomplete ruby history shares complete output with measurement and resets on reuse',()=>{
+    const r=makeRuntime(),body='<K4><R>Old <w1000>line.',source='<#E_9>'+body;
+    const primary='<K4>旧对白。',secondary='<K4>古い台詞。';
+    const model={pairs:{},plain_pairs:{},history_contexts:{
+        pairs:[[primary,secondary]],texts:{[body]:0},names:{},speakers:{},
+    }};
+    r.api.load(model,'secondary',true,1);
+    const row=r.label(0xaf20,'');
+    for(let pass=0;pass<3;pass++) {
+        r.logRestore(source,7,'甲');r.logShow(row,7,source);
+        assert.equal(row.text(),'<#E_9>'+secondary);
+        const measured=r.logMeasure([['甲',source,7]],{fontSize:29+pass});
+        assert.equal(measured.bodies[0],'<#E_9>'+secondary);
+        const cached=r.logMeasure([['甲',source,7]],{fontSize:29+pass});
+        assert.equal(cached.setters,0);
+        assert.deepEqual(cached.heights,measured.heights);
+        r.api.select('annotation',true);r.update(row);
+        assert.match(row.text()+JSON.stringify(r.api.snapshot()),/古い台詞/);
+        r.api.disable();r.update(row);assert.equal(row.text(),source);
+        r.api.load(model,'secondary',true,1);
+    }
+    r.logShow(row,7,source+'changed');assert.equal(row.text(),source+'changed');
+    r.externalSet(row,source);assert.equal(row.text(),source);
+    assert.equal(r.api.status().identityHits,0);
+    assert.equal(r.api.status().failed,false);
+});
+
 test('history names use the actual dialogue setter in visible and measuring controls',()=>{
     const r=makeRuntime(),source='……让各位久等了。',name='女子的声音';
     const keys=[12,24].map(call=>`script/a.dat/Talk/called/${call}/assembled_dialogue`);

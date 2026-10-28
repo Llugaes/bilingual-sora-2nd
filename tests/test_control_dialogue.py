@@ -55,6 +55,137 @@ def scene(body="Literal body", second="<K4>"):
 
 
 class ControlDialogueTests(unittest.TestCase):
+    def test_pure_helper_expression_keeps_metadata_and_rejects_side_effects(self):
+        original = scene()
+        code = tuple(
+            (*op[:-1], op[-1] + 2) if op[0] in ("branch", "prepare-local") and op[-1] >= 5 else op
+            for op in original.code_shape
+        )
+        code = code[:5] + (("push", "int", 3), ("op", 21)) + code[5:]
+        helper = replace(original.called[0], args=(("expr", None),))
+        changed = replace(original, code_shape=code, called=(helper, original.called[1]))
+        self.assertEqual(
+            control_dialogue_contract(changed, 1)["variants"],
+            control_dialogue_contract(original, 1)["variants"],
+        )
+        for unsafe in (("slot", 5, 1), ("slot", 4, 1), ("op", 99)):
+            self.assertIsNone(
+                control_dialogue_contract(
+                    replace(changed, code_shape=code[:6] + (unsafe,) + code[7:]), 1
+                )
+            )
+
+    def test_external_entry_and_output_mutation_never_acquire_control_identity(self):
+        original = scene()
+        entered = replace(original, code_shape=original.code_shape + (("branch", 11, 8),))
+        self.assertIsNone(control_dialogue_contract(entered, 1))
+        for position in (2, 9, 12):
+            code = list(original.code_shape)
+            code[position] = ("slot", 6, 1)
+            self.assertIsNone(
+                control_dialogue_contract(replace(original, code_shape=tuple(code)), 1)
+            )
+
+    def test_expression_and_page_controls_preserve_exact_literal_variants(self):
+        for value in ("<P1>", "<P2>", "<#E_8#M_A#B_0>"):
+            proof = control_dialogue_contract(scene(second=value), 1)
+            self.assertEqual(proof["variants"][value], "<#E_9>" + value + "Literal body")
+        for value in ("<P1>actor", "<UNKNOWN>", "<R>name</Rreading>", "<I42>"):
+            self.assertIsNone(control_dialogue_contract(scene(second=value), 1))
+
+    def test_copied_helper_argument_requires_non_reference_declaration(self):
+        original = scene()
+        code = list(original.code_shape)
+        code[4] = ("slot", 2, 7)
+        helper = replace(original.called[0], args=(("var", None),))
+        changed = replace(original, code_shape=tuple(code), called=(helper, original.called[1]))
+        self.assertIsNone(control_dialogue_contract(changed, 1))
+        self.assertIsNone(
+            control_dialogue_contract(replace(changed, local_arg_types=(("Flag", (5,)),)), 1)
+        )
+        self.assertEqual(
+            control_dialogue_contract(replace(changed, local_arg_types=(("Flag", (1,)),)), 1)[
+                "variants"
+            ],
+            control_dialogue_contract(original, 1)["variants"],
+        )
+
+    def test_multiple_local_allocations_keep_the_selected_stack_slot(self):
+        original = scene()
+        # An older output local is below a temporary scratch local. Its
+        # writes/read must resolve by stack distance, not the nearest PushNull.
+        code = list(original.code_shape)
+        code[0:1] = [("push", "special", 0), ("push", "special", 0)]
+        code = [
+            (*op[:-1], op[-1] + 1) if op[0] in ("branch", "prepare-local") else op for op in code
+        ]
+        code = [(*op[:2], op[2] + 1) if op[:2] in (("slot", 5), ("slot", 2)) else op for op in code]
+        changed = replace(original, code_shape=tuple(code))
+        self.assertEqual(
+            control_dialogue_contract(changed, 1)["variants"],
+            control_dialogue_contract(original, 1)["variants"],
+        )
+        # The outer-local copy is not evidence for an unknown output.
+        code[15] = ("slot", 2, 2)
+        self.assertIsNone(control_dialogue_contract(replace(changed, code_shape=tuple(code)), 1))
+
+    def test_every_scp_binary_operator_keeps_both_condition_outcomes(self):
+        original = scene()
+        for opcode in range(16, 31):
+            code = tuple(
+                (*op[:-1], op[-1] + 2)
+                if op[0] in ("branch", "prepare-local") and op[-1] >= 7
+                else op
+                for op in original.code_shape
+            )
+            code = code[:7] + (("push", "int", 3), ("op", opcode)) + code[7:]
+            changed = replace(original, code_shape=code)
+            self.assertEqual(
+                control_dialogue_contract(changed, 1)["variants"],
+                control_dialogue_contract(original, 1)["variants"],
+            )
+
+    def test_outer_value_condition_is_unknown_but_both_literal_branches_are_proven(self):
+        original = scene()
+        # Reading a caller/outer local copies a value, never an address. Its
+        # value is irrelevant when both branch outcomes assign literal controls.
+        code = list(original.code_shape)
+        code[6] = ("slot", 2, 7)
+        outer = replace(original, code_shape=tuple(code))
+        self.assertEqual(
+            control_dialogue_contract(outer, 1)["variants"],
+            control_dialogue_contract(original, 1)["variants"],
+        )
+        for opcode in (3, 4, 6):
+            code[6] = ("slot", opcode, 7)
+            self.assertIsNone(control_dialogue_contract(replace(outer, code_shape=tuple(code)), 1))
+        # An unknown copied value assigned to the output local stays unknown.
+        code = list(original.code_shape)
+        code[11] = ("slot", 2, 7)
+        strings = original.code_strings[:2] + original.code_strings[3:]
+        self.assertIsNone(
+            control_dialogue_contract(
+                replace(original, code_shape=tuple(code), code_strings=strings), 1
+            )
+        )
+
+    def test_source_line_markers_inside_literal_helper_arguments(self):
+        original = scene()
+        # Real scripts put op 38 between PrepareCallLocal and literal args.
+        # It has no stack effect, but remains part of the PC/branch identity.
+        code = tuple(
+            (*op[:-1], op[-1] + 1) if op[0] in ("branch", "prepare-local") and op[-1] >= 4 else op
+            for op in original.code_shape
+        )
+        with_line = replace(original, code_shape=code[:4] + (("line",),) + code[4:])
+        proof = control_dialogue_contract(with_line, 1)
+        self.assertIsNotNone(proof)
+        self.assertEqual(proof["variants"], control_dialogue_contract(original, 1)["variants"])
+        # Skipping debug markers must not skip a real producer or a branch.
+        for unsafe in (("slot", 3, 1), ("branch", 11, 6), ("unsupported",)):
+            changed = replace(with_line, code_shape=code[:4] + (unsafe,) + code[4:])
+            self.assertIsNone(control_dialogue_contract(changed, 1))
+
     def test_optional_literal_helper_defaults_require_resource_declaration(self):
         original = scene()
         # Executable helper call supplies an optional default omitted from its

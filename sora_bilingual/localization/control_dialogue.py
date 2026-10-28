@@ -1,9 +1,10 @@
-"""Prove finite popup-control variables from a bounded SCP stack region.
+"""Prove finite dialogue-control variables from a bounded SCP stack region.
 
 The common builder appends string arguments, including K controls. A variable
-is never erased: only a local whose every reaching definition is a literal K
-control becomes a finite complete-output variant. Calls, expressions, visible
-replacement strings, unknown writes and branches entering the region reject.
+is never erased: every reaching output definition must be a literal popup,
+page or expression control. Value-only conditions remain unknown and all their
+branches are explored. Visible replacements, escaping references, unknown
+writes and branches entering the region reject.
 """
 
 from dataclasses import replace
@@ -12,7 +13,7 @@ import re
 from sora_bilingual.localization.resources import assembled_dialogue
 
 _UNKNOWN = ("unknown", None)
-_K_CONTROL = re.compile(r"(?:<K[0-9]*>)?")
+_CONTROL_LITERAL = re.compile(r"(?:<K[0-9]*>|<P[0-9]+>|<#[^<>]*>)*")
 
 
 def _program(function):
@@ -25,15 +26,30 @@ def _program(function):
     return code
 
 
-def _local_values(function, code, stop, call_end, rejection):
+def _local_values(function, code, stop, call_end, distance, rejection):
+    starts = [i for i in range(max(0, stop - 2048), stop) if code[i] == ("push", "special", 0)]
+    if not starts:
+        rejection.update(reason="control_definition_outside_bounded_region")
+        return None
+    # The nearest allocation may own a different local, or lie inside a branch
+    # whose other arm also reaches this read. Try earlier bounded entry points;
+    # every accepted region must still reject all edges entering its interior.
+    for start in reversed(starts[-32:]):
+        failure = {}
+        values = _region_values(function, code, start, stop, call_end, distance, failure)
+        if values is not None:
+            rejection.clear()
+            return values
+        rejection.clear()
+        rejection.update(failure)
+    return None
+
+
+def _region_values(function, code, start, stop, call_end, distance, rejection):
     def reject(reason, pc=None):
         rejection.update(reason=reason, **({"code_index": pc} if pc is not None else {}))
         return None
 
-    starts = [i for i in range(max(0, stop - 2048), stop) if code[i] == ("push", "special", 0)]
-    if not starts:
-        return reject("control_definition_outside_bounded_region")
-    start = starts[-1]
     helper_types = dict(function.local_arg_types)
     if any(
         op[0] == "branch" and start < op[-1] <= call_end
@@ -71,30 +87,36 @@ def _local_values(function, code, stop, call_end, rejection):
         if len(seen) > 4096 or len(stack) > 32 or not start < pc <= stop:
             return reject("control_proof_budget_or_stack_bound", pc)
         if pc == stop:
-            if len(stack) != 1 or stack[0][0] != "string" or not _K_CONTROL.fullmatch(stack[0][1]):
+            if len(stack) < distance:
+                return reject("output_local_outside_bounded_region", pc)
+            output = stack[-distance]
+            if output[0] != "string" or not _CONTROL_LITERAL.fullmatch(output[1]):
                 return reject("nonliteral_or_visible_dynamic_value", pc)
-            values.setdefault(stack[0][1], set()).add(stack[0][2])
+            values.setdefault(output[1], set()).add(output[2])
             continue
         op, next_pc = code[pc], pc + 1
         stack = list(stack)
         if op[0] == "line":
             pass
-        elif op[0] == "push" and op[1] in ("int", "string", "special"):
+        elif op[0] == "push" and op[1] in ("int", "float", "string", "special"):
             stack.append((*op[1:], pc) if op[1] == "string" else tuple(op[1:]))
         elif op[:2] == ("slot", 5):
             if len(stack) < 2:
                 return reject("invalid_local_write_stack", pc)
             value = stack.pop()
             target = len(stack) - op[2]
-            if target != 0:
+            if not 0 <= target < len(stack):
                 return reject("write_to_unowned_local", pc)
             stack[target] = value
         elif op[:2] == ("slot", 2):
             # Values are copied, never caller-local addresses. The same read
             # appears in preceding dialogue argument producers in this region.
-            if not 1 <= op[2] <= len(stack):
+            if op[2] < 1:
                 return reject("invalid_local_read_stack", pc)
-            stack.append(stack[-op[2]])
+            # The bounded region need not own older locals used as branch
+            # conditions. Overapproximate them as unknown and explore both
+            # outcomes. An unknown reaching the output still rejects below.
+            stack.append(stack[-op[2]] if op[2] <= len(stack) else _UNKNOWN)
         elif op[0] == "system-call":
             # The native handler consumes copied arguments; SCP's following
             # pop owns their stack cleanup. No address-producing slot is
@@ -106,13 +128,41 @@ def _local_values(function, code, stop, call_end, rejection):
                 return reject("stack_cleanup_removes_control_local", pc)
             del stack[-op[1] :]
         elif op[0] == "prepare-local":
-            # SCP prepares return frame, pushes declared arguments in reverse,
-            # then the callee removes its own frame. Accept only literal outer
-            # arguments; no local address or value is forwarded to the helper.
+            # SCP prepares a return frame, pushes arguments in reverse, then
+            # the callee removes the frame. Only value producers are allowed:
+            # literals, GetVar copies, and pure unary/binary expressions. No
+            # address, write, nested call or branch can escape this region.
             end = pc + 1
-            while end < stop and code[end][0] == "push":
+            arguments = []
+            while end < stop:
+                item = code[end]
+                if item[0] == "line":
+                    pass
+                elif item[0] == "push" and item[1] in ("int", "float", "string", "special"):
+                    arguments.append(tuple(item[1:]))
+                elif item[:2] == ("slot", 2) and item[2] > 0:
+                    arguments.append(("var", None))
+                elif item[0] == "op" and 16 <= item[1] <= 30 and len(arguments) >= 2:
+                    arguments[-2:] = [("expr", None)]
+                elif item[0] == "op" and 31 <= item[1] <= 33 and arguments:
+                    arguments[-1] = ("expr", None)
+                else:
+                    break
+                if len(arguments) > 32:
+                    return reject("helper_argument_stack_bound", end)
                 end += 1
-            arguments = tuple(tuple(item[1:]) for item in reversed(code[pc + 1 : end]))
+            arguments = tuple(reversed(arguments))
+            declared = (
+                helper_types.get(code[end][1])
+                if end < stop and code[end][0] == "local-call"
+                else None
+            )
+            if any(kind == "var" for kind, _ in arguments) and (
+                declared is None
+                or len(declared) != len(arguments)
+                or any(kind & 4 for kind in declared)
+            ):
+                return reject("helper_value_parameter_types_not_proven", pc)
             if (
                 end >= stop
                 or code[end][0] != "local-call"
@@ -137,13 +187,14 @@ def _local_values(function, code, stop, call_end, rejection):
             next_pc = end + 1
         elif op == ("byte", 9, 0):
             stack.append(_UNKNOWN)
-        elif op == ("op", 32):
+        elif op[0] == "op" and 31 <= op[1] <= 33:
             if len(stack) < 2:
                 return reject("unary_condition_stack_not_proven", pc)
             stack[-1] = _UNKNOWN
-        elif op == ("op", 29):
-            # Two flag results feed the VM's binary condition; retain both
-            # branch outcomes rather than guessing either game's flag value.
+        elif op[0] == "op" and 16 <= op[1] <= 30:
+            # SCP's binary operators consume two values and leave one. Keep
+            # arithmetic/comparison results unknown; never evaluate a game's
+            # flag or prune a possible branch based on it.
             if len(stack) < 3:
                 return reject("binary_condition_stack_not_proven", pc)
             stack[-2:] = [_UNKNOWN]
@@ -256,17 +307,20 @@ def control_dialogue_contract(function, called, program=None, *, rejection=None)
             continue
         positions = [i for i in range(call_end) if code[i][0] != "line"][-len(args) :]
         if len(positions) == len(args) and all(
-            code[position]
-            == (("slot", 2, index + 1) if argument[0] == "var" else ("push", *argument))
+            (code[position][:2] == ("slot", 2) and code[position][2] > index)
+            if argument[0] == "var"
+            else code[position] == ("push", *argument)
             for index, (position, argument) in enumerate(zip(positions, args))
         ):
-            candidates.append((call_end, positions[0]))
+            index = next(i for i, argument in enumerate(args) if argument[0] == "var")
+            distance = code[positions[index]][2] - index
+            candidates.append((call_end, positions[0], distance))
     if duplicate:
         candidates = [candidate for candidate in candidates if candidate[0] == ordered[called]]
     if len(candidates) != 1:
         return reject("argument_producer_missing_or_ambiguous")
-    call_end, stop = candidates[0]
-    values = _local_values(function, code, stop, call_end, rejection)
+    call_end, stop, distance = candidates[0]
+    values = _local_values(function, code, stop, call_end, distance, rejection)
     if values is None:
         return None
     return {

@@ -25,6 +25,9 @@ from sora_bilingual.localization.resources import (
     _logical_script_entries,
     _parse_code,
     _string_value,
+    _value,
+    Called,
+    literal_item_panel_parts,
 )
 
 
@@ -141,7 +144,7 @@ def _resolved_tokens(
 
 def _record_key(entry: dict[str, Any]) -> tuple[str, str, int] | None:
     origin = entry.get("producer_origin", {})
-    if origin.get("family") != "item_add_message":
+    if origin.get("family") not in ("item_add_message", "static_item_panel"):
         return None
     signature = origin.get("signature", {})
     path, function, called = (
@@ -152,6 +155,49 @@ def _record_key(entry: dict[str, Any]) -> tuple[str, str, int] | None:
     if not isinstance(path, str) or not isinstance(function, str) or not isinstance(called, int):
         return None
     return path, function, called
+
+
+def _literal_sites(data, function, called, positions, code):
+    """Bind complete literal item arguments to executable PCs, including repeats.
+
+    Metadata ordinals are independent of nested executable call order. Compare
+    every raw literal token and reject branches entering an argument sequence.
+    No variable, expression, helper result or inferred string is admitted.
+    """
+    _, start, count, *_ = _SCP_HEADER.unpack_from(data)
+    names = tuple(_string_value(data, start + i * 32 + 28) for i in range(count))
+    at = start + names.index(function) * 32
+    call_count, calls_at = struct.unpack_from("<II", data, at + 16)
+    if not 0 <= called < call_count:
+        raise ValueError("literal called record absent")
+    _, kind, argc, args_at = struct.unpack_from("<IHHI", data, calls_at + called * 12)
+    raw = [struct.unpack_from("<II", data, args_at + i * 8) for i in range(argc)]
+    if any(tag != 0 for _, tag in raw):
+        raise ValueError("literal called operand is dynamic")
+    call = Called(None, kind, tuple(_value(data, args_at + i * 8) for i in range(argc)))
+    if literal_item_panel_parts(call) is None:
+        raise ValueError("literal item builder grammar differs")
+    command = call.args[1][1]
+    tokens = [value for value, _ in raw[2:]]
+    meaningful = [i for i, op in enumerate(code) if op[0] != "line"]
+    result = []
+    for ordinal, pc in enumerate(meaningful):
+        if code[pc] != ("system-call", 5, command, len(tokens)):
+            continue
+        before = meaningful[max(0, ordinal - len(tokens)) : ordinal]
+        if (
+            len(before) != len(tokens)
+            or any(code[p][:2] not in (("push", "int"), ("push", "string")) for p in before)
+            or [_push_raw(data, positions[p]) for p in reversed(before)] != tokens
+            or ordinal + 1 >= len(meaningful)
+            or code[meaningful[ordinal + 1]] != ("pop", len(tokens))
+            or any(op[0] == "branch" and before[0] < op[-1] <= pc for op in code)
+        ):
+            continue
+        result.append(positions[pc] + 4)
+    if not result:
+        raise ValueError("literal executable argument sequence differs")
+    return command, tokens, result
 
 
 def _source_called(entry: dict[str, Any], language: str, canonical: int) -> int | None:
@@ -205,6 +251,7 @@ def compile_dynamic_identities(
     candidates: dict[tuple[str, str, str], dict[tuple[str, int], dict[str, Any]]] = defaultdict(
         dict
     )
+    literal_candidates = defaultdict(dict)
     by_path: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for entry in entries:
         record = _record_key(entry)
@@ -245,6 +292,30 @@ def compile_dynamic_identities(
                     outer = metadata[function]
                     if call_id >= len(outer.call_targets):
                         stats["missing_outer_calls"] += 1
+                        continue
+                    if entry["producer_origin"]["family"] == "static_item_panel":
+                        source_row = record_specs[str(entry["key"])].get(language)
+                        if source_row is None:
+                            stats["missing_source_model"] += 1
+                            continue
+                        try:
+                            if function not in code_cache:
+                                code_cache[function] = _function_code(data, function)
+                            command, tokens, pcs = _literal_sites(
+                                data, function, call_id, *code_cache[function]
+                            )
+                        except IndexError, ValueError, FormatError:
+                            stats["rejected_literal_bytecode"] += 1
+                            continue
+                        row = {
+                            "recordKey": str(entry["key"]),
+                            "callId": call_id,
+                            "command": command,
+                            "token": ",".join(map(str, tokens)),
+                            "sourcePattern": source_row["sourcePattern"],
+                        }
+                        for pc in pcs:
+                            literal_candidates[digest, function, pc][entry["key"], call_id] = row
                         continue
                     helper = outer.call_targets[call_id]
                     if helper not in _ITEM_CALLEES:
@@ -312,7 +383,16 @@ def compile_dynamic_identities(
         stats["invalid_archive"] += 1
 
     scripts: dict[str, dict[str, dict[str, dict[str, Any]]]] = {}
+    literal_sites = {}
     emitted_records = set()
+    for (digest, function, pc), claims in literal_candidates.items():
+        if len(claims) != 1:
+            stats["conflicting_literal_sites"] += 1
+            continue
+        row = next(iter(claims.values()))
+        literal_sites.setdefault(digest, {}).setdefault(function, {})[str(pc)] = row
+        emitted_records.add(row["recordKey"])
+        stats["literal_sites"] += 1
     for (digest, helper, token), claims in candidates.items():
         if len(claims) != 1:
             stats["conflicting_tokens"] += 1
@@ -335,4 +415,9 @@ def compile_dynamic_identities(
         "rejected_other_bytecode",
     ):
         stats.setdefault(key, 0)
-    return {"scripts": scripts, "records": records, "stats": dict(stats)}
+    return {
+        "scripts": scripts,
+        "literal_sites": literal_sites,
+        "records": records,
+        "stats": dict(stats),
+    }

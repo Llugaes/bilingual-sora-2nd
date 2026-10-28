@@ -69,6 +69,24 @@ def text_table(rows):
 
 
 class RuntimeIdentityTests(unittest.TestCase):
+    def test_control_variant_manifest_keeps_expression_identity_and_ambiguous_body(self):
+        data, _ = self.fixture()
+        entries = [
+            {
+                "key": f"script/scena/test.dat/Talk/called/0/control_variant:{i}/assembled_dialogue",
+                "texts": {"zh-Hans": f"<#E_{i}>正文。", "ja": f"<#E_{i}>本文。"},
+                "display_role": "dialogue",
+                "control_dialogue": {"value": f"<#E_{i}>", "slot": 1},
+            }
+            for i in range(2)
+        ]
+        with patch("sora_bilingual.localization.runtime_identity.FpacArchive", FakeArchive):
+            result = compile_script_identities("unused", entries, "zh-Hans", "ja", "zh-Hans")
+        variants = result["manifest"][script_signature(data)][0]["recordVariants"]["Talk"]["0"]
+        self.assertIsNone(variants["正文。"])
+        for entry in entries:
+            self.assertEqual(variants[entry["texts"]["zh-Hans"]], entry["key"])
+
     def test_manifest_helper_argument_count_is_not_the_function_flags(self):
         data, _entries = self.fixture()
         data = bytearray(data)

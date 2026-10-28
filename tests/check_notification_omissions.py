@@ -56,7 +56,7 @@ const rows=input.cases.map(c=>{
  const primary=runtime.translate(c.source,'primary'), secondary=runtime.translate(c.source,'secondary'), plan=runtime.render(c.source,'annotation');
  const payload=plan.layers.map(layer=>layer.text).join('')+ [...plan.text.matchAll(/<R>[\s\S]*?<\/R([^<>]*)>/g)].map(m=>m[1]==='_'?'':m[1]).join('');
  const wholeRuby=plan.kind==='ruby'&&plan.layers.length===0&&plan.text===`<R>${c.primary}</R${c.secondary}>`;
- const pass=primary===c.primary&&secondary===c.secondary&&plan.kind!=='plain'&&(plan.layers.length===1||wholeRuby)&&visible(payload)===visible(c.secondary);
+ const pass=primary===c.primary&&secondary===c.secondary&&plan.kind!=='plain'&&(c.singleLane===false||plan.layers.length===1||wholeRuby)&&visible(payload)===visible(c.secondary);
  return {name:c.name,pass,primary,secondary,kind:plan.kind,layers:plan.layers.length,...(pass?{}:{source:c.source,expected:[c.primary,c.secondary],plan})};
 });
 process.stdout.write(JSON.stringify(rows));
@@ -69,7 +69,7 @@ const input=JSON.parse(require('fs').readFileSync(0,'utf8'));
 const visible=s=>s.replace(/<[^<>]*>/g,'').replace(/\s/g,'');
 const identities=new ScriptIdentities(input.scriptIdentities), logs=new LogIdentities();
 const rows=input.cases.map((c,index)=>{
- const raw=Buffer.from(input.blobs[c.blobKey],'base64'), identity=identities.capture(c.signature,n=>raw.slice(0,n),c.helper,c.argumentsToken,{pc:c.pc,group:5,command:8},c.source);
+ const raw=Buffer.from(input.blobs[c.blobKey],'base64'), identity=identities.capture(c.signature,n=>raw.slice(0,n),c.helper,c.argumentsToken,{pc:c.pc,group:5,command:c.command},c.source);
  if(!identity)return {recordKey:c.recordKey,icon:c.icon,pass:false,stage:'capture'};
  logs.commit(index,'item/'+index,identity);
  const committed=logs.lookup(index,'item/'+index), selected=identities.lookup(committed,c.source);
@@ -77,7 +77,7 @@ const rows=input.cases.map((c,index)=>{
  const runtime=new RuntimeText(selected.model), plan=runtime.render(c.source,'annotation');
  const payload=plan.layers.map(layer=>layer.text).join('')+ [...plan.text.matchAll(/<R>[\s\S]*?<\/R([^<>]*)>/g)].map(m=>m[1]==='_'?'':m[1]).join('');
  const wholeRuby=plan.kind==='ruby'&&plan.layers.length===0&&plan.text===`<R>${c.primary}</R${c.secondary}>`;
- return {recordKey:c.recordKey,icon:c.icon,pass:runtime.translate(c.source,'primary')===c.primary&&runtime.translate(c.source,'secondary')===c.secondary&&plan.kind!=='plain'&&(plan.layers.length===1||wholeRuby)&&visible(payload)===visible(c.secondary),stage:'render',kind:plan.kind,layers:plan.layers.length};
+ return {recordKey:c.recordKey,icon:c.icon,pass:identity.producer===true&&runtime.translate(c.source,'primary')===c.primary&&runtime.translate(c.source,'secondary')===c.secondary&&plan.kind!=='plain'&&(c.singleLane===false||plan.layers.length===1||wholeRuby)&&visible(payload)===visible(c.secondary),stage:'render',kind:plan.kind,layers:plan.layers.length};
 });
 process.stdout.write(JSON.stringify(rows));
 """
@@ -278,6 +278,7 @@ def _all_producer_cases(entries: list[dict], secondary: str):
         "unlock_recipe": (5, 10, 110, 2147483647),
         "register_book": (5, 10, 110, 2147483647),
         "item_add_message": (5, 10, 110, 2147483647),
+        "static_item_panel": (5, 10, 110, 2147483647),
     }
     rows = [entry for entry in entries if entry.get("dynamic_producer")]
     for entry in rows:
@@ -300,7 +301,7 @@ def _all_producer_cases(entries: list[dict], secondary: str):
                     "secondary": _number_text(entry, secondary, value),
                     "family": family,
                     "value": value,
-                    "singleLane": True,
+                    "singleLane": family != "static_item_panel",
                 }
             )
     return cases, excluded, Counter(entry["dynamic_producer"]["family"] for entry in rows)
@@ -311,7 +312,8 @@ def _identity_cases(entries: list[dict], model_path: Path, secondary: str, game:
     selected = [
         entry
         for entry in entries
-        if entry.get("producer_origin", {}).get("family") == "item_add_message"
+        if entry.get("producer_origin", {}).get("family")
+        in ("item_add_message", "static_item_panel")
     ]
     assert set(ID220_RECORDS) <= {entry["key"] for entry in selected}
     script_identities = json.loads(model_path.read_text(encoding="utf-8"))["script_identities"]
@@ -334,6 +336,15 @@ def _identity_cases(entries: list[dict], model_path: Path, secondary: str, game:
                 for token, row in indexed.items()
                 if row["recordKey"] == entry["key"]
             ]
+            if entry["producer_origin"]["family"] == "static_item_panel":
+                matches = [
+                    (function, row["token"], {**row, "pc": int(pc)})
+                    for function, sites in identities.get("literal_sites", {})
+                    .get(digest, {})
+                    .items()
+                    for pc, row in sites.items()
+                    if row["recordKey"] == entry["key"]
+                ]
             if len(matches) != 1:
                 raise AssertionError(f"item call must have one identity: {entry['key']}")
             helper, token, row = matches[0]
@@ -356,6 +367,8 @@ def _identity_cases(entries: list[dict], model_path: Path, secondary: str, game:
                         "helper": helper,
                         "argumentsToken": token,
                         "pc": row["pc"],
+                        "command": row.get("command", 8),
+                        "singleLane": entry["producer_origin"]["family"] != "static_item_panel",
                         "source": source,
                         "primary": source,
                         "secondary": entry["texts"][secondary].replace("%d", str(icon)),
@@ -547,7 +560,7 @@ def main():
                 check=True,
             )
             rows = json.loads(completed.stdout)
-            passed = all(row["pass"] for row in rows)
+            passed = all(row["pass"] for row in rows) and not excluded
             global_id220_cases = []
             for key in ID220_RECORDS:
                 entry = next(entry for entry in entries if entry["key"] == key)

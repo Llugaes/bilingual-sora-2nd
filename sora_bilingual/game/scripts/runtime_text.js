@@ -99,6 +99,7 @@ class RuntimeText {
         this.recordSource=Number.isInteger(recordIdentity?.callId)&&
             typeof recordIdentity?.recordKey==='string'&&typeof recordIdentity?.source==='string'
             ?recordIdentity.source:null;
+        this.historySource=null;
         this.conditionLists=model.condition_lists||[];
         this.skillHelpHeaders=model.skill_help_headers||null;
         this.itemHelpHeaders=model.item_help_headers||null;
@@ -282,7 +283,12 @@ class RuntimeText {
             const local=pair?{pairs:{[body]:pair},plain_pairs:{[body]:pair},same_language:model.same_language}:
                 {pairs:{},plain_pairs:{},ambiguous_display:[body]};
             if(this.historyCache.size>=2048)this.historyCache.clear();
-            this.historyCache.set(key,{tr:new RuntimeText(local),strict:true,fallback});
+            const tr=new RuntimeText(local);
+            // This permission belongs only to the complete selected old-log
+            // candidate. It carries no script/call identity and never reaches
+            // global, fragment, or ordinary speaker resolvers.
+            if(kind==='body'&&pair)tr.historySource=body;
+            this.historyCache.set(key,{tr,strict:true,fallback});
         }
         return this.historyCache.get(key);
     }
@@ -1301,11 +1307,24 @@ class RuntimeText {
         return {text,layers,kind:'layered'};
     }
     orphanRubyRecordPair(source) {
-        if(source!==this.recordSource||!Object.hasOwn(this.model.pairs,source)||
-                !/^(?:<#[^<>]*>)*<R>[^<>]+$/.test(source))return null;
-        const pair=this.model.pairs[source];
-        return Array.isArray(pair)&&pair.length===2&&pair.every(value=>typeof value==='string'&&
-            (value===source||RuntimeText.rubyRanges(value)!==null))?pair:null;
+        const head=/^(?:<#[^<>]*>)+/.exec(source)?.[0]||'';
+        const body=source.slice(head.length);
+        const history=this.historySource===body;
+        const key=history?body:source;
+        if((!history&&source!==this.recordSource)||!Object.hasOwn(this.model.pairs,key))return null;
+        const pair=this.model.pairs[key];
+        // History selects an entire official candidate, including any native
+        // controls. Both replacement lanes must be balanced; no markup is
+        // stripped, repaired or inferred from a partial match.
+        if(history) {
+            if(!source.includes('<R>')||!Array.isArray(pair)||pair.length!==2||
+                !pair.every(value=>typeof value==='string'&&RuntimeText.rubyRanges(value)!==null))return null;
+            return head?pair.map(value=>head+value):pair;
+        }
+        if(!/^(?:<#[^<>]*>)*<R>[^<>]+$/.test(source))return null;
+        if(!Array.isArray(pair)||pair.length!==2||!pair.every(value=>typeof value==='string'&&
+            (value===key||RuntimeText.rubyRanges(value)!==null)))return null;
+        return pair;
     }
     render(source,mode='annotation',key='',scope='') {
         // Older resident adapters request bilingual for cutscene labels.

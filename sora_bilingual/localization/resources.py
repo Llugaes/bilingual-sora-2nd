@@ -137,7 +137,7 @@ PANEL_FLAGS = frozenset((7, 8, 9, 13, 14, 15, 16, 19, 20, 22, 24, 26, 28))
 
 
 def literal_item_panel_parts(call: Called) -> tuple[tuple, tuple] | None:
-    """Command-8 literals around finite opcode-17 item IDs, never variables.
+    """Complete builder literals around finite opcode-17 IDs, never variables.
 
     0x4ad670's opcode 17 resolves the following item operand; static strings
     and newline 10 are the same builder grammar as static_panel_parts.
@@ -147,7 +147,8 @@ def literal_item_panel_parts(call: Called) -> tuple[tuple, tuple] | None:
     if (
         call.kind != 3
         or len(call.args) < 5
-        or call.args[:2] != (("int", 5), ("int", 8))
+        or call.args[:1] != (("int", 5),)
+        or call.args[1] not in (("int", 0), ("int", 6), ("int", 8))
         or call.args[2][0] != "int"
     ):
         return None
@@ -159,7 +160,7 @@ def literal_item_panel_parts(call: Called) -> tuple[tuple, tuple] | None:
             parts.append(str(value))
         elif (kind, value) == ("int", 10):
             parts.append("\n")
-        elif kind == "int" and value in PANEL_FLAGS:
+        elif call.args[1] == ("int", 8) and kind == "int" and value in PANEL_FLAGS:
             controls.append((value,))
         elif kind == "int" and value in (11, 12, 17):
             if i + 1 >= len(call.args) or call.args[i + 1][0] != "int":

@@ -92,6 +92,8 @@ Additional fonts are prepared automatically from your local game resources and l
 
 ## Updates and help
 
+**1.0.3 adds associations for dynamic dialogue and item messages, and fixes missing secondary text in some older foreign-language log entries.** The raw-resource audit now cross-checks compiled producers and retains unknown calls and missing official translations. See the [coverage and verification report](docs/verification/dialogue-coverage-1.0.3.md). This is not a claim that every text in the game is covered.
+
 **1.0.2 fixes continuous memory growth with bilingual display enabled and reduces model preparation peaks.** It also adds equipment restriction labels, unifies small-title and item-description layouts, and fixes text shifting on menu entry. See the [memory verification report](docs/verification/memory-r8.md) for methods, comparisons against the r7 candidate and coverage limits. Memory improvements are not a claim of higher frame rates throughout the game.
 
 The startup fixes from 1.0.1 remain included. First use and changed game resources still require preparation; 1.0.0 remains withdrawn from stable updates.

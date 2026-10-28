@@ -170,6 +170,24 @@ def _build(scripts, items, books=None):
 
 
 class DynamicProducerTests(unittest.TestCase):
+    def test_item_helper_work_index_is_not_a_four_value_display_mode(self):
+        from sora_bilingual.localization.dynamic_producers import _item_call_parts
+
+        for index in (0, 3, 6, 7, 255):
+            call = Called(
+                "ITEM_SUB_MESSAGE2_EV",
+                0,
+                (("int", 210), ("string", "before"), ("string", "after"), ("int", index)),
+            )
+            self.assertEqual(_item_call_parts(call), (210, "before", "after", (index,)))
+        for tail in (("var", None), ("expr", None), ("string", "6"), ("int", -1), ("int", 1 << 29)):
+            call = Called(
+                "ITEM_SUB_MESSAGE2_EV",
+                0,
+                (("int", 210), ("string", "before"), ("string", "after"), tail),
+            )
+            self.assertIsNone(_item_call_parts(call))
+
     def test_removal_helper_family_keeps_localized_prefix_and_suffix(self):
         from sora_bilingual.localization.dynamic_producers import _item_call_parts
 
@@ -242,6 +260,37 @@ class DynamicProducerTests(unittest.TestCase):
         self.assertEqual(panels[0]["texts"]["ja"], "<C0><I%d></C><C5>ja quartz</C>\n渡した。")
         self.assertEqual(panels[0]["called_ids"], {l: 0 for l in LANGUAGES})
         self.assertEqual(panels[0]["dynamic_producer"]["numbers"]["ja"], ["ascii"])
+
+    def test_literal_items_in_dialogue_and_subtitle_use_the_shared_builder(self):
+        scripts = _scripts()
+        for language in LANGUAGES:
+            calls = tuple(
+                Called(
+                    None,
+                    3,
+                    (
+                        ("int", 5),
+                        ("int", command),
+                        ("int", 21),
+                        ("string", f"{language} prefix "),
+                        ("int", 17),
+                        ("int", 4202),
+                        ("string", f" {language} suffix"),
+                    ),
+                )
+                for command in (0, 6)
+            )
+            scripts[language]["script/scena/gift.dat"] = Script({"Gift": _function("Gift", calls)})
+        rows, _ = _build(scripts, _items())
+        selected = [
+            r for r in rows if r.get("producer_origin", {}).get("family") == "static_item_panel"
+        ]
+        self.assertEqual(len(selected), 2)
+        self.assertEqual({r["producer_origin"]["signature"]["command"] for r in selected}, {0, 6})
+        for row in selected:
+            self.assertEqual(
+                row["texts"]["ja"], "ja prefix <C0><I%d></C><C5>ja quartz</C> ja suffix"
+            )
 
     def test_item_panel_rejects_unknown_dynamic_operand_and_changed_item_identity(self):
         scripts = _scripts()

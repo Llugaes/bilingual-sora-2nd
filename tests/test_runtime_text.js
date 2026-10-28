@@ -14,6 +14,33 @@ const baseModel = overrides => ({
     ...overrides,
 });
 
+test('old history orphan ruby uses only its complete official display candidate',()=>{
+    const source='<R>Old line.',pair=['旧对白。','古い台詞。'];
+    const model=baseModel({history_contexts:{texts:{[source]:0},pairs:[pair]}});
+    const runtime=new RuntimeText(model);
+    for(const head of ['', '<#E_9#M_0>']) {
+        const context=runtime.historyContext('',head+source);
+        assert.equal(context.fallback,false);
+        assert.equal(context.tr.recordSource,null,'history does not invent a call identity');
+        assert.equal(context.tr.translate(head+source,'secondary'),head+pair[1]);
+        assert.notEqual(context.tr.render(head+source,'annotation').kind,'plain');
+        assert.equal(context.tr.translate(head+source+'changed','secondary'),head+source+'changed');
+    }
+    const plain=new RuntimeText(baseModel({pairs:{[source]:pair},plain_pairs:{[source]:pair}}));
+    assert.equal(plain.translate(source,'secondary'),source,'global pairs gain no malformed-markup permission');
+    assert.equal(runtime.historyContext('',source+'unknown'),null);
+    for(const decorated of ['<C1><R>Old line.','<K4><R>Old <w1000>line.','<R>Native</Rreading><R>Old line.']) {
+        const selected=new RuntimeText(baseModel({history_contexts:{texts:{[decorated]:0},pairs:[pair]}})).historyContext('',decorated);
+        assert.equal(selected.tr.translate(decorated,'secondary'),pair[1]);
+        assert.equal(selected.tr.translate(decorated+'extra','secondary'),decorated+'extra');
+    }
+    const fallback=new RuntimeText(baseModel({history_contexts:{texts:{[source]:-1},pairs:[pair],fallback_texts:{[source]:0}}})).historyContext('',source);
+    assert.equal(fallback.fallback,true);
+    assert.equal(fallback.tr.translate(source,'secondary'),pair[1]);
+    const malformedTarget=new RuntimeText(baseModel({history_contexts:{texts:{[source]:0},pairs:[[pair[0],'<R>Bad target']]}})).historyContext('',source);
+    assert.equal(malformedTarget.tr.translate(source,'secondary'),source);
+});
+
 test('owned integer template keys survive exact native formatting without admitting stale data',()=>{
     const key='TXT_PROVEN_INTEGER',source='Grow <C2>%d</C>!',row=baseModel({
         pairs:{[source]:['増加<C2>%d</C>！','提升<C2>%d</C>！']},
