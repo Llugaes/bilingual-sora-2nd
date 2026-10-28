@@ -1,6 +1,6 @@
 # 1.0.3 正式包核对
 
-2026-10-29。用户明确要求自主修复、测试并发布新版本，避免唤醒询问。本轮按该授权推进；没有取得本候选的玩家实机验收，也没有把隐藏进程或资源回放算作实机验收。
+2026-10-29。本轮按用户明确的自主修复、测试及发布授权执行。没有取得本候选的玩家实机验收，也没有把隐藏进程或资源回放算作实机验收。
 
 产品提交与标签：`2123d38c3a7ceef9ca0ac65ebd4d487ee6eca593` / `v1.0.3`。[GitHub 构建](https://github.com/Llugaes/bilingual-sora-2nd/actions/runs/40740005000)是唯一构建来源。[GitHub 正式版](https://github.com/Llugaes/bilingual-sora-2nd/releases/tag/v1.0.3)与 [Gitee 镜像](https://gitee.com/Llugaes/bilingual-sora-2nd/releases/tag/v1.0.3)均已公开。
 
