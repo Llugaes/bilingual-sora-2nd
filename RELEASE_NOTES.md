@@ -10,7 +10,7 @@
 
 升级前请正常退出游戏和旧版工具，再安装新版；设置会保留。首次使用新编译规则时会重建映射缓存。自动更新检查只提示，不自动安装。
 
-本次修复有明确资源分母和回归记录，但不承诺全游戏全部文本已关联。官方语言资源缺项、未知显示路径和候选实机画面仍须分别核实。详细结果见[文本关联检查记录](https://github.com/Llugaes/bilingual-sora-2nd/blob/v1.0.3/docs/verification/dialogue-coverage-1.0.3.md)。
+本次修复有明确资源分母和回归记录，但不承诺全游戏全部文本已关联。官方语言资源缺项、未知显示路径和候选实机画面仍须分别核实。详细结果见[文本关联检查记录](https://github.com/Llugaes/bilingual-sora-2nd/blob/main/docs/verification/dialogue-coverage-1.0.3.md)。
 
 ## English
 
@@ -22,7 +22,7 @@
 
 Exit the game and the old tool normally before installing. Settings are preserved. The updated compilation rules rebuild the mapping cache once. Automatic update checks only notify; they never install automatically.
 
-The fixes have resource-based coverage and regression evidence, but do not establish complete coverage of every game text. Missing official resources, unknown display paths and in-game validation remain separate concerns. See the [verification report](https://github.com/Llugaes/bilingual-sora-2nd/blob/v1.0.3/docs/verification/dialogue-coverage-1.0.3.md).
+The fixes have resource-based coverage and regression evidence, but do not establish complete coverage of every game text. Missing official resources, unknown display paths and in-game validation remain separate concerns. See the [verification report](https://github.com/Llugaes/bilingual-sora-2nd/blob/main/docs/verification/dialogue-coverage-1.0.3.md).
 
 ## 日本語
 
@@ -34,4 +34,4 @@ The fixes have resource-based coverage and regression evidence, but do not estab
 
 更新前にゲームと旧版ツールを通常の手順で終了してください。設定は保持されます。新しい生成規則の適用時に対応キャッシュを再構築します。更新の自動確認は通知のみで、自動インストールは行いません。
 
-修正対象にはリソースに基づく網羅確認と回帰検証がありますが、全ゲーム内テキストへの対応を保証するものではありません。公式リソースの欠落、未確認の表示経路、実機確認は個別に扱います。詳細は[検証記録](https://github.com/Llugaes/bilingual-sora-2nd/blob/v1.0.3/docs/verification/dialogue-coverage-1.0.3.md)をご覧ください。
+修正対象にはリソースに基づく網羅確認と回帰検証がありますが、全ゲーム内テキストへの対応を保証するものではありません。公式リソースの欠落、未確認の表示経路、実機確認は個別に扱います。詳細は[検証記録](https://github.com/Llugaes/bilingual-sora-2nd/blob/main/docs/verification/dialogue-coverage-1.0.3.md)をご覧ください。
