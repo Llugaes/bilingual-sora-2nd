@@ -69,6 +69,8 @@ class LanguageFacts:
                 + own
                 + (ROOT / "sora_bilingual/localization/runtime_identity.py").read_bytes()
                 + (ROOT / "sora_bilingual/localization/control_dialogue.py").read_bytes()
+                + (ROOT / "sora_bilingual/localization/nested_dialogue.py").read_bytes()
+                + (ROOT / "sora_bilingual/localization/branch_dialogue.py").read_bytes()
             ).hexdigest(),
         }
         self.codes["history_provenance"] = self.codes["history"]

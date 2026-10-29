@@ -271,6 +271,13 @@ def control_dialogue_contract(function, called, program=None, *, rejection=None)
         return None
 
     call = function.called[called]
+    if ("call", None) in call.args[3:]:
+        from sora_bilingual.localization.nested_dialogue import nested_action_contract
+
+        result = nested_action_contract(
+            function, called, program if program is not None else _program(function)
+        )
+        return result if result is not None else reject("unproven_nested_action_return")
     dynamic = [i for i, (kind, _) in enumerate(call.args[3:], 3) if kind in ("var", "call", "expr")]
     if (
         call.kind != 3
@@ -350,7 +357,7 @@ def control_dialogue_calls(function, rejections=None):
         for i, call in enumerate(function.called)
         if call.kind == 3
         and call.args[:1] == (("int", 5),)
-        and any(kind == "var" for kind, _ in call.args[3:])
+        and any(kind in ("var", "call") for kind, _ in call.args[3:])
     ]
     if not candidates:
         return {}

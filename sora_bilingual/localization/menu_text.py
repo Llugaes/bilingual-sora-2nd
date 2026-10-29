@@ -276,6 +276,31 @@ def _proven_panel_icon_slots(entry, count, languages):
     )
 
 
+def _proven_count_panel_slots(entry, count, languages):
+    from sora_bilingual.localization.item_count_panel import ITEM_IDS
+
+    producer, origin = entry["dynamic_producer"], entry.get("producer_origin", {})
+    signature = origin.get("signature", {})
+    slots = [
+        slot
+        for _ in ITEM_IDS
+        for slot in ({"kind": "icon", "opcode": 17}, {"kind": "count", "opcode": 18})
+    ]
+    return (
+        count == 14
+        and producer.get("family") == origin.get("family") == "item_count_panel"
+        and signature.get("kind") == 3
+        and signature.get("command") == 8
+        and signature.get("path", "").endswith(".dat")
+        and bool(signature.get("function"))
+        and origin.get("item_ids") == list(ITEM_IDS)
+        and producer.get("slots") == slots
+        and all(type(entry.get("called_ids", {}).get(lang)) is int for lang in languages)
+        and all(entry["texts"][lang].count("<I%d>") == 7 for lang in languages)
+        and all(producer["numbers"][lang] == ["ascii"] * 14 for lang in languages)
+    )
+
+
 def _producer_numeric_rules(entries, primary, secondary, source_language, rejections=None):
     """Compile only integer slots whose display width was proven at the producer."""
     result = []
@@ -304,7 +329,11 @@ def _producer_numeric_rules(entries, primary, secondary, source_language, reject
         if any(len(s) != count for s in styles):
             reject("different_integer_slot_counts")
             continue
-        if not 1 <= count <= 4 and not _proven_panel_icon_slots(entry, count, languages):
+        if (
+            not 1 <= count <= 4
+            and not _proven_panel_icon_slots(entry, count, languages)
+            and not _proven_count_panel_slots(entry, count, languages)
+        ):
             reject("unproved_integer_slot_contract")
             continue
         if any(style not in ("ascii", "fullwidth") for group in styles for style in group):

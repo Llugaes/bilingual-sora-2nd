@@ -180,6 +180,8 @@ class ProducerFunction:
     flags: int
     arg_types: tuple[int, ...]
     called: tuple[Called, ...]
+    count_panels: tuple = ()
+    branch_regions: dict | None = None
 
 
 @dataclass(frozen=True)
@@ -193,9 +195,22 @@ def _producer_script(data: bytes) -> ProducerScript:
     # unused bytecode/strings before reading the next script. Retaining every
     # instruction in all eight archives caused multi-GiB startup peaks.
     script = parse_scp(data)
+    from sora_bilingual.localization.item_count_panel import panel_contract, panel_parts
+
     return ProducerScript(
         {
-            name: ProducerFunction(function.flags, function.arg_types, function.called)
+            name: ProducerFunction(
+                function.flags,
+                function.arg_types,
+                function.called,
+                tuple(
+                    (i, proof)
+                    for i, call in enumerate(function.called)
+                    if panel_parts(call) is not None
+                    and (proof := panel_contract(script, name, i)) is not None
+                ),
+                function.branch_regions,
+            )
             for name, function in script.functions.items()
         }
     )
@@ -769,6 +784,84 @@ def _literal_item_panel_entries(scripts, item_rows, audit):
     return result
 
 
+def _count_panel_entries(scripts, item_rows, audit):
+    from sora_bilingual.localization.item_count_panel import ITEM_IDS, panel_contract, panel_parts
+
+    candidates = defaultdict(dict)
+    for language, paths in scripts.items():
+        for path, script in paths.items():
+            for name, function in script.functions.items():
+                proofs = getattr(function, "count_panels", None)
+                if proofs is None:
+                    proofs = [
+                        (i, panel_contract(script, name, i))
+                        for i, c in enumerate(function.called)
+                        if panel_parts(c) is not None
+                    ]
+                for called, proof in proofs:
+                    if proof is not None:
+                        candidates[path, name].setdefault(language, []).append((called, proof))
+    result = []
+    for (path, name), candidates_by_language in sorted(candidates.items()):
+        # Uniqueness of the complete seven-item program establishes alignment.
+        # Metadata ordinals can differ when a locale adds an unrelated call.
+        if any(len(rows) != 1 for rows in candidates_by_language.values()):
+            audit["counters"]["count_panel_ambiguous_alignment"] += 1
+            continue
+        proofs = {language: rows[0][1] for language, rows in candidates_by_language.items()}
+        called_ids = {language: rows[0][0] for language, rows in candidates_by_language.items()}
+        called = called_ids.get("ja", called_ids[sorted(called_ids)[0]])
+        texts = {}
+        for language, proof in proofs.items():
+            if not all(i in item_rows.get(language, {}) for i in ITEM_IDS):
+                audit["diagnostics"].append(
+                    _audit("count_panel_missing_item", language=language, path=path)
+                )
+                continue
+            texts[language] = "".join(
+                part.replace("%", "%%")
+                if isinstance(part, str)
+                else "%d"
+                if part[0] == "count"
+                else _ITEM_RENDER.format(name=item_rows[language][part[1]][0].replace("%", "%%"))
+                for part in proof["parts"]
+            )
+        if len(texts) < 2:
+            audit["counters"]["count_panel_without_pair"] += 1
+            continue
+        slots = [
+            slot
+            for _ in ITEM_IDS
+            for slot in ({"kind": "icon", "opcode": 17}, {"kind": "count", "opcode": 18})
+        ]
+        result.append(
+            {
+                "key": f"dynamic/{path}/{name}/called/{called}/item_count_panel",
+                "texts": texts,
+                "called_ids": {language: called_ids[language] for language in texts},
+                "producer_origin": {
+                    "family": "item_count_panel",
+                    "item_ids": list(ITEM_IDS),
+                    "signature": {
+                        "path": path,
+                        "function": name,
+                        "called": called,
+                        "kind": 3,
+                        "command": 8,
+                    },
+                },
+                "dynamic_producer": {
+                    "family": "item_count_panel",
+                    "dynamic_icon": True,
+                    "slots": slots,
+                    "numbers": {language: ["ascii"] * 14 for language in texts},
+                },
+            }
+        )
+    audit["counters"]["item_count_panel_emitted"] += len(result)
+    return result
+
+
 def _audit_source_conflicts(
     entries: Iterable[dict[str, object]], audit: dict[str, object]
 ) -> list[dict[str, object]]:
@@ -817,7 +910,7 @@ def build_dynamic_entries(
     item_audit = {"counters": Counter(), "diagnostics": []}
     items = _read_item_rows(Path(game), item_audit)
     scripts = {}
-    streamed = [([], {"counters": Counter(), "diagnostics": []}) for _ in range(3)]
+    streamed = [([], {"counters": Counter(), "diagnostics": []}) for _ in range(4)]
     for batch in _script_batches(Path(game), audit):
         for language, paths in batch.items():
             if _SYSTEM_PATH in paths:
@@ -831,6 +924,7 @@ def build_dynamic_entries(
                 lambda a: _item_entries(batch, items, a),
                 lambda a: _literal_item_panel_entries(batch, items, a),
                 lambda a: _popup_line_entries(batch, a),
+                lambda a: _count_panel_entries(batch, items, a),
             ),
             strict=True,
         ):

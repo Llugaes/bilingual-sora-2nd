@@ -144,7 +144,7 @@ def _resolved_tokens(
 
 def _record_key(entry: dict[str, Any]) -> tuple[str, str, int] | None:
     origin = entry.get("producer_origin", {})
-    if origin.get("family") not in ("item_add_message", "static_item_panel"):
+    if origin.get("family") not in ("item_add_message", "static_item_panel", "item_count_panel"):
         return None
     signature = origin.get("signature", {})
     path, function, called = (
@@ -206,6 +206,28 @@ def _source_called(entry: dict[str, Any], language: str, canonical: int) -> int 
         return canonical
     value = values.get(language)
     return value if isinstance(value, int) and value >= 0 else None
+
+
+def _count_panel_site(data, function, called, positions):
+    from sora_bilingual.localization.resources import parse_scp
+    from sora_bilingual.localization.item_count_panel import panel_contract
+
+    script = parse_scp(data)
+    proof = panel_contract(script, function, called)
+    if proof is None:
+        raise ValueError("item-count panel executable contract differs")
+    _, start, count, *_ = _SCP_HEADER.unpack_from(data)
+    names = tuple(_string_value(data, start + i * 32 + 28) for i in range(count))
+    calls_at = struct.unpack_from("<I", data, start + names.index(function) * 32 + 20)[0]
+    _, kind, argc, args_at = struct.unpack_from("<IHHI", data, calls_at + called * 12)
+    raw = [struct.unpack_from("<II", data, args_at + i * 8) for i in range(argc)]
+    tokens = [str(value) if tag == 0 else "?" for value, tag in raw[2:]]
+    slots = [
+        {"slot": slot - 2, "capture": number * 2 + 2} for number, slot in enumerate(proof["slots"])
+    ]
+    if kind != 3 or {i for i, (_, tag) in enumerate(raw) if tag != 0} != set(proof["slots"]):
+        raise ValueError("item-count panel metadata differs")
+    return tokens, slots, positions[proof["code_index"]] + 4
 
 
 def _producer_models(
@@ -293,7 +315,10 @@ def compile_dynamic_identities(
                     if call_id >= len(outer.call_targets):
                         stats["missing_outer_calls"] += 1
                         continue
-                    if entry["producer_origin"]["family"] == "static_item_panel":
+                    if entry["producer_origin"]["family"] in (
+                        "static_item_panel",
+                        "item_count_panel",
+                    ):
                         source_row = record_specs[str(entry["key"])].get(language)
                         if source_row is None:
                             stats["missing_source_model"] += 1
@@ -301,9 +326,16 @@ def compile_dynamic_identities(
                         try:
                             if function not in code_cache:
                                 code_cache[function] = _function_code(data, function)
-                            command, tokens, pcs = _literal_sites(
-                                data, function, call_id, *code_cache[function]
-                            )
+                            count_slots = None
+                            if entry["producer_origin"]["family"] == "item_count_panel":
+                                tokens, count_slots, pc = _count_panel_site(
+                                    data, function, call_id, code_cache[function][0]
+                                )
+                                command, pcs = 8, [pc]
+                            else:
+                                command, tokens, pcs = _literal_sites(
+                                    data, function, call_id, *code_cache[function]
+                                )
                         except IndexError, ValueError, FormatError:
                             stats["rejected_literal_bytecode"] += 1
                             continue
@@ -314,6 +346,8 @@ def compile_dynamic_identities(
                             "token": ",".join(map(str, tokens)),
                             "sourcePattern": source_row["sourcePattern"],
                         }
+                        if count_slots is not None:
+                            row["countSlots"] = count_slots
                         for pc in pcs:
                             literal_candidates[digest, function, pc][entry["key"], call_id] = row
                         continue

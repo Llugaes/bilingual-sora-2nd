@@ -223,6 +223,7 @@ def _audit_target(
     names: dict[str, dict[int, str]],
     target: str,
     compiled: dict | None = None,
+    save_contexts: Path | None = None,
 ) -> dict:
     primary = "zh-Hans"
     started = perf_counter()
@@ -231,6 +232,18 @@ def _audit_target(
         compiled = _model(entries, game, names, target)
     else:
         print(json.dumps({"stage": "checkpoint_loaded", "target": target}), flush=True)
+    if save_contexts:
+        save_contexts.mkdir(parents=True, exist_ok=True)
+        (save_contexts / f"history-{target}.json").write_text(
+            json.dumps(
+                {
+                    "history_contexts": compiled["history"],
+                    "script_identities": compiled["identities"],
+                },
+                ensure_ascii=False,
+            ),
+            "utf-8",
+        )
     print(json.dumps({"stage": "replay", "target": target}), flush=True)
     groups = _dialogue_groups(entries)
     id_cases, id_rows, id_counts = [], [], Counter()
@@ -337,7 +350,21 @@ def _audit_target(
     }
 
 
-def main() -> None:
+def passed_targets(targets):
+    return all(
+        all(
+            not count or reason in ("missing_resource_pair", "id_final_render_passed")
+            for reason, count in target["id_counts"].items()
+        )
+        and all(
+            not count or reason in ("history_exact_render_passed", "history_fallback_selected")
+            for reason, count in target["history_counts"].items()
+        )
+        for target in targets
+    )
+
+
+def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--game-dir", type=Path, required=True)
     parser.add_argument(
@@ -350,6 +377,7 @@ def main() -> None:
     )
     parser.add_argument("--ja-model", type=Path)
     parser.add_argument("--en-model", type=Path)
+    parser.add_argument("--save-contexts", type=Path)
     args = parser.parse_args()
     entries = json.loads(args.catalog.read_text(encoding="utf-8"))["entries"]
     print(json.dumps({"stage": "catalog_loaded", "entries": len(entries)}), flush=True)
@@ -370,10 +398,13 @@ def main() -> None:
         "catalog_entries": len(entries),
         "fingerprint": fingerprint(args.game_dir),
         "targets": [
-            _audit_target(entries, args.game_dir, names, target, checkpoints.get(target))
+            _audit_target(
+                entries, args.game_dir, names, target, checkpoints.get(target), args.save_contexts
+            )
             for target in ("ja", "en")
         ],
     }
+    report["passed"] = passed_targets(report["targets"])
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(
@@ -391,7 +422,8 @@ def main() -> None:
             indent=2,
         )
     )
+    return 0 if report["passed"] else 1
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

@@ -174,6 +174,28 @@ class ScriptIdentities {
         }
         return this.cache.get(id);
     }
+    producerTokensMatch(row,token,source) {
+        if(!Object.hasOwn(row,'countSlots'))return row.token===token;
+        if(!Array.isArray(row.countSlots)||row.countSlots.length!==7||
+                typeof row.token!=='string'||typeof token!=='string'||token.length>4096||
+                !this.producerSourceMatches(row.sourcePattern,source))return false;
+        const expected=row.token.split(','),actual=token.split(',');
+        if(expected.length!==actual.length||expected.length>80)return false;
+        const match=this.producerPatterns.get(row.sourcePattern).exec(source),slots=new Map();
+        for(let i=0;i<row.countSlots.length;i++) {
+            const {slot,capture}=row.countSlots[i];
+            if(!Number.isInteger(slot)||slot<0||slot>=expected.length||expected[slot]!=='?'||
+                    capture!==i*2+2||slots.has(slot))return false;
+            slots.set(slot,capture);
+        }
+        return expected.every((value,i)=> {
+            if(!slots.has(i))return value===actual[i];
+            if(!/^[0-9]{1,10}$/.test(actual[i]))return false;
+            const raw=Number(actual[i]);
+            return Number.isInteger(raw)&&raw>=0x40000000&&raw<=0x5fffffff&&
+                raw-0x40000000===Number(match[slots.get(i)]);
+        });
+    }
     producerSourceMatches(pattern,source) {
         if(typeof pattern!=='string'||typeof source!=='string')return false;
         if(!this.producerPatterns.has(pattern))this.producerPatterns.set(pattern,new RegExp('^(?:'+pattern+')$'));
@@ -297,7 +319,7 @@ class ScriptIdentities {
                 const literal=this.dynamicProducers.literal_sites?.[candidate.sha256]?.[functionName]?.[site?.pc];
                 if(literal) {
                     if(site.group!==5||site.command!==literal.command||!Number.isInteger(site.pc)||
-                            site.pc<4||site.pc>candidate.size||literal.token!==argumentsToken||
+                            site.pc<4||site.pc>candidate.size||!this.producerTokensMatch(literal,argumentsToken,source)||
                             !Number.isInteger(literal.callId)||literal.callId<0||typeof literal.recordKey!=='string'||
                             !this.producerSourceMatches(literal.sourcePattern,source))return null;
                     return {...identity,producer:true,callId:literal.callId,recordKey:literal.recordKey,

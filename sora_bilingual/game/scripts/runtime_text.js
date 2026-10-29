@@ -359,6 +359,15 @@ class RuntimeText {
         return ranges;
     }
     static overlaps(span,ranges) {return ranges.some(([start,end])=>span[0]<end&&start<span[1]);}
+    static trailingRubyStart(source) {
+        // The native opening branch stores the base index; only a closing R
+        // invokes reading layout. A final unmatched start is present in some
+        // official Latin-script resources and is already used by captured
+        // dialogue. Do not admit nested starts or incomplete closing syntax.
+        const at=source.lastIndexOf('<R>');
+        return at>=0&&RuntimeText.rubyRanges(source.slice(0,at))!==null&&
+            !source.slice(at+3).includes('<R')&&!source.slice(at+3).includes('</R');
+    }
     hasDetailContext(source,description) {
         const values=this.detailContexts[description]||{},ranges=RuntimeText.rubyRanges(source);
         if(ranges===null)return false;
@@ -1314,11 +1323,12 @@ class RuntimeText {
         if((!history&&source!==this.recordSource)||!Object.hasOwn(this.model.pairs,key))return null;
         const pair=this.model.pairs[key];
         // History selects an entire official candidate, including any native
-        // controls. Both replacement lanes must be balanced; no markup is
-        // stripped, repaired or inferred from a partial match.
+        // controls. Keep the same terminal opening accepted for a complete
+        // captured dialogue; no markup is stripped or repaired. Other broken
+        // replacement markup stays refused, even for an official candidate.
         if(history) {
             if(!source.includes('<R>')||!Array.isArray(pair)||pair.length!==2||
-                !pair.every(value=>typeof value==='string'&&RuntimeText.rubyRanges(value)!==null))return null;
+                !pair.every(value=>typeof value==='string'&&(RuntimeText.rubyRanges(value)!==null||RuntimeText.trailingRubyStart(value))))return null;
             return head?pair.map(value=>head+value):pair;
         }
         if(!/^(?:<#[^<>]*>)*<R>[^<>]+$/.test(source))return null;

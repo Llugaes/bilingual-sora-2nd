@@ -92,7 +92,7 @@ Additional fonts are prepared automatically from your local game resources and l
 
 ## Updates and help
 
-**1.0.3 adds associations for dynamic dialogue and item messages, and fixes missing secondary text in some older foreign-language log entries.** The raw-resource audit now cross-checks compiled producers and retains unknown calls and missing official translations. See the [coverage and verification report](docs/verification/dialogue-coverage-1.0.3.md). This is not a claim that every text in the game is covered.
+**1.0.4 covers the 14 dynamic calls left by the previous audit and fixes three NPC dialogue pairs shifted by a localized story branch.** This includes nested action calls and the seven-sepith quantity panel. Branches were checked across all eight languages, and text candidates in undeclared table fields were classified. Eight Chinese dialogue lines still lack corresponding official Japanese resources and retain their source text. See the [coverage, performance and package verification report](docs/verification/dialogue-coverage-1.0.4.md) for the evidence and in-game validation boundary.
 
 **1.0.2 fixes continuous memory growth with bilingual display enabled and reduces model preparation peaks.** It also adds equipment restriction labels, unifies small-title and item-description layouts, and fixes text shifting on menu entry. See the [memory verification report](docs/verification/memory-r8.md) for methods, comparisons against the r7 candidate and coverage limits. Memory improvements are not a claim of higher frame rates throughout the game.
 

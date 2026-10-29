@@ -6,6 +6,25 @@ const {scriptSha256,ScriptIdentities,TableIdentities,LogIdentities}=require('../
 const {RuntimeText}=require('../sora_bilingual/game/scripts/runtime_text.js');
 const model=(a,b)=>({pairs:{[a]:[a,b]},plain_pairs:{[a]:[a,b]},numeric:[]});
 
+test('seven item counts require typed arguments and identical displayed quantities',()=>{
+    const ids=new ScriptIdentities({});
+    const row={token:'77,'+Array(7).fill('?').join(','),
+        countSlots:Array.from({length:7},(_,i)=>({slot:i+1,capture:i*2+2})),
+        sourcePattern:Array(7).fill('<I([0-9]+)> ([0-9]+)').join('\\n')};
+    const source=Array.from({length:7},(_,i)=>`<I${40+i}> ${i*101}`).join('\n');
+    const tokens=[77,...Array.from({length:7},(_,i)=>0x40000000+i*101)];
+    assert.equal(ids.producerTokensMatch(row,tokens.join(','),source),true);
+    for(let i=1;i<8;i++) {
+        for(const value of [tokens[i]+1,0,0xc0000000,0x60000000,'01','1e8']) {
+            const other=[...tokens];other[i]=value;
+            assert.equal(ids.producerTokensMatch(row,other.join(','),source),false);
+        }
+    }
+    assert.equal(ids.producerTokensMatch(row,'78,'+tokens.slice(1).join(','),source),false);
+    assert.equal(ids.producerTokensMatch(row,tokens.join(','),source+'extra'),false);
+    assert.equal(ids.producerTokensMatch({...row,countSlots:row.countSlots.slice(1)},tokens.join(','),source),false);
+});
+
 test('literal item calls select the complete producer before function fragments',()=>{
     const bytes=Buffer.alloc(64,19),hash=scriptSha256(bytes),key='literal-items';
     const source='Received <I5>Key.',token='1,1073741841,1073742044,3221225500';

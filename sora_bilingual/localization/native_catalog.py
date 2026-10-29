@@ -83,6 +83,9 @@ def _catalog_code(*, legacy=False):
         for n in (
             "sora_bilingual/localization/resources.py",
             "sora_bilingual/localization/control_dialogue.py",
+            "sora_bilingual/localization/nested_dialogue.py",
+            "sora_bilingual/localization/branch_dialogue.py",
+            "sora_bilingual/localization/item_count_panel.py",
             "sora_bilingual/localization/tables.py",
             "sora_bilingual/localization/menu_tables.py",
             "sora_bilingual/localization/table_alignment.py",

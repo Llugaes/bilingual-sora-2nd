@@ -1,0 +1,212 @@
+{
+  "description": "Reviewed event-table constructor, registry, direct consumers and row-taking callees including chained unwind regions; text-title field +32 is not read as a display string. This offline audit accepts this evidence only when every reviewed region is unchanged.",
+  "regions": [
+    {
+      "start": 2367920,
+      "end": 2368773,
+      "sha256": "5d6e3dfad894896fd6d97cf94ba27a0b3c94555779efa3e6f86971cdce336c81"
+    },
+    {
+      "start": 2388688,
+      "end": 2396489,
+      "sha256": "235f7cd4ef898248b79fa01fbb598245e5ea6ba70bf605ac3cd5acbd1eeb2220"
+    },
+    {
+      "start": 2494448,
+      "end": 2495084,
+      "sha256": "e326417f6e6c77ec65797a2dc6dc14a3909a26ab661d6685dfaad21e6d0ae304"
+    },
+    {
+      "start": 2495088,
+      "end": 2497450,
+      "sha256": "01b1db11743106097ec4c60eee55f679fc5ab336b1cbd741df59a37e6323758a"
+    },
+    {
+      "start": 2497456,
+      "end": 2498728,
+      "sha256": "84e6a80e21909bffe75356d511a04c9d16334f90adaf60a985e2e8a7e60e6218"
+    },
+    {
+      "start": 2498736,
+      "end": 2498982,
+      "sha256": "21cff755b71af63b0f18caa60477ebf442fd2b4a5a4cb9df314750b053e2db52"
+    },
+    {
+      "start": 2498982,
+      "end": 2499052,
+      "sha256": "cedeea7137623bd682e8cab9ae045c86b22c5824f55fd52e24115de0abff64fc"
+    },
+    {
+      "start": 2499052,
+      "end": 2499057,
+      "sha256": "84c8f296c1e75e157e7159d70a878958e6aef696f8c55bcf7b8f982d6033f0d0"
+    },
+    {
+      "start": 2499057,
+      "end": 2499215,
+      "sha256": "0e25d2291f8bd5ddaf5981f2c4117e5679a7733fc6563d44551a1fe6d59acfa2"
+    },
+    {
+      "start": 2499216,
+      "end": 2499663,
+      "sha256": "b6abdc7b73364826f7c634621196ca1373c27f9defb5f68fdbf1870293819ab0"
+    },
+    {
+      "start": 2499664,
+      "end": 2503273,
+      "sha256": "b482c3825845b04fba371c81e8c2db6c319566ee1c6b6a3afec2b2ff2aeaabf9"
+    },
+    {
+      "start": 2503280,
+      "end": 2506888,
+      "sha256": "e4c931700f4b152f10b14f19d64fadef9dfc3a52b04c6994624697c21553ec3d"
+    },
+    {
+      "start": 2508544,
+      "end": 2509850,
+      "sha256": "5f8519599e6321e056d785924d602bead1a3051a2de7e0ba0b1104a753ee60f8"
+    },
+    {
+      "start": 2509856,
+      "end": 2511634,
+      "sha256": "3610adbd194cf73540b31cfcacd2aebceab9814fef1397c8b458da1285163d7c"
+    },
+    {
+      "start": 2511648,
+      "end": 2513050,
+      "sha256": "a337f9715d91be025459544a8fe2f306ec0ee492f86d717599f3aab79db670fc"
+    },
+    {
+      "start": 2513056,
+      "end": 2513079,
+      "sha256": "93c053d5d097ff2416a0eb8cc3300d4c39064aa40e609cc1d41155910a05bedb"
+    },
+    {
+      "start": 2513079,
+      "end": 2513237,
+      "sha256": "16cbaeeb05a26c61b9f6f0ec85536d905c4e83c5cdd37877b474a43421b9bf87"
+    },
+    {
+      "start": 2513237,
+      "end": 2513485,
+      "sha256": "612d773977c254337d265eb1e1c78dfc0a03f24ed4ee765c9d9bdbaf608cb891"
+    },
+    {
+      "start": 2513488,
+      "end": 2513647,
+      "sha256": "95349d9e29837e650be8f4c34576c18feabc5b61d1e9706fb1fe47343a5037c5"
+    },
+    {
+      "start": 2514160,
+      "end": 2514216,
+      "sha256": "ea4db2641366d297e8dc3f50b29d3c33c2b3fb2a3a80aad329375d3a2218562a"
+    },
+    {
+      "start": 2514216,
+      "end": 2514362,
+      "sha256": "f19fe730676ef30a59876c2fffe554b2e83072d91dc03d39859b98ff8e5fc352"
+    },
+    {
+      "start": 2514362,
+      "end": 2514394,
+      "sha256": "12a4ac99b144b60d48795d3c5b72170c591d99f90826f5e76364fd46e7fb76ab"
+    },
+    {
+      "start": 2515424,
+      "end": 2515454,
+      "sha256": "c201833b0cda88bd2d48b5aade00f2669a2418082bf4ae52528ca799bb4c3c24"
+    },
+    {
+      "start": 2515454,
+      "end": 2515481,
+      "sha256": "44d9982ec806f50676bb9df1f85112ed4df905a1f05b9c66c31bba8869f005da"
+    },
+    {
+      "start": 2515481,
+      "end": 2515597,
+      "sha256": "2d0772918e7a9e3dd3d066a4399537b81a6706f03421bad3946f1fd855bd1ad2"
+    },
+    {
+      "start": 2515597,
+      "end": 2515774,
+      "sha256": "fbe67ffe760ce2135af5c663d304f9b8ef8c83ae3727afa5858b6107db8d7da2"
+    },
+    {
+      "start": 2515774,
+      "end": 2515780,
+      "sha256": "ac829edc8d3d5ff13f0d67c2504827d5bc4a860f9e0462749c945b7728053f34"
+    },
+    {
+      "start": 2516512,
+      "end": 2516741,
+      "sha256": "1b6799e720a6258ca6a5c2eae8d850a8c17360c224a41bda930de4ec7f4becfe"
+    },
+    {
+      "start": 2517632,
+      "end": 2517956,
+      "sha256": "00af52a05e24bfca8032ebb0bb0555ad6872ee41a201e7301b73ffb1fe6e462e"
+    },
+    {
+      "start": 2743552,
+      "end": 2743572,
+      "sha256": "7515ee39288a9a4eb31436290f449363bc261d0ca41ae30ce4ccac8129a338bb"
+    },
+    {
+      "start": 2743572,
+      "end": 2743624,
+      "sha256": "fe25290cf09ab8fe97951bbd53e9e4d42b99a696a6f9a158931c436465d86fc0"
+    },
+    {
+      "start": 2743624,
+      "end": 2743769,
+      "sha256": "7da9b779c2711a4c3e2a4f7e4eae2de1636f6a8b027710fbad9b63cb5b807c8b"
+    },
+    {
+      "start": 2743769,
+      "end": 2743972,
+      "sha256": "5d56201702d3df96eb9782d0905052c4b4fb0e3d400b0142eeccdf6edeb4c5f9"
+    },
+    {
+      "start": 2743972,
+      "end": 2743977,
+      "sha256": "3297a0e4175e5d032a2be5212c1a1980cd3df21251db492413a47fcb4b6187ac"
+    },
+    {
+      "start": 2743977,
+      "end": 2744016,
+      "sha256": "37355bef68efbf5ce13531014141a1260ce8f4f5a7f040927ec3ff231f980e67"
+    },
+    {
+      "start": 4429712,
+      "end": 4445837,
+      "sha256": "a369130bbebef1c71ca45990622ee1d05a2cfb6dd7434ebde1acd22430c5a70e"
+    },
+    {
+      "start": 4810192,
+      "end": 4810445,
+      "sha256": "70f2a3db6328b9d64ab6ebee0a6dc2694ce9dbe87a65401d71fc1dbcb6b56ca1"
+    },
+    {
+      "start": 4818864,
+      "end": 4819060,
+      "sha256": "3916e5d0ab020a0d1c3b4fefc7445defdcb210e83b8a761e463f9aeaa481cb14"
+    },
+    {
+      "start": 4819060,
+      "end": 4819180,
+      "sha256": "33175f56e3b2cba8aba06aac15c9e8baf3bb014363f62ec62d22a5f65aa03c71"
+    },
+    {
+      "start": 4819180,
+      "end": 4819218,
+      "sha256": "5eb1c3eda93a422eb87b60aeee64762324e37fc2123c9b2445cfc0657bc6f4ca"
+    },
+    {
+      "start": 4819218,
+      "end": 4819229,
+      "sha256": "7b621aeee727a734a4b5db938934795acfb76e2edd49165530a760bac9d9d13f"
+    }
+  ],
+  "audited_executable_sha256": "cab62e5872222efb2aaf272be47f14263db4e7132ad7df5255db8efbee9959ea",
+  "scope": "Offline evidence freshness only. Never a game connection or runtime compatibility gate."
+}

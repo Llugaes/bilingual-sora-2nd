@@ -87,7 +87,7 @@ def raw_candidates(data):
                 kind == 3
                 and argc >= 4
                 and args[0] == (0x40000005, 0)
-                and any(tag == 2 for _, tag in args[3:])
+                and any(tag in (1, 2) for _, tag in args[3:])
             ):
                 rows.append((name, called))
     return rows
@@ -114,7 +114,7 @@ def raw_dialogue(data, function, called, control_slot, control_value):
     _, kind, argc, args_at = struct.unpack_from("<IHHI", data, descriptor)
     args = [struct.unpack_from("<II", data, args_at + i * 8) for i in range(argc)]
     assert kind == 3 and args[0] == (0x40000005, 0)
-    assert args[control_slot] == (0, 2)
+    assert args[control_slot] in ((0, 1), (0, 2))
     parts, physical = [], []
     first_text = next(
         i
@@ -211,6 +211,8 @@ def check(game, directory, dev=ROOT, catalog_directory=None):
                             for s in function.code_strings
                         ),
                     )
+                    if "raw_values" in proof:
+                        changed = replace(function, local_return_values=())
                     assert control_dialogue_contract(changed, called) is None
                     proofs.append(
                         {
@@ -229,28 +231,29 @@ def check(game, directory, dev=ROOT, catalog_directory=None):
                         if s["record"] == called and "controlVariants" in s
                     )
                     value = entry["control_dialogue"]["value"]
-                    variant = next(
+                    variants = [
                         v
                         for v in site["controlVariants"]
                         if v["source"] == proof["variants"][value]
-                    )
+                    ]
                     token = site["token"].split(",")
-                    token[site["controlSlot"]] = str(variant["token"])
-                    cases.append(
-                        {
-                            "locale": locale,
-                            "blob": base64.b64encode(data).decode(),
-                            "signature": signature,
-                            "fn": fn,
-                            "called": called,
-                            "controlSlot": site["controlSlot"],
-                            "site": {"pc": int(pc), "group": 5, "command": site["command"]},
-                            "token": ",".join(token),
-                            "source": entry["texts"][locale],
-                            "key": entry["key"],
-                            "texts": entry["texts"],
-                        }
-                    )
+                    token[site["controlSlot"]] = str(variants[0]["token"])
+                    case = {
+                        "locale": locale,
+                        "blob": base64.b64encode(data).decode(),
+                        "signature": signature,
+                        "fn": fn,
+                        "called": called,
+                        "controlSlot": site["controlSlot"],
+                        "site": {"pc": int(pc), "group": 5, "command": site["command"]},
+                        "token": ",".join(token),
+                        "source": entry["texts"][locale],
+                        "key": entry["key"],
+                        "texts": entry["texts"],
+                    }
+                    for variant in variants:
+                        token[site["controlSlot"]] = str(variant["token"])
+                        cases.append({**case, "token": ",".join(token)})
                     manifests.setdefault(locale, {})[fn] = {
                         "sites": manifest["callSites"][fn],
                         "records": manifest["callRecords"][fn],

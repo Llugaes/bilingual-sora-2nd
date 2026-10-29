@@ -373,6 +373,7 @@ def _script_call_sites(data, start, names):
         for i in range(global_count)
     )
     result, records = {}, {}
+    nested_script = None
     helper_types = []
     for number, name in enumerate(names):
         at = start + number * 32
@@ -415,7 +416,11 @@ def _script_call_sites(data, start, names):
         possible_controls = any(
             call.kind == 3
             and call.args[:1] == (("int", 5),)
-            and any(kind == "var" for kind, _ in call.args[3:])
+            and call.args[1:2] in ((("int", 0),), (("int", 6),), (("int", 19),))
+            and any(
+                kind == "var" or kind == "call" and call.args[1] == ("int", 0)
+                for kind, _ in call.args[3:]
+            )
             for call in decoded_calls
         )
         if not wanted and not possible_controls:
@@ -433,6 +438,15 @@ def _script_call_sites(data, start, names):
             function = Function(
                 name, 0, (), tuple(decoded_calls), code, strings, tuple(helper_types)
             )
+            if any(
+                call.kind == 3
+                and call.args[:2] == (("int", 5), ("int", 0))
+                and any(kind == "call" for kind, _ in call.args[3:])
+                for call in decoded_calls
+            ):
+                if nested_script is None:
+                    nested_script = parse_scp(data)
+                function = nested_script.functions[name]
             proofs = control_dialogue_calls(function)
             for call, proof in proofs.items():
                 if proof is None:
@@ -447,11 +461,18 @@ def _script_call_sites(data, start, names):
                     "controlSlot": proof["control_slot"] - 2,
                     "controlVariants": [
                         {
-                            "token": struct.unpack_from("<I", data, positions[index] + 2)[0],
+                            "token": token,
                             "source": source,
                         }
                         for value, source in proof["variants"].items()
-                        for index in proof["definitions"][value]
+                        for token in (
+                            proof["raw_values"][value]
+                            if "raw_values" in proof
+                            else [
+                                struct.unpack_from("<I", data, positions[index] + 2)[0]
+                                for index in proof["definitions"][value]
+                            ]
+                        )
                     ],
                 }
         index = defaultdict(list)

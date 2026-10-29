@@ -18,6 +18,7 @@ import re
 import struct
 from collections import Counter, defaultdict
 from dataclasses import dataclass, replace
+from functools import cached_property
 from pathlib import Path
 from typing import Iterable
 
@@ -279,6 +280,13 @@ class Function:
     code_shape: tuple[tuple[object, ...], ...]
     code_strings: tuple[str, ...]
     local_arg_types: tuple[tuple[str, tuple[int, ...]], ...] = ()
+    local_return_values: tuple[tuple[str, tuple[int, ...]], ...] = ()
+
+    @cached_property
+    def branch_regions(self):
+        from sora_bilingual.localization.branch_dialogue import dispatch_regions
+
+        return dispatch_regions(self)
 
     def shape(self) -> tuple[object, ...]:
         return (
@@ -290,13 +298,19 @@ class Function:
 
     def called_sequence_shape(self) -> tuple[object, ...]:
         """The complete static-call sequence, independent of locale bytecode layout."""
-        return (self.flags, self.arg_types, tuple(call.dialogue_shape() for call in self.called))
+        from sora_bilingual.localization.branch_dialogue import dispatch_signature
+
+        shape = (self.flags, self.arg_types, tuple(call.dialogue_shape() for call in self.called))
+        signature = dispatch_signature(self)
+        return (*shape[:-1], signature, shape[-1]) if signature is not None else shape
 
     def dialogue_sequence_shape(self) -> tuple[object, ...]:
+        from sora_bilingual.localization.branch_dialogue import dispatch_signature
+
         # A reward/UI call can have locale-specific arguments without changing
         # any dialogue. Keep the complete dialogue order, original call indices,
         # speaker/voice identities and total call count as a separate contract.
-        return (
+        shape = (
             self.flags,
             self.arg_types,
             len(self.called),
@@ -306,6 +320,8 @@ class Function:
                 if assembled_dialogue(call) is not None
             ),
         )
+        signature = dispatch_signature(self)
+        return (*shape[:-1], signature, shape[-1]) if signature is not None else shape
 
 
 @dataclass(frozen=True)
@@ -625,6 +641,28 @@ def parse_scp(data: bytes) -> Script:
         functions[name] = Function(
             name, flags, arg_types, tuple(called), code_shape, code_strings, helpers
         )
+    nested = {
+        name
+        for name, f in functions.items()
+        if any(
+            c.kind == 3 and c.args[:2] == (("int", 5), ("int", 0)) and ("call", None) in c.args[3:]
+            for c in f.called
+        )
+    }
+    if nested:
+        from sora_bilingual.localization.nested_dialogue import helper_return_values
+
+        domains = helper_return_values(functions)
+        for name in nested:
+            f = functions[name]
+            functions[name] = replace(
+                f,
+                local_return_values=tuple(
+                    (helper, domains[helper])
+                    for helper, _ in f.local_arg_types
+                    if helper in domains
+                ),
+            )
     return Script(functions)
 
 
@@ -839,6 +877,16 @@ def _aligned_call_map(reference: Function, candidate: Function) -> dict[int, int
     """Map proven physical calls; consumers select their display record types."""
     if reference.flags != candidate.flags or reference.arg_types != candidate.arg_types:
         return {}
+    from sora_bilingual.localization.branch_dialogue import aligned_dispatch_calls
+
+    dispatched = aligned_dispatch_calls(reference, candidate)
+    if dispatched is not None:
+        return dispatched
+    return _sequential_call_map(reference, candidate)
+
+
+def _sequential_call_map(reference: Function, candidate: Function) -> dict[int, int]:
+    """Align an already established function or branch execution region."""
     reference_shapes = tuple(call.dialogue_shape() for call in reference.called)
     candidate_shapes = tuple(call.dialogue_shape() for call in candidate.called)
     mapped = {}

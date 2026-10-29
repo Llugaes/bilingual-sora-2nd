@@ -1,37 +1,34 @@
-# 1.0.3
+# 1.0.4
 
 ## 简体中文
 
-- 修复带分支、分页和表情控制的动态对白漏关联；相同正文的不同表情保留各自的原始调用身份。
-- 补齐使用额外工作标志的物品交付消息，以及对白、字幕中的完整物品消息。
-- 修复函数内片段词库抢先处理物品整句、导致只翻译半句的问题；完整调用现在直接选取整句配对。
-- 修复部分外语旧日志因原始注音标记不完整而缺少副文的问题。仅使用整句官方候选，保留普通文本与已捕获对白的身份边界。
-- 增加原始脚本与编译结果的交叉检查；未分类调用和缺少官方译文的条目保留在报告中，供后续复查。
+- 补齐上一轮剩余的 14 个动态调用：13 处含动作调用的对白，以及七种耀晶石的实时数量面板。
+- 修正 NPC 的三句错配：不同语言的剧情分支有增减时，按实际分支条件关联，避免后续台词整体错位。
+- 补齐英文目标下部分旧日志的副文。官方原串末尾未闭合的 `<R>` 标记保留原样，仅对已确定的完整官方配对生效。
+- 增加八语分支检查、表字段文本候选分类和 ASCII 扫描。原始 114 个动态调用均有编译路由；未来新增的未知字段和错误渲染会让相应检查失败。
 
-升级前请正常退出游戏和旧版工具，再安装新版；设置会保留。首次使用新编译规则时会重建映射缓存。自动更新检查只提示，不自动安装。
+更新前请正常退出游戏和旧版工具，再安装新版；设置会保留。新规则会重建映射缓存。自动检查更新只提示，不自动安装。
 
-本次修复有明确资源分母和回归记录，但不承诺全游戏全部文本已关联。官方语言资源缺项、未知显示路径和候选实机画面仍须分别核实。详细结果见[文本关联检查记录](https://github.com/Llugaes/bilingual-sora-2nd/blob/main/docs/verification/dialogue-coverage-1.0.3.md)。
+已检查的中日文资源中，有 8 条中文对白缺少对应官方日文；工具保留原文。资源审计、生产回调和隐藏原生宿主验证的范围，见[检查记录](https://github.com/Llugaes/bilingual-sora-2nd/blob/main/docs/verification/dialogue-coverage-1.0.4.md)。本次没有逐场景玩家实机验收。
 
 ## English
 
-- Fixed missing associations for dynamic dialogue with branches, page controls and expressions. Expression variants with identical bodies retain their original call identities.
-- Added item handover messages using additional work flags, and complete item messages in dialogue and subtitles.
-- Fixed partial item-message translations caused by function-local fragments taking precedence over a complete message. Verified calls now select their full pairs directly.
-- Fixed missing secondary text in some older foreign-language logs containing incomplete native ruby markup. Only complete official candidates are used; ordinary text and captured dialogue retain their identity boundaries.
-- Added a cross-check between raw script calls and compiled producers. Unknown calls and missing official translations remain in the report for investigation.
+- Covered the 14 dynamic calls left by the previous audit: 13 dialogue calls containing nested actions and the live quantity panel for all seven sepith types.
+- Corrected three NPC dialogue pairs shifted by a localized story branch. Associations follow the actual branch selector when a language adds or removes a branch.
+- Restored secondary text in some older logs with English as the target. A trailing unmatched `<R>` in an official resource is preserved and accepted only for a verified complete official pair.
+- Added branch checks across eight languages, table-field candidate classification and an ASCII-inclusive scan. All 114 raw dynamic calls now have compiled routes; new unknown fields and incorrect rendering fail their respective audits.
 
-Exit the game and the old tool normally before installing. Settings are preserved. The updated compilation rules rebuild the mapping cache once. Automatic update checks only notify; they never install automatically.
+Exit the game and the old tool normally before installing. Settings are preserved. The new rules rebuild the mapping cache once. Automatic update checks only notify and never install automatically.
 
-The fixes have resource-based coverage and regression evidence, but do not establish complete coverage of every game text. Missing official resources, unknown display paths and in-game validation remain separate concerns. See the [verification report](https://github.com/Llugaes/bilingual-sora-2nd/blob/main/docs/verification/dialogue-coverage-1.0.3.md).
+Eight Chinese dialogue lines in the audited resources lack corresponding official Japanese text and retain their original text. The [verification report](https://github.com/Llugaes/bilingual-sora-2nd/blob/main/docs/verification/dialogue-coverage-1.0.4.md) separates resource audits, production callbacks and owned native-host checks. This release has not received scene-by-scene player acceptance.
 
 ## 日本語
 
-- 分岐、改ページ、表情制御を含む動的な会話の対応漏れを修正しました。同じ本文でも、表情が異なる場合は元の呼び出し情報を保持します。
-- 追加の作業フラグを使うアイテム引き渡し通知と、会話・字幕内のアイテムを含む全文の対応を追加しました。
-- 関数内の断片的な対応が優先され、アイテムを含む文章の一部しか翻訳されない問題を修正しました。確認済みの呼び出しから全文の対応を直接選択します。
-- 原文のルビ記法が不完全な一部の外国語の過去ログで、副言語が表示されない問題を修正しました。全文の公式候補だけを使い、通常のテキストや取得済みの会話の識別条件を維持します。
-- 元のスクリプト呼び出しと生成結果の照合を追加しました。未分類の呼び出しと公式訳の欠落は、後から確認できるよう報告に残します。
+- 前回の調査で残った 14 件に対応しました。動作呼び出しを含む会話 13 件と、7 種類のセピスの所持数表示が対象です。
+- 言語別のシナリオ分岐によってずれていた NPC の会話 3 件を修正しました。分岐が増減しても、実際の分岐条件に沿って対応付けます。
+- 英語を副言語にした際、一部の過去ログで副言語が表示されない問題を修正しました。公式原文の末尾で閉じていない `<R>` は保持し、全文の公式対応が確認できた場合だけ処理します。
+- 8 言語の分岐確認、テーブル項目のテキスト候補分類、ASCII を含む検索を追加しました。元の動的呼び出し 114 件すべてに生成経路があり、新しい未分類項目や描画結果の不一致は検証失敗になります。
 
-更新前にゲームと旧版ツールを通常の手順で終了してください。設定は保持されます。新しい生成規則の適用時に対応キャッシュを再構築します。更新の自動確認は通知のみで、自動インストールは行いません。
+更新前にゲームと旧版ツールを通常の手順で終了してください。設定は保持されます。新しい規則により対応キャッシュを再構築します。更新の自動確認は通知のみで、自動インストールは行いません。
 
-修正対象にはリソースに基づく網羅確認と回帰検証がありますが、全ゲーム内テキストへの対応を保証するものではありません。公式リソースの欠落、未確認の表示経路、実機確認は個別に扱います。詳細は[検証記録](https://github.com/Llugaes/bilingual-sora-2nd/blob/main/docs/verification/dialogue-coverage-1.0.3.md)をご覧ください。
+調査済みリソースには、対応する公式日本語がない中国語の会話が 8 件あります。これらは原文を保持します。リソース照合、製品のコールバック、自作のネイティブ検証プロセスの範囲は[検証記録](https://github.com/Llugaes/bilingual-sora-2nd/blob/main/docs/verification/dialogue-coverage-1.0.4.md)をご覧ください。今回、プレイヤーによる全場面の実機確認は行っていません。

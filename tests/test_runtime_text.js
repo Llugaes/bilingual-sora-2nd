@@ -37,8 +37,26 @@ test('old history orphan ruby uses only its complete official display candidate'
     const fallback=new RuntimeText(baseModel({history_contexts:{texts:{[source]:-1},pairs:[pair],fallback_texts:{[source]:0}}})).historyContext('',source);
     assert.equal(fallback.fallback,true);
     assert.equal(fallback.tr.translate(source,'secondary'),pair[1]);
-    const malformedTarget=new RuntimeText(baseModel({history_contexts:{texts:{[source]:0},pairs:[[pair[0],'<R>Bad target']]}})).historyContext('',source);
+    const malformedTarget=new RuntimeText(baseModel({history_contexts:{texts:{[source]:0},pairs:[[pair[0],'<R><R>Bad target']]}})).historyContext('',source);
     assert.equal(malformedTarget.tr.translate(source,'secondary'),source);
+});
+
+test('complete old history accepts the same official trailing ruby start as captured dialogue',()=>{
+    const source='<C1><R>Les membres en attente patienteront au\npremier étage de la guilde.',
+        pair=['<C1>待命中的成员\n将移动到协会２楼等地方。',
+            '<C1><R>Your standby member(s) will wait for you on\nthe guild\'s second floor, or somewhere similar.'];
+    const context=new RuntimeText(baseModel({history_contexts:{texts:{[source]:0},pairs:[pair]}})).historyContext('',source);
+    assert.equal(context.tr.translate(source,'primary'),pair[0]);
+    assert.equal(context.tr.translate(source,'secondary'),pair[1]);
+    const plan=context.tr.render(source,'annotation');
+    assert.notEqual(plan.kind,'plain');
+    assert.equal(plan.layers.map(v=>v.text).join('').replace(/<[^<>]*>|\s/g,''),pair[1].replace(/<[^<>]*>|\s/g,''));
+    assert.equal(context.tr.translate(source+'changed','secondary'),source+'changed');
+    assert.equal(new RuntimeText(baseModel({pairs:{[source]:pair}})).translate(source,'secondary'),source);
+    for(const broken of ['<R><R>Nested', '<R>Bad</R', '<Rwrong>Bad']) {
+        const refused=new RuntimeText(baseModel({history_contexts:{texts:{[source]:0},pairs:[[pair[0],broken]]}})).historyContext('',source);
+        assert.equal(refused.tr.translate(source,'secondary'),source,broken);
+    }
 });
 
 test('owned integer template keys survive exact native formatting without admitting stale data',()=>{

@@ -279,6 +279,7 @@ def _all_producer_cases(entries: list[dict], secondary: str):
         "register_book": (5, 10, 110, 2147483647),
         "item_add_message": (5, 10, 110, 2147483647),
         "static_item_panel": (5, 10, 110, 2147483647),
+        "item_count_panel": (0, 1, 9999, 999999),
     }
     rows = [entry for entry in entries if entry.get("dynamic_producer")]
     for entry in rows:
@@ -301,7 +302,7 @@ def _all_producer_cases(entries: list[dict], secondary: str):
                     "secondary": _number_text(entry, secondary, value),
                     "family": family,
                     "value": value,
-                    "singleLane": family != "static_item_panel",
+                    "singleLane": family not in ("static_item_panel", "item_count_panel"),
                 }
             )
     return cases, excluded, Counter(entry["dynamic_producer"]["family"] for entry in rows)
