@@ -150,18 +150,27 @@ Interceptor.flush();
         if time.monotonic() > deadline:
             raise RuntimeError("Owned worker did not stop")
         time.sleep(0.05)
+    final_timing = agent.exports_sync.stats()["timing"]
     agent.exports_sync.close()
     if profile:
         profile.wait(timeout=15)
         if profile.returncode:
             raise RuntimeError("Profiler failed")
     maximum = max((sum(e[k] for k in ("enterMs", "bodyMs", "leaveMs")) for e in events), default=0)
+    # Loading may produce more events than the bounded ring retains before the
+    # first poll. Lifetime native maxima cannot lose those early waits. Their
+    # sum is a conservative bound, not a measured single callback duration.
+    native_wait_bound = max(
+        sum(phase["maxMs"] for phase in stage.values()) for stage in final_timing["stages"].values()
+    )
     report = {
         "empty": args.empty,
         "seconds": args.seconds,
         "load_seconds": load_seconds,
         "during_load": args.during_load,
         "max_observed_ms": maximum,
+        "native_wait_bound_ms": native_wait_bound,
+        "final_timing": final_timing,
         "samples": samples,
         "game_attached": False,
     }
@@ -172,12 +181,17 @@ Interceptor.flush();
                 "calls": samples[-1]["calls"],
                 "slow_calls": sequence,
                 "max_observed_ms": maximum,
+                "native_wait_bound_ms": native_wait_bound,
                 "output": str(out),
             }
         ),
         flush=True,
     )
-    if maximum >= args.max_wait_ms:
+    if (
+        maximum >= args.max_wait_ms
+        or native_wait_bound >= args.max_wait_ms
+        or final_timing["dropped"]
+    ):
         raise SystemExit(1)
 finally:
     if profile and profile.poll() is None:
