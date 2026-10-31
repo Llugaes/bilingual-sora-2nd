@@ -2,23 +2,70 @@
 // The file's ArrayBuffer is external memory. Keeping millions of decoded model
 // objects alive made V8's natural major collections stall native hooks ~300 ms.
 // This reader retains a bounded working set, with exact, collision-checked keys.
-function readIndexedModel(buffer) {
-    const view=new DataView(buffer),invalid=()=>{throw Error('Invalid indexed model');};
+// Only used while constructing a private replacement model. The synchronous
+// RPC still commits once, but native label callbacks can keep using the old
+// model between bounded batches. Never retain this callback in a live resolver.
+function createModelLoadCheckpoint() {
+    if(typeof Process==='undefined'||typeof NativeFunction==='undefined')return null;
+    const sleep=new NativeFunction(Process.getModuleByName('kernel32.dll').getExportByName('Sleep'),
+        'void',['uint'],{scheduling:'cooperative'});
+    const thread=Process.getCurrentThreadId();let ticks=0,deadline=Date.now()+12;
+    return ()=>{
+        if(++ticks%16||Date.now()<deadline)return;
+        if(Process.getCurrentThreadId()!==thread)throw Error('Model construction changed thread');
+        // Sleep(0) may reacquire the JS lock before a waiting native callback
+        // is scheduled. A real yield keeps that callback from starving.
+        sleep(1);deadline=Date.now()+12;
+    };
+}
+
+function indexedModelHeader(view,size=view.byteLength) {
+    const invalid=()=>{throw Error('Invalid indexed model');};
     if(view.byteLength<32||view.getUint32(0,true)!==0x41524f53||view.getUint32(4,true)!==0x32444f4d||
             view.getUint32(8,true)!==2)invalid();
     const count=view.getUint32(12,true),root=view.getUint32(16,true),table=view.getUint32(20,true),
-        data=view.getUint32(24,true),size=view.getUint32(28,true);
-    if(!count||count>4000000||root>=count||table!==32||data!==32+count*16||size!==view.byteLength||data>size)invalid();
+        data=view.getUint32(24,true);
+    if(!count||count>4000000||root>=count||table!==32||data!==32+count*16||
+            size!==view.getUint32(28,true)||data>size)invalid();
+    return {count,root,table,data,size};
+}
+
+function readIndexedModelFile(path,checkpoint) {
+    if(!checkpoint)return File.readAllBytes(path);
+    const file=new File(path,'rb');
+    try {
+        file.seek(0,File.SEEK_END);const size=file.tell();file.seek(0,File.SEEK_SET);
+        const header=file.readBytes(32);
+        indexedModelHeader(new DataView(header),size);
+        const buffer=new ArrayBuffer(size),bytes=new Uint8Array(buffer);bytes.set(new Uint8Array(header));
+        for(let at=32;at<size;) {
+            const chunk=file.readBytes(Math.min(1024*1024,size-at));
+            if(!chunk.byteLength)throw Error('Truncated indexed model');
+            bytes.set(new Uint8Array(chunk),at);at+=chunk.byteLength;
+            checkpoint();
+        }
+        if(file.readBytes(1).byteLength)throw Error('Indexed model grew during read');
+        return buffer;
+    } finally {file.close();}
+}
+
+function readIndexedModel(buffer,checkpoint=null) {
+    const view=new DataView(buffer),invalid=()=>{throw Error('Invalid indexed model');};
+    const {count,root,table,data,size}=indexedModelHeader(view);
     const u32=at=>view.getUint32(at,true),node=id=>table+id*16;
     let hashes=new Uint32Array(count),hashed=new Uint8Array(count),keysSeen=new Uint32Array(count);
     const storedHash=id=>{
         if(hashed[id])return hashes[id];
         const row=node(id),length=u32(row+4),start=data+u32(row+8);
         let hash=2166136261;
-        for(let i=0;i<length;i++)hash=Math.imul(hash^view.getUint16(start+i*2,true),16777619);
+        for(let i=0;i<length;i++){
+            if(!(i%1024))checkpoint?.();
+            hash=Math.imul(hash^view.getUint16(start+i*2,true),16777619);
+        }
         hashes[id]=hash>>>0;hashed[id]=1;return hash>>>0;
     };
     for(let id=0;id<count;id++) {
+        if(!(id%256))checkpoint?.();
         const row=node(id),kind=u32(row),length=u32(row+4),offset=u32(row+8),bytes=u32(row+12);
         const expected=kind<2?0:kind===2?8:kind===3?length*2:kind===4?length*4:kind===5?length*16:-1;
         if(expected<0||bytes!==expected||offset%4||data+offset+bytes>size||
@@ -26,6 +73,7 @@ function readIndexedModel(buffer) {
         const start=data+offset;
         if(kind===4||kind===5) {
             for(let i=0;i<length*(kind===5?2:1);i++) {
+                if(!(i%1024))checkpoint?.();
                 const ref=u32(start+i*4);
                 if(ref>=id||(kind===5&&i%2===0&&u32(node(ref))!==3))invalid();
                 if(kind===5&&i%2===0) {
@@ -37,6 +85,7 @@ function readIndexedModel(buffer) {
                 const index=start+length*8,seen=new Uint8Array(length);
                 let previous=0;
                 for(let i=0;i<length;i++) {
+                    if(!(i%1024))checkpoint?.();
                     const hash=u32(index+i*8),entry=u32(index+i*8+4);
                     if((i&&hash<previous)||entry>=length||seen[entry]||
                             hash!==storedHash(u32(start+entry*8)))invalid();
@@ -45,7 +94,7 @@ function readIndexedModel(buffer) {
             }
         }
     }
-    hashes=null;hashed=null;keysSeen=null;
+    hashes=null;hashed=null;keysSeen=null;checkpoint=null;
     const cache=new Map(),MAX_NODES=4096,MAX_BYTES=2*1024*1024;
     let cachedBytes=0;
     function remember(id,value) {
@@ -153,9 +202,9 @@ function readIndexedModel(buffer) {
     rpc.exports.modelwireversion=()=>2;
     rpc.exports.modelpackedfile=function(path,mode,active,scale,layout) {
         if(path.endsWith('.wire.bin')){
-            const buffer=File.readAllBytes(path);
-            return rpc.exports.load(readIndexedModel(buffer),mode,active,scale,layout,
-                {format:'indexed-v2',path,bytes:buffer.byteLength});
+            const checkpoint=createModelLoadCheckpoint(),buffer=readIndexedModelFile(path,checkpoint);
+            return rpc.exports.load(readIndexedModel(buffer,checkpoint),mode,active,scale,layout,
+                {format:'indexed-v2',path,bytes:buffer.byteLength},checkpoint);
         }
         const text=File.readAllText(path),payload=JSON.parse(text);
         if(payload.schema!==1||!Array.isArray(payload.nodes)||payload.nodes.length>4000000)

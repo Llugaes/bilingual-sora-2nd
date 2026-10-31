@@ -92,7 +92,17 @@ function hasAlphanumeric(source) {
     return false;
 }
 class RuntimeText {
-    constructor(model,recordIdentity=null) {
+    constructor(model,recordIdentity=null,checkpoint=null) {
+        // Only full-model preparation supplies a checkpoint. Ordinary lazy
+        // resolvers retain the synchronous path and never yield while rendering.
+        checkpoint?.();
+        const map=(rows,fn)=>checkpoint?rows.map((row,i)=>{checkpoint();return fn(row,i);}):rows.map(fn);
+        const filter=(rows,fn)=>checkpoint?rows.filter((row,i)=>{checkpoint();return fn(row,i);}):rows.filter(fn);
+        const set=rows=>{
+            if(!checkpoint)return new Set(rows);
+            const result=new Set();for(const row of rows){checkpoint();result.add(row);}return result;
+        };
+        const index=(compiled,rows,excluded)=>RuntimeText.numericIndex(compiled,rows,excluded,checkpoint);
         this.model = model;
         // Only the existing verified dialogue-call lookup can bind this
         // permission. The global model and fragment resolvers never receive it.
@@ -103,67 +113,67 @@ class RuntimeText {
         this.conditionLists=model.condition_lists||[];
         this.skillHelpHeaders=model.skill_help_headers||null;
         this.itemHelpHeaders=model.item_help_headers||null;
-        const detailRows=model.detail_numeric||[],shadowed=new Set(detailRows.map(([pattern])=>pattern));
+        const detailRows=model.detail_numeric||[],shadowed=set(map(detailRows,([pattern])=>pattern));
         const numericByPattern=new Map();
         const compileNumeric=([pattern,pair])=>{const expression=new RegExp('^(?:'+pattern+')$');numericByPattern.set(pattern,expression);return [expression,pair];};
-        this.numeric = (model.numeric || []).filter(([pattern])=>!shadowed.has(pattern)).map(compileNumeric);
+        this.numeric = map(filter(model.numeric||[],([pattern])=>!shadowed.has(pattern)),compileNumeric);
         const rawRows=model.raw_numeric||[],producerRows=model.producer_numeric||[];
-        this.rawNumeric = rawRows.map(([pattern,pair])=>[new RegExp('^(?:'+pattern+')$'),pair]);
-        this.producerNumeric = producerRows.map(([pattern,pair,styles])=>[new RegExp('^(?:'+pattern+')$'),pair,styles]);
-        this.rawNumericIndex=RuntimeText.numericIndex(this.rawNumeric,rawRows);
-        this.producerNumericIndex=RuntimeText.numericIndex(this.producerNumeric,producerRows);
+        this.rawNumeric = map(rawRows,([pattern,pair])=>[new RegExp('^(?:'+pattern+')$'),pair]);
+        this.producerNumeric = map(producerRows,([pattern,pair,styles])=>[new RegExp('^(?:'+pattern+')$'),pair,styles]);
+        this.rawNumericIndex=index(this.rawNumeric,rawRows);
+        this.producerNumericIndex=index(this.producerNumeric,producerRows);
         this.rawNumericCandidateCache=new Map();this.producerNumericCandidateCache=new Map();
-        this.detailNumeric = detailRows.map(compileNumeric);
+        this.detailNumeric = map(detailRows,compileNumeric);
         const inlineRows=model.detail_inline_icons||[];
-        this.detailInlineIcons=inlineRows.map(([pattern,pair])=>[new RegExp(pattern,'g'),pair]);
+        this.detailInlineIcons=map(inlineRows,([pattern,pair])=>[new RegExp(pattern,'g'),pair]);
         this.detailContexts=model.detail_contexts||{};
         this.detailJoin=model.detail_join||null;
         this.detailJoinPairs=model.detail_join_pairs||{};
-        this.detailEffectUnits=(model.detail_effect_units||[]).map(row=>[row,new RegExp('^(?:'+row.pattern+')$')]);
-        this.detailEffectConstructorIds=new Set(model.detail_effect_constructor_ids||[]);
-        this.detailEffectDirectionGuards=(model.detail_effect_direction_guards||[]).map(pattern=>new RegExp('^(?:'+pattern+')$'));
+        this.detailEffectUnits=map(model.detail_effect_units||[],row=>[row,new RegExp('^(?:'+row.pattern+')$')]);
+        this.detailEffectConstructorIds=set(model.detail_effect_constructor_ids||[]);
+        this.detailEffectDirectionGuards=map(model.detail_effect_direction_guards||[],pattern=>new RegExp('^(?:'+pattern+')$'));
         this.detailEffectDirectionFrames=model.detail_effect_direction_frames||[];
-        this.detailEffectUnitIndex=RuntimeText.numericIndex(this.detailEffectUnits,
-            (model.detail_effect_units||[]).map(row=>[row.pattern]));
+        this.detailEffectUnitIndex=index(this.detailEffectUnits,
+            map(model.detail_effect_units||[],row=>[row.pattern]));
         this.detailEffectUnitCandidateCache=new Map();
-        const guards=(model.detail_effect_units||[]).filter(row=>(row.parameter_kinds||[]).some(kind=>['d','i','u'].includes(kind)))
-            .map(row=>[row,RuntimeText.effectParameterPattern(row.source)]);
+        const guards=map(filter(model.detail_effect_units||[],row=>(row.parameter_kinds||[]).some(kind=>['d','i','u'].includes(kind))),
+            row=>[row,RuntimeText.effectParameterPattern(row.source)]);
         // These expressions are constructed with exactly ^(?:...)$. Index
         // their bodies, retaining the same compiled guards and original order.
         // Including the anchors would put every guard in the full-scan fallback.
-        this.detailEffectParameterGuards=RuntimeText.numericIndex(guards,
-            guards.map(([,pattern])=>[pattern.source.slice(4,-2)]));
+        this.detailEffectParameterGuards=index(guards,
+            map(guards,([,pattern])=>[pattern.source.slice(4,-2)]));
         this.detailEffectParameterGuardCache=new Map();
         this.effectUnitFailures=new Map();
-        this.detailEffectBlockedLiterals=new Set(model.detail_effect_blocked_literals||[]);
-        this.detailEffectBlockedNumeric=(model.detail_effect_blocked_numeric||[]).map(pattern=>new RegExp('^(?:'+pattern+')$'));
-        this.detailJoinLiterals=new Set(model.detail_join_literals||[]);
-        const joinRows=(model.detail_join_numeric||[]).filter(pattern=>numericByPattern.has(pattern)).map(pattern=>[pattern,null]);
-        this.detailJoinNumeric=joinRows.map(([pattern])=>[numericByPattern.get(pattern),null]);
-        this.detailJoinNumericIndex=RuntimeText.numericIndex(this.detailJoinNumeric,joinRows);
+        this.detailEffectBlockedLiterals=set(model.detail_effect_blocked_literals||[]);
+        this.detailEffectBlockedNumeric=map(model.detail_effect_blocked_numeric||[],pattern=>new RegExp('^(?:'+pattern+')$'));
+        this.detailJoinLiterals=set(model.detail_join_literals||[]);
+        const joinRows=map(filter(model.detail_join_numeric||[],pattern=>numericByPattern.has(pattern)),pattern=>[pattern,null]);
+        this.detailJoinNumeric=map(joinRows,([pattern])=>[numericByPattern.get(pattern),null]);
+        this.detailJoinNumericIndex=index(this.detailJoinNumeric,joinRows);
         this.detailJoinCandidateCache=new Map();
-        this.detailJoinBlockedLiterals=new Set(model.detail_join_blocked_literals||[]);
-        const blockedJoinRows=(model.detail_join_blocked_numeric||[]).map(pattern=>[pattern,null]);
-        this.detailJoinBlockedNumeric=blockedJoinRows.map(([pattern])=>[new RegExp('^(?:'+pattern+')$'),null]);
-        this.detailJoinBlockedIndex=RuntimeText.numericIndex(this.detailJoinBlockedNumeric,blockedJoinRows);
+        this.detailJoinBlockedLiterals=set(model.detail_join_blocked_literals||[]);
+        const blockedJoinRows=map(model.detail_join_blocked_numeric||[],pattern=>[pattern,null]);
+        this.detailJoinBlockedNumeric=map(blockedJoinRows,([pattern])=>[new RegExp('^(?:'+pattern+')$'),null]);
+        this.detailJoinBlockedIndex=index(this.detailJoinBlockedNumeric,blockedJoinRows);
         this.detailJoinBlockedCache=new Map();
-        this.numericIndex=RuntimeText.numericIndex(this.numeric,model.numeric||[],shadowed);
-        this.detailNumericIndex=RuntimeText.numericIndex(this.detailNumeric,detailRows);
-        this.detailInlineIconIndex=RuntimeText.numericIndex(this.detailInlineIcons,inlineRows);
+        this.numericIndex=index(this.numeric,model.numeric||[],shadowed);
+        this.detailNumericIndex=index(this.detailNumeric,detailRows);
+        this.detailInlineIconIndex=index(this.detailInlineIcons,inlineRows);
         this.numericCandidateCache=new Map();this.detailNumericCandidateCache=new Map();this.detailInlineIconCandidateCache=new Map();
-        this.scoped = Object.fromEntries(Object.entries(model.scoped || {}).map(([k,v])=>[k,new RuntimeText(v)]));
-        this.details = model.details ? new RuntimeText(model.details) : null;
+        this.scoped = Object.fromEntries(map(Object.entries(model.scoped||{}),([k,v])=>[k,new RuntimeText(v,null,checkpoint)]));
+        this.details = model.details ? new RuntimeText(model.details,null,checkpoint) : null;
         if(this.details)this.details.frameOwner=this;
-        this.detailSources = new Set(model.detail_sources || []);
+        this.detailSources = set(model.detail_sources || []);
         this.detailHeaders = model.detail_headers || [];
-        this.detailHeaderLiterals = new Set(model.detail_header_literals || []);
-        this.ambiguousDisplay = new Set(model.ambiguous_display || []);
-        this.resourceFormatterPatterns=(model.resource_formatter_patterns||[]).map(pattern=>new RegExp('^(?:'+pattern+')$'));
+        this.detailHeaderLiterals = set(model.detail_header_literals || []);
+        this.ambiguousDisplay = set(model.ambiguous_display || []);
+        this.resourceFormatterPatterns=map(model.resource_formatter_patterns||[],pattern=>new RegExp('^(?:'+pattern+')$'));
         this.cache = new Map();
         this.planCache = new Map();
         this.speakerCache = new Map();
         this.historyCache = new Map();
-        this.keyed = Object.fromEntries(Object.entries(model.keyed || {}).map(([k,v])=>[k,{source:v.source,tr:new RuntimeText(v.model)}]));
+        this.keyed = Object.fromEntries(map(Object.entries(model.keyed||{}),([k,v])=>[k,{source:v.source,tr:new RuntimeText(v.model,null,checkpoint)}]));
     }
     keyedMatch(key,source) {
         const entry=Object.hasOwn(this.keyed,key)?this.keyed[key]:null;
@@ -211,9 +221,10 @@ class RuntimeText {
         if(run)runs.push(run);
         return runs.sort((a,b)=>b.length-a.length||a.localeCompare(b))[0]||null;
     }
-    static numericIndex(compiled,rows,excluded=new Set()) {
+    static numericIndex(compiled,rows,excluded=new Set(),checkpoint=null) {
         const fallback=[],byFirst=new Map();let at=0;
         for(const row of rows) {
+            checkpoint?.();
             if(excluded.has(row[0]))continue;
             const rule=compiled[at++],literal=RuntimeText.numericLiteral(row[0]),entry={at:at-1,rule};
             if(!literal){fallback.push(entry);continue;}

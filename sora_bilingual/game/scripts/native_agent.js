@@ -2057,10 +2057,10 @@ rpc.exports = {
         if(!runtimeFonts)throw Error('This resident does not support runtime fonts');
         runtimeFonts.select(enabled);return runtimeFonts.configure(manifest);
     },
-    load(model, mode, active, scale=0.9, layout={}, provenance=null) {
+    load(model, mode, active, scale=0.9, layout={}, provenance=null,checkpoint=null) {
         if(!['annotation','primary','secondary','bilingual'].includes(mode))throw Error('Unknown render mode');
         if(!Number.isFinite(scale)||scale<.7||scale>1)throw Error('Annotation scale must be 0.7..1');
-        const next=new TextFactory(model);
+        const next=new TextFactory(model,null,checkpoint);
         const nextScripts=ScriptFactory?new ScriptFactory(model.script_identities,resourceHash):null;
         const nextTables=TableFactory?new TableFactory(model.table_identities,resourceHash,
             REPORT.native.tips_table_load?['tips_u16_flag_add7400_cap7799_v1']:[]):null;
@@ -2069,16 +2069,19 @@ rpc.exports = {
         // FC's same-English/different-target records remain globally ambiguous.
         const questModel=model.scoped?.quest_notes;
         const nextParagraphs=ParagraphFactory?new ParagraphFactory(questModel||model,TextFactory,
-            {preserveQuestLines:!!questModel}):null;
+            {preserveQuestLines:!!questModel,checkpoint}):null;
         const fcModel=model.scoped?.fc_quest_notes;
         const nextFcParagraphs=ParagraphFactory&&fcModel?new ParagraphFactory(fcModel,TextFactory,
-            {preserveQuestLines:true}):null;
+            {preserveQuestLines:true,checkpoint}):null;
+        const nextBooks=BooksFactory?new BooksFactory(model.books,TextFactory):null;
+        // All yielding work precedes publication; callbacks see the complete
+        // old resolver until this synchronous commit begins.
         rpc.exports.configure({},active,scale);
         resolver=next;renderMode=mode;
         scriptIdentities=nextScripts;tableIdentities=nextTables;
         paragraphs=nextParagraphs;
         fcParagraphs=nextFcParagraphs;
-        books=BooksFactory?new BooksFactory(model.books,TextFactory):null;
+        books=nextBooks;
         activeModel=model;
         rpc.exports.style(scale,layout);
         modelProvenance=null;

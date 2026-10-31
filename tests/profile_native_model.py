@@ -21,6 +21,9 @@ p.add_argument("--seconds", type=int, default=90)
 p.add_argument("--empty", action="store_true")
 p.add_argument("--wire", type=Path)
 p.add_argument("--profile", action="store_true")
+p.add_argument(
+    "--during-load", action="store_true", help="include model loading in native callback waits"
+)
 p.add_argument("--max-wait-ms", type=float, default=100)
 p.add_argument("--output", type=Path, required=True)
 args = p.parse_args()
@@ -43,7 +46,7 @@ try:
     )
     source += """
 let resident=null;
-rpc.exports.load=model=>{resident={model,tr:new RuntimeText(model),scripts:new ScriptIdentities(model.script_identities),tables:new TableIdentities(model.table_identities),paragraphs:new RuntimeParagraphs(model,RuntimeText)};return true;};
+rpc.exports.load=(model,_mode,_active,_scale,_layout,_provenance,checkpoint)=>{resident={model,tr:new RuntimeText(model,null,checkpoint),scripts:new ScriptIdentities(model.script_identities),tables:new TableIdentities(model.table_identities),paragraphs:new RuntimeParagraphs(model,RuntimeText,{checkpoint})};return true;};
 """
     source += (ROOT / "sora_bilingual/game/scripts/native_transport.js").read_text("utf-8")
     source += """
@@ -82,6 +85,13 @@ Interceptor.flush();
         "message", lambda m, d: print("agent", m, flush=True) if m["type"] == "error" else None
     )
     agent.load()
+    if args.during_load:
+        assert agent.exports_sync.start()
+        deadline = time.monotonic() + 5
+        while agent.exports_sync.stats()["calls"] < 32:
+            if time.monotonic() > deadline:
+                raise RuntimeError("Owned callback fixture did not start")
+            time.sleep(0.01)
     begin = time.perf_counter()
     if args.empty:
         agent.exports_sync.load({"pairs": {}, "plain_pairs": {}})
@@ -115,7 +125,8 @@ Interceptor.flush();
             if profile.poll() is not None or time.monotonic() > deadline:
                 raise RuntimeError("Profiler did not start")
             time.sleep(0.1)
-    assert agent.exports_sync.start()
+    if not args.during_load:
+        assert agent.exports_sync.start()
     samples = []
     events = []
     began = time.monotonic()
@@ -149,6 +160,7 @@ Interceptor.flush();
         "empty": args.empty,
         "seconds": args.seconds,
         "load_seconds": load_seconds,
+        "during_load": args.during_load,
         "max_observed_ms": maximum,
         "samples": samples,
         "game_attached": False,

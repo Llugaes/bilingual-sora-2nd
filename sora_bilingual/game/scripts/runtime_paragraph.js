@@ -19,6 +19,7 @@ class RuntimeParagraphs {
         // Do not expand all translations into a second permanently live graph.
         if(this.model.paragraph_sources)return;
         for(const [source,pair] of Object.entries(this.model.pairs||{})) {
+            options.checkpoint?.();
             const entry=RuntimeParagraphs.entry(source,pair,this.preserveQuestLines);if(!entry)continue;
             const first=entry.slots[0].text;
             if(!this.byFirstLine.has(first))this.byFirstLine.set(first,[]);

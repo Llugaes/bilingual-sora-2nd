@@ -1064,6 +1064,25 @@ test('invalid locale reload leaves the old resolver and enabled state intact',()
     runtime.api.select('secondary',true);runtime.update(label);assert.equal(label.text(),'ティアの薬');
 });
 
+test('loading checkpoints keep callbacks on the old complete model until commit',()=>{
+    const r=makeRuntime(),label=r.label(0x9118,'原文');
+    const model=target=>({pairs:{'原文':[target,'訳文']},plain_pairs:{'原文':[target,'訳文']}});
+    r.api.load(model('旧译文'),'primary',true,1);r.update(label);
+    const next={...model('新译文'),numeric:Array.from({length:80},(_,i)=>['value'+i+'=([0-9]+)',['value%d','値%d']]),
+        detail_sources:Array.from({length:80},(_,i)=>'source'+i),
+        scoped:{test:model('范围')},details:model('详情'),keyed:{key:{source:'原文',model:model('标识')}}};
+    let checkpoints=0;
+    const checkpoint=()=>{checkpoints++;r.update(label);assert.equal(label.text(),'旧译文');};
+    assert.throws(()=>r.api.load(next,'primary',true,1,{},null,()=>{checkpoint();throw Error('interrupted construction');}));
+    r.update(label);assert.equal(label.text(),'旧译文');assert.equal(r.api.status().failed,false);
+    r.api.load(next,'primary',true,1,{},null,checkpoint);
+    assert.ok(checkpoints>160,'bulk arrays and nested models must cooperate');
+    r.update(label);assert.equal(label.text(),'新译文');
+    const finished=checkpoints;
+    for(let i=0;i<20;i++)r.update(label);
+    assert.equal(checkpoints,finished,'live rendering must not retain loading checkpoints');
+});
+
 test('text logic hot update preserves labels and mode; rejected code keeps old logic',()=>{
     const runtime=makeRuntime(),label=runtime.label(0x9140,'回复药');
     const model={pairs:{'回复药':['Tear Balm','ティアの薬']},plain_pairs:{'回复药':['Tear Balm','ティアの薬']}};
